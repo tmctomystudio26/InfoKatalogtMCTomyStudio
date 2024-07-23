@@ -296,7 +296,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const total = `Total: Rp${cartArray.reduce((sum, item) => sum + item.price * item.quantity, 0).toLocaleString()}`;
         const whatsappMessage = `*Checkout*\n\n${message}\n\n${total}\n\nTerima kasih!`;
 
-        window.location.href = `https://wa.me/${whatsappNumber}?text=${encodeURIComponent(whatsappMessage)}`;
+        window.location.href = `https://wa.me/${6285159772620}?text=${encodeURIComponent(whatsappMessage)}`;
     });
 
     cartIcon.addEventListener('click', () => {
