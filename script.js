@@ -144,7 +144,7 @@ document.addEventListener('DOMContentLoaded', () => {
             subproducts: [
                 { name: '3 Bulan - No Garansi', price: 15000 },
                 { name: '3 Bulan - Garansi 1× Replace', price: 20000 },
-                { name: '3 Bulam - Garansi 2× Replace', price: 25000 },
+                { name: '3 Bulan - Garansi 2× Replace', price: 25000 },
                 { name: '3 Bulan - Garansi Full', price: 30000 }
             ]
         },
@@ -195,7 +195,7 @@ document.addEventListener('DOMContentLoaded', () => {
             name: 'Alight Motion Premium',
             subproducts: [
                 { name: '1 Tahun - No Garansi', price: 15000 },
-                                { name: '1 Tahun - Garansi 6 Bulan', price: 25000 },
+                { name: '1 Tahun - Garansi 6 Bulan', price: 25000 },
                 { name: '1 Tahun - Garansi Full', price: 30000 }
             ]
         }
@@ -313,3 +313,4 @@ document.addEventListener('DOMContentLoaded', () => {
 
     renderProducts();
 });
+                          
