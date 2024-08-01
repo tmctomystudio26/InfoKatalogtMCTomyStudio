@@ -97,47 +97,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
     updatePrayerTimes();
 
-    function updateLocation() {
-        if (navigator.geolocation) {
-            navigator.geolocation.getCurrentPosition(showPosition, showError);
-        } else {
-            locationInfo.textContent = "Geolocation tidak didukung oleh browser ini.";
-        }
-    }
-
-    function showPosition(position) {
-        const latitude = position.coords.latitude;
-        const longitude = position.coords.longitude;
-        fetch(`https://nominatim.openstreetmap.org/reverse?lat=${latitude}&lon=${longitude}&format=json`)
-            .then(response => response.json())
-            .then(data => {
-                const location = data.address ? `${data.address.city}, ${data.address.country}` : "Lokasi tidak dapat ditemukan";
-                locationInfo.textContent = `Lokasi: ${location}`;
-            })
-            .catch(() => {
-                locationInfo.textContent = "Tidak dapat mengambil data lokasi, mohon aktifkan lokasi";
-            });
-    }
-
-    function showError(error) {
-        switch (error.code) {
-            case error.PERMISSION_DENIED:
-                locationInfo.textContent = "Pengguna menolak permintaan lokasi.";
-                break;
-            case error.POSITION_UNAVAILABLE:
-                locationInfo.textContent = "Informasi lokasi tidak tersedia.";
-                break;
-            case error.TIMEOUT:
-                locationInfo.textContent = "Permintaan lokasi telah habis waktu.";
-                break;
-            case error.UNKNOWN_ERROR:
-                locationInfo.textContent = "Terjadi kesalahan lokasi yang tidak diketahui.";
-                break;
-        }
-    }
-
-    updateLocation();
-
     const products = [
         {
             name: 'Youtube Premium',
