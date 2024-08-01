@@ -94,8 +94,46 @@ document.addEventListener('DOMContentLoaded', () => {
         document.getElementById('maghrib').innerHTML = `<div class="prayer-times-title">Maghrib</div>${prayerTimes.Maghrib}`;
         document.getElementById('isha').innerHTML = `<div class="prayer-times-title">Isya</div>${prayerTimes.Isha}`;
     }
-
+    
     updatePrayerTimes();
+
+    function updateLocationAndPrayerTimes() {
+    if (navigator.geolocation) {
+        navigator.geolocation.getCurrentPosition(
+            (position) => {
+                const latitude = position.coords.latitude;
+                const longitude = position.coords.longitude;
+
+                fetch(`https://api.aladhan.com/v1/calendar?latitude=${latitude}&longitude=${longitude}&method=2`)
+                    .then(response => response.json())
+                    .then(data => {
+                        const prayerTimes = data.data[0].timings;
+                        document.getElementById('imsyak').textContent = prayerTimes.Fajr;
+                        document.getElementById('fajr').textContent = prayerTimes.Sunrise;
+                        document.getElementById('dhuhr').textContent = prayerTimes.Dhuhr;
+                        document.getElementById('asr').textContent = prayerTimes.Asr;
+                        document.getElementById('maghrib').textContent = prayerTimes.Sunset;
+                        document.getElementById('isha').textContent = prayerTimes.Isha;
+
+                        // Menampilkan informasi lokasi
+                        const location = data.data[0].address;
+                        locationInfo.textContent = `Lokasi: ${location.city}, ${location.country}`;
+                    })
+                    .catch(error => {
+                        console.error('Terjadi kesalahan saat mengambil data waktu sholat:', error);
+                        locationInfo.textContent = "Tidak dapat mengambil data lokasi dan waktu sholat";
+                    });
+            },
+            (error) => {
+                console.error('Terjadi kesalahan saat mengambil lokasi:', error);
+                locationInfo.textContent = "Tidak dapat mengambil lokasi";
+            }
+        );
+    } else {
+        locationInfo.textContent = "Geolocation tidak didukung oleh browser ini.";
+    }
+}
+    updateLocationAndPrayerTimes();
 
     const products = [
         {
