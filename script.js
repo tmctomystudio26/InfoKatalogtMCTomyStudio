@@ -139,14 +139,14 @@ document.addEventListener('DOMContentLoaded', () => {
             'maghrib': 'Maghrib', 
             'isha': 'Isya'
         };
-        
+
         // Show loading animation first
         prayerBoxes.forEach(id => {
             document.getElementById(id).innerHTML = 
                 `<div class="prayer-times-title">${prayerNames[id]}</div>
                  <div class="prayer-time-loading"><div class="loading-dot"></div></div>`;
         });
-        
+
         // Set a slight delay to show loading effect
         setTimeout(() => {
             document.getElementById('imsyak').innerHTML = `<div class="prayer-times-title">Imsyak</div>${prayerTimes.Imsak}`;
@@ -448,7 +448,7 @@ function formatPrayerTime(timeString) {
         if (e.target.classList.contains('select-product-btn')) {
             const productName = e.target.dataset.name;
             const product = products.find(p => p.name === productName);
-            
+
             if (!product.outOfStock) {
                 showSubproducts(productName);
             }
@@ -477,7 +477,7 @@ function formatPrayerTime(timeString) {
         product.subproducts.forEach(subproduct => {
             const subproductItem = document.createElement('div');
             subproductItem.className = 'subproduct-item';
-            
+
             if (subproduct.outOfStock) {
                 subproductItem.innerHTML = `
                     <div class="product-logo small-logo">
@@ -493,7 +493,7 @@ function formatPrayerTime(timeString) {
                 if (subproduct.description) {
                     descriptionHtml = `<p class="product-description">${subproduct.description}</p>`;
                 }
-                
+
                 subproductItem.innerHTML = `
                     <div class="product-logo small-logo">
                         ${logoUrl ? `<img src="${logoUrl}" alt="${product.name} logo">` : `<i class="fas fa-tag"></i>`}
@@ -548,7 +548,7 @@ function formatPrayerTime(timeString) {
         if (cartPageItems) {
             cartPageItems.innerHTML = '';
         }
-        
+
         // Animate cart badge when items added
         const cartBadge = document.getElementById('cart-badge');
         cartBadge.classList.add('badge-pulse');
@@ -806,6 +806,7 @@ function formatPrayerTime(timeString) {
 
         const total = cartArray.reduce((sum, item) => sum + (item.price * item.quantity), 0);
         message += `%0ATotal: Rp${total.toLocaleString()}`;
+        message += `%0A%0ATolong diproses ya Kak Tomy! 😇%0ATerimakasih`;
 
         window.open(`https://wa.me/+6285159772620?text=${message}`);
     });
@@ -830,6 +831,7 @@ function formatPrayerTime(timeString) {
 
         const total = cartArray.reduce((sum, item) => sum + (item.price * item.quantity), 0);
         message += `%0ATotal: Rp${total.toLocaleString()}`;
+        message += `%0A%0ATolong diproses ya Kak Tomy! 😇%0ATerimakasih`;
 
         window.open(`https://wa.me/+6285159772620?text=${message}`);
     });
