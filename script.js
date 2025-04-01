@@ -357,8 +357,8 @@ function formatPrayerTime(timeString) {
         {
             name: 'Netflix Premium',
             subproducts: [
-                { name: '1 Bulan - Sharing 1P2U', price: 20500 },
-                { name: '1 Bulan - Sharing 1P1U', price: 25500 },
+                { name: '1 Bulan - Sharing 1P2U', price: 21500 },
+                { name: '1 Bulan - Sharing 1P1U', price: 27500 },
                 { name: '1 Bulan - Privat', price: 120000 }
             ]
         },
