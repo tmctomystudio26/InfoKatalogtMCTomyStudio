@@ -29,6 +29,21 @@ document.addEventListener('DOMContentLoaded', () => {
     // Show welcome modal
     welcomeModal.style.display = 'flex';
 
+    // Name quotes generator
+    function generateNameQuote(name) {
+        const quotes = [
+            `Nama "${name}" memiliki aura yang kuat, mencerminkan jiwa yang penuh semangat dan dedikasi`,
+            `"${name}" adalah nama yang indah, membawa energi positif dan keberuntungan bagi pemiliknya`,
+            `Pemilik nama "${name}" dikenal sebagai sosok yang bijaksana dan penuh inspirasi`,
+            `"${name}" mencerminkan karakter yang kuat dan kepribadian yang menarik`,
+            `Nama "${name}" membawa makna mendalam tentang kebaikan dan ketulusan hati`,
+            `"${name}" adalah nama yang membawa berkah, melambangkan kesuksesan dan kemakmuran`,
+            `Penyandang nama "${name}" memiliki potensi besar untuk mencapai impian`,
+            `"${name}" adalah nama yang istimewa, mencerminkan pribadi yang penuh kasih dan pengertian`
+        ];
+        return quotes[Math.floor(Math.random() * quotes.length)];
+    }
+
     // Handle user name submission
     submitNameButton.addEventListener('click', () => {
         userName = userNameInput.value.trim();
@@ -39,8 +54,23 @@ document.addEventListener('DOMContentLoaded', () => {
             isPlaying = true;
             // Display user name
             document.getElementById('user-display').textContent = userName;
+            // Display name quote with typing animation
+            const quoteText = generateNameQuote(userName);
+            const quoteElement = document.getElementById('name-quote');
+            quoteElement.textContent = '';
+            let i = 0;
+            
+            function typeWriter() {
+                if (i < quoteText.length) {
+                    quoteElement.textContent += quoteText.charAt(i);
+                    i++;
+                    setTimeout(typeWriter, 50); // Adjust speed here (50ms per character)
+                }
+            }
+            
+            typeWriter();
         } else {
-            alert('Silakan masukkan nama Anda terlebih dahulu');
+            alert('Silakan masukkan nama Anda terlebih dahulu.');
         }
     });
 
@@ -120,192 +150,6 @@ document.addEventListener('DOMContentLoaded', () => {
             document.getElementById('hijri-date').textContent = hijriDate;
         });
 
-    const prayerTimes = {
-        Imsak: "04:30",
-        Fajr: "04:45",
-        Dhuhr: "12:00",
-        Asr: "15:30",
-        Maghrib: "18:00",
-        Isha: "19:15"
-    };
-
-    function updatePrayerTimes() {
-        const prayerBoxes = ['imsyak', 'fajr', 'dhuhr', 'asr', 'maghrib', 'isha'];
-        const prayerNames = {
-            'imsyak': 'Imsyak', 
-            'fajr': 'Subuh', 
-            'dhuhr': 'Dzuhur', 
-            'asr': 'Ashar', 
-            'maghrib': 'Maghrib', 
-            'isha': 'Isya'
-        };
-
-        // Show loading animation first
-        prayerBoxes.forEach(id => {
-            document.getElementById(id).innerHTML = 
-                `<div class="prayer-times-title">${prayerNames[id]}</div>
-                 <div class="prayer-time-loading"><div class="loading-dot"></div></div>`;
-        });
-
-        // Set a slight delay to show loading effect
-        setTimeout(() => {
-            document.getElementById('imsyak').innerHTML = `<div class="prayer-times-title">Imsyak</div>${prayerTimes.Imsak}`;
-            document.getElementById('fajr').innerHTML = `<div class="prayer-times-title">Subuh</div>${prayerTimes.Fajr}`;
-            document.getElementById('dhuhr').innerHTML = `<div class="prayer-times-title">Dzuhur</div>${prayerTimes.Dhuhr}`;
-            document.getElementById('asr').innerHTML = `<div class="prayer-times-title">Ashar</div>${prayerTimes.Asr}`;
-            document.getElementById('maghrib').innerHTML = `<div class="prayer-times-title">Maghrib</div>${prayerTimes.Maghrib}`;
-            document.getElementById('isha').innerHTML = `<div class="prayer-times-title">Isya</div>${prayerTimes.Isha}`;
-        }, 800);
-    }
-
-    updatePrayerTimes();
-
-    async function updateLocationAndPrayerTimes() {
-    locationInfo.textContent = "Sedang mengambil lokasi...";
-
-    // Menggunakan Geolocation API browser dahulu
-    if (navigator.geolocation) {
-        navigator.geolocation.getCurrentPosition(
-            async (position) => {
-                // Berhasil mendapatkan lokasi dari browser
-                const latitude = position.coords.latitude;
-                const longitude = position.coords.longitude;
-
-                try {
-                    // Mendapatkan nama lokasi berdasarkan koordinat
-                    const geocodeResponse = await fetch(`https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${latitude}&longitude=${longitude}&localityLanguage=id`);
-                    const geocodeData = await geocodeResponse.json();
-
-                    // Mendapatkan jadwal sholat untuk lokasi ini
-                    await fetchPrayerTimes(latitude, longitude);
-
-                    // Menampilkan informasi lokasi
-                    locationInfo.textContent = `Lokasi: ${geocodeData.locality || geocodeData.city || ''}, ${geocodeData.principalSubdivision || ''}, ${geocodeData.countryName || ''}`;
-                } catch (error) {
-                    console.error('Gagal mendapatkan detail lokasi:', error);
-                    locationInfo.textContent = `Lokasi: ${latitude.toFixed(4)}, ${longitude.toFixed(4)}`;
-                    await fetchPrayerTimes(latitude, longitude);
-                }
-            },
-            async (error) => {
-                // Gagal mendapatkan lokasi dari browser, coba dengan IP
-                console.error('Gagal mendapatkan lokasi dari browser:', error);
-                try {
-                    await getLocationFromIP();
-                } catch (ipError) {
-                    console.error('Gagal mendapatkan lokasi:', ipError);
-                    locationInfo.textContent = "Gagal mendapatkan lokasi Anda. Silakan izinkan akses lokasi dan refresh halaman.";
-                    // Tidak menggunakan default Indonesia
-                }
-            },
-            { timeout: 10000, enableHighAccuracy: true }
-        );
-    } else {
-        // Browser tidak mendukung geolocation, coba dengan IP
-        try {
-            await getLocationFromIP();
-        } catch (error) {
-            console.error('Gagal mendapatkan lokasi:', error);
-            locationInfo.textContent = "Lokasi tidak dapat ditemukan. Silakan refresh halaman atau gunakan browser lain.";
-            // Tidak menggunakan default Indonesia
-        }
-    }
-}
-
-async function getLocationFromIP() {
-    // Coba beberapa layanan geolokasi IP berbeda
-    const ipServices = [
-        'https://ipapi.co/json',
-        'https://api.ipgeolocation.io/ipgeo?apiKey=d4aac1787c714096a9ebca5e4462a797',
-        'https://ipinfo.io/json?token=ce8fe2a7e8cb12'
-    ];
-
-    let success = false;
-
-    for (const service of ipServices) {
-        if (success) break;
-
-        try {
-            const response = await fetch(service);
-            if (!response.ok) continue;
-
-            const data = await response.json();
-            let latitude, longitude, locationName;
-
-            // Format respons berbeda untuk setiap layanan
-            if (service.includes('ipapi.co')) {
-                latitude = data.latitude;
-                longitude = data.longitude;
-                locationName = `${data.city}, ${data.region}, ${data.country_name}`;
-            } else if (service.includes('ipgeolocation.io')) {
-                latitude = data.latitude;
-                longitude = data.longitude;
-                locationName = `${data.city}, ${data.state_prov}, ${data.country_name}`;
-            } else if (service.includes('ipinfo.io')) {
-                [latitude, longitude] = data.loc.split(',');
-                locationName = `${data.city}, ${data.region}, ${data.country}`;
-            }
-
-            if (latitude && longitude) {
-                await fetchPrayerTimes(latitude, longitude);
-                locationInfo.textContent = `Lokasi: ${locationName}`;
-                success = true;
-            }
-        } catch (error) {
-            console.error(`Gagal dengan layanan ${service}:`, error);
-        }
-    }
-
-    if (!success) {
-        throw new Error('Semua layanan geolokasi IP gagal');
-    }
-}
-
-async function fetchPrayerTimes(latitude, longitude) {
-    const today = new Date();
-    const day = today.getDate();
-    const month = today.getMonth() + 1;
-    const year = today.getFullYear();
-
-    // Mencoba 3 metode kalkulasi berbeda
-    const methods = [3, 2, 5]; // 3=MWL, 2=ISNA, 5=Egyptian
-
-    for (const method of methods) {
-        try {
-            const prayerResponse = await fetch(`https://api.aladhan.com/v1/timings/${day}-${month}-${year}?latitude=${latitude}&longitude=${longitude}&method=${method}`);
-
-            if (!prayerResponse.ok) {
-                continue;
-            }
-
-            const prayerData = await prayerResponse.json();
-
-            if (prayerData.code === 200 && prayerData.data && prayerData.data.timings) {
-                const timings = prayerData.data.timings;
-
-                document.getElementById('imsyak').innerHTML = `<div class="prayer-times-title">Imsyak</div>${formatPrayerTime(timings.Imsak)}`;
-                document.getElementById('fajr').innerHTML = `<div class="prayer-times-title">Subuh</div>${formatPrayerTime(timings.Fajr)}`;
-                document.getElementById('dhuhr').innerHTML = `<div class="prayer-times-title">Dzuhur</div>${formatPrayerTime(timings.Dhuhr)}`;
-                document.getElementById('asr').innerHTML = `<div class="prayer-times-title">Ashar</div>${formatPrayerTime(timings.Asr)}`;
-                document.getElementById('maghrib').innerHTML = `<div class="prayer-times-title">Maghrib</div>${formatPrayerTime(timings.Maghrib)}`;
-                document.getElementById('isha').innerHTML = `<div class="prayer-times-title">Isya</div>${formatPrayerTime(timings.Isha)}`;
-
-                return; // Berhasil dapat jadwal, keluar dari loop
-            }
-        } catch (error) {
-            console.error(`Gagal dengan metode ${method}:`, error);
-        }
-    }
-
-    throw new Error('Semua metode kalkulasi gagal');
-}
-
-// Helper function to format prayer time (remove timezone info)
-function formatPrayerTime(timeString) {
-    // Memformat waktu untuk menghapus informasi timezone
-    return timeString.split(' ')[0];
-}
-    updateLocationAndPrayerTimes();
 
     const products = [
         {
