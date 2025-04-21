@@ -43,8 +43,10 @@
 <body>
     <div id="welcome-modal" class="modal">
         <div class="modal-content">
-            <h2>Selamat datang di tMC Tomy Studio!</h2>
-            <p>The King of Premium Accounts</p>
+            <div class="modal-header">
+                <h2>Selamat datang di tMC Tomy Studio!</h2>
+                <p class="gradient-text">The King of Premium Accounts</p>
+            </div>
             <input type="text" id="user-name" placeholder="Masukkan nama Anda">
             <button id="submit-name">Lanjutkan <i class="fas fa-arrow-right"></i></button>
         </div>
@@ -60,11 +62,15 @@
             <h1><i class="fas fa-crown"></i> tMC Tomy Studio</h1>
             <h2>The King of Premium Accounts</h2>
             <audio id="audio-player" controls>
-                <source src="https://raw.githubusercontent.com/tmctomystudio26/github.musik.io/main/V1%20Angel%20Baby%20%20Shania%20Yan%20Cover%20-%20Shania%20Yan_1_1.mp3" type="audio/mp3">
+                <source src="https://raw.githubusercontent.com/tmctomystudio26/github.musik.io/main/ABUN%20SUNGKAR%20-%20MENGIKHLASKAN%20HATI%20(OST%20CINTA%20DALAM%20IKHLAS)(3).mp3" type="audio/mp3">
                 Your browser does not support the audio element.
             </audio>
             <div id="timer">00:00 / 00:00</div>
-            <button id="play-btn"></button>
+            <div class="audio-controls">
+                <button id="prev-btn"><i class="fas fa-step-backward"></i></button>
+                <button id="play-btn"></button>
+                <button id="next-btn"><i class="fas fa-step-forward"></i></button>
+            </div>
         </header>
 
         <div class="container">
@@ -95,23 +101,36 @@
                 </div>
             </div>
 
-            <div id="cart">
+            <div id="cart" class="modern-cart">
                 <div id="cart-content">
                     <div id="cart-header">
-                        <h2 id="cart-title" title="Klik untuk mengubah ukuran"><i class="fas fa-shopping-cart"></i> Keranjang Belanja</h2>
-                        <button id="cart-close">&times;</button>
+                        <h2 id="cart-title"><i class="fas fa-shopping-basket"></i> Keranjang Belanja</h2>
+                        <button id="cart-close"><i class="fas fa-times"></i></button>
                     </div>
-                    <div id="cart-items">
+                    <div class="cart-progress">
+                        <div class="progress-bar"></div>
+                        <div class="progress-text">Belanja min. Rp50.000 untuk mendapat diskon!</div>
+                    </div>
+                    <div id="cart-items" class="modern-cart-items">
                         <!-- Item keranjang akan ditampilkan di sini -->
                     </div>
                     <div id="cart-footer">
-                        <div id="total-price">
-                            <span>Total Belanja</span>
-                            <span>Rp0</span>
+                        <div class="cart-summary">
+                            <div class="summary-item">
+                                <span>Subtotal</span>
+                                <span class="subtotal-price">Rp0</span>
+                            </div>
+                            <div class="summary-item highlight">
+                                <span>Total Belanja</span>
+                                <span id="total-price">Rp0</span>
+                            </div>
                         </div>
                         <div class="checkout-container">
-                            <p class="checkout-instruction">Klik disini untuk checkout</p>
-                            <button id="checkout-btn"><i class="fab fa-whatsapp"></i> Checkout</button>
+                            <button id="checkout-btn">
+                                <i class="fab fa-whatsapp"></i>
+                                <span>Checkout via WhatsApp</span>
+                                <i class="fas fa-arrow-right"></i>
+                            </button>
                         </div>
                     </div>
                 </div>
