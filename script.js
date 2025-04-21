@@ -1,8 +1,17 @@
 document.addEventListener('DOMContentLoaded', () => {
     const audio = document.getElementById('audio-player');
     const playButton = document.getElementById('play-btn');
+    const prevButton = document.getElementById('prev-btn');
+    const nextButton = document.getElementById('next-btn');
     const playIcon = document.getElementById('play-icon');
     const timerElement = document.getElementById('timer');
+    
+    const playlist = [
+        'https://raw.githubusercontent.com/tmctomystudio26/github.musik.io/main/ABUN%20SUNGKAR%20-%20MENGIKHLASKAN%20HATI%20(OST%20CINTA%20DALAM%20IKHLAS)(3).mp3',
+        'https://raw.githubusercontent.com/tmctomystudio26/github.musik.io/main/Restianade%20-%20Tresno%20Tekan%20Mati(2).mp3',
+        'https://raw.githubusercontent.com/tmctomystudio26/github.musik.io/main/V1%20Angel%20Baby%20%20Shania%20Yan%20Cover%20-%20Shania%20Yan_1_1.mp3'
+    ];
+    let currentTrack = 0;
     const realTimeElement = document.getElementById('real-time');
     const dateContainer = document.getElementById('date-container');
     const prayerTimesContainer = document.querySelector('.prayer-times-container');
@@ -59,15 +68,15 @@ document.addEventListener('DOMContentLoaded', () => {
             const quoteElement = document.getElementById('name-quote');
             quoteElement.textContent = '';
             let i = 0;
-            
+
             function typeWriter() {
                 if (i < quoteText.length) {
                     quoteElement.textContent += quoteText.charAt(i);
                     i++;
-                    setTimeout(typeWriter, 50); // Adjust speed here (50ms per character)
+                    setTimeout(typeWriter, 50);
                 }
             }
-            
+
             typeWriter();
         } else {
             alert('Silakan masukkan nama Anda terlebih dahulu.');
@@ -89,10 +98,27 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }, { once: true });
 
-    // Membuat audio loop secara otomatis
+    // Handle track ending
     audio.addEventListener('ended', () => {
-        audio.currentTime = 0;
+        currentTrack = (currentTrack + 1) % playlist.length;
+        audio.src = playlist[currentTrack];
         audio.play();
+    });
+
+    // Next track button
+    nextButton.addEventListener('click', () => {
+        currentTrack = (currentTrack + 1) % playlist.length;
+        audio.src = playlist[currentTrack];
+        audio.play();
+        isPlaying = true;
+    });
+
+    // Previous track button
+    prevButton.addEventListener('click', () => {
+        currentTrack = (currentTrack - 1 + playlist.length) % playlist.length;
+        audio.src = playlist[currentTrack];
+        audio.play();
+        isPlaying = true;
     });
 
     playButton.addEventListener('click', () => {
@@ -153,6 +179,15 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const products = [
         {
+            name: 'Netflix Premium',
+            isBestSeller: true,
+            subproducts: [
+                { name: '1 Bulan - Sharing 1P2U', price: 21500 },
+                { name: '1 Bulan - Sharing 1P1U', price: 27500 },
+                { name: '1 Bulan - Privat', price: 120000 }
+            ]
+        },
+        {
             name: 'Youtube Premium',
             subproducts: [
                 { name: '3 Bulan - No Garansi', price: 15000 },
@@ -198,14 +233,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 { name: '1 Bulan - All device', price: 28000 }
             ]
         },
-        {
-            name: 'Netflix Premium',
-            subproducts: [
-                { name: '1 Bulan - Sharing 1P2U', price: 21500 },
-                { name: '1 Bulan - Sharing 1P1U', price: 27500 },
-                { name: '1 Bulan - Privat', price: 120000 }
-            ]
-        },
+        
         {
             name: 'Alight Motion Premium',
             subproducts: [
@@ -240,6 +268,12 @@ document.addEventListener('DOMContentLoaded', () => {
     function renderProducts() {
         const searchTerm = searchInput.value.toLowerCase();
         productList.innerHTML = '';
+        productList.style.opacity = '0';
+
+        setTimeout(() => {
+            productList.style.transition = 'opacity 0.5s ease';
+            productList.style.opacity = '1';
+        }, 50);
         const filteredProducts = products.filter(product =>
             product.name.toLowerCase().includes(searchTerm)
         );
@@ -264,6 +298,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
             if (product.outOfStock) {
                 productItem.innerHTML = `
+                    ${product.isBestSeller ? '<div class="best-seller-badge">Best Seller</div>' : ''}
                     <div class="product-logo">
                         ${logoUrl ? `<img src="${logoUrl}" alt="${product.name} logo">` : `<i class="fas fa-tag"></i>`}
                     </div>
@@ -274,6 +309,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 `;
             } else {
                 productItem.innerHTML = `
+                    ${product.isBestSeller ? '<div class="best-seller-badge">Best Seller</div>' : ''}
                     <div class="product-logo">
                         ${logoUrl ? `<img src="${logoUrl}" alt="${product.name} logo">` : `<i class="fas fa-tag"></i>`}
                     </div>
@@ -352,6 +388,14 @@ document.addEventListener('DOMContentLoaded', () => {
         });
         productList.style.display = 'none';
         subproductSection.style.display = 'block';
+        
+        // Wait for DOM to update then scroll to first subproduct
+        setTimeout(() => {
+            const firstSubproduct = document.querySelector('.subproduct-item');
+            if (firstSubproduct) {
+                firstSubproduct.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            }
+        }, 100);
     }
 
     backToProductsButton.addEventListener('click', () => {
@@ -520,6 +564,18 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Event listener untuk tombol plus, minus, hapus pada halaman utama
     cartItems.addEventListener('click', (e) => {
+        // Handle trash icon click
+        if (e.target.classList.contains('fa-trash-alt')) {
+            const button = e.target.closest('.remove-btn');
+            if (button) {
+                const index = parseInt(button.dataset.index);
+                cartArray.splice(index, 1);
+                updateCart();
+                return;
+            }
+        }
+        
+        // Handle other buttons
         if (e.target.classList.contains('plus')) {
             const index = parseInt(e.target.dataset.index);
             cartArray[index].quantity += 1;
