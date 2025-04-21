@@ -11,7 +11,106 @@ document.addEventListener('DOMContentLoaded', () => {
         'https://raw.githubusercontent.com/tmctomystudio26/github.musik.io/main/Restianade%20-%20Tresno%20Tekan%20Mati(2).mp3',
         'https://raw.githubusercontent.com/tmctomystudio26/github.musik.io/main/V1%20Angel%20Baby%20%20Shania%20Yan%20Cover%20-%20Shania%20Yan_1_1.mp3'
     ];
+    const songTitles = [
+        'ABUN SUNGKAR - MENGIKHLASKAN HATI',
+        'Restianade - Tresno Tekan Mati',
+        'Angel Baby - Shania Yan Cover'
+    ];
     let currentTrack = 0;
+
+    function updateRunningText() {
+        const currentSongText = document.getElementById('current-song');
+        const text = `🎵 Now Playing: ${songTitles[currentTrack]} 🎵`;
+        currentSongText.textContent = text;
+        currentSongText.setAttribute('data-text', text);
+    }
+
+    // Create playlist modal
+    const playlistModal = document.createElement('div');
+    playlistModal.className = 'playlist-modal';
+    document.body.appendChild(playlistModal);
+
+    // Add playlist functionality
+    function showPlaylist() {
+        playlistModal.innerHTML = `
+            <div class="playlist-header">
+                <div class="playlist-title">Now Playing</div>
+                <div class="playlist-controls">
+                    <button class="playlist-btn minimize-btn" title="Minimize">_</button>
+                    <button class="playlist-btn close-btn" title="Close">×</button>
+                </div>
+            </div>
+        `;
+
+        songTitles.forEach((title, index) => {
+            const item = document.createElement('div');
+            item.className = `playlist-item ${index === currentTrack ? 'active' : ''}`;
+            item.textContent = title;
+            item.onclick = () => {
+                currentTrack = index;
+                audio.src = playlist[currentTrack];
+                audio.play();
+                updateRunningText();
+                highlightActiveTrack();
+            };
+            playlistModal.appendChild(item);
+        });
+
+        const closeBtn = playlistModal.querySelector('.close-btn');
+        closeBtn.onclick = (e) => {
+            e.stopPropagation();
+            playlistModal.style.display = 'none';
+        };
+
+        const minimizeBtn = playlistModal.querySelector('.minimize-btn');
+        minimizeBtn.onclick = (e) => {
+            e.stopPropagation();
+            playlistModal.classList.toggle('playlist-minimized');
+        };
+
+        playlistModal.style.display = 'block';
+    }
+
+    function highlightActiveTrack() {
+        const items = playlistModal.querySelectorAll('.playlist-item');
+        items.forEach((item, index) => {
+            item.classList.toggle('active', index === currentTrack);
+        });
+    }
+
+    // Improve next/prev buttons functionality
+    nextButton.onclick = () => {
+        currentTrack = (currentTrack + 1) % playlist.length;
+        audio.src = playlist[currentTrack];
+        audio.play();
+        updateRunningText();
+        highlightActiveTrack();
+    };
+
+    prevButton.onclick = () => {
+        currentTrack = (currentTrack - 1 + playlist.length) % playlist.length;
+        audio.src = playlist[currentTrack];
+        audio.play();
+        updateRunningText();
+        highlightActiveTrack();
+    };
+
+    // Update audio controls visibility and styling
+    nextButton.style.width = '40px';
+    prevButton.style.width = '40px';
+    nextButton.style.height = '40px';
+    prevButton.style.height = '40px';
+
+    // Add click event to running text
+    document.querySelector('.running-text-container').onclick = showPlaylist;
+
+    // Close playlist when clicking outside
+    document.addEventListener('click', (e) => {
+        if (!e.target.closest('.playlist-modal') && 
+            !e.target.closest('.running-text-container')) {
+            playlistModal.style.display = 'none';
+        }
+    });
     const realTimeElement = document.getElementById('real-time');
     const dateContainer = document.getElementById('date-container');
     const prayerTimesContainer = document.querySelector('.prayer-times-container');
@@ -41,14 +140,21 @@ document.addEventListener('DOMContentLoaded', () => {
     // Name quotes generator
     function generateNameQuote(name) {
         const quotes = [
-            `Nama "${name}" memiliki aura yang kuat, mencerminkan jiwa yang penuh semangat dan dedikasi`,
-            `"${name}" adalah nama yang indah, membawa energi positif dan keberuntungan bagi pemiliknya`,
-            `Pemilik nama "${name}" dikenal sebagai sosok yang bijaksana dan penuh inspirasi`,
-            `"${name}" mencerminkan karakter yang kuat dan kepribadian yang menarik`,
-            `Nama "${name}" membawa makna mendalam tentang kebaikan dan ketulusan hati`,
-            `"${name}" adalah nama yang membawa berkah, melambangkan kesuksesan dan kemakmuran`,
-            `Penyandang nama "${name}" memiliki potensi besar untuk mencapai impian`,
-            `"${name}" adalah nama yang istimewa, mencerminkan pribadi yang penuh kasih dan pengertian`
+            `Nama "${name}" melambangkan keindahan yang tiada tara, bagaikan mutiara di dasar samudra`,
+            `"${name}" menyimpan kekuatan dan keteguhan, seperti gunung yang berdiri kokoh`,
+            `Pemilik nama "${name}" adalah pembawa cahaya, menerangi setiap langkah dalam kehidupan`,
+            `"${name}" adalah perpaduan keanggunan dan kecerdasan yang tak tertandingi`,
+            `Nama "${name}" memancarkan aura positif, menghangatkan hati setiap orang di sekitarnya`,
+            `"${name}" adalah cerminan jiwa yang bersih dan hati yang tulus`,
+            `Penyandang nama "${name}" ditakdirkan untuk mencapai kemuliaan dan kesuksesan`,
+            `"${name}" adalah simbol kerendahan hati dan kebijaksanaan yang mendalam`,
+            `Nama "${name}" membawa keberuntungan dan keberkahan di setiap langkah`,
+            `"${name}" adalah nama yang dipilih dengan penuh makna dan harapan`,
+            `Pemilik nama "${name}" memiliki pesona yang mampu menginspirasi banyak orang`,
+            `"${name}" mencerminkan keberanian dan tekad yang tak tergoyahkan`,
+            `Nama "${name}" adalah doa dan harapan untuk masa depan yang cemerlang`,
+            `"${name}" membawa semangat perubahan dan kemajuan dalam hidupnya`,
+            `Penyandang nama "${name}" adalah pemimpin sejati dengan visi yang jelas`
         ];
         return quotes[Math.floor(Math.random() * quotes.length)];
     }
@@ -63,21 +169,9 @@ document.addEventListener('DOMContentLoaded', () => {
             isPlaying = true;
             // Display user name
             document.getElementById('user-display').textContent = userName;
-            // Display name quote with typing animation
-            const quoteText = generateNameQuote(userName);
+            // Display name quote immediately
             const quoteElement = document.getElementById('name-quote');
-            quoteElement.textContent = '';
-            let i = 0;
-
-            function typeWriter() {
-                if (i < quoteText.length) {
-                    quoteElement.textContent += quoteText.charAt(i);
-                    i++;
-                    setTimeout(typeWriter, 50);
-                }
-            }
-
-            typeWriter();
+            quoteElement.textContent = generateNameQuote(userName);
         } else {
             alert('Silakan masukkan nama Anda terlebih dahulu.');
         }
@@ -103,6 +197,7 @@ document.addEventListener('DOMContentLoaded', () => {
         currentTrack = (currentTrack + 1) % playlist.length;
         audio.src = playlist[currentTrack];
         audio.play();
+        updateRunningText();
     });
 
     // Next track button
@@ -111,6 +206,7 @@ document.addEventListener('DOMContentLoaded', () => {
         audio.src = playlist[currentTrack];
         audio.play();
         isPlaying = true;
+        updateRunningText();
     });
 
     // Previous track button
@@ -119,6 +215,7 @@ document.addEventListener('DOMContentLoaded', () => {
         audio.src = playlist[currentTrack];
         audio.play();
         isPlaying = true;
+        updateRunningText();
     });
 
     playButton.addEventListener('click', () => {
@@ -602,7 +699,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!cartPageItems) return;
 
         // Periksa apakah event berasal dari dalam cart-page-items
-        if (cartPageItems.contains(e.target)) {
+        if(cartPageItems.contains(e.target)) {
             if (e.target.classList.contains('plus')) {
                 const index = parseInt(e.target.dataset.index);
                 cartArray[index].quantity += 1;
@@ -706,9 +803,43 @@ document.addEventListener('DOMContentLoaded', () => {
 
         const total = cartArray.reduce((sum, item) => sum + (item.price * item.quantity), 0);
         message += `%0ATotal: Rp${total.toLocaleString()}`;
-        message += `%0A%0ATolong diproses ya Kak Tomy! 😇%0ATerimakasih`;
 
-        window.open(`https://wa.me/+6285159772620?text=${message}`);
+        // Create payment options modal
+        const paymentModal = document.createElement('div');
+        paymentModal.className = 'payment-modal';
+        paymentModal.style.display = 'flex';
+        paymentModal.innerHTML = `
+            <div class="payment-modal-content">
+                <h3>Pilih Opsi Pembayaran</h3>
+                <div class="payment-options">
+                    <button class="payment-option" data-option="Bayar Sekarang">Bayar Sekarang</button>
+                    <button class="payment-option" data-option="Bayar Belakangan (Setelah Akun Diterima)">Bayar Belakangan (Setelah Akun Diterima)</button>
+                    <button class="payment-option" data-option="Kasbon">Kasbon</button>
+                </div>
+            </div>
+        `;
+        document.body.appendChild(paymentModal);
+
+        // Handle payment option selection
+        const handlePaymentSelection = (option) => {
+            if (option === "Kasbon") {
+                alert("Dih Jangan Kasbon Lah !!!");
+                return;
+            }
+            if (option === "Bayar Belakangan (Setelah Akun Diterima)") {
+                alert("Iih kamu kenapa gak mau bayar sekarang aja sih wkwkk... Yaudah aku izinin ya ! Tapi nanti harus bayar ya ! 😇");
+            }
+            paymentModal.remove();
+            message += `%0A%0AOpsi Pembayaran: ${option}`;
+            message += `%0A%0ATolong diproses ya Kak Tomy! 😇%0ATerimakasih`;
+            window.open(`https://wa.me/+6285159772620?text=${message}`);
+        };
+
+        paymentModal.addEventListener('click', (e) => {
+            if (e.target.classList.contains('payment-option')) {
+                handlePaymentSelection(e.target.dataset.option);
+            }
+        });
     });
 
     // Event listener untuk tombol checkout di halaman utama
@@ -731,9 +862,43 @@ document.addEventListener('DOMContentLoaded', () => {
 
         const total = cartArray.reduce((sum, item) => sum + (item.price * item.quantity), 0);
         message += `%0ATotal: Rp${total.toLocaleString()}`;
-        message += `%0A%0ATolong diproses ya Kak Tomy! 😇%0ATerimakasih`;
 
-        window.open(`https://wa.me/+6285159772620?text=${message}`);
+        // Create payment options modal
+        const paymentModal = document.createElement('div');
+        paymentModal.className = 'payment-modal';
+        paymentModal.style.display = 'flex';
+        paymentModal.innerHTML = `
+            <div class="payment-modal-content">
+                <h3>Pilih Opsi Pembayaran</h3>
+                <div class="payment-options">
+                    <button class="payment-option" data-option="Bayar Sekarang">Bayar Sekarang</button>
+                    <button class="payment-option" data-option="Bayar Belakangan (Setelah Akun Diterima)">Bayar Belakangan (Setelah Akun Diterima)</button>
+                    <button class="payment-option" data-option="Kasbon">Kasbon</button>
+                </div>
+            </div>
+        `;
+        document.body.appendChild(paymentModal);
+
+        // Handle payment option selection
+        const handlePaymentSelection = (option) => {
+            if (option === "Kasbon") {
+                alert("Dih Jangan Kasbon Lah !!!");
+                return;
+            }
+            if (option === "Bayar Belakangan (Setelah Akun Diterima)") {
+                alert("Iih kamu kenapa gak mau bayar sekarang aja sih wkwkk... Yaudah aku izinin ya ! Tapi nanti harus bayar ya ! 😇");
+            }
+            paymentModal.remove();
+            message += `%0A%0AOpsi Pembayaran: ${option}`;
+            message += `%0A%0ATolong diproses ya Kak Tomy! 😇%0ATerimakasih`;
+            window.open(`https://wa.me/+6285159772620?text=${message}`);
+        };
+
+        paymentModal.addEventListener('click', (e) => {
+            if (e.target.classList.contains('payment-option')) {
+                handlePaymentSelection(e.target.dataset.option);
+            }
+        });
     });
 
     renderProducts();
