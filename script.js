@@ -7,11 +7,13 @@ document.addEventListener('DOMContentLoaded', () => {
     const timerElement = document.getElementById('timer');
 
     const playlist = [
+        'https://raw.githubusercontent.com/tmctomystudio26/github.musik.io/main/NDX%20AKA%20OPENING%20JOSSS%20-%20DITINGGAL%20RABI%20%20LIVE%20PERFORM%20DI%20PANTAI%20FESTIVAL%20ANCOL.mp3',
         'https://raw.githubusercontent.com/tmctomystudio26/github.musik.io/main/ABUN%20SUNGKAR%20-%20MENGIKHLASKAN%20HATI%20(OST%20CINTA%20DALAM%20IKHLAS)(3).mp3',
         'https://raw.githubusercontent.com/tmctomystudio26/github.musik.io/main/Restianade%20-%20Tresno%20Tekan%20Mati(2).mp3',
         'https://raw.githubusercontent.com/tmctomystudio26/github.musik.io/main/V1%20Angel%20Baby%20%20Shania%20Yan%20Cover%20-%20Shania%20Yan_1_1.mp3'
     ];
     const songTitles = [
+        'NDX AKA - Opening Perform - Festival Pantai Ancol',
         'ABUN SUNGKAR - MENGIKHLASKAN HATI',
         'Restianade - Tresno Tekan Mati',
         'Angel Baby - Shania Yan Cover'
@@ -279,13 +281,16 @@ document.addEventListener('DOMContentLoaded', () => {
             name: 'Netflix Premium',
             isBestSeller: true,
             subproducts: [
-                { name: '1 Bulan - Sharing 1P2U', price: 21500 },
-                { name: '1 Bulan - Sharing 1P1U', price: 27500 },
-                { name: '1 Bulan - Privat', price: 120000 }
-            ]
+                { name: '1 Bulan - Sharing 1P2U', price: 22500, oldPrice: 21500 },
+                { name: '1 Bulan - Sharing 1P1U', price: 30000, oldPrice: 27500 },
+                { name: '1 Bulan - Privat', price: 125000, oldPrice: 120000 }
+            ],
+            description: "Yth, <b>harga produk Netflix mengalami sedikit kenaikan harga</b>, disebabkan stok produk yang mengalami kelangkaan karena tingginya permintaan 🙏"
         },
         {
             name: 'Youtube Premium',
+            outOfStock: true,
+            restockMessage: 'Akan segera restock',
             subproducts: [
                 { name: '3 Bulan - No Garansi', price: 15000 },
                 { name: '3 Bulan - Garansi 1× Replace', price: 20000 },
@@ -401,6 +406,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     </div>
                     <div class="out-of-stock-badge">Stok Habis</div>
                     <h3>${product.name}</h3>
+                    ${product.description ? `<p class="product-desc">${product.description}</p>` : ''}
                     <p class="product-desc">Paket ${product.name}</p>
                     <p class="restock-message">${product.restockMessage}</p>
                 `;
@@ -411,6 +417,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         ${logoUrl ? `<img src="${logoUrl}" alt="${product.name} logo">` : `<i class="fas fa-tag"></i>`}
                     </div>
                     <h3>${product.name}</h3>
+                    ${product.description ? `<p class="product-description">${product.description}</p>` : ''}
                     <p class="product-desc">Paket ${product.name}</p>
                     <button class="select-product-btn" data-name="${product.name}">Pilih & Lanjutkan <i class="fas fa-angle-right"></i></button>
                 `;
@@ -471,13 +478,28 @@ document.addEventListener('DOMContentLoaded', () => {
                     descriptionHtml = `<p class="product-description">${subproduct.description}</p>`;
                 }
 
+                let priceHtml = '';
+                if (subproduct.oldPrice) {
+                    priceHtml = `
+                        <div class="price-tag price-with-change">
+                            <div class="old-price">Rp${subproduct.oldPrice.toLocaleString()}</div>
+                            <div class="new-price">
+                                <span>Rp${subproduct.price.toLocaleString()}</span>
+                                <span class="price-increase-arrow">↗️</span>
+                            </div>
+                        </div>
+                    `;
+                } else {
+                    priceHtml = `<div class="price-tag">Rp${subproduct.price.toLocaleString()}</div>`;
+                }
+
                 subproductItem.innerHTML = `
                     <div class="product-logo small-logo">
                         ${logoUrl ? `<img src="${logoUrl}" alt="${product.name} logo">` : `<i class="fas fa-tag"></i>`}
                     </div>
                     <h4>${subproduct.name}</h4>
                     ${descriptionHtml}
-                    <div class="price-tag">Rp${subproduct.price.toLocaleString()}</div>
+                    ${priceHtml}
                     <button class="add-to-cart-btn" data-name="${product.name}" data-subname="${subproduct.name}" data-price="${subproduct.price}"><i class="fas fa-cart-plus"></i> Tambah ke Keranjang</button>
                 `;
             }
@@ -534,12 +556,14 @@ document.addEventListener('DOMContentLoaded', () => {
             cartPageItems.innerHTML = '';
         }
 
-        // Animate cart badge when items added
-        const cartBadge = document.getElementById('cart-badge');
-        cartBadge.classList.add('badge-pulse');
-        setTimeout(() => {
-            cartBadge.classList.remove('badge-pulse');
-        }, 500);
+        // Animate cart badge when items added (desktop only)
+        if (!isMobile) {
+            const cartBadge = document.getElementById('cart-badge');
+            cartBadge.classList.add('badge-pulse');
+            setTimeout(() => {
+                cartBadge.classList.remove('badge-pulse');
+            }, 300);
+        }
 
         let total = 0;
 
@@ -902,4 +926,77 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     renderProducts();
+    
+    // Optimize scroll animations for performance
+    const isMobile = window.innerWidth <= 768;
+    
+    if (!isMobile) {
+        const observerOptions = {
+            threshold: 0.2,
+            rootMargin: '0px 0px -30px 0px'
+        };
+        
+        const observer = new IntersectionObserver((entries) => {
+            entries.forEach(entry => {
+                if (entry.isIntersecting) {
+                    entry.target.classList.add('animate-in');
+                    observer.unobserve(entry.target);
+                }
+            });
+        }, observerOptions);
+        
+        // Observe elements for animation (desktop only)
+        setTimeout(() => {
+            const animateElements = document.querySelectorAll('.product-item, .subproduct-item, .section-title');
+            animateElements.forEach(el => observer.observe(el));
+        }, 200);
+    }
+    
+    // Add loading states for better UX
+    function addLoadingState(element) {
+        element.classList.add('loading');
+        setTimeout(() => {
+            element.classList.remove('loading');
+        }, 800);
+    }
+    
+    // Optimized button click feedback (desktop only)
+    if (!isMobile) {
+        document.addEventListener('click', (e) => {
+            if (e.target.matches('button')) {
+                const ripple = document.createElement('span');
+                ripple.style.cssText = `
+                    position: absolute;
+                    border-radius: 50%;
+                    background: rgba(255, 255, 255, 0.4);
+                    transform: scale(0);
+                    animation: ripple 0.4s ease-out;
+                    pointer-events: none;
+                `;
+                
+                const rect = e.target.getBoundingClientRect();
+                const size = Math.min(rect.width, rect.height);
+                ripple.style.width = ripple.style.height = size + 'px';
+                ripple.style.left = (e.clientX - rect.left - size / 2) + 'px';
+                ripple.style.top = (e.clientY - rect.top - size / 2) + 'px';
+                
+                e.target.style.position = 'relative';
+                e.target.appendChild(ripple);
+                
+                setTimeout(() => ripple.remove(), 400);
+            }
+        });
+    }
+    
+    // Add CSS for ripple animation
+    const style = document.createElement('style');
+    style.textContent = `
+        @keyframes ripple {
+            to {
+                transform: scale(4);
+                opacity: 0;
+            }
+        }
+    `;
+    document.head.appendChild(style);
 });
