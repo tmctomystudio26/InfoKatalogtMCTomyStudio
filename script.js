@@ -856,7 +856,7 @@ document.addEventListener('DOMContentLoaded', () => {
             paymentModal.remove();
             message += `%0A%0AOpsi Pembayaran: ${option}`;
             message += `%0A%0ATolong diproses ya Kak Tomy! 😇%0ATerimakasih`;
-            window.open(`https://wa.me/+6285159772620?text=${message}`);
+            window.open(`https://wa.me/+6285122936027?text=${message}`);
         };
 
         paymentModal.addEventListener('click', (e) => {
