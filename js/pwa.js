@@ -1,10 +1,10 @@
 /**
  * Manifestudio PWA Lifecycle Manager
- * Slim, non-intrusive install offer with minimize dock, full dismiss persistence,
- * iOS Safari instructions, and offline status indicator.
+ * Handles Service Worker registration, install prompts (Chromium + iOS Safari guide),
+ * user-controlled minimize & dismiss states, and offline status indicator.
  */
 
-const PWA_STATE_KEY = 'manifestudio_pwa_state_v2';
+const PWA_STATE_KEY = 'manifestudio_pwa_state_v1';
 
 let deferredPrompt = null;
 
@@ -43,36 +43,43 @@ function saveBannerState(state) {
 export function initPwaManager() {
   const root = document.getElementById('pwa-banner-root');
   const offlineBanner = document.getElementById('offline-banner');
-  const navInstallLink = document.getElementById('nav-install-link');
+  const headerInstallBtn = document.getElementById('header-install-btn');
   const footerInstallLink = document.getElementById('footer-install-link');
 
   if (!root) return;
 
+  // Register Service Worker with relative path for GitHub Pages subpath safety
   if ('serviceWorker' in navigator) {
     window.addEventListener('load', () => {
       navigator.serviceWorker.register('./sw.js').catch(() => {
-        // Silent fallback if SW is blocked
+        // Silent fallback if SW registration is blocked in private mode
       });
     });
   }
 
+  // Online / Offline indicator
   const syncNetworkBanner = () => {
     if (!offlineBanner) return;
-    offlineBanner.hidden = navigator.onLine;
+    const isOffline = !navigator.onLine;
+    offlineBanner.hidden = !isOffline;
   };
   window.addEventListener('online', syncNetworkBanner);
   window.addEventListener('offline', syncNetworkBanner);
   syncNetworkBanner();
 
   let bannerState = getSavedBannerState();
-  let showGuide = false;
+  let showIosHelp = false;
   let installFeedback = '';
 
   const render = () => {
     const standalone = isStandaloneMode();
 
-    if (navInstallLink) navInstallLink.hidden = standalone;
-    if (footerInstallLink) footerInstallLink.hidden = standalone;
+    if (headerInstallBtn) {
+      headerInstallBtn.hidden = standalone;
+    }
+    if (footerInstallLink) {
+      footerInstallLink.hidden = standalone;
+    }
 
     if (standalone || bannerState === 'dismissed') {
       root.innerHTML = '';
@@ -84,22 +91,13 @@ export function initPwaManager() {
 
     if (bannerState === 'minimized') {
       root.innerHTML = `
-        <div class="pwa-dock" role="region" aria-label="Penawaran install aplikasi">
-          <button
-            type="button"
-            class="pwa-dock-restore"
-            id="pwa-restore-btn"
-            aria-label="Buka penawaran install aplikasi Manifestudio"
-          >
-            Install App
+        <div class="pwa-minimized-dock" role="region" aria-label="Penawaran install aplikasi">
+          <button type="button" class="pwa-mini-restore" id="pwa-restore-btn" aria-label="Buka penawaran install aplikasi Manifestudio">
+            <span class="pwa-mini-dot" aria-hidden="true"></span>
+            <span>Install App</span>
           </button>
-          <button
-            type="button"
-            class="pwa-dock-close"
-            id="pwa-mini-dismiss-btn"
-            aria-label="Hilangkan penawaran install aplikasi"
-          >
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+          <button type="button" class="pwa-mini-close" id="pwa-mini-dismiss-btn" aria-label="Hilangkan penawaran install aplikasi">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
           </button>
         </div>
       `;
@@ -119,66 +117,66 @@ export function initPwaManager() {
 
     const ios = isIosDevice();
     const canNativePrompt = Boolean(deferredPrompt);
-    const actionLabel = canNativePrompt
-      ? 'Install Aplikasi'
-      : ios
-      ? 'Panduan iOS'
-      : 'Cara Install';
+
+    let actionLabel = 'Cara Install';
+    if (canNativePrompt) {
+      actionLabel = 'Install Sekarang';
+    } else if (ios) {
+      actionLabel = 'Panduan iOS';
+    }
 
     root.innerHTML = `
-      <aside class="pwa-strip" role="region" aria-label="Install Aplikasi Manifestudio">
-        <div class="pwa-strip-main">
-          <div class="pwa-strip-copy">
-            <img src="./assets/icons/brand-icon.svg" alt="" width="24" height="24" class="pwa-strip-icon" />
-            <p class="pwa-strip-text">
-              <strong>Manifestudio App</strong>
-              <span aria-hidden="true">·</span>
-              <span>Pasang di layar utama untuk akses cepat &amp; dukungan offline.</span>
-            </p>
+      <aside class="pwa-card" role="region" aria-label="Install Aplikasi Manifestudio">
+        <div class="pwa-card-top">
+          <div class="pwa-card-brand">
+            <img src="./assets/icons/brand-icon.svg" alt="" width="40" height="40" class="pwa-card-icon" />
+            <div>
+              <p class="pwa-card-title">Install Manifestudio App</p>
+              <p class="pwa-card-desc">Akses katalog lebih cepat dari layar utama &amp; tetap bisa dibuka saat offline.</p>
+            </div>
           </div>
-
-          <div class="pwa-strip-controls">
-            <button type="button" class="btn btn-primary btn-xs" id="pwa-install-action-btn">
-              ${actionLabel}
+          <div class="pwa-window-controls">
+            <button type="button" class="pwa-icon-btn" id="pwa-minimize-btn" title="Minimize penawaran" aria-label="Minimize penawaran install">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"/></svg>
             </button>
-            <button
-              type="button"
-              class="pwa-ctrl-btn"
-              id="pwa-minimize-btn"
-              title="Minimize penawaran"
-              aria-label="Minimize penawaran install"
-            >
-              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"/></svg>
-            </button>
-            <button
-              type="button"
-              class="pwa-ctrl-btn"
-              id="pwa-dismiss-btn"
-              title="Hilangkan penawaran"
-              aria-label="Hilangkan penawaran install"
-            >
-              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+            <button type="button" class="pwa-icon-btn" id="pwa-dismiss-btn" title="Hilangkan penawaran" aria-label="Hilangkan penawaran install">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
             </button>
           </div>
         </div>
 
         ${
-          showGuide
-            ? `<div class="pwa-guide-note">
+          showIosHelp
+            ? `<div class="pwa-guide-box">
                 ${
                   ios
-                    ? 'Safari iOS: ketuk tombol Bagikan (Share) di bawah layar, lalu pilih Tambah ke Layar Utama (Add to Home Screen).'
-                    : 'Browser Desktop / Android: ketuk ikon Install di bilah alamat browser atau buka menu browser lalu pilih Tambahkan ke Layar Utama.'
+                    ? 'Di Safari iPhone/iPad: ketuk tombol <strong>Bagikan (Share)</strong> di toolbar bawah, lalu pilih <strong>Tambah ke Layar Utama (Add to Home Screen)</strong>.'
+                    : 'Di browser Chrome/Edge: ketuk ikon <strong>Install / Tambah ke Layar Utama</strong> pada bilah alamat atau menu titik tiga browser.'
                 }
               </div>`
             : ''
         }
 
-        ${installFeedback ? `<p class="pwa-feedback-note">${installFeedback}</p>` : ''}
+        ${installFeedback ? `<p class="pwa-feedback">${installFeedback}</p>` : ''}
+
+        <div class="pwa-card-actions">
+          <button type="button" class="btn btn-primary btn-sm" id="pwa-install-action-btn">
+            ${actionLabel}
+          </button>
+          <button type="button" class="btn btn-ghost btn-sm" id="pwa-hide-text-btn">
+            Nanti Saja
+          </button>
+        </div>
       </aside>
     `;
 
     root.querySelector('#pwa-minimize-btn')?.addEventListener('click', () => {
+      bannerState = 'minimized';
+      saveBannerState('minimized');
+      render();
+    });
+
+    root.querySelector('#pwa-hide-text-btn')?.addEventListener('click', () => {
       bannerState = 'minimized';
       saveBannerState('minimized');
       render();
@@ -199,12 +197,12 @@ export function initPwaManager() {
           bannerState = 'dismissed';
           saveBannerState('dismissed');
         } else {
-          installFeedback = 'Instalasi ditunda. Anda dapat memasang aplikasi kapan saja.';
+          installFeedback = 'Instalasi dibatalkan. Anda dapat memasang aplikasi kapan saja.';
         }
         render();
         return;
       }
-      showGuide = !showGuide;
+      showIosHelp = !showIosHelp;
       render();
     });
   };
@@ -222,17 +220,15 @@ export function initPwaManager() {
     render();
   });
 
-  const expandOffer = (e) => {
-    if (e && e.preventDefault) e.preventDefault();
+  const triggerExpand = () => {
     bannerState = 'expanded';
-    showGuide = !deferredPrompt;
+    showIosHelp = !deferredPrompt;
     saveBannerState('expanded');
     render();
-    window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
-  navInstallLink?.addEventListener('click', expandOffer);
-  footerInstallLink?.addEventListener('click', expandOffer);
+  headerInstallBtn?.addEventListener('click', triggerExpand);
+  footerInstallLink?.addEventListener('click', triggerExpand);
 
   render();
 }

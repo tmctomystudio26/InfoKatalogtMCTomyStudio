@@ -1,14 +1,14 @@
 {
   "id": "./",
-  "name": "Manifestudio — Katalog Layanan Digital",
+  "name": "Manifestudio — Akun Premium & Layanan Digital",
   "short_name": "Manifestudio",
-  "description": "Katalog akun premium dan layanan digital bergaransi dengan proses cepat via WhatsApp.",
+  "description": "Platform top up & akun premium digital terpercaya dengan proses cepat via WhatsApp dan garansi resmi.",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",
   "orientation": "portrait-primary",
-  "theme_color": "#F5F4F0",
-  "background_color": "#0E0E0D",
+  "theme_color": "#0F172A",
+  "background_color": "#090D16",
   "lang": "id",
   "icons": [
     {

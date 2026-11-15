@@ -1,5 +1,6 @@
 /**
- * Pure storefront state, filtering, pricing, and checkout formatting utilities.
+ * Pure storefront state, filtering, pricing, voucher, 10% pay-later fee,
+ * and WhatsApp order formatting utilities.
  * Zero DOM dependencies so all business logic can be unit tested directly.
  */
 
@@ -81,15 +82,85 @@ export function removeFromCart(cart, productId, variantId) {
   );
 }
 
+export function evaluateVoucher(codeInput = '', subtotal = 0, vouchers = []) {
+  const cleanCode = String(codeInput || '').trim().toUpperCase();
+  if (!cleanCode) {
+    return {
+      status: 'none',
+      code: '',
+      discount: 0,
+      message: '',
+    };
+  }
+
+  const matched = Array.isArray(vouchers)
+    ? vouchers.find((v) => String(v.code || '').toUpperCase() === cleanCode)
+    : null;
+
+  if (!matched) {
+    return {
+      status: 'pending_admin',
+      code: cleanCode,
+      discount: 0,
+      message: `Kode "${cleanCode}" dicatat dan akan diverifikasi Admin saat konfirmasi.`,
+    };
+  }
+
+  if (subtotal < (matched.minSubtotal || 0)) {
+    return {
+      status: 'ineligible',
+      code: cleanCode,
+      discount: 0,
+      message: `Kode ${cleanCode} aktif untuk minimal belanja ${formatRupiah(matched.minSubtotal)}.`,
+    };
+  }
+
+  let rawDiscount = 0;
+  if (matched.type === 'percent') {
+    rawDiscount = Math.round((subtotal * matched.value) / 100);
+    if (matched.maxDiscount > 0) {
+      rawDiscount = Math.min(rawDiscount, matched.maxDiscount);
+    }
+  } else {
+    rawDiscount = Math.round(matched.value || 0);
+  }
+
+  const discount = Math.max(0, Math.min(subtotal, rawDiscount));
+  return {
+    status: 'applied',
+    code: cleanCode,
+    discount,
+    message: `Voucher ${cleanCode} aktif (-${formatRupiah(discount)}).`,
+  };
+}
+
 export function calculateCartTotals(
   cart,
-  { discountThreshold = 50000, discountAmount = 2000 } = {}
+  {
+    discountThreshold = 50000,
+    discountAmount = 2000,
+    voucherCode = '',
+    vouchers = [],
+    paymentOption = 'Bayar Sekarang',
+    payLaterRate = 0.1,
+  } = {}
 ) {
   const itemCount = cart.reduce((sum, item) => sum + item.quantity, 0);
   const subtotal = cart.reduce((sum, item) => sum + item.price * item.quantity, 0);
   const qualifiesDiscount = subtotal >= discountThreshold && subtotal > 0;
   const discount = qualifiesDiscount ? discountAmount : 0;
-  const total = Math.max(0, subtotal - discount);
+  const afterAutoDiscount = Math.max(0, subtotal - discount);
+
+  const voucherResult = evaluateVoucher(voucherCode, subtotal, vouchers);
+  const voucherDiscount = Math.min(afterAutoDiscount, voucherResult.discount);
+  const afterDiscounts = Math.max(0, afterAutoDiscount - voucherDiscount);
+
+  const isPayLater = paymentOption === 'Bayar Belakangan (Setelah Akun Diterima)';
+  const payLaterFee = isPayLater && afterDiscounts > 0
+    ? Math.round(afterDiscounts * payLaterRate)
+    : 0;
+
+  const total = afterDiscounts + payLaterFee;
   const remainingForDiscount = Math.max(0, discountThreshold - subtotal);
   const progressPercent = Math.min(
     100,
@@ -100,6 +171,14 @@ export function calculateCartTotals(
     itemCount,
     subtotal,
     discount,
+    voucherCode: voucherResult.code,
+    voucherStatus: voucherResult.status,
+    voucherDiscount,
+    voucherMessage: voucherResult.message,
+    afterDiscounts,
+    isPayLater,
+    payLaterRate,
+    payLaterFee,
     total,
     qualifiesDiscount,
     remainingForDiscount,
@@ -120,14 +199,30 @@ export function validateOrderForm({ customerName, paymentOption, cart }) {
   return { valid: true, error: null };
 }
 
-export function buildWhatsAppOrderMessage({
+export function generateOrderCode(now = new Date()) {
+  const pad = (n) => String(n).padStart(2, '0');
+  const yy = String(now.getFullYear()).slice(-2);
+  const mm = pad(now.getMonth() + 1);
+  const dd = pad(now.getDate());
+  const hh = pad(now.getHours());
+  const min = pad(now.getMinutes());
+  const sec = pad(now.getSeconds());
+  return `MS-${yy}${mm}${dd}-${hh}${min}${sec}`;
+}
+
+export function buildWhatsAppOrderCaption({
+  orderCode = '',
   customerName,
   whatsappNote = '',
   paymentOption,
   cart,
   totals,
 }) {
-  const lines = [`Halo Admin Manifestudio, saya *${customerName.trim()}* ingin memesan:`, ''];
+  const lines = [`Halo Admin Manifestudio, saya *${customerName.trim()}* ingin memesan:`];
+  if (orderCode) {
+    lines.push(`No. Pesanan: *${orderCode}*`);
+  }
+  lines.push('');
 
   for (const item of cart) {
     const lineTotal = item.price * item.quantity;
@@ -140,13 +235,31 @@ export function buildWhatsAppOrderMessage({
   if (totals.discount > 0) {
     lines.push(`Diskon Belanja: -${formatRupiah(totals.discount)}`);
   }
+  if (totals.voucherCode) {
+    if (totals.voucherDiscount > 0) {
+      lines.push(`Voucher (${totals.voucherCode}): -${formatRupiah(totals.voucherDiscount)}`);
+    } else {
+      lines.push(`Kode Voucher: ${totals.voucherCode} (Cek Admin)`);
+    }
+  }
+  if (totals.isPayLater) {
+    if (totals.payLaterFee > 0) {
+      lines.push(`Biaya Bayar Nanti (+10%): +${formatRupiah(totals.payLaterFee)}`);
+    } else {
+      lines.push('Biaya Bayar Nanti: +10% dari harga final');
+    }
+  }
   lines.push(`Total Bayar: *${formatRupiah(totals.total)}*`);
   lines.push(`Metode Pembayaran: ${paymentOption}`);
   if (whatsappNote.trim()) {
     lines.push(`Catatan: ${whatsappNote.trim()}`);
   }
   lines.push('');
-  lines.push('Mohon diproses ya Kak. Terima kasih.');
+  lines.push('Struk gambar terlampir. Mohon diproses ya Kak. Terima kasih.');
 
-  return encodeURIComponent(lines.join('\n'));
+  return lines.join('\n');
+}
+
+export function buildWhatsAppOrderMessage(params) {
+  return encodeURIComponent(buildWhatsAppOrderCaption(params));
 }

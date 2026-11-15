@@ -1,38 +1,38 @@
 <!doctype html>
-<html lang="id" data-theme="light">
+<html lang="id" data-theme="dark">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Manifestudio — Katalog Layanan Digital &amp; Akun Premium</title>
+    <title>Manifestudio — Katalog Akun Premium &amp; Layanan Digital</title>
     <meta
       name="description"
       content="Manifestudio menghadirkan akun premium dan layanan digital bergaransi dengan harga transparan dan proses cepat via WhatsApp."
     />
 
     <!-- Open Graph -->
-    <meta property="og:title" content="Manifestudio — Katalog Layanan Digital" />
+    <meta property="og:title" content="Manifestudio — Akun Premium &amp; Layanan Digital" />
     <meta
       property="og:description"
-      content="Katalog akun premium dan layanan digital terpercaya dengan garansi aktif dan checkout instan via WhatsApp."
+      content="Platform katalog akun premium &amp; top up layanan digital terpercaya dengan garansi aktif dan checkout instan."
     />
-    <meta property="og:image" content="./assets/hero-editorial.jpg" />
+    <meta property="og:image" content="./assets/hero-banner.jpg" />
     <meta property="og:type" content="website" />
     <meta property="og:site_name" content="Manifestudio" />
 
     <!-- PWA & Theme -->
-    <meta name="theme-color" content="#F5F4F0" />
+    <meta name="theme-color" content="#090D16" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
-    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta name="apple-mobile-web-app-title" content="Manifestudio" />
     <link rel="manifest" href="./manifest.webmanifest" />
     <link rel="icon" type="image/svg+xml" href="./assets/icons/brand-icon.svg" />
     <link rel="apple-touch-icon" href="./assets/icons/apple-touch-icon.png" />
 
-    <!-- Fonts (2+1 Rule: Bricolage Grotesque + Manrope + IBM Plex Mono) -->
+    <!-- Fonts -->
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
-      href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@700;800&family=IBM+Plex+Mono:wght@500;600&family=Manrope:wght@400;500;600;700&display=swap"
+      href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@500;700&family=Outfit:wght@600;700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap"
       rel="stylesheet"
     />
 
@@ -42,29 +42,62 @@
   </head>
   <body>
     <div id="offline-banner" class="offline-banner" role="status" hidden>
-      Mode offline aktif — Anda tetap dapat menelusuri katalog dan menyusun pesanan.
+      Mode offline aktif — Anda tetap dapat melihat katalog dan menyusun pesanan, lalu kirim saat terhubung kembali.
     </div>
 
     <header class="site-header">
       <div class="container header-inner">
-        <a href="#top" class="brand-wordmark">Manifestudio</a>
+        <a href="#top" class="brand-link" aria-label="Beranda Manifestudio">
+          <img
+            src="./assets/icons/brand-icon.svg"
+            alt="Logo Manifestudio"
+            width="38"
+            height="38"
+            class="brand-mark"
+          />
+          <div class="brand-text">
+            <span class="brand-name">Manifestudio</span>
+            <span class="brand-tagline">Digital Store &amp; Premium Catalog</span>
+          </div>
+        </a>
 
-        <nav class="header-nav" aria-label="Navigasi utama">
-          <a href="#katalog" class="nav-link">Katalog</a>
-          <a href="#cara-pesan" class="nav-link">Cara Pesan</a>
-          <a href="#faq" class="nav-link">FAQ</a>
-          <a href="#install" id="nav-install-link" class="nav-link">Aplikasi</a>
-        </nav>
+        <div class="header-actions">
+          <button
+            type="button"
+            id="header-install-btn"
+            class="header-btn"
+            aria-label="Install aplikasi Manifestudio"
+          >
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+              <polyline points="7 10 12 15 17 10" />
+              <line x1="12" x2="12" y1="15" y2="3" />
+            </svg>
+            <span class="hide-xs">Install</span>
+          </button>
 
-        <button
-          type="button"
-          id="header-cart-btn"
-          class="header-cta"
-          aria-label="Buka keranjang belanja"
-        >
-          <span>Keranjang</span>
-          <span id="header-cart-count" class="mono-num"></span>
-        </button>
+          <button
+            type="button"
+            id="theme-toggle-btn"
+            class="header-btn"
+            aria-label="Ubah tema tampilan"
+          ></button>
+
+          <button
+            type="button"
+            id="header-cart-btn"
+            class="header-btn header-cart-btn"
+            aria-label="Buka keranjang belanja"
+          >
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <circle cx="8" cy="21" r="1" />
+              <circle cx="19" cy="21" r="1" />
+              <path d="M2.05 2.05h2l2.66 12.42a2 2 0 0 0 2 1.58h9.78a2 2 0 0 0 1.95-1.57l1.65-7.43H5.12" />
+            </svg>
+            <span class="hide-xs">Keranjang</span>
+            <span id="header-cart-badge" class="cart-badge" hidden>0</span>
+          </button>
+        </div>
       </div>
     </header>
 
@@ -72,87 +105,95 @@
       <div id="pwa-banner-root" class="pwa-banner-root"></div>
 
       <section class="hero-section">
-        <div class="container hero-split">
-          <div class="hero-copy-col">
-            <div>
-              <p class="hero-kicker">Katalog Layanan Digital · Garansi Aktif</p>
-              <h1 class="hero-title">Langganan Digital Tanpa Ribet, Garansi Jelas.</h1>
-              <p class="hero-lead">
-                Pilih paket streaming, musik, dan editing dengan keterangan durasi serta garansi yang
-                transparan. Belanja minimal Rp50.000 otomatis hemat Rp2.000 saat checkout via WhatsApp.
+        <div class="container">
+          <div class="hero-frame">
+            <img
+              src="./assets/hero-banner.jpg"
+              alt="Banner layanan digital premium Manifestudio"
+              class="hero-bg-img"
+              width="1200"
+              height="675"
+            />
+            <div class="hero-scrim" aria-hidden="true"></div>
+            <div class="hero-content">
+              <div class="hero-eyebrow">Official Digital Storefront · 2026</div>
+              <h1 class="hero-title">Akses Aplikasi Premium Cepat, Aman, &amp; Bergaransi.</h1>
+              <p class="hero-subtitle">
+                Pilih paket streaming, musik, dan editing favorit Anda dengan harga transparan.
+                Belanja minimal Rp50.000 otomatis hemat Rp2.000 saat checkout via WhatsApp.
               </p>
               <div class="hero-actions">
-                <a href="#katalog" class="btn btn-primary">Lihat Katalog</a>
-                <button type="button" id="hero-custom-btn" class="btn btn-secondary">
+                <a href="#katalog" class="btn btn-primary">Jelajahi Katalog</a>
+                <button type="button" id="hero-custom-btn" class="btn btn-outline-light">
                   Request Custom Paket
                 </button>
               </div>
-            </div>
-
-            <div class="hero-specs">
-              <div>
-                <span class="spec-value">3–10 Menit</span>
-                <span class="spec-label">Estimasi aktivasi</span>
-              </div>
-              <div>
-                <span class="spec-value">10 Layanan</span>
-                <span class="spec-label">Siap &amp; custom request</span>
-              </div>
-              <div>
-                <span class="spec-value">Rp2.000 OFF</span>
-                <span class="spec-label">Belanja min. Rp50rb</span>
+              <div class="hero-metrics">
+                <div class="hero-metric">
+                  <span class="metric-value">3–10 Menit</span>
+                  <span class="metric-label">Rata-rata aktivasi</span>
+                </div>
+                <div class="hero-metric">
+                  <span class="metric-value">Rp2.000 OFF</span>
+                  <span class="metric-label">Belanja min. Rp50.000</span>
+                </div>
+                <div class="hero-metric">
+                  <span class="metric-value">10+ Layanan</span>
+                  <span class="metric-label">Garansi replace jelas</span>
+                </div>
               </div>
             </div>
           </div>
+        </div>
+      </section>
 
-          <div class="hero-media-col">
-            <div class="hero-image-frame">
-              <img
-                src="./assets/hero-editorial.jpg"
-                alt="Meja kerja digital Manifestudio dengan tablet, headphone, dan cangkir kopi di atas batu travertine"
-                class="hero-image"
-                width="1024"
-                height="768"
-                referrerPolicy="no-referrer"
-              />
+      <section class="container" aria-label="Keunggulan Layanan">
+        <div class="promo-strip">
+          <div class="promo-item">
+            <div class="promo-icon" aria-hidden="true">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+            </div>
+            <div>
+              <h2 class="promo-title">Checkout Instan WhatsApp</h2>
+              <p class="promo-desc">Rincian pesanan terformat otomatis tanpa antre input manual.</p>
+            </div>
+          </div>
+
+          <div class="promo-item">
+            <div class="promo-icon" aria-hidden="true">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10"/></svg>
+            </div>
+            <div>
+              <h2 class="promo-title">Garansi Sesuai Paket</h2>
+              <p class="promo-desc">Keterangan garansi replace maupun privat ditampilkan jelas di setiap varian.</p>
+            </div>
+          </div>
+
+          <div class="promo-item">
+            <div class="promo-icon" aria-hidden="true">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect width="20" height="14" x="2" y="5" rx="2"/><line x1="2" x2="22" y1="10" y2="10"/></svg>
+            </div>
+            <div>
+              <h2 class="promo-title">Pembayaran Fleksibel &amp; Transparan</h2>
+              <p class="promo-desc">Bayar Sekarang bebas biaya tambahan (0%), atau Bayar Nanti setelah akun diterima (+10% biaya layanan).</p>
             </div>
           </div>
         </div>
       </section>
 
       <section id="katalog" class="catalog-section container">
-        <div class="catalog-head">
+        <div class="section-header">
           <div>
-            <h2 class="section-title">Katalog Layanan</h2>
-            <p class="section-lead">Klik produk untuk melihat daftar durasi, status garansi, dan harga paket.</p>
+            <h2 class="section-title">Katalog Layanan Digital</h2>
+            <p class="section-subtitle">Pilih layanan untuk melihat variasi durasi, garansi, dan ketersediaan stok.</p>
           </div>
-          <div class="catalog-head-meta">
-            <span id="catalog-count" class="catalog-count">10 layanan</span>
-            <div class="theme-switch" role="group" aria-label="Pilih mode tampilan">
-              <button
-                type="button"
-                class="theme-opt is-active"
-                data-theme-choice="light"
-                aria-pressed="true"
-              >
-                Terang
-              </button>
-              <button
-                type="button"
-                class="theme-opt"
-                data-theme-choice="dark"
-                aria-pressed="false"
-              >
-                Gelap
-              </button>
-            </div>
-          </div>
+          <span id="catalog-count" class="catalog-count">10 layanan tersedia</span>
         </div>
 
-        <div class="filter-bar">
-          <div class="filter-controls-row">
-            <div class="search-wrap">
-              <svg class="search-icon" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <div class="filter-toolbar">
+          <div class="filter-top-row">
+            <div class="search-box">
+              <svg class="search-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                 <circle cx="11" cy="11" r="8" />
                 <path d="m21 21-4.3-4.3" />
               </svg>
@@ -160,7 +201,7 @@
                 type="search"
                 id="catalog-search"
                 class="search-input"
-                placeholder="Cari Netflix, Canva, atau paket..."
+                placeholder="Cari aplikasi, paket sharing, atau garansi..."
                 aria-label="Cari produk di katalog"
               />
               <button
@@ -170,45 +211,36 @@
                 aria-label="Hapus pencarian"
                 hidden
               >
-                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
               </button>
             </div>
 
-            <label class="stock-check">
+            <label class="stock-filter-label">
               <input type="checkbox" id="in-stock-toggle" />
-              <span>Tampilkan stok tersedia saja</span>
+              <span>Tampilkan hanya stok tersedia</span>
             </label>
           </div>
 
-          <div id="category-tabs" class="segmented-tabs" role="group" aria-label="Filter kategori produk"></div>
+          <div id="category-tabs" class="category-tabs" role="group" aria-label="Filter kategori produk"></div>
         </div>
 
         <div id="product-grid" class="product-grid"></div>
       </section>
 
-      <section id="cara-pesan" class="info-section container">
-        <div class="info-split">
-          <div>
-            <h2 class="section-title">Cara Pemesanan</h2>
-            <p class="section-lead">Alur pemesanan ringkas tanpa login akun tambahan.</p>
-            <ol id="order-steps-list" class="editorial-steps"></ol>
-          </div>
-
-          <div id="faq">
-            <h2 class="section-title">Pertanyaan Umum</h2>
-            <p class="section-lead">Ringkasan aturan aktivasi, pembagian profil, dan garansi.</p>
-            <div id="faq-list" class="faq-list"></div>
-          </div>
-        </div>
+      <section class="faq-section container" aria-labelledby="faq-heading">
+        <h2 id="faq-heading" class="section-title">Pertanyaan Umum</h2>
+        <p class="section-subtitle">Informasi singkat mengenai aktivasi akun dan garansi layanan Manifestudio.</p>
+        <div id="faq-list" class="faq-list"></div>
       </section>
     </main>
 
     <footer class="site-footer">
       <div class="container footer-inner">
-        <div>
-          <strong class="brand-wordmark">Manifestudio</strong>
-          <p class="footer-copy">
-            Dikelola oleh tMC Tomy Studio · © 2026 Manifestudio.
+        <div class="footer-brand">
+          <strong class="brand-name">Manifestudio</strong>
+          <p>
+            Katalog resmi akun premium &amp; layanan digital. Dikelola oleh tMC Tomy Studio.
+            © 2026 Manifestudio.
           </p>
         </div>
 
@@ -217,7 +249,7 @@
             href="https://www.tiktok.com/@tmctomystudio"
             target="_blank"
             rel="noopener noreferrer"
-            class="footer-link"
+            class="footer-link-btn"
           >
             TikTok @tmctomystudio
           </a>
@@ -225,11 +257,11 @@
             href="https://www.instagram.com/tmctomystudio"
             target="_blank"
             rel="noopener noreferrer"
-            class="footer-link"
+            class="footer-link-btn"
           >
             Instagram @tmctomystudio
           </a>
-          <button type="button" id="footer-install-link" class="footer-link">
+          <button type="button" id="footer-install-link" class="footer-link-btn">
             Install Aplikasi PWA
           </button>
         </div>
@@ -240,15 +272,14 @@
     <div id="mobile-cart-bar" class="mobile-cart-bar" hidden>
       <div class="mobile-cart-meta">
         <span id="mobile-cart-count">0 item</span>
-        <span aria-hidden="true">·</span>
         <strong id="mobile-cart-total">Rp0</strong>
       </div>
-      <button type="button" id="mobile-cart-open-btn" class="btn btn-primary btn-xs">
+      <button type="button" id="mobile-cart-open-btn" class="btn btn-secondary btn-sm">
         Checkout
       </button>
     </div>
 
-    <!-- Overlays -->
+    <!-- Overlays & Floating Widgets -->
     <div id="product-modal-overlay" class="modal-overlay" hidden></div>
     <div id="cart-drawer-root" class="drawer-root" hidden></div>
     <div id="toast-notification" class="toast-notification" role="status" aria-live="polite" hidden></div>

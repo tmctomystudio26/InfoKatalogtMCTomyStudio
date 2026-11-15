@@ -1,41 +1,51 @@
 import {
   BRAND,
   CATEGORIES,
-  CATEGORY_LABELS,
   FAQ_ITEMS,
-  ORDER_STEPS,
+  PAY_LATER_SURCHARGE_RATE,
   PAYMENT_OPTIONS,
   PRODUCTS,
+  VOUCHERS,
 } from './data.js';
 import {
   addToCart,
-  buildWhatsAppOrderMessage,
+  buildWhatsAppOrderCaption,
   calculateCartTotals,
   filterProducts,
   formatRupiah,
+  generateOrderCode,
   getStartingPrice,
   removeFromCart,
   updateCartQty,
   validateOrderForm,
 } from './store.js';
+import { generateReceiptImage } from './receipt.js';
 import { initPwaManager } from './pwa.js';
 
-const THEME_STORAGE_KEY = 'manifestudio_theme_v2';
+const THEME_STORAGE_KEY = 'manifestudio_theme_v1';
 const CART_STORAGE_KEY = 'manifestudio_cart_v1';
 const NAME_STORAGE_KEY = 'manifestudio_customer_name_v1';
 
 const state = {
-  theme: 'light',
+  theme: 'dark',
   category: 'all',
   query: '',
   inStockOnly: false,
   cart: [],
   customerName: '',
+  voucherCode: '',
   paymentOption: PAYMENT_OPTIONS[0].id,
   whatsappNote: '',
   checkoutError: '',
+  isGeneratingReceipt: false,
+  generatedOrderCode: '',
   generatedOrderUrl: '',
   generatedOrderSummary: '',
+  receiptUrl: '',
+  receiptFile: null,
+  receiptFileName: '',
+  receiptSizeKb: 0,
+  receiptGetPngBlob: null,
   copiedNotice: false,
   activeProductId: null,
   isCartOpen: false,
@@ -47,8 +57,8 @@ function loadPersistedState() {
     const savedTheme = localStorage.getItem(THEME_STORAGE_KEY);
     if (savedTheme === 'light' || savedTheme === 'dark') {
       state.theme = savedTheme;
-    } else if (window.matchMedia('(prefers-color-scheme: dark)').matches) {
-      state.theme = 'dark';
+    } else if (window.matchMedia('(prefers-color-scheme: light)').matches) {
+      state.theme = 'light';
     }
 
     const savedCart = localStorage.getItem(CART_STORAGE_KEY);
@@ -66,7 +76,7 @@ function loadPersistedState() {
       state.customerName = savedName;
     }
   } catch {
-    // Fallback silently if storage is blocked
+    // Graceful fallback if localStorage is unavailable
   }
 }
 
@@ -107,15 +117,19 @@ function applyTheme() {
   document.documentElement.setAttribute('data-theme', state.theme);
   const metaTheme = document.querySelector('meta[name="theme-color"]');
   if (metaTheme) {
-    metaTheme.setAttribute('content', state.theme === 'dark' ? '#0E0E0D' : '#F5F4F0');
+    metaTheme.setAttribute('content', state.theme === 'dark' ? '#090D16' : '#F8FAFC');
   }
-
-  document.querySelectorAll('[data-theme-choice]').forEach((btn) => {
-    const val = btn.getAttribute('data-theme-choice');
-    const isActive = val === state.theme;
-    btn.classList.toggle('is-active', isActive);
-    btn.setAttribute('aria-pressed', String(isActive));
-  });
+  const themeBtn = document.getElementById('theme-toggle-btn');
+  if (themeBtn) {
+    const isDark = state.theme === 'dark';
+    themeBtn.setAttribute(
+      'aria-label',
+      isDark ? 'Aktifkan mode terang' : 'Aktifkan mode gelap'
+    );
+    themeBtn.innerHTML = isDark
+      ? `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.93 4.93 1.41 1.41"/><path d="m17.66 17.66 1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="m6.34 17.66-1.41 1.41"/><path d="m19.07 4.93-1.41 1.41"/></svg><span class="hide-xs">Terang</span>`
+      : `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></svg><span class="hide-xs">Gelap</span>`;
+  }
 }
 
 function renderCategories() {
@@ -127,7 +141,7 @@ function renderCategories() {
     return `
       <button
         type="button"
-        class="seg-btn ${active ? 'is-active' : ''}"
+        class="cat-tab ${active ? 'is-active' : ''}"
         data-category="${escapeHtml(cat.id)}"
         aria-pressed="${active}"
       >
@@ -136,7 +150,7 @@ function renderCategories() {
     `;
   }).join('');
 
-  container.querySelectorAll('.seg-btn').forEach((btn) => {
+  container.querySelectorAll('.cat-tab').forEach((btn) => {
     btn.addEventListener('click', () => {
       state.category = btn.getAttribute('data-category') || 'all';
       renderCategories();
@@ -157,15 +171,16 @@ function renderCatalog() {
   });
 
   if (countLabel) {
-    countLabel.textContent = `${filtered.length} layanan`;
+    countLabel.textContent = `${filtered.length} layanan tersedia`;
   }
 
   if (filtered.length === 0) {
     grid.innerHTML = `
       <div class="empty-state">
+        <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
         <h3>Layanan tidak ditemukan</h3>
-        <p>Coba kata kunci lain atau tampilkan kembali seluruh kategori.</p>
-        <button type="button" class="btn btn-secondary btn-sm" id="reset-filters-btn">Tampilkan Semua</button>
+        <p>Coba kata kunci lain atau pilih kategori "Semua Layanan" untuk melihat seluruh katalog.</p>
+        <button type="button" class="btn btn-secondary btn-sm" id="reset-filters-btn">Reset Filter</button>
       </div>
     `;
     document.getElementById('reset-filters-btn')?.addEventListener('click', () => {
@@ -174,8 +189,6 @@ function renderCatalog() {
       state.inStockOnly = false;
       const searchEl = document.getElementById('catalog-search');
       if (searchEl) searchEl.value = '';
-      const clearBtn = document.getElementById('clear-search-btn');
-      if (clearBtn) clearBtn.hidden = true;
       const stockToggle = document.getElementById('in-stock-toggle');
       if (stockToggle) stockToggle.checked = false;
       renderCategories();
@@ -188,41 +201,49 @@ function renderCatalog() {
     .map((product) => {
       const startPrice = getStartingPrice(product);
       const isCustom = product.category === 'custom';
-      const priceDisplay = isCustom ? 'Harga fleksibel' : `Mulai ${formatRupiah(startPrice)}`;
-      const catLabel = CATEGORY_LABELS[product.category] || 'Layanan';
+      const priceDisplay = isCustom
+        ? 'Harga Fleksibel'
+        : `Mulai ${formatRupiah(startPrice)}`;
+
+      const statusClass = product.outOfStock
+        ? 'status-restock'
+        : product.isBestSeller
+        ? 'status-hot'
+        : 'status-ready';
+
       const statusText = product.outOfStock
-        ? product.restockMessage || 'Segera restock'
+        ? product.restockMessage || 'Segera Restock'
         : product.tag || 'Tersedia';
+
+      const variantCount = product.variants.length;
 
       return `
         <article class="product-card ${product.outOfStock ? 'is-restock' : ''}">
-          <div class="product-media-row">
-            <div class="product-logo-frame">
+          <div class="product-card-head">
+            <div class="product-logo-wrap">
               <img
                 src="${escapeHtml(product.logo)}"
                 alt="Logo ${escapeHtml(product.name)}"
-                width="52"
-                height="52"
+                width="48"
+                height="48"
                 loading="lazy"
-                referrerPolicy="no-referrer"
               />
             </div>
-            <div class="product-meta-line ${product.outOfStock ? 'is-warn' : ''}">
-              <span>${escapeHtml(catLabel)}</span>
-              <span aria-hidden="true">·</span>
+            <div class="product-status ${statusClass}">
+              <span class="status-dot" aria-hidden="true"></span>
               <span>${escapeHtml(statusText)}</span>
             </div>
           </div>
 
-          <div class="product-copy">
+          <div class="product-card-body">
             <h3 class="product-title">${escapeHtml(product.name)}</h3>
             <p class="product-summary">${escapeHtml(product.summary)}</p>
           </div>
 
-          <div class="product-foot">
-            <div class="product-price-block">
-              <span class="product-variant-count">${product.variants.length} varian</span>
-              <span class="product-price">${escapeHtml(priceDisplay)}</span>
+          <div class="product-card-foot">
+            <div class="product-price-col">
+              <span class="price-caption">${variantCount} opsi paket</span>
+              <span class="price-value">${escapeHtml(priceDisplay)}</span>
             </div>
             <button
               type="button"
@@ -230,7 +251,7 @@ function renderCatalog() {
               data-product-id="${escapeHtml(product.id)}"
               aria-label="${product.outOfStock ? 'Lihat detail' : 'Pilih paket'} ${escapeHtml(product.name)}"
             >
-              ${product.outOfStock ? 'Lihat Detail' : isCustom ? 'Ajukan' : 'Pilih Paket'}
+              ${product.outOfStock ? 'Lihat Detail' : isCustom ? 'Ajukan Request' : 'Pilih Paket'}
             </button>
           </div>
         </article>
@@ -242,53 +263,6 @@ function renderCatalog() {
     btn.addEventListener('click', () => {
       const id = btn.getAttribute('data-product-id');
       if (id) openProductModal(id);
-    });
-  });
-}
-
-function renderOrderSteps() {
-  const container = document.getElementById('order-steps-list');
-  if (!container) return;
-
-  container.innerHTML = ORDER_STEPS.map(
-    (item) => `
-      <li class="editorial-step">
-        <h3 class="editorial-step-title">${escapeHtml(item.step)}</h3>
-        <p class="editorial-step-desc">${escapeHtml(item.detail)}</p>
-      </li>
-    `
-  ).join('');
-}
-
-function renderFaq() {
-  const container = document.getElementById('faq-list');
-  if (!container) return;
-
-  container.innerHTML = FAQ_ITEMS.map((item, idx) => {
-    const isOpen = state.openFaqIndex === idx;
-    return `
-      <div class="faq-item ${isOpen ? 'is-open' : ''}">
-        <button
-          type="button"
-          class="faq-trigger"
-          data-faq-idx="${idx}"
-          aria-expanded="${isOpen}"
-        >
-          <span>${escapeHtml(item.question)}</span>
-          <svg class="faq-chevron" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
-        </button>
-        <div class="faq-panel" ${isOpen ? '' : 'hidden'}>
-          <p>${escapeHtml(item.answer)}</p>
-        </div>
-      </div>
-    `;
-  }).join('');
-
-  container.querySelectorAll('.faq-trigger').forEach((btn) => {
-    btn.addEventListener('click', () => {
-      const idx = Number(btn.getAttribute('data-faq-idx'));
-      state.openFaqIndex = state.openFaqIndex === idx ? -1 : idx;
-      renderFaq();
     });
   });
 }
@@ -352,7 +326,7 @@ function renderProductModal() {
             </div>
             <button
               type="button"
-              class="btn ${unavailable ? 'btn-secondary' : 'btn-primary'} btn-xs add-variant-btn"
+              class="btn ${unavailable ? 'btn-secondary' : 'btn-primary'} btn-sm add-variant-btn"
               data-variant-id="${escapeHtml(variant.id)}"
               ${unavailable ? 'disabled' : ''}
               aria-label="Tambah ${escapeHtml(product.name)} ${escapeHtml(variant.name)} ke keranjang"
@@ -370,14 +344,14 @@ function renderProductModal() {
     <div class="modal-dialog" role="dialog" aria-modal="true" aria-labelledby="modal-product-title">
       <div class="modal-header">
         <div class="modal-brand-row">
-          <img src="${escapeHtml(product.logo)}" alt="" width="44" height="44" class="modal-logo" referrerPolicy="no-referrer" />
+          <img src="${escapeHtml(product.logo)}" alt="" width="44" height="44" class="modal-logo" />
           <div>
             <h2 id="modal-product-title">${escapeHtml(product.name)}</h2>
             <p class="modal-subtitle">${escapeHtml(product.summary)}</p>
           </div>
         </div>
         <button type="button" class="icon-close-btn" id="close-product-modal-btn" aria-label="Tutup detail produk">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
         </button>
       </div>
 
@@ -397,7 +371,7 @@ function renderProductModal() {
       </div>
 
       <div class="modal-footer">
-        <span class="modal-hint">Pesanan diproses via WhatsApp Admin</span>
+        <span class="modal-hint">Pesanan diproses cepat via WhatsApp Admin</span>
         <button type="button" class="btn btn-secondary btn-sm" id="modal-open-cart-btn">
           Lihat Keranjang (${calculateCartTotals(state.cart).itemCount})
         </button>
@@ -426,10 +400,10 @@ function renderProductModal() {
         price: variant.price,
         logo: product.logo,
       });
-      state.generatedOrderUrl = '';
+      clearGeneratedOrder();
       state.checkoutError = '';
       saveCart();
-      updateCartIndicators();
+      updateCartBadges();
 
       btn.textContent = 'Ditambahkan';
       btn.classList.add('is-added');
@@ -452,15 +426,43 @@ function closeCartDrawer() {
   renderCartDrawer();
 }
 
-function updateCartIndicators() {
-  const totals = calculateCartTotals(state.cart, {
+function getCartTotals() {
+  return calculateCartTotals(state.cart, {
     discountThreshold: BRAND.discountThreshold,
     discountAmount: BRAND.discountAmount,
+    voucherCode: state.voucherCode,
+    vouchers: VOUCHERS,
+    paymentOption: state.paymentOption,
+    payLaterRate: PAY_LATER_SURCHARGE_RATE,
   });
+}
 
-  const countEl = document.getElementById('header-cart-count');
-  if (countEl) {
-    countEl.textContent = totals.itemCount > 0 ? `(${totals.itemCount})` : '';
+function clearGeneratedOrder() {
+  if (state.receiptUrl) {
+    try {
+      URL.revokeObjectURL(state.receiptUrl);
+    } catch {
+      // Ignore
+    }
+  }
+  state.generatedOrderCode = '';
+  state.generatedOrderUrl = '';
+  state.generatedOrderSummary = '';
+  state.receiptUrl = '';
+  state.receiptFile = null;
+  state.receiptFileName = '';
+  state.receiptSizeKb = 0;
+  state.receiptGetPngBlob = null;
+  state.copiedNotice = false;
+}
+
+function updateCartBadges() {
+  const totals = getCartTotals();
+
+  const badge = document.getElementById('header-cart-badge');
+  if (badge) {
+    badge.textContent = String(totals.itemCount);
+    badge.hidden = totals.itemCount === 0;
   }
 
   const floatCartCount = document.getElementById('mobile-cart-count');
@@ -473,11 +475,267 @@ function updateCartIndicators() {
   }
 }
 
+function buildSummaryBreakdownHtml(totals) {
+  const voucherRow = totals.voucherCode
+    ? `
+      <div class="summary-row ${totals.voucherDiscount > 0 ? 'is-discount' : ''}">
+        <span>Kode Voucher (${escapeHtml(totals.voucherCode)})</span>
+        <span class="mono-num">${
+          totals.voucherDiscount > 0
+            ? `-${escapeHtml(formatRupiah(totals.voucherDiscount))}`
+            : 'Cek Admin'
+        }</span>
+      </div>
+    `
+    : '';
+
+  const payLaterRow = totals.isPayLater
+    ? `
+      <div class="summary-row is-fee">
+        <span>Biaya Bayar Nanti (+10%)</span>
+        <span class="mono-num">${
+          totals.payLaterFee > 0 ? `+${escapeHtml(formatRupiah(totals.payLaterFee))}` : '+10% Final'
+        }</span>
+      </div>
+    `
+    : '';
+
+  return `
+    <div class="summary-row">
+      <span>Subtotal</span>
+      <span class="mono-num">${escapeHtml(formatRupiah(totals.subtotal))}</span>
+    </div>
+    <div class="summary-row ${totals.discount > 0 ? 'is-discount' : ''}">
+      <span>Diskon Belanja</span>
+      <span class="mono-num">-${escapeHtml(formatRupiah(totals.discount))}</span>
+    </div>
+    ${voucherRow}
+    ${payLaterRow}
+    <div class="summary-row is-total">
+      <span>Total Bayar</span>
+      <span class="mono-num">${escapeHtml(formatRupiah(totals.total))}</span>
+    </div>
+  `;
+}
+
+function buildPayLaterNoticeHtml(totals) {
+  if (!totals.isPayLater) return '';
+  const feeDetail =
+    totals.payLaterFee > 0
+      ? `sebesar <strong>+${escapeHtml(formatRupiah(totals.payLaterFee))}</strong>`
+      : '<strong>+10% dari harga final</strong>';
+  return `
+    <div class="pay-later-notice" role="note">
+      <strong>Transparansi Biaya Bayar Nanti (+10%):</strong>
+      <span>Pembayaran setelah akun diterima dikenakan biaya tambahan 10% (${feeDetail}). Pilih <strong>Bayar Sekarang</strong> untuk bebas biaya tambahan (0%).</span>
+    </div>
+  `;
+}
+
+function canUseNativeFileShare() {
+  try {
+    return (
+      typeof navigator !== 'undefined' &&
+      typeof navigator.share === 'function' &&
+      typeof navigator.canShare === 'function' &&
+      Boolean(state.receiptFile) &&
+      navigator.canShare({ files: [state.receiptFile] })
+    );
+  } catch {
+    return false;
+  }
+}
+
+function triggerReceiptDownload() {
+  if (!state.receiptUrl || !state.receiptFileName) return;
+  const a = document.createElement('a');
+  a.href = state.receiptUrl;
+  a.download = state.receiptFileName;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+}
+
+function buildOrderReadySlotHtml() {
+  if (!state.generatedOrderUrl || !state.receiptUrl) return '';
+  const nativeShareSupported = canUseNativeFileShare();
+
+  return `
+    <div class="order-ready-box" role="status">
+      <div class="order-ready-head">
+        <div>
+          <p class="order-ready-title">Struk Pesanan Siap (${escapeHtml(state.generatedOrderCode)})</p>
+          <p class="order-ready-desc">
+            Gambar struk otomatis (${state.receiptSizeKb} KB · ringan &amp; lengkap) siap dikirim beserta rincian ke WhatsApp Admin.
+          </p>
+        </div>
+      </div>
+
+      <div class="receipt-preview-wrap">
+        <img
+          src="${escapeHtml(state.receiptUrl)}"
+          alt="Preview struk belanja Manifestudio ${escapeHtml(state.generatedOrderCode)}"
+          class="receipt-preview-img"
+        />
+      </div>
+
+      <div class="order-ready-actions">
+        ${
+          nativeShareSupported
+            ? `
+          <button type="button" class="btn btn-primary btn-sm" id="share-whatsapp-receipt-btn">
+            Kirim Struk ke WhatsApp
+          </button>
+        `
+            : `
+          <button type="button" class="btn btn-primary btn-sm" id="download-and-wa-btn">
+            Kirim ke WhatsApp &amp; Unduh Struk
+          </button>
+        `
+        }
+        <a
+          href="${escapeHtml(state.receiptUrl)}"
+          download="${escapeHtml(state.receiptFileName)}"
+          class="btn btn-secondary btn-sm"
+          id="download-receipt-btn"
+        >
+          Unduh Struk
+        </a>
+        <button type="button" class="btn btn-secondary btn-sm" id="copy-order-btn">
+          ${state.copiedNotice ? 'Keterangan Tersalin' : 'Salin Keterangan'}
+        </button>
+      </div>
+      <p class="order-ready-tip">
+        ${
+          nativeShareSupported
+            ? 'Pilih aplikasi WhatsApp pada menu berbagi untuk langsung mengirim gambar struk + keterangan.'
+            : 'Saat Anda klik Kirim ke WhatsApp, file struk otomatis terunduh (dan disalin bila didukung) untuk langsung dilampirkan di chat Admin.'
+        }
+      </p>
+    </div>
+  `;
+}
+
+function bindOrderReadyActions(drawerRoot) {
+  drawerRoot.querySelector('#share-whatsapp-receipt-btn')?.addEventListener('click', async () => {
+    if (!state.receiptFile) return;
+    try {
+      await navigator.share({
+        files: [state.receiptFile],
+        title: `Struk Manifestudio ${state.generatedOrderCode}`,
+        text: state.generatedOrderSummary,
+      });
+    } catch (err) {
+      if (err && err.name === 'AbortError') return;
+      triggerReceiptDownload();
+      window.open(state.generatedOrderUrl, '_blank', 'noopener,noreferrer');
+    }
+  });
+
+  drawerRoot.querySelector('#download-and-wa-btn')?.addEventListener('click', async () => {
+    triggerReceiptDownload();
+    if (
+      state.receiptGetPngBlob &&
+      typeof ClipboardItem !== 'undefined' &&
+      navigator.clipboard?.write
+    ) {
+      try {
+        const pngBlob = await state.receiptGetPngBlob();
+        if (pngBlob) {
+          await navigator.clipboard.write([new ClipboardItem({ 'image/png': pngBlob })]);
+          showToast('Struk diunduh & disalin — tempel di chat WhatsApp Admin.');
+        }
+      } catch {
+        // Fallback smoothly: image already downloaded
+      }
+    }
+    window.open(state.generatedOrderUrl, '_blank', 'noopener,noreferrer');
+  });
+
+  drawerRoot.querySelector('#copy-order-btn')?.addEventListener('click', async () => {
+    if (!state.generatedOrderSummary) return;
+    try {
+      await navigator.clipboard.writeText(state.generatedOrderSummary);
+      state.copiedNotice = true;
+      const btn = drawerRoot.querySelector('#copy-order-btn');
+      if (btn) btn.textContent = 'Keterangan Tersalin';
+    } catch {
+      showToast('Salin teks gagal, gunakan tombol Unduh Struk.');
+    }
+  });
+}
+
+function syncCheckoutDynamicParts(drawerRoot) {
+  if (!drawerRoot) return;
+  const totals = getCartTotals();
+  updateCartBadges();
+
+  const discountTextEl = drawerRoot.querySelector('.discount-progress-text');
+  if (discountTextEl) {
+    discountTextEl.textContent = totals.qualifiesDiscount
+      ? `Selamat! Diskon ${formatRupiah(BRAND.discountAmount)} otomatis aktif.`
+      : `Tambah ${formatRupiah(totals.remainingForDiscount)} lagi untuk diskon ${formatRupiah(BRAND.discountAmount)}.`;
+  }
+  const discountFillEl = drawerRoot.querySelector('.discount-fill');
+  if (discountFillEl) {
+    discountFillEl.style.width = `${totals.progressPercent}%`;
+  }
+
+  const summaryEl = drawerRoot.querySelector('#cart-summary-breakdown');
+  if (summaryEl) {
+    summaryEl.innerHTML = buildSummaryBreakdownHtml(totals);
+  }
+
+  drawerRoot.querySelectorAll('.payment-option').forEach((label) => {
+    const input = label.querySelector('input[name="paymentOption"]');
+    if (!input) return;
+    const isChecked = input.value === state.paymentOption;
+    input.checked = isChecked;
+    label.classList.toggle('is-selected', isChecked);
+  });
+
+  const payLaterSlot = drawerRoot.querySelector('#pay-later-notice-slot');
+  if (payLaterSlot) {
+    payLaterSlot.innerHTML = buildPayLaterNoticeHtml(totals);
+  }
+
+  const voucherFeedback = drawerRoot.querySelector('#voucher-feedback');
+  if (voucherFeedback) {
+    if (totals.voucherMessage) {
+      voucherFeedback.hidden = false;
+      voucherFeedback.textContent = totals.voucherMessage;
+      voucherFeedback.className = `voucher-feedback is-${totals.voucherStatus}`;
+    } else {
+      voucherFeedback.hidden = true;
+      voucherFeedback.textContent = '';
+    }
+  }
+
+  const errorSlot = drawerRoot.querySelector('#checkout-error-slot');
+  if (errorSlot) {
+    errorSlot.innerHTML = state.checkoutError
+      ? `<div class="form-error" role="alert">${escapeHtml(state.checkoutError)}</div>`
+      : '';
+  }
+
+  const submitBtn = drawerRoot.querySelector('#checkout-submit-btn');
+  if (submitBtn) {
+    submitBtn.disabled = state.isGeneratingReceipt;
+    submitBtn.textContent = state.isGeneratingReceipt ? 'Menyiapkan Struk...' : 'Buat Pesanan';
+  }
+
+  const readySlot = drawerRoot.querySelector('#order-ready-slot');
+  if (readySlot) {
+    readySlot.innerHTML = buildOrderReadySlotHtml();
+    bindOrderReadyActions(drawerRoot);
+  }
+}
+
 function renderCartDrawer() {
   const drawerRoot = document.getElementById('cart-drawer-root');
   if (!drawerRoot) return;
 
-  updateCartIndicators();
+  updateCartBadges();
 
   if (!state.isCartOpen) {
     drawerRoot.hidden = true;
@@ -485,30 +743,31 @@ function renderCartDrawer() {
     return;
   }
 
-  drawerRoot.hidden = false;
+  // Preserve drawer and outer window scroll positions across structural re-renders
+  const prevDrawerScroll = drawerRoot.querySelector('.drawer-body')?.scrollTop || 0;
+  const prevWindowY = window.scrollY;
 
-  const totals = calculateCartTotals(state.cart, {
-    discountThreshold: BRAND.discountThreshold,
-    discountAmount: BRAND.discountAmount,
-  });
+  drawerRoot.hidden = false;
+  const totals = getCartTotals();
 
   const progressText = totals.qualifiesDiscount
-    ? `Diskon ${formatRupiah(BRAND.discountAmount)} otomatis aktif.`
+    ? `Selamat! Diskon ${formatRupiah(BRAND.discountAmount)} otomatis aktif.`
     : `Tambah ${formatRupiah(totals.remainingForDiscount)} lagi untuk diskon ${formatRupiah(BRAND.discountAmount)}.`;
 
   const itemsHtml =
     state.cart.length === 0
       ? `
         <div class="cart-empty">
+          <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="8" cy="21" r="1"/><circle cx="19" cy="21" r="1"/><path d="M2.05 2.05h2l2.66 12.42a2 2 0 0 0 2 1.58h9.78a2 2 0 0 0 1.95-1.57l1.65-7.43H5.12"/></svg>
           <p>Keranjang belanja masih kosong.</p>
-          <span>Pilih paket aplikasi dari katalog untuk memulai pesanan.</span>
+          <span>Pilih paket aplikasi favorit Anda dari katalog.</span>
         </div>
       `
       : state.cart
           .map(
             (item) => `
           <div class="cart-item">
-            <img src="${escapeHtml(item.logo || './assets/icons/brand-icon.svg')}" alt="" width="36" height="36" class="cart-item-logo" referrerPolicy="no-referrer" />
+            <img src="${escapeHtml(item.logo || './assets/icons/brand-icon.svg')}" alt="" width="36" height="36" class="cart-item-logo" />
             <div class="cart-item-info">
               <div class="cart-item-name">${escapeHtml(item.productName)}</div>
               <div class="cart-item-variant">${escapeHtml(item.variantName)}</div>
@@ -560,8 +819,11 @@ function renderCartDrawer() {
           value="${escapeHtml(opt.id)}"
           ${checked ? 'checked' : ''}
         />
-        <div>
-          <span class="payment-title">${escapeHtml(opt.label)}</span>
+        <div class="payment-option-body">
+          <div class="payment-title-row">
+            <span class="payment-title">${escapeHtml(opt.label)}</span>
+            <span class="payment-fee-tag ${opt.surchargeRate > 0 ? 'is-surcharge' : ''}">${escapeHtml(opt.badge || '')}</span>
+          </div>
           <span class="payment-note">${escapeHtml(opt.note)}</span>
         </div>
       </label>
@@ -577,7 +839,7 @@ function renderCartDrawer() {
           <p class="drawer-sub">${totals.itemCount} item dipilih</p>
         </div>
         <button type="button" class="icon-close-btn" id="close-cart-btn" aria-label="Tutup keranjang belanja">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
         </button>
       </div>
 
@@ -597,19 +859,8 @@ function renderCartDrawer() {
           state.cart.length > 0
             ? `
           <form id="checkout-form" class="checkout-form" novalidate>
-            <div class="summary-breakdown">
-              <div class="summary-row">
-                <span>Subtotal</span>
-                <span class="mono-num">${escapeHtml(formatRupiah(totals.subtotal))}</span>
-              </div>
-              <div class="summary-row ${totals.discount > 0 ? 'is-discount' : ''}">
-                <span>Diskon Belanja</span>
-                <span class="mono-num">-${escapeHtml(formatRupiah(totals.discount))}</span>
-              </div>
-              <div class="summary-row is-total">
-                <span>Total Bayar</span>
-                <span class="mono-num">${escapeHtml(formatRupiah(totals.total))}</span>
-              </div>
+            <div id="cart-summary-breakdown" class="summary-breakdown">
+              ${buildSummaryBreakdownHtml(totals)}
             </div>
 
             <div class="form-field">
@@ -626,9 +877,34 @@ function renderCartDrawer() {
             </div>
 
             <div class="form-field">
+              <label for="checkout-voucher">Kode Voucher (Opsional)</label>
+              <div class="voucher-input-row">
+                <input
+                  type="text"
+                  id="checkout-voucher"
+                  name="voucherCode"
+                  placeholder="Contoh: HEMAT2K"
+                  value="${escapeHtml(state.voucherCode)}"
+                  autocomplete="off"
+                />
+                <button type="button" class="btn btn-secondary btn-sm" id="apply-voucher-btn">
+                  Pakai
+                </button>
+              </div>
+              <div
+                id="voucher-feedback"
+                class="voucher-feedback ${totals.voucherStatus ? `is-${escapeHtml(totals.voucherStatus)}` : ''}"
+                ${totals.voucherMessage ? '' : 'hidden'}
+              >${escapeHtml(totals.voucherMessage || '')}</div>
+            </div>
+
+            <div class="form-field">
               <span class="field-label">Metode Pembayaran</span>
               <div class="payment-options">
                 ${paymentHtml}
+              </div>
+              <div id="pay-later-notice-slot">
+                ${buildPayLaterNoticeHtml(totals)}
               </div>
             </div>
 
@@ -643,40 +919,21 @@ function renderCartDrawer() {
               />
             </div>
 
-            ${
-              state.checkoutError
-                ? `<div class="form-error" role="alert">${escapeHtml(state.checkoutError)}</div>`
-                : ''
-            }
+            <div id="checkout-error-slot">
+              ${
+                state.checkoutError
+                  ? `<div class="form-error" role="alert">${escapeHtml(state.checkoutError)}</div>`
+                  : ''
+              }
+            </div>
 
-            <button type="submit" class="btn btn-primary btn-full">
-              Buat Pesanan WhatsApp
+            <button type="submit" id="checkout-submit-btn" class="btn btn-primary btn-full">
+              Buat Pesanan
             </button>
 
-            ${
-              state.generatedOrderUrl
-                ? `
-              <div class="order-ready-box" role="status">
-                <p class="order-ready-title">Format Pesanan Siap Dikirim</p>
-                <p class="order-ready-desc">Klik tombol di bawah untuk langsung membuka chat WhatsApp Admin Manifestudio.</p>
-                <div class="order-ready-actions">
-                  <a
-                    href="${escapeHtml(state.generatedOrderUrl)}"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    class="btn btn-primary btn-sm"
-                    id="open-whatsapp-link"
-                  >
-                    Buka WhatsApp Admin
-                  </a>
-                  <button type="button" class="btn btn-secondary btn-sm" id="copy-order-btn">
-                    ${state.copiedNotice ? 'Tersalin' : 'Salin Teks'}
-                  </button>
-                </div>
-              </div>
-            `
-                : ''
-            }
+            <div id="order-ready-slot">
+              ${buildOrderReadySlotHtml()}
+            </div>
           </form>
         `
             : ''
@@ -684,6 +941,15 @@ function renderCartDrawer() {
       </div>
     </aside>
   `;
+
+  // Restore scroll positions cleanly so nothing ever jumps to top
+  const nextDrawerBody = drawerRoot.querySelector('.drawer-body');
+  if (nextDrawerBody && prevDrawerScroll > 0) {
+    nextDrawerBody.scrollTop = prevDrawerScroll;
+  }
+  if (window.scrollY !== prevWindowY) {
+    window.scrollTo(0, prevWindowY);
+  }
 
   drawerRoot.querySelector('#cart-backdrop')?.addEventListener('click', closeCartDrawer);
   drawerRoot.querySelector('#close-cart-btn')?.addEventListener('click', closeCartDrawer);
@@ -702,30 +968,53 @@ function renderCartDrawer() {
       } else if (action === 'remove') {
         state.cart = removeFromCart(state.cart, productId, variantId);
       }
-      state.generatedOrderUrl = '';
+      clearGeneratedOrder();
       saveCart();
       renderCartDrawer();
     });
   });
 
-  drawerRoot.querySelector('#checkout-name')?.addEventListener('input', (e) => {
+  const nameInput = drawerRoot.querySelector('#checkout-name');
+  nameInput?.addEventListener('input', (e) => {
     state.customerName = e.target.value;
     state.checkoutError = '';
     saveCustomerName(state.customerName);
+    const errorSlot = drawerRoot.querySelector('#checkout-error-slot');
+    if (errorSlot) errorSlot.innerHTML = '';
   });
 
-  drawerRoot.querySelector('#checkout-note')?.addEventListener('input', (e) => {
+  const voucherInput = drawerRoot.querySelector('#checkout-voucher');
+  voucherInput?.addEventListener('input', (e) => {
+    state.voucherCode = e.target.value;
+    clearGeneratedOrder();
+    syncCheckoutDynamicParts(drawerRoot);
+  });
+
+  drawerRoot.querySelector('#apply-voucher-btn')?.addEventListener('click', () => {
+    if (voucherInput) {
+      state.voucherCode = voucherInput.value.trim().toUpperCase();
+      voucherInput.value = state.voucherCode;
+    }
+    clearGeneratedOrder();
+    syncCheckoutDynamicParts(drawerRoot);
+  });
+
+  const noteInput = drawerRoot.querySelector('#checkout-note');
+  noteInput?.addEventListener('input', (e) => {
     state.whatsappNote = e.target.value;
+    clearGeneratedOrder();
   });
 
+  // Update payment selection IN PLACE without rebuilding drawer DOM -> prevents scroll-to-top bug
   drawerRoot.querySelectorAll('input[name="paymentOption"]').forEach((radio) => {
     radio.addEventListener('change', (e) => {
       state.paymentOption = e.target.value;
-      renderCartDrawer();
+      clearGeneratedOrder();
+      syncCheckoutDynamicParts(drawerRoot);
     });
   });
 
-  drawerRoot.querySelector('#checkout-form')?.addEventListener('submit', (e) => {
+  drawerRoot.querySelector('#checkout-form')?.addEventListener('submit', async (e) => {
     e.preventDefault();
     const validation = validateOrderForm({
       customerName: state.customerName,
@@ -735,35 +1024,91 @@ function renderCartDrawer() {
 
     if (!validation.valid) {
       state.checkoutError = validation.error || 'Periksa kembali data pesanan.';
-      state.generatedOrderUrl = '';
-      renderCartDrawer();
+      clearGeneratedOrder();
+      syncCheckoutDynamicParts(drawerRoot);
       return;
     }
 
-    const encodedMessage = buildWhatsAppOrderMessage({
+    state.checkoutError = '';
+    state.isGeneratingReceipt = true;
+    syncCheckoutDynamicParts(drawerRoot);
+
+    const activeTotals = getCartTotals();
+    const orderCode = generateOrderCode();
+    const caption = buildWhatsAppOrderCaption({
+      orderCode,
       customerName: state.customerName,
       whatsappNote: state.whatsappNote,
       paymentOption: state.paymentOption,
       cart: state.cart,
-      totals,
+      totals: activeTotals,
     });
 
-    state.checkoutError = '';
-    state.copiedNotice = false;
-    state.generatedOrderUrl = `https://wa.me/${BRAND.whatsappNumber}?text=${encodedMessage}`;
-    state.generatedOrderSummary = decodeURIComponent(encodedMessage);
-    renderCartDrawer();
+    try {
+      const receipt = await generateReceiptImage({
+        orderCode,
+        customerName: state.customerName,
+        whatsappNote: state.whatsappNote,
+        paymentOption: state.paymentOption,
+        cart: state.cart,
+        totals: activeTotals,
+      });
+
+      clearGeneratedOrder();
+      state.generatedOrderCode = orderCode;
+      state.generatedOrderSummary = caption;
+      state.generatedOrderUrl = `https://wa.me/${BRAND.whatsappNumber}?text=${encodeURIComponent(caption)}`;
+      state.receiptUrl = receipt.objectUrl;
+      state.receiptFile = receipt.file;
+      state.receiptFileName = receipt.fileName;
+      state.receiptSizeKb = receipt.sizeKb;
+      state.receiptGetPngBlob = receipt.getPngBlob;
+    } catch {
+      clearGeneratedOrder();
+      state.checkoutError = 'Gagal menyiapkan gambar struk. Silakan coba lagi.';
+    } finally {
+      state.isGeneratingReceipt = false;
+      syncCheckoutDynamicParts(drawerRoot);
+      const readyEl = drawerRoot.querySelector('#order-ready-slot .order-ready-box');
+      if (readyEl) {
+        readyEl.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      }
+    }
   });
 
-  drawerRoot.querySelector('#copy-order-btn')?.addEventListener('click', async () => {
-    if (!state.generatedOrderSummary) return;
-    try {
-      await navigator.clipboard.writeText(state.generatedOrderSummary);
-      state.copiedNotice = true;
-      renderCartDrawer();
-    } catch {
-      showToast('Salin teks gagal, gunakan tombol Buka WhatsApp Admin.');
-    }
+  bindOrderReadyActions(drawerRoot);
+}
+
+function renderFaq() {
+  const container = document.getElementById('faq-list');
+  if (!container) return;
+
+  container.innerHTML = FAQ_ITEMS.map((item, idx) => {
+    const isOpen = state.openFaqIndex === idx;
+    return `
+      <div class="faq-item ${isOpen ? 'is-open' : ''}">
+        <button
+          type="button"
+          class="faq-trigger"
+          data-faq-idx="${idx}"
+          aria-expanded="${isOpen}"
+        >
+          <span>${escapeHtml(item.question)}</span>
+          <svg class="faq-chevron" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
+        </button>
+        <div class="faq-panel" ${isOpen ? '' : 'hidden'}>
+          <p>${escapeHtml(item.answer)}</p>
+        </div>
+      </div>
+    `;
+  }).join('');
+
+  container.querySelectorAll('.faq-trigger').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const idx = Number(btn.getAttribute('data-faq-idx'));
+      state.openFaqIndex = state.openFaqIndex === idx ? -1 : idx;
+      renderFaq();
+    });
   });
 }
 
@@ -773,22 +1118,19 @@ function showToast(message) {
   if (!toast) return;
   toast.textContent = message;
   toast.hidden = false;
+  toast.classList.add('is-visible');
   clearTimeout(toastTimer);
   toastTimer = setTimeout(() => {
+    toast.classList.remove('is-visible');
     toast.hidden = true;
-  }, 2400);
+  }, 2600);
 }
 
 function bindGlobalEvents() {
-  document.querySelectorAll('[data-theme-choice]').forEach((btn) => {
-    btn.addEventListener('click', () => {
-      const next = btn.getAttribute('data-theme-choice');
-      if (next === 'light' || next === 'dark') {
-        state.theme = next;
-        saveTheme(next);
-        applyTheme();
-      }
-    });
+  document.getElementById('theme-toggle-btn')?.addEventListener('click', () => {
+    state.theme = state.theme === 'dark' ? 'light' : 'dark';
+    saveTheme(state.theme);
+    applyTheme();
   });
 
   const searchInput = document.getElementById('catalog-search');
@@ -834,9 +1176,8 @@ function bootstrap() {
   applyTheme();
   renderCategories();
   renderCatalog();
-  renderOrderSteps();
   renderFaq();
-  updateCartIndicators();
+  updateCartBadges();
   bindGlobalEvents();
   initPwaManager();
 }

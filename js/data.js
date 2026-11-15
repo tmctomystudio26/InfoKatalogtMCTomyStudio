@@ -1,6 +1,6 @@
 export const BRAND = {
   name: 'Manifestudio',
-  tagline: 'Katalog Layanan Digital & Akun Premium',
+  tagline: 'Akun Premium & Layanan Digital Terpercaya',
   whatsappNumber: '6285122936027',
   tiktokUrl: 'https://www.tiktok.com/@tmctomystudio',
   tiktokHandle: '@tmctomystudio',
@@ -18,38 +18,47 @@ export const CATEGORIES = [
   { id: 'custom', label: 'Request & Custom' },
 ];
 
-export const CATEGORY_LABELS = {
-  streaming: 'Streaming',
-  music: 'Musik',
-  creative: 'Desain & Editing',
-  custom: 'Custom',
-};
+export const PAY_LATER_SURCHARGE_RATE = 0.1;
 
 export const PAYMENT_OPTIONS = [
   {
     id: 'Bayar Sekarang',
     label: 'Bayar Sekarang (QRIS / E-Wallet / Bank)',
-    note: 'Proses prioritas instan setelah bukti transfer dikonfirmasi.',
+    badge: '0% Biaya',
+    note: 'Tanpa biaya tambahan · Proses prioritas instan setelah bukti transfer dikonfirmasi.',
+    surchargeRate: 0,
   },
   {
     id: 'Bayar Belakangan (Setelah Akun Diterima)',
-    label: 'Bayar Setelah Akun Aktif',
-    note: 'Khusus pesanan tertentu dengan verifikasi admin via WhatsApp.',
+    label: 'Bayar Nanti (Setelah Akun Diterima)',
+    badge: '+10% Biaya Layanan',
+    note: 'Dikenakan biaya tambahan 10% dari total tagihan karena pembayaran dilakukan setelah akun aktif.',
+    surchargeRate: 0.1,
   },
 ];
 
-export const ORDER_STEPS = [
+export const VOUCHERS = [
   {
-    step: '01. Pilih Paket & Durasi',
-    detail: 'Buka produk yang diinginkan, periksa keterangan garansi, lalu tambahkan varian ke keranjang.',
+    code: 'HEMAT2K',
+    type: 'fixed',
+    value: 2000,
+    minSubtotal: 15000,
+    label: 'Potongan Rp2.000 (min. Rp15.000)',
   },
   {
-    step: '02. Periksa Diskon Otomatis',
-    detail: 'Total belanja minimal Rp50.000 otomatis mendapatkan potongan harga Rp2.000 di keranjang.',
+    code: 'MANIFEST5',
+    type: 'fixed',
+    value: 5000,
+    minSubtotal: 40000,
+    label: 'Potongan Rp5.000 (min. Rp40.000)',
   },
   {
-    step: '03. Kirim Format ke WhatsApp',
-    detail: 'Isi nama panggilan dan metode pembayaran, lalu kirim rincian terformat langsung ke admin.',
+    code: 'PROMO10',
+    type: 'percent',
+    value: 10,
+    maxDiscount: 10000,
+    minSubtotal: 25000,
+    label: 'Diskon 10% maks. Rp10.000 (min. Rp25.000)',
   },
 ];
 
@@ -61,7 +70,7 @@ export const PRODUCTS = [
     logo: './assets/logos/netflix.svg',
     isBestSeller: true,
     outOfStock: false,
-    tag: 'Paling laris',
+    tag: 'Paling Laris',
     summary: '4K Ultra HD · Profil terkelola · Anti-hold',
     notice:
       'Harga produk Netflix sedang mengalami penyesuaian ringan akibat tingginya permintaan dan keterbatasan stok akun.',
@@ -78,7 +87,7 @@ export const PRODUCTS = [
     logo: './assets/logos/canva.svg',
     isBestSeller: true,
     outOfStock: false,
-    tag: 'Populer kreator',
+    tag: 'Populer Kreator',
     summary: 'Akses template Pro, Brand Kit & hapus background',
     variants: [
       { id: 'canva-1m', name: '1 Bulan', price: 3000, outOfStock: false },
@@ -102,7 +111,7 @@ export const PRODUCTS = [
     isBestSeller: false,
     outOfStock: true,
     restockMessage: 'Akan segera restock',
-    tag: 'Segera restock',
+    tag: 'Segera Restock',
     summary: 'Bebas iklan · Putar di latar belakang · YouTube Music',
     variants: [
       { id: 'yt-3m-ng', name: '3 Bulan - No Garansi', price: 15000, outOfStock: true },
@@ -119,7 +128,7 @@ export const PRODUCTS = [
     isBestSeller: false,
     outOfStock: true,
     restockMessage: 'Akan segera restock',
-    tag: 'Segera restock',
+    tag: 'Segera Restock',
     summary: 'Audio kualitas tinggi · Unduh offline tanpa iklan',
     variants: [
       { id: 'sp-3m-ng', name: '3 Bulan - No Garansi', price: 15000, outOfStock: true },
@@ -165,7 +174,7 @@ export const PRODUCTS = [
     logo: './assets/logos/alight-motion.svg',
     isBestSeller: false,
     outOfStock: false,
-    tag: 'Favorit editor',
+    tag: 'Favorit Editor',
     summary: 'Preset XML terbuka · Ekspor tanpa watermark',
     variants: [
       { id: 'am-1y-ng', name: '1 Tahun - No Garansi', price: 15000, outOfStock: false },
@@ -208,7 +217,7 @@ export const PRODUCTS = [
     logo: './assets/logos/custom-request.svg',
     isBestSeller: false,
     outOfStock: false,
-    tag: 'Layanan custom',
+    tag: 'Layanan Custom',
     summary: 'Pesan aplikasi khusus atau paket kombinasi durasi',
     variants: [
       {
@@ -244,5 +253,10 @@ export const FAQ_ITEMS = [
     question: 'Bagaimana sistem garansi penggantian akun bekerja?',
     answer:
       'Setiap paket dengan keterangan garansi akan mendapat penggantian akun baru sesuai ketentuan masa garansi apabila terjadi kendala akses bukan karena pelanggaran aturan penggunaan.',
+  },
+  {
+    question: 'Apakah ada biaya tambahan untuk opsi Bayar Nanti setelah akun diterima?',
+    answer:
+      'Ya. Untuk opsi Bayar Nanti (Setelah Akun Diterima) dikenakan biaya layanan tambahan sebesar 10% dari total tagihan yang ditampilkan transparan sebelum checkout. Jika memilih Bayar Sekarang, tidak ada biaya tambahan (0%).',
   },
 ];

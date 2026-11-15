@@ -1,10 +1,12 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { PRODUCTS } from './data.js';
+import { PRODUCTS, VOUCHERS } from './data.js';
 import {
   addToCart,
+  buildWhatsAppOrderCaption,
   buildWhatsAppOrderMessage,
   calculateCartTotals,
+  evaluateVoucher,
   filterProducts,
   formatRupiah,
   getStartingPrice,
@@ -38,7 +40,7 @@ test('filterProducts filters by category, search query, and stock availability',
   assert.equal(inStock.some((p) => p.outOfStock), false);
 });
 
-test('cart operations add, increment, decrement, remove, and compute discount', () => {
+test('cart operations add, increment, decrement, remove, and compute auto discount', () => {
   let cart = [];
   cart = addToCart(cart, {
     productId: 'netflix-premium',
@@ -75,7 +77,44 @@ test('cart operations add, increment, decrement, remove, and compute discount', 
   assert.equal(cart.length, 0);
 });
 
-test('validateOrderForm and buildWhatsAppOrderMessage validate and encode orders', () => {
+test('evaluateVoucher and Pay Later 10% surcharge compute accurately', () => {
+  const validFixed = evaluateVoucher(' hemat2k ', 22500, VOUCHERS);
+  assert.equal(validFixed.status, 'applied');
+  assert.equal(validFixed.code, 'HEMAT2K');
+  assert.equal(validFixed.discount, 2000);
+
+  const ineligible = evaluateVoucher('MANIFEST5', 20000, VOUCHERS);
+  assert.equal(ineligible.status, 'ineligible');
+  assert.equal(ineligible.discount, 0);
+
+  const unknown = evaluateVoucher('VIPADMIN', 30000, VOUCHERS);
+  assert.equal(unknown.status, 'pending_admin');
+  assert.equal(unknown.discount, 0);
+
+  const cart = [
+    {
+      productId: 'netflix-premium',
+      productName: 'Netflix Premium',
+      variantId: 'nf-1p1u',
+      variantName: '1 Bulan - Sharing 1P1U',
+      price: 30000,
+      quantity: 1,
+    },
+  ];
+  // Subtotal 30.000 - voucher HEMAT2K (2.000) = 28.000; +10% Pay Later = +2.800 -> 30.800
+  const payLaterTotals = calculateCartTotals(cart, {
+    voucherCode: 'HEMAT2K',
+    vouchers: VOUCHERS,
+    paymentOption: 'Bayar Belakangan (Setelah Akun Diterima)',
+    payLaterRate: 0.1,
+  });
+  assert.equal(payLaterTotals.voucherDiscount, 2000);
+  assert.equal(payLaterTotals.isPayLater, true);
+  assert.equal(payLaterTotals.payLaterFee, 2800);
+  assert.equal(payLaterTotals.total, 30800);
+});
+
+test('validateOrderForm and buildWhatsAppOrderMessage include voucher and 10% fee', () => {
   const emptyCheck = validateOrderForm({
     customerName: 'Tomi',
     paymentOption: 'Bayar Sekarang',
@@ -94,29 +133,46 @@ test('validateOrderForm and buildWhatsAppOrderMessage validate and encode orders
     {
       productId: 'canva-pro',
       productName: 'Canva Pro',
-      variantId: 'canva-1m',
-      variantName: '1 Bulan',
-      price: 3000,
+      variantId: 'canva-6m',
+      variantName: '6 Bulan',
+      price: 20000,
       quantity: 1,
     },
   ];
-  const totals = calculateCartTotals(cart);
+  const totals = calculateCartTotals(cart, {
+    voucherCode: 'HEMAT2K',
+    vouchers: VOUCHERS,
+    paymentOption: 'Bayar Belakangan (Setelah Akun Diterima)',
+    payLaterRate: 0.1,
+  });
   const ok = validateOrderForm({
     customerName: 'Andi',
-    paymentOption: 'Bayar Sekarang',
+    paymentOption: 'Bayar Belakangan (Setelah Akun Diterima)',
     cart,
   });
   assert.equal(ok.valid, true);
 
-  const encoded = buildWhatsAppOrderMessage({
+  const caption = buildWhatsAppOrderCaption({
+    orderCode: 'MS-261115-120000',
     customerName: 'Andi',
     whatsappNote: 'Email akun: andi@mail.com',
-    paymentOption: 'Bayar Sekarang',
+    paymentOption: 'Bayar Belakangan (Setelah Akun Diterima)',
+    cart,
+    totals,
+  });
+  assert.equal(caption.includes('MS-261115-120000'), true);
+  assert.equal(caption.includes('HEMAT2K'), true);
+  assert.equal(caption.includes('Biaya Bayar Nanti (+10%)'), true);
+  assert.equal(caption.includes('Struk gambar terlampir'), true);
+
+  const encoded = buildWhatsAppOrderMessage({
+    orderCode: 'MS-261115-120000',
+    customerName: 'Andi',
+    whatsappNote: 'Email akun: andi@mail.com',
+    paymentOption: 'Bayar Belakangan (Setelah Akun Diterima)',
     cart,
     totals,
   });
   const decoded = decodeURIComponent(encoded);
-  assert.equal(decoded.includes('Manifestudio'), true);
-  assert.equal(decoded.includes('Canva Pro (1 Bulan)'), true);
-  assert.equal(decoded.includes('andi@mail.com'), true);
+  assert.equal(decoded.includes('Rp19.800'), true);
 });
