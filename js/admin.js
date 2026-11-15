@@ -410,6 +410,15 @@ function renderProductList() {
                 value="${escapeHtml(product.logo || '')}"
               />
             </div>
+            <div class="form-field">
+              <label for="plogofile-${escapeHtml(product.id)}">Atau Ganti Gambar Logo (File)</label>
+              <input
+                type="file"
+                id="plogofile-${escapeHtml(product.id)}"
+                accept="image/*"
+                data-prod-file-logo="${escapeHtml(product.id)}"
+              />
+            </div>
           </div>
 
           <div class="admin-variant-list">
@@ -492,6 +501,27 @@ function bindProductListEvents(container) {
       if (!prod || !field) return;
       prod[field] = e.target.value;
       markDirty();
+    });
+  });
+
+  container.querySelectorAll('[data-prod-file-logo]').forEach((fileInput) => {
+    fileInput.addEventListener('change', (e) => {
+      const prodId = fileInput.getAttribute('data-prod-file-logo');
+      const file = e.target.files?.[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = (evt) => {
+        const base64 = evt.target?.result;
+        if (typeof base64 === 'string') {
+          const prod = adminState.catalog.products.find((p) => p.id === prodId);
+          if (!prod) return;
+          prod.logo = base64;
+          markDirty();
+          renderProductList();
+          showToast(`Logo ${prod.name} diperbarui dari file.`);
+        }
+      };
+      reader.readAsDataURL(file);
     });
   });
 
@@ -915,10 +945,26 @@ function bindEvents() {
 
   const presetEl = document.getElementById('new-prod-logo-preset');
   const logoUrlEl = document.getElementById('new-prod-logo-url');
+  const newProdFileEl = document.getElementById('new-prod-logo-file');
+
   presetEl?.addEventListener('change', () => {
     if (logoUrlEl && presetEl.value) {
       logoUrlEl.value = presetEl.value;
     }
+  });
+
+  newProdFileEl?.addEventListener('change', (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (evt) => {
+      const base64 = evt.target?.result;
+      if (typeof base64 === 'string' && logoUrlEl) {
+        logoUrlEl.value = base64;
+        showToast('File logo produk baru siap digunakan.');
+      }
+    };
+    reader.readAsDataURL(file);
   });
 
   document.getElementById('add-product-form')?.addEventListener('submit', (e) => {
