@@ -1,0 +1,89 @@
+:root,
+[data-theme='dark'] {
+  color-scheme: dark;
+  --bg: #090d16;
+  --bg-subtle: #0f1624;
+  --surface: #111827;
+  --surface-elevated: #182235;
+  --surface-hover: #1e2a40;
+  --border: rgba(148, 163, 184, 0.16);
+  --border-strong: rgba(148, 163, 184, 0.28);
+
+  --ink: #f8fafc;
+  --ink-secondary: #cbd5e1;
+  --ink-muted: #94a3b8;
+
+  --primary: #2563eb;
+  --primary-hover: #3b82f6;
+  --primary-ink: #ffffff;
+  --accent: #06b6d4;
+  --accent-soft: rgba(6, 182, 212, 0.12);
+
+  --success: #10b981;
+  --success-soft: rgba(16, 185, 129, 0.14);
+  --warning: #f59e0b;
+  --warning-soft: rgba(245, 158, 11, 0.14);
+  --danger: #ef4444;
+  --danger-soft: rgba(239, 68, 68, 0.14);
+
+  --header-bg: rgba(9, 13, 22, 0.84);
+  --hero-scrim: linear-gradient(
+    95deg,
+    rgba(9, 13, 22, 0.96) 0%,
+    rgba(9, 13, 22, 0.84) 55%,
+    rgba(9, 13, 22, 0.56) 100%
+  );
+  --shadow-card: 0 12px 30px -12px rgba(2, 6, 23, 0.55);
+  --shadow-float: 0 20px 44px -12px rgba(2, 6, 23, 0.72);
+}
+
+[data-theme='light'] {
+  color-scheme: light;
+  --bg: #f8fafc;
+  --bg-subtle: #eef2f7;
+  --surface: #ffffff;
+  --surface-elevated: #f1f5f9;
+  --surface-hover: #e2e8f0;
+  --border: rgba(15, 23, 42, 0.1);
+  --border-strong: rgba(15, 23, 42, 0.2);
+
+  --ink: #0f172a;
+  --ink-secondary: #334155;
+  --ink-muted: #475569;
+
+  --primary: #1d4ed8;
+  --primary-hover: #1e40af;
+  --primary-ink: #ffffff;
+  --accent: #0891b2;
+  --accent-soft: rgba(8, 145, 178, 0.1);
+
+  --success: #059669;
+  --success-soft: rgba(5, 150, 105, 0.11);
+  --warning: #b45309;
+  --warning-soft: rgba(217, 119, 6, 0.12);
+  --danger: #dc2626;
+  --danger-soft: rgba(220, 38, 38, 0.1);
+
+  --header-bg: rgba(248, 250, 252, 0.88);
+  --hero-scrim: linear-gradient(
+    95deg,
+    rgba(15, 23, 42, 0.94) 0%,
+    rgba(15, 23, 42, 0.8) 56%,
+    rgba(15, 23, 42, 0.5) 100%
+  );
+  --shadow-card: 0 10px 26px -12px rgba(15, 23, 42, 0.12);
+  --shadow-float: 0 20px 44px -12px rgba(15, 23, 42, 0.2);
+}
+
+:root {
+  --font-display: 'Outfit', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --font-sans: 'Plus Jakarta Sans', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+
+  --radius-sm: 10px;
+  --radius-md: 14px;
+  --radius-lg: 20px;
+  --radius-xl: 26px;
+
+  --ease: cubic-bezier(0.22, 1, 0.36, 1);
+}

@@ -1,190 +1,289 @@
-<!DOCTYPE html>
-<html lang="id">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<!doctype html>
+<html lang="id" data-theme="dark">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Manifestudio — Katalog Akun Premium &amp; Layanan Digital</title>
+    <meta
+      name="description"
+      content="Manifestudio menghadirkan akun premium dan layanan digital bergaransi dengan harga transparan dan proses cepat via WhatsApp."
+    />
 
-    <!-- Judul Halaman -->
-    <title>List Produk - tMC Tomy Studio</title>
+    <!-- Open Graph -->
+    <meta property="og:title" content="Manifestudio — Akun Premium &amp; Layanan Digital" />
+    <meta
+      property="og:description"
+      content="Platform katalog akun premium &amp; top up layanan digital terpercaya dengan garansi aktif dan checkout instan."
+    />
+    <meta property="og:image" content="./assets/hero-banner.jpg" />
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="Manifestudio" />
 
-    <!-- Open Graph tags -->
-    <meta property="og:title" content="List Produk - tMC Tomy Studio">
-    <meta property="og:description" content="The King Of Premium Account, tersedia berbagai akun premium termurah.">
-    <meta property="og:image" content="https://raw.githubusercontent.com/tmctomystudio26/github.musik.io/refs/heads/main/1741769769-picsay.jpg">
-    <meta property="og:url" content="https://tmctomystudio26.github.io/InfoKatalogtMCTomyStudio/">
-    <meta property="og:type" content="website">
-    <meta property="og:site_name" content="tMC Tomy Studio - Premium Store">
+    <!-- PWA & Theme -->
+    <meta name="theme-color" content="#090D16" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="Manifestudio" />
+    <link rel="manifest" href="./manifest.webmanifest" />
+    <link rel="icon" type="image/svg+xml" href="./assets/icons/brand-icon.svg" />
+    <link rel="apple-touch-icon" href="./assets/icons/apple-touch-icon.png" />
 
-    <!-- Meta Tags untuk SEO -->
-    <meta name="description" content="The King Of Premium Account, tersedia berbagai akun premium termurah.">
-    <meta name="keywords" content="premium accounts, digital services, top up, subscription, streaming services">
-    <meta name="author" content="tMC Tomy Studio">
+    <!-- Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@500;700&family=Outfit:wght@600;700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
 
-    <!-- Theme Color untuk browser -->
-    <meta name="theme-color" content="#4f46e5">
-    <meta name="apple-mobile-web-app-capable" content="yes">
-    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-
-    <!-- Favicon -->
-    <link rel="icon" href="https://raw.githubusercontent.com/tmctomystudio26/github.musik.io/main/1000514440-picsay.jpg" type="image/jpeg">
-    <link rel="apple-touch-icon" href="https://raw.githubusercontent.com/tmctomystudio26/github.musik.io/refs/heads/main/1741769769-picsay.jpg">
-
-    <!-- Preconnect to Google Fonts -->
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
-
-    <!-- Font Awesome -->
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-
-    <!-- Custom CSS -->
-    <link rel="stylesheet" href="style.css">
-</head>
-<body>
-    <div id="welcome-modal" class="modal">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h2>Selamat datang di tMC Tomy Studio!</h2>
-                <p class="gradient-text">The King of Premium Accounts</p>
-            </div>
-            <input type="text" id="user-name" placeholder="Masukkan nama Anda">
-            <button id="submit-name">Lanjutkan <i class="fas fa-arrow-right"></i></button>
-        </div>
-    </div>
-    <div class="running-text-container">
-        <div class="running-text" id="current-song">
-            🎵 Now Playing: NDX AKA - Opening Perform - Festival Pantai Ancol 🎵
-        </div>
+    <!-- Styles -->
+    <link rel="stylesheet" href="./css/tokens.css" />
+    <link rel="stylesheet" href="./css/styles.css" />
+  </head>
+  <body>
+    <div id="offline-banner" class="offline-banner" role="status" hidden>
+      Mode offline aktif — Anda tetap dapat melihat katalog dan menyusun pesanan, lalu kirim saat terhubung kembali.
     </div>
 
-    <div id="main-container">
-        <header id="header">
-            <h1><i class="fas fa-crown"></i> tMC Tomy Studio</h1>
-            <h2>The King of Premium Accounts</h2>
-            <audio id="audio-player" controls>
-                <source src="https://raw.githubusercontent.com/tmctomystudio26/github.musik.io/main/NDX%20AKA%20OPENING%20JOSSS%20-%20DITINGGAL%20RABI%20%20LIVE%20PERFORM%20DI%20PANTAI%20FESTIVAL%20ANCOL.mp3" type="audio/mp3">
-                Your browser does not support the audio element.
-            </audio>
-            <div id="timer">00:00 / 00:00</div>
-            <div class="audio-controls">
-                <button id="prev-btn"><i class="fas fa-step-backward"></i></button>
-                <button id="play-btn"></button>
-                <button id="next-btn"><i class="fas fa-step-forward"></i></button>
-            </div>
-        </header>
+    <header class="site-header">
+      <div class="container header-inner">
+        <a href="#top" class="brand-link" aria-label="Beranda Manifestudio">
+          <img
+            src="./assets/icons/brand-icon.svg"
+            alt="Logo Manifestudio"
+            width="38"
+            height="38"
+            class="brand-mark"
+          />
+          <div class="brand-text">
+            <span class="brand-name">Manifestudio</span>
+            <span class="brand-tagline">Digital Store &amp; Premium Catalog</span>
+          </div>
+        </a>
 
+        <div class="header-actions">
+          <button
+            type="button"
+            id="header-install-btn"
+            class="header-btn"
+            aria-label="Install aplikasi Manifestudio"
+          >
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+              <polyline points="7 10 12 15 17 10" />
+              <line x1="12" x2="12" y1="15" y2="3" />
+            </svg>
+            <span class="hide-xs">Install</span>
+          </button>
+
+          <button
+            type="button"
+            id="theme-toggle-btn"
+            class="header-btn"
+            aria-label="Ubah tema tampilan"
+          ></button>
+
+          <button
+            type="button"
+            id="header-cart-btn"
+            class="header-btn header-cart-btn"
+            aria-label="Buka keranjang belanja"
+          >
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <circle cx="8" cy="21" r="1" />
+              <circle cx="19" cy="21" r="1" />
+              <path d="M2.05 2.05h2l2.66 12.42a2 2 0 0 0 2 1.58h9.78a2 2 0 0 0 1.95-1.57l1.65-7.43H5.12" />
+            </svg>
+            <span class="hide-xs">Keranjang</span>
+            <span id="header-cart-badge" class="cart-badge" hidden>0</span>
+          </button>
+        </div>
+      </div>
+    </header>
+
+    <main id="top">
+      <div id="pwa-banner-root" class="pwa-banner-root"></div>
+
+      <section class="hero-section">
         <div class="container">
-            <div id="date-container"></div>
-            <div id="time-user-container">
-                <div id="real-time"></div>
-                <div id="user-display"></div>
-            </div>
-
-            <div id="name-quote" class="name-quote-container"></div>
-
-            <!-- Kolom pencarian produk -->
-            <div id="search-container">
-                <input type="text" id="search-input" placeholder="🔍   Cari produk premium...">
-            </div>
-
-            <h2 class="section-title"><i class="fas fa-tags"></i> Pilih Kategori Produk</h2>
-
-            <div id="product-list" class="product-list">
-                <!-- Produk akan ditampilkan di sini -->
-            </div>
-
-            <div id="subproduct-section" style="display: none;">
-                <h2 id="selected-product-name"></h2>
-                <button id="back-to-products"><i class="fas fa-chevron-left"></i> Kembali ke Kategori</button>
-                <div id="subproduct-list" class="subproduct-list">
-                    <!-- Subproduk akan ditampilkan di sini -->
+          <div class="hero-frame">
+            <img
+              src="./assets/hero-banner.jpg"
+              alt="Banner layanan digital premium Manifestudio"
+              class="hero-bg-img"
+              width="1200"
+              height="675"
+            />
+            <div class="hero-scrim" aria-hidden="true"></div>
+            <div class="hero-content">
+              <div class="hero-eyebrow">Official Digital Storefront · 2026</div>
+              <h1 class="hero-title">Akses Aplikasi Premium Cepat, Aman, &amp; Bergaransi.</h1>
+              <p class="hero-subtitle">
+                Pilih paket streaming, musik, dan editing favorit Anda dengan harga transparan.
+                Belanja minimal Rp50.000 otomatis hemat Rp2.000 saat checkout via WhatsApp.
+              </p>
+              <div class="hero-actions">
+                <a href="#katalog" class="btn btn-primary">Jelajahi Katalog</a>
+                <button type="button" id="hero-custom-btn" class="btn btn-outline-light">
+                  Request Custom Paket
+                </button>
+              </div>
+              <div class="hero-metrics">
+                <div class="hero-metric">
+                  <span class="metric-value">3–10 Menit</span>
+                  <span class="metric-label">Rata-rata aktivasi</span>
                 </div>
-            </div>
-
-            <div id="cart" class="modern-cart">
-                <div id="cart-content">
-                    <div id="cart-header">
-                        <h2 id="cart-title"><i class="fas fa-shopping-basket"></i> Keranjang Belanja</h2>
-                        <button id="cart-close"><i class="fas fa-times"></i></button>
-                    </div>
-                    <div class="cart-progress">
-                        <div class="progress-bar"></div>
-                        <div class="progress-text">Belanja min. Rp50.000 untuk mendapat diskon!</div>
-                    </div>
-                    <div id="cart-items" class="modern-cart-items">
-                        <!-- Item keranjang akan ditampilkan di sini -->
-                    </div>
-                    <div id="cart-footer">
-                        <div class="cart-summary">
-                            <div class="summary-item">
-                                <span>Subtotal</span>
-                                <span class="subtotal-price">Rp0</span>
-                            </div>
-                            <div class="summary-item highlight">
-                                <span>Total Belanja</span>
-                                <span id="total-price">Rp0</span>
-                            </div>
-                        </div>
-                        <div class="checkout-container">
-                            <button id="checkout-btn">
-                                <i class="fab fa-whatsapp"></i>
-                                <span>Checkout via WhatsApp</span>
-                                <i class="fas fa-arrow-right"></i>
-                            </button>
-                        </div>
-                    </div>
+                <div class="hero-metric">
+                  <span class="metric-value">Rp2.000 OFF</span>
+                  <span class="metric-label">Belanja min. Rp50.000</span>
                 </div>
+                <div class="hero-metric">
+                  <span class="metric-value">10+ Layanan</span>
+                  <span class="metric-label">Garansi replace jelas</span>
+                </div>
+              </div>
             </div>
+          </div>
         </div>
-    </div>
+      </section>
 
-    <footer class="footer">
-        <div class="social-links">
-            <a href="https://www.tiktok.com/@tmctomystudio" target="_blank" class="social-link" aria-label="TikTok">
-                <i class="fab fa-tiktok"></i>
-                <span>@tmctomystudio</span>
-            </a>
-            <a href="https://www.instagram.com/tmctomystudio" target="_blank" class="social-link" aria-label="Instagram">
-                <i class="fab fa-instagram"></i>
-                <span>@tmctomystudio</span>
-            </a>
+      <section class="container" aria-label="Keunggulan Layanan">
+        <div class="promo-strip">
+          <div class="promo-item">
+            <div class="promo-icon" aria-hidden="true">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+            </div>
+            <div>
+              <h2 class="promo-title">Checkout Instan WhatsApp</h2>
+              <p class="promo-desc">Rincian pesanan terformat otomatis tanpa antre input manual.</p>
+            </div>
+          </div>
+
+          <div class="promo-item">
+            <div class="promo-icon" aria-hidden="true">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10"/></svg>
+            </div>
+            <div>
+              <h2 class="promo-title">Garansi Sesuai Paket</h2>
+              <p class="promo-desc">Keterangan garansi replace maupun privat ditampilkan jelas di setiap varian.</p>
+            </div>
+          </div>
+
+          <div class="promo-item">
+            <div class="promo-icon" aria-hidden="true">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect width="20" height="14" x="2" y="5" rx="2"/><line x1="2" x2="22" y1="10" y2="10"/></svg>
+            </div>
+            <div>
+              <h2 class="promo-title">Pembayaran Fleksibel</h2>
+              <p class="promo-desc">Dukung QRIS, E-Wallet, transfer bank, serta opsi konfirmasi admin.</p>
+            </div>
+          </div>
         </div>
-        <div class="copyright">
-            &copy; 2025 tMC Tomy Studio. All Rights Reserved.
+      </section>
+
+      <section id="katalog" class="catalog-section container">
+        <div class="section-header">
+          <div>
+            <h2 class="section-title">Katalog Layanan Digital</h2>
+            <p class="section-subtitle">Pilih layanan untuk melihat variasi durasi, garansi, dan ketersediaan stok.</p>
+          </div>
+          <span id="catalog-count" class="catalog-count">10 layanan tersedia</span>
         </div>
+
+        <div class="filter-toolbar">
+          <div class="filter-top-row">
+            <div class="search-box">
+              <svg class="search-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <circle cx="11" cy="11" r="8" />
+                <path d="m21 21-4.3-4.3" />
+              </svg>
+              <input
+                type="search"
+                id="catalog-search"
+                class="search-input"
+                placeholder="Cari aplikasi, paket sharing, atau garansi..."
+                aria-label="Cari produk di katalog"
+              />
+              <button
+                type="button"
+                id="clear-search-btn"
+                class="search-clear-btn"
+                aria-label="Hapus pencarian"
+                hidden
+              >
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+              </button>
+            </div>
+
+            <label class="stock-filter-label">
+              <input type="checkbox" id="in-stock-toggle" />
+              <span>Tampilkan hanya stok tersedia</span>
+            </label>
+          </div>
+
+          <div id="category-tabs" class="category-tabs" role="group" aria-label="Filter kategori produk"></div>
+        </div>
+
+        <div id="product-grid" class="product-grid"></div>
+      </section>
+
+      <section class="faq-section container" aria-labelledby="faq-heading">
+        <h2 id="faq-heading" class="section-title">Pertanyaan Umum</h2>
+        <p class="section-subtitle">Informasi singkat mengenai aktivasi akun dan garansi layanan Manifestudio.</p>
+        <div id="faq-list" class="faq-list"></div>
+      </section>
+    </main>
+
+    <footer class="site-footer">
+      <div class="container footer-inner">
+        <div class="footer-brand">
+          <strong class="brand-name">Manifestudio</strong>
+          <p>
+            Katalog resmi akun premium &amp; layanan digital. Dikelola oleh tMC Tomy Studio.
+            © 2026 Manifestudio.
+          </p>
+        </div>
+
+        <div class="footer-links">
+          <a
+            href="https://www.tiktok.com/@tmctomystudio"
+            target="_blank"
+            rel="noopener noreferrer"
+            class="footer-link-btn"
+          >
+            TikTok @tmctomystudio
+          </a>
+          <a
+            href="https://www.instagram.com/tmctomystudio"
+            target="_blank"
+            rel="noopener noreferrer"
+            class="footer-link-btn"
+          >
+            Instagram @tmctomystudio
+          </a>
+          <button type="button" id="footer-install-link" class="footer-link-btn">
+            Install Aplikasi PWA
+          </button>
+        </div>
+      </div>
     </footer>
 
-    <div id="cart-icon">
-        <div id="cart-badge">0</div>
+    <!-- Mobile Sticky Cart Bar -->
+    <div id="mobile-cart-bar" class="mobile-cart-bar" hidden>
+      <div class="mobile-cart-meta">
+        <span id="mobile-cart-count">0 item</span>
+        <strong id="mobile-cart-total">Rp0</strong>
+      </div>
+      <button type="button" id="mobile-cart-open-btn" class="btn btn-secondary btn-sm">
+        Checkout
+      </button>
     </div>
 
-    <!-- Halaman Keranjang Belanja -->
-    <div id="cart-page">
-        <div class="cart-page-header">
-            <button id="back-to-main" class="back-button"><i class="fas fa-arrow-left"></i> Kembali</button>
-            <h1><i class="fas fa-shopping-cart"></i> Keranjang Belanja</h1>
-        </div>
+    <!-- Overlays & Floating Widgets -->
+    <div id="product-modal-overlay" class="modal-overlay" hidden></div>
+    <div id="cart-drawer-root" class="drawer-root" hidden></div>
+    <div id="toast-notification" class="toast-notification" role="status" aria-live="polite" hidden></div>
 
-        <div class="cart-page-container">
-            <div id="cart-items-container">
-                <div id="cart-page-items">
-                    <!-- Item keranjang akan ditampilkan di sini -->
-                </div>
-            </div>
-
-            <div class="cart-summary">
-                <div id="cart-page-total">
-                    <span>Total Belanja</span>
-                    <span>Rp0</span>
-                </div>
-                <div class="checkout-container">
-                    <p class="checkout-instruction">Klik disini untuk checkout</p>
-                    <button id="cart-page-checkout"><i class="fab fa-whatsapp"></i> Checkout</button>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <script src="script.js"></script>
-</body>
+    <script type="module" src="./js/app.js"></script>
+  </body>
 </html>
