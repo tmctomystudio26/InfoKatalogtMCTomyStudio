@@ -27,11 +27,15 @@ import {
   validateOrderForm,
 } from './store.js';
 import {
+  MIN_FULL_TRACK_SECONDS,
+  buildMusicEmbedUrl,
   clampMusicFabPosition,
   createDefaultMusicPrefs,
+  filterFullLengthTracks,
   formatAudioTime,
   getPopoverAnchorClasses,
   getTopSearchKeywords,
+  normalizeMusicMode,
   pickWeightedRandomTrack,
   recordMusicPreference,
   scoreTrackForUser,
@@ -48,11 +52,13 @@ import {
   convertWorldTime,
   describeCloudflareColo,
   describeWeatherCode,
+  detectDownloaderPlatform,
   evaluateConnectionQuality,
   findNearestLocationOnGlobe,
   getNextPrayerInfo,
   inverseOrthographic,
   matchIndonesianCityQuery,
+  normalizeDownloaderResult,
   parseDeviceTelemetry,
   projectOrthographic,
   speedToGaugeRatio,
@@ -606,6 +612,122 @@ test('music player prioritizes Indonesian viral 2026, DJ/cover remixes, and clam
   assert.ok(popLeft >= 16);
   assert.ok(popLeft + popWidth <= 390 - 16);
 });
+
+test('music player enforces full-length tracks (>=75s) over 30s previews and builds SoundCloud/Spotify embeds', () => {
+  const mixed = [
+    { id: 'short-30', title: 'Clip 30s', artist: 'Preview', duration: 30, streamUrl: 'https://x/30.mp3' },
+    { id: 'full-1', title: 'Garam & Madu Remix', artist: 'Tenxi', duration: 251, streamUrl: 'https://x/251.mp3' },
+    { id: 'full-2', title: 'Satu Bulan Full', artist: 'Bernadya', duration: 200, streamUrl: 'https://x/200.mp3' },
+  ];
+
+  const fullOnly = filterFullLengthTracks(mixed, MIN_FULL_TRACK_SECONDS);
+  assert.equal(fullOnly.length, 2);
+  assert.equal(fullOnly.some((t) => t.id === 'short-30'), false);
+
+  for (let i = 0; i < 6; i += 1) {
+    const pick = pickWeightedRandomTrack(mixed, createDefaultMusicPrefs(), null, () => i / 10);
+    assert.notEqual(pick?.id, 'short-30');
+    assert.ok((pick?.duration || 0) >= MIN_FULL_TRACK_SECONDS);
+  }
+
+  assert.equal(normalizeMusicMode('SOUNDCLOUD'), 'soundcloud');
+  assert.equal(normalizeMusicMode('spotify'), 'spotify');
+  assert.equal(normalizeMusicMode('unknown'), 'full-audio');
+
+  const scEmbed = buildMusicEmbedUrl('soundcloud', 'https://api.soundcloud.com/users/1340727951');
+  assert.equal(scEmbed.startsWith('https://w.soundcloud.com/player/?'), true);
+  assert.equal(scEmbed.includes('1340727951'), true);
+
+  const spEmbed = buildMusicEmbedUrl('spotify', '37i9dQZEVXbObFQZ3JLcXt');
+  assert.equal(
+    spEmbed,
+    'https://open.spotify.com/embed/playlist/37i9dQZEVXbObFQZ3JLcXt?utm_source=generator&theme=0'
+  );
+});
+
+test('social video downloader detects TikTok/YouTube/Instagram/Facebook URLs and normalizes no-watermark links', () => {
+  assert.equal(detectDownloaderPlatform('https://vt.tiktok.com/ZSY123abc/'), 'tiktok');
+  assert.equal(detectDownloaderPlatform('https://www.youtube.com/watch?v=dQw4w9WgXcQ'), 'youtube');
+  assert.equal(detectDownloaderPlatform('https://youtu.be/dQw4w9WgXcQ'), 'youtube');
+  assert.equal(detectDownloaderPlatform('https://www.instagram.com/reel/C9abc123/'), 'instagram');
+  assert.equal(detectDownloaderPlatform('https://fb.watch/abcd1234/'), 'facebook');
+  assert.equal(detectDownloaderPlatform('https://example.com/file.mp4'), null);
+
+  const tikwmNormalized = normalizeDownloaderResult(
+    {
+      code: 0,
+      data: {
+        title: 'Konten Viral 2026',
+        duration: 42,
+        cover: 'https://cdn.example/cover.jpg',
+        author: { nickname: 'CreatorID' },
+        hdplay: 'https://cdn.example/hd-nowm.mp4',
+        play: 'https://cdn.example/sd-nowm.mp4',
+        wmplay: 'https://cdn.example/watermarked.mp4',
+        music: 'https://cdn.example/sound.mp3',
+      },
+    },
+    'tiktok'
+  );
+  assert.equal(tikwmNormalized.platform, 'tiktok');
+  assert.equal(tikwmNormalized.links.length, 3);
+  assert.equal(
+    tikwmNormalized.links.some((l) => l.url.includes('watermarked')),
+    false
+  );
+
+  const ytNormalized = normalizeDownloaderResult(
+    {
+      mp4: {
+        result: {
+          title: 'Lagu Full Indo',
+          thumbnail: 'https://i.ytimg.com/vi/abc/hq.jpg',
+          quality: '720p',
+          download_url: 'https://cdn.yt/video.mp4',
+        },
+      },
+      mp3: {
+        result: {
+          title: 'Lagu Full Indo',
+          quality: '128kbps',
+          download_url: 'https://cdn.yt/audio.mp3',
+        },
+      },
+    },
+    'youtube'
+  );
+  assert.equal(ytNormalized.platform, 'youtube');
+  assert.equal(ytNormalized.links.length, 2);
+  assert.equal(ytNormalized.links[0].ext, 'mp4');
+  assert.equal(ytNormalized.links[1].ext, 'mp3');
+
+  const fbNormalized = normalizeDownloaderResult(
+    {
+      result: {
+        title: 'Clip FB',
+        thumbnail: 'https://cdn.fb/thumb.jpg',
+        downloads: {
+          hd: { url: 'https://cdn.fb/hd.mp4' },
+          sd: { url: 'https://cdn.fb/sd.mp4' },
+        },
+      },
+    },
+    'facebook'
+  );
+  assert.equal(fbNormalized.links.length, 2);
+
+  const igNormalized = normalizeDownloaderResult(
+    {
+      result: [
+        { downloadUrl: 'https://cdn.ig/reel.mp4', thumbnail: 'https://cdn.ig/t.jpg', type: 'video' },
+      ],
+    },
+    'instagram'
+  );
+  assert.equal(igNormalized.links.length, 1);
+  assert.equal(igNormalized.links[0].ext, 'mp4');
+});
+
 
 
 

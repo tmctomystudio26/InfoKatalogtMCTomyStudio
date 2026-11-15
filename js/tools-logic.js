@@ -620,3 +620,193 @@ export function parseDeviceTelemetry(env = {}) {
     networkType,
   };
 }
+
+export function detectDownloaderPlatform(rawUrl) {
+  const trimmed = String(rawUrl || '').trim();
+  if (!trimmed) return null;
+  const normalized = /^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`;
+  let host = '';
+  try {
+    host = new URL(normalized).hostname.toLowerCase();
+  } catch {
+    return null;
+  }
+
+  if (host === 'tiktok.com' || host.endsWith('.tiktok.com')) return 'tiktok';
+  if (
+    host === 'youtube.com' ||
+    host.endsWith('.youtube.com') ||
+    host === 'youtu.be' ||
+    host.endsWith('.youtu.be')
+  ) {
+    return 'youtube';
+  }
+  if (host === 'instagram.com' || host.endsWith('.instagram.com') || host === 'instagr.am') {
+    return 'instagram';
+  }
+  if (host === 'facebook.com' || host.endsWith('.facebook.com') || host === 'fb.watch') {
+    return 'facebook';
+  }
+  return null;
+}
+
+export function normalizeDownloaderResult(raw, platform) {
+  const safePlatform = String(platform || '').toLowerCase();
+  if (!raw || typeof raw !== 'object') return null;
+
+  if (safePlatform === 'tiktok') {
+    // Format A: tikwm.com/api -> { code: 0, data: { hdplay, play, music, cover, title, duration, author: { nickname } } }
+    const d = raw.data || null;
+    if (d && (d.hdplay || d.play || d.music)) {
+      const links = [];
+      if (d.hdplay) {
+        links.push({ label: 'Video HD Tanpa Watermark', quality: 'HD MP4', ext: 'mp4', url: String(d.hdplay), isAudio: false });
+      }
+      if (d.play && d.play !== d.hdplay) {
+        links.push({ label: 'Video MP4 Tanpa Watermark', quality: 'SD MP4', ext: 'mp4', url: String(d.play), isAudio: false });
+      }
+      if (d.music) {
+        links.push({ label: 'Audio / Sound TikTok', quality: 'MP3', ext: 'mp3', url: String(d.music), isAudio: true });
+      }
+      return {
+        platform: 'tiktok',
+        title: String(d.title || 'Video TikTok'),
+        author: String(d.author?.nickname || d.author?.unique_id || 'Kreator TikTok'),
+        thumbnail: String(d.cover || d.origin_cover || ''),
+        durationSec: Number(d.duration || 0),
+        links,
+      };
+    }
+
+    // Format B: davidcyriltech/download/tiktok -> { success, result: { desc, author: { nickname }, video, music } }
+    const r = raw.result || null;
+    if (r && (r.video || r.music)) {
+      const links = [];
+      if (r.video) {
+        links.push({ label: 'Video Tanpa Watermark', quality: 'MP4', ext: 'mp4', url: String(r.video), isAudio: false });
+      }
+      if (r.music) {
+        links.push({ label: 'Audio / Sound TikTok', quality: 'MP3', ext: 'mp3', url: String(r.music), isAudio: true });
+      }
+      return {
+        platform: 'tiktok',
+        title: String(r.desc || r.title || 'Video TikTok'),
+        author: String(r.author?.nickname || 'Kreator TikTok'),
+        thumbnail: String(r.author?.avatar || ''),
+        durationSec: 0,
+        links,
+      };
+    }
+  }
+
+  if (safePlatform === 'youtube') {
+    const mp4 = raw.mp4?.result || (raw.result?.type === 'video' ? raw.result : null);
+    const mp3 = raw.mp3?.result || (raw.result?.type === 'audio' ? raw.result : null);
+    const primary = mp4 || mp3 || raw.result || null;
+    if (!primary) return null;
+
+    const links = [];
+    if (mp4?.download_url) {
+      links.push({
+        label: `Video YouTube (${mp4.quality || 'HD'})`,
+        quality: String(mp4.quality || 'MP4'),
+        ext: 'mp4',
+        url: String(mp4.download_url),
+        isAudio: false,
+      });
+    }
+    if (mp3?.download_url) {
+      links.push({
+        label: `Audio YouTube (${mp3.quality || '128kbps'})`,
+        quality: String(mp3.quality || 'MP3'),
+        ext: 'mp3',
+        url: String(mp3.download_url),
+        isAudio: true,
+      });
+    }
+    if (links.length === 0 && primary.download_url) {
+      const isAudio = primary.type === 'audio' || /mp3/i.test(String(primary.quality || ''));
+      links.push({
+        label: isAudio ? 'Audio YouTube MP3' : 'Video YouTube MP4',
+        quality: String(primary.quality || (isAudio ? 'MP3' : 'MP4')),
+        ext: isAudio ? 'mp3' : 'mp4',
+        url: String(primary.download_url),
+        isAudio,
+      });
+    }
+    if (links.length === 0) return null;
+
+    return {
+      platform: 'youtube',
+      title: String(primary.title || 'Video YouTube'),
+      author: 'YouTube',
+      thumbnail: String(primary.thumbnail || ''),
+      durationSec: Number(primary.duration || 0),
+      links,
+    };
+  }
+
+  if (safePlatform === 'facebook') {
+    const r = raw.result || raw;
+    const dl = r?.downloads || null;
+    const links = [];
+    if (dl?.hd?.url) {
+      links.push({ label: 'Video Facebook HD', quality: 'HD MP4', ext: 'mp4', url: String(dl.hd.url), isAudio: false });
+    }
+    if (dl?.sd?.url) {
+      links.push({ label: 'Video Facebook SD', quality: 'SD MP4', ext: 'mp4', url: String(dl.sd.url), isAudio: false });
+    }
+    if (typeof r?.hd === 'string' && r.hd) {
+      links.push({ label: 'Video Facebook HD', quality: 'HD MP4', ext: 'mp4', url: r.hd, isAudio: false });
+    }
+    if (typeof r?.sd === 'string' && r.sd) {
+      links.push({ label: 'Video Facebook SD', quality: 'SD MP4', ext: 'mp4', url: r.sd, isAudio: false });
+    }
+    if (links.length === 0) return null;
+    return {
+      platform: 'facebook',
+      title: String(r.title || 'Video Facebook'),
+      author: 'Facebook',
+      thumbnail: String(r.thumbnail || ''),
+      durationSec: 0,
+      links,
+    };
+  }
+
+  if (safePlatform === 'instagram') {
+    const list = Array.isArray(raw.result)
+      ? raw.result
+      : Array.isArray(raw.data)
+      ? raw.data
+      : raw.result?.downloadUrl || raw.result?.url || raw.result?.download_url
+      ? [raw.result]
+      : [];
+    const links = [];
+    let thumb = '';
+    list.forEach((item, idx) => {
+      const mediaUrl = item?.downloadUrl || item?.url || item?.download_url || item?.video || item?.image;
+      if (!mediaUrl) return;
+      if (!thumb && item?.thumbnail) thumb = String(item.thumbnail);
+      const isImg = item?.type === 'image' || /\.(jpg|jpeg|png|webp)(\?|$)/i.test(String(mediaUrl));
+      links.push({
+        label: isImg ? `Foto Instagram #${idx + 1}` : `Video Reels Instagram #${idx + 1}`,
+        quality: isImg ? 'JPG' : 'HD MP4',
+        ext: isImg ? 'jpg' : 'mp4',
+        url: String(mediaUrl),
+        isAudio: false,
+      });
+    });
+    if (links.length === 0) return null;
+    return {
+      platform: 'instagram',
+      title: String(raw.result?.title || raw.title || 'Post / Reels Instagram'),
+      author: 'Instagram',
+      thumbnail: thumb || String(raw.result?.thumbnail || ''),
+      durationSec: 0,
+      links,
+    };
+  }
+
+  return null;
+}
+

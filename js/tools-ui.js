@@ -8,6 +8,7 @@ import {
   WORLD_LOCATIONS,
   convertWorldTime,
   describeWeatherCode,
+  detectDownloaderPlatform,
   getNextPrayerInfo,
   getZoneTimeParts,
   matchIndonesianCityQuery,
@@ -25,6 +26,7 @@ import {
   readClientDeviceTelemetry,
   runInternetSpeedtest,
 } from './speedtest.js';
+import { fetchMediaDownload, triggerDirectMediaSave } from './downloader.js';
 
 const PRAYER_CACHE_KEY = 'manifestudio_prayer_cache_v1';
 const MYQURAN_CITIES_KEY = 'manifestudio_myquran_cities_v1';
@@ -297,6 +299,11 @@ export function createToolsHubController({
     speedEnvLoading: false,
     speedError: '',
     speedDevice: readClientDeviceTelemetry(),
+    dlUrl: '',
+    dlLoading: false,
+    dlSavingIdx: -1,
+    dlError: '',
+    dlResult: null,
   };
 
   let clockTimer = null;
@@ -1155,6 +1162,122 @@ export function createToolsHubController({
     `;
   }
 
+  function renderDownloaderPanel() {
+    const detected = detectDownloaderPlatform(toolState.dlUrl);
+    const res = toolState.dlResult;
+    const platformLabels = {
+      tiktok: 'TikTok · No Watermark',
+      youtube: 'YouTube · Video & MP3',
+      instagram: 'Instagram · Reels / Post',
+      facebook: 'Facebook · HD & SD',
+    };
+    const previewVideo = res?.links?.find((l) => !l.isAudio && l.ext === 'mp4') || null;
+
+    return `
+      <div class="tool-panel" data-testid="downloader-panel">
+        <div class="dl-hero-card">
+          <div class="dl-head">
+            <div>
+              <span class="tool-kicker">Gratis · Tanpa Watermark</span>
+              <h3 class="tool-subhead">Download Video &amp; Audio Sosmed</h3>
+              <p class="tool-hint">Tempel tautan publik dari TikTok, YouTube, Instagram, atau Facebook.</p>
+            </div>
+            <div class="dl-platform-pills" aria-label="Platform didukung">
+              <span class="dl-plat-pill ${detected === 'tiktok' ? 'is-detected' : ''}">TikTok</span>
+              <span class="dl-plat-pill ${detected === 'youtube' ? 'is-detected' : ''}">YouTube</span>
+              <span class="dl-plat-pill ${detected === 'instagram' ? 'is-detected' : ''}">Instagram</span>
+              <span class="dl-plat-pill ${detected === 'facebook' ? 'is-detected' : ''}">Facebook</span>
+            </div>
+          </div>
+
+          <form id="dl-fetch-form" class="dl-input-row">
+            <div class="search-box dl-url-box">
+              <svg class="search-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
+              <input
+                type="url"
+                id="dl-url-input"
+                class="search-input"
+                placeholder="https://vt.tiktok.com/... atau link YouTube / IG / FB"
+                value="${escapeHtml(toolState.dlUrl)}"
+                aria-label="Tautan video TikTok, YouTube, Instagram, atau Facebook"
+                required
+              />
+            </div>
+            <div class="dl-form-actions">
+              <button type="button" class="btn btn-secondary btn-sm" id="dl-paste-btn">
+                Tempel
+              </button>
+              <button type="submit" class="btn btn-primary btn-sm" id="dl-submit-btn" ${toolState.dlLoading ? 'disabled' : ''}>
+                ${toolState.dlLoading ? 'Memproses...' : 'Ambil Video'}
+              </button>
+              ${
+                toolState.dlUrl || res || toolState.dlError
+                  ? `<button type="button" class="btn btn-ghost btn-sm" id="dl-clear-btn">Reset</button>`
+                  : ''
+              }
+            </div>
+          </form>
+
+          ${
+            toolState.dlError
+              ? `<div class="form-error" role="alert">${escapeHtml(toolState.dlError)}</div>`
+              : ''
+          }
+        </div>
+
+        ${
+          toolState.dlLoading
+            ? `<div class="tool-loading-box">Mengambil tautan media berkualitas HD tanpa watermark...</div>`
+            : res
+            ? `
+              <div class="dl-result-card" data-testid="dl-result-card">
+                <div class="dl-result-media">
+                  ${
+                    previewVideo
+                      ? `<video class="dl-video-preview" controls playsinline preload="metadata" poster="${escapeHtml(res.thumbnail || '')}" src="${escapeHtml(previewVideo.url)}"></video>`
+                      : res.thumbnail
+                      ? `<img src="${escapeHtml(res.thumbnail)}" alt="" class="dl-thumb-img" />`
+                      : `<div class="dl-thumb-fallback">Media Siap Diunduh</div>`
+                  }
+                </div>
+                <div class="dl-result-info">
+                  <div class="dl-result-badges">
+                    <span class="dl-plat-pill is-detected">${escapeHtml(platformLabels[res.platform] || res.platform)}</span>
+                    ${
+                      res.durationSec > 0
+                        ? `<span class="mono-num dl-dur-pill">${Math.floor(res.durationSec / 60)}:${String(Math.floor(res.durationSec % 60)).padStart(2, '0')}</span>`
+                        : ''
+                    }
+                  </div>
+                  <h4 class="dl-result-title">${escapeHtml(res.title)}</h4>
+                  <p class="dl-result-author">${escapeHtml(res.author)}</p>
+
+                  <div class="dl-links-grid">
+                    ${res.links
+                      .map(
+                        (item, idx) => `
+                      <button
+                        type="button"
+                        class="btn ${idx === 0 ? 'btn-primary' : 'btn-secondary'} btn-sm dl-save-btn"
+                        data-dl-save-idx="${idx}"
+                        ${toolState.dlSavingIdx === idx ? 'disabled' : ''}
+                      >
+                        ${toolState.dlSavingIdx === idx ? 'Mengunduh...' : escapeHtml(item.label)}
+                        <span class="dl-quality-tag">${escapeHtml(item.quality)}</span>
+                      </button>
+                    `
+                      )
+                      .join('')}
+                  </div>
+                </div>
+              </div>
+            `
+            : ''
+        }
+      </div>
+    `;
+  }
+
   function syncSpeedtestLiveDom(update) {
     if (!mounted || toolState.activeSubTab !== 'speedtest') return;
     const phaseBadge = rootEl.querySelector('#speed-phase-badge');
@@ -1481,6 +1604,81 @@ export function createToolsHubController({
         if (speedAbort) speedAbort.abort();
       });
     }
+
+    if (toolState.activeSubTab === 'downloader') {
+      const urlInput = rootEl.querySelector('#dl-url-input');
+      urlInput?.addEventListener('input', (e) => {
+        toolState.dlUrl = e.target.value;
+        const detected = detectDownloaderPlatform(toolState.dlUrl);
+        rootEl.querySelectorAll('.dl-platform-pills .dl-plat-pill').forEach((el) => {
+          const text = el.textContent?.trim().toLowerCase() || '';
+          el.classList.toggle('is-detected', Boolean(detected && text === detected));
+        });
+      });
+
+      rootEl.querySelector('#dl-paste-btn')?.addEventListener('click', async () => {
+        try {
+          const clip = await navigator.clipboard.readText();
+          if (clip) {
+            toolState.dlUrl = clip.trim();
+            render();
+            onToast('Tautan ditempel dari clipboard.');
+          }
+        } catch {
+          onToast('Izinkan akses clipboard atau tempel manual pada kolom link.');
+        }
+      });
+
+      rootEl.querySelector('#dl-clear-btn')?.addEventListener('click', () => {
+        toolState.dlUrl = '';
+        toolState.dlError = '';
+        toolState.dlResult = null;
+        toolState.dlSavingIdx = -1;
+        render();
+      });
+
+      rootEl.querySelector('#dl-fetch-form')?.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const url = String(urlInput?.value || toolState.dlUrl || '').trim();
+        toolState.dlUrl = url;
+        if (!url || toolState.dlLoading) return;
+        toolState.dlLoading = true;
+        toolState.dlError = '';
+        toolState.dlResult = null;
+        render();
+        try {
+          const result = await fetchMediaDownload(url);
+          toolState.dlResult = result;
+          onToast(`Berhasil! ${result.links.length} opsi unduhan siap.`);
+        } catch (err) {
+          toolState.dlError = err?.message || 'Gagal mengambil tautan unduhan.';
+        } finally {
+          toolState.dlLoading = false;
+          render();
+        }
+      });
+
+      rootEl.querySelectorAll('[data-dl-save-idx]').forEach((btn) => {
+        btn.addEventListener('click', async () => {
+          const idx = Number(btn.getAttribute('data-dl-save-idx'));
+          const item = toolState.dlResult?.links?.[idx];
+          if (!item || toolState.dlSavingIdx >= 0) return;
+          toolState.dlSavingIdx = idx;
+          render();
+          try {
+            await triggerDirectMediaSave(
+              item.url,
+              `${toolState.dlResult.platform}-${toolState.dlResult.title}`,
+              item.ext
+            );
+            onToast('Mengunduh file media...');
+          } finally {
+            toolState.dlSavingIdx = -1;
+            render();
+          }
+        });
+      });
+    }
   }
 
   function render() {
@@ -1494,7 +1692,9 @@ export function createToolsHubController({
         ? renderWeatherPanel()
         : toolState.activeSubTab === 'worldclock'
         ? renderWorldClockPanel()
-        : renderSpeedtestPanel();
+        : toolState.activeSubTab === 'speedtest'
+        ? renderSpeedtestPanel()
+        : renderDownloaderPanel();
 
     rootEl.innerHTML = `
       <div class="tools-hub">
@@ -1539,6 +1739,16 @@ export function createToolsHubController({
             <img src="./assets/icons/tool-speed.svg" alt="" width="28" height="28" class="tools-subtab-icon" />
             <span>Speedtest</span>
           </button>
+          <button
+            type="button"
+            role="tab"
+            class="tools-subtab ${toolState.activeSubTab === 'downloader' ? 'is-active' : ''}"
+            data-tool-subtab="downloader"
+            aria-selected="${toolState.activeSubTab === 'downloader'}"
+          >
+            <img src="./assets/icons/tool-downloader.svg" alt="" width="28" height="28" class="tools-subtab-icon" />
+            <span>Downloader</span>
+          </button>
         </div>
 
         ${activeTabHtml}
@@ -1556,12 +1766,19 @@ export function createToolsHubController({
         subTab === 'prayer' ||
         subTab === 'weather' ||
         subTab === 'worldclock' ||
-        subTab === 'speedtest'
+        subTab === 'speedtest' ||
+        subTab === 'downloader'
       ) {
         toolState.activeSubTab = subTab;
       }
       render();
-      if (!toolState.location && !toolState.locationLoading) {
+      if (
+        (toolState.activeSubTab === 'prayer' ||
+          toolState.activeSubTab === 'weather' ||
+          toolState.activeSubTab === 'speedtest') &&
+        !toolState.location &&
+        !toolState.locationLoading
+      ) {
         ensureLocationAndLoad();
       }
       if (toolState.activeSubTab === 'speedtest') {

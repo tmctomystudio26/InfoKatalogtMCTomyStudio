@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64" fill="none">
+  <defs>
+    <linearGradient id="dlBg" x1="6" y1="6" x2="58" y2="58" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#ec4899" />
+      <stop offset="50%" stop-color="#8b5cf6" />
+      <stop offset="100%" stop-color="#06b6d4" />
+    </linearGradient>
+    <linearGradient id="dlGloss" x1="12" y1="8" x2="52" y2="48" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#ffffff" stop-opacity="0.34" />
+      <stop offset="100%" stop-color="#ffffff" stop-opacity="0" />
+    </linearGradient>
+  </defs>
+  <rect x="4" y="4" width="56" height="56" rx="16" fill="url(#dlBg)" />
+  <rect x="6" y="6" width="52" height="52" rx="14" fill="url(#dlGloss)" />
+  <path d="M32 16v21" stroke="#ffffff" stroke-width="4.2" stroke-linecap="round" />
+  <path d="m22 29 10 10 10-10" stroke="#ffffff" stroke-width="4.2" stroke-linecap="round" stroke-linejoin="round" />
+  <path d="M18 45.5h28" stroke="#ffffff" stroke-width="4.2" stroke-linecap="round" />
+  <circle cx="48" cy="17" r="4" fill="#fde047" />
+</svg>

@@ -1,17 +1,22 @@
 /**
- * Ad-Free Smart Music Player Widget
+ * Ad-Free Full-Length Smart Music Player Widget
  * - Draggable / movable music icon (persists user-selected coordinates cleanly).
- * - Prioritizes Viral Indonesia 2026 Gen-Z songs, DJ remixes, & covers (ad-free streams).
- * - Auto-triggers playback when any interactive button is clicked (unless user paused).
+ * - Full-length Indonesian Viral 2026 Gen-Z songs, DJ remixes, & covers (zero 30s previews).
+ * - Multi-source support inside popover: Full Audio (Audius Full Tracks), SoundCloud Player, & Spotify Embed.
+ * - Auto-triggers Full Audio playback when any interactive button is clicked (unless user paused).
  * - Learns from user search terms & frequent plays for weighted random picks.
  */
 
 import {
+  MIN_FULL_TRACK_SECONDS,
+  buildMusicEmbedUrl,
   clampMusicFabPosition,
   createDefaultMusicPrefs,
+  filterFullLengthTracks,
   formatAudioTime,
   getPopoverAnchorClasses,
   getTopSearchKeywords,
+  normalizeMusicMode,
   pickWeightedRandomTrack,
   recordMusicPreference,
   scoreTrackForUser,
@@ -20,56 +25,103 @@ import {
 const MUSIC_PREFS_KEY = 'manifestudio_music_prefs_v1';
 const MUSIC_STATE_KEY = 'manifestudio_music_session_v1';
 const MUSIC_POS_KEY = 'manifestudio_music_pos_v1';
+const MUSIC_MODE_KEY = 'manifestudio_music_mode_v1';
 const AUDIUS_API_BASE = 'https://api.audius.co/v1';
 
-// Curated Viral Indonesia 2025-2026 Gen-Z hits, DJ edits & Acoustic/Koplo covers
-const VIRAL_INDO_2026_QUERIES = [
-  'tabola bale silet open up',
-  'garam dan madu tenxi naykilla',
-  'mangu whisnu santika',
-  'stecu stecu faris adam',
-  'pica pica juan reza',
-  'everything u are hindia',
-  'bunga maaf the lantis',
-  'bergema sampai selamanya nadhif',
-  'satu bulan bernadya',
-  'sialan juicy luicy',
-  'terbuang dalam waktu barasuara',
-  'calon mantu idaman koplo',
-];
-
-const AUDIUS_INDO_DJ_QUERIES = [
+// Verified queries returning full-length (>75s) Indonesian Viral Gen-Z, DJ & Cover tracks
+const AUDIUS_INDO_FULL_QUERIES = [
+  'Garam dan Madu',
+  'Bernadya',
   'Whisnu Santika',
   'Weird Genius',
   'Feel Koplo',
-  'Dipha Barus',
+  'Hindia',
+  'Tulus',
+  'Pamungkas',
+  'Dangdut Remix',
+  'Lagu Indonesia',
 ];
 
-// Built-in backup curated royalty-free ambient streams if offline
+const SOUNDCLOUD_STATIONS = [
+  {
+    id: 'sc-feelkoplo',
+    label: 'Feel Koplo (DJ Indo)',
+    url: 'https://soundcloud.com/feelkoplo',
+  },
+  {
+    id: 'sc-weird',
+    label: 'Weird Genius',
+    url: 'https://soundcloud.com/weirdgenius',
+  },
+  {
+    id: 'sc-hindia',
+    label: 'Hindia (Indie Indo)',
+    url: 'https://soundcloud.com/hindia',
+  },
+];
+
+const SPOTIFY_STATIONS = [
+  {
+    id: 'sp-top50id',
+    label: 'Top 50 Indonesia',
+    playlistId: '37i9dQZEVXbObFQZ3JLcXt',
+  },
+  {
+    id: 'sp-viralid',
+    label: 'Hits Viral Indo',
+    playlistId: '37i9dQZF1DXa2PvUpywmrr',
+  },
+];
+
+// Full-length royalty-free backup tracks if offline
 const FALLBACK_TRACKS = [
   {
     id: 'cc-lofi-1',
-    title: 'Midnight Chill Beat (Offline)',
+    title: 'Midnight Chill Full Mix (Offline)',
     artist: 'FreePD Ambient',
     genre: 'Lo-Fi Chill',
     duration: 148,
     artwork: '',
     isIndonesianViral: false,
+    sourceLabel: 'Full Version Offline',
     streamUrl: 'https://freepd.com/music/Aerosol%20of%20My%20Love.mp3',
   },
   {
     id: 'cc-synth-2',
-    title: 'Neon Horizon (Offline)',
+    title: 'Neon Horizon Full Mix (Offline)',
     artist: 'FreePD Electronic',
     genre: 'Synthwave',
     duration: 132,
     artwork: '',
     isIndonesianViral: false,
+    sourceLabel: 'Full Version Offline',
     streamUrl: 'https://freepd.com/music/Neon%20Laser%20Horizon.mp3',
   },
 ];
 
 let singletonInitialized = false;
+let scApiPromise = null;
+
+function ensureSoundCloudApiLoaded() {
+  if (typeof window === 'undefined') return Promise.resolve(null);
+  if (window.SC?.Widget) return Promise.resolve(window.SC);
+  if (scApiPromise) return scApiPromise;
+  scApiPromise = new Promise((resolve) => {
+    const existing = document.querySelector('script[data-sc-widget-api="true"]');
+    if (existing) {
+      existing.addEventListener('load', () => resolve(window.SC || null), { once: true });
+      return;
+    }
+    const script = document.createElement('script');
+    script.src = 'https://w.soundcloud.com/player/api.js';
+    script.async = true;
+    script.dataset.scWidgetApi = 'true';
+    script.onload = () => resolve(window.SC || null);
+    script.onerror = () => resolve(null);
+    document.head.appendChild(script);
+  });
+  return scApiPromise;
+}
 
 function readPrefs() {
   try {
@@ -92,20 +144,50 @@ function savePrefs(prefs) {
 function readSessionState() {
   try {
     const raw = localStorage.getItem(MUSIC_STATE_KEY);
-    if (!raw) return { userPaused: false, lastTrackId: null };
+    if (!raw) {
+      return {
+        userPaused: false,
+        lastTrackId: null,
+        scStationId: SOUNDCLOUD_STATIONS[0].id,
+        spStationId: SPOTIFY_STATIONS[0].id,
+      };
+    }
     const parsed = JSON.parse(raw);
     return {
       userPaused: Boolean(parsed?.userPaused),
       lastTrackId: parsed?.lastTrackId || null,
+      scStationId: parsed?.scStationId || SOUNDCLOUD_STATIONS[0].id,
+      spStationId: parsed?.spStationId || SPOTIFY_STATIONS[0].id,
     };
   } catch {
-    return { userPaused: false, lastTrackId: null };
+    return {
+      userPaused: false,
+      lastTrackId: null,
+      scStationId: SOUNDCLOUD_STATIONS[0].id,
+      spStationId: SPOTIFY_STATIONS[0].id,
+    };
   }
 }
 
 function saveSessionState(sess) {
   try {
     localStorage.setItem(MUSIC_STATE_KEY, JSON.stringify(sess));
+  } catch {
+    // Ignore
+  }
+}
+
+function readMusicMode() {
+  try {
+    return normalizeMusicMode(localStorage.getItem(MUSIC_MODE_KEY));
+  } catch {
+    return 'full-audio';
+  }
+}
+
+function saveMusicMode(mode) {
+  try {
+    localStorage.setItem(MUSIC_MODE_KEY, normalizeMusicMode(mode));
   } catch {
     // Ignore
   }
@@ -137,26 +219,10 @@ function savePos(pos) {
   }
 }
 
-function mapItunesTrack(item, isIndo = true) {
-  if (!item || !item.trackId || !item.previewUrl) return null;
-  const art = String(item.artworkUrl100 || item.artworkUrl60 || '').replace('100x100', '300x300');
-  const tags = `${item.collectionName || ''} ${item.primaryGenreName || ''} indonesia viral gen z`;
-  return {
-    id: `it-${item.trackId}`,
-    title: String(item.trackName || 'Lagu Viral Indonesia'),
-    artist: String(item.artistName || 'Artis Indonesia'),
-    genre: String(item.primaryGenreName || 'Indo Pop / Viral'),
-    tags,
-    duration: 30,
-    artwork: art,
-    isIndonesianViral: isIndo,
-    sourceLabel: 'Viral Indonesia',
-    streamUrl: String(item.previewUrl),
-  };
-}
-
-function mapAudiusTrack(item, isIndo = false) {
-  if (!item || !item.id) return null;
+function mapAudiusTrack(item, isIndo = true) {
+  if (!item || !item.id || !item.is_streamable) return null;
+  const duration = Number(item.duration || 0);
+  if (duration < 45) return null;
   const art =
     item.artwork?.['150x150'] ||
     item.artwork?.['480x480'] ||
@@ -164,29 +230,19 @@ function mapAudiusTrack(item, isIndo = false) {
     '';
   return {
     id: `au-${item.id}`,
-    title: String(item.title || 'DJ Remix'),
-    artist: String(item.user?.name || 'DJ Creator'),
-    genre: String(item.genre || 'DJ / Remix'),
-    tags: `${item.tags || ''} ${isIndo ? 'indonesia dj remix cover' : ''}`,
-    duration: Number(item.duration || 0),
+    title: String(item.title || 'Lagu Full Version'),
+    artist: String(item.user?.name || 'Musisi Indonesia'),
+    genre: String(item.genre || 'Indo Viral / DJ'),
+    tags: `${item.tags || ''} ${isIndo ? 'indonesia viral dj remix cover full' : 'full'}`,
+    duration,
     artwork: art,
     isIndonesianViral: isIndo,
-    sourceLabel: isIndo ? 'DJ / Cover Indo' : 'Musik Bebas Iklan',
+    sourceLabel: 'Full Version',
     streamUrl: `${AUDIUS_API_BASE}/tracks/${encodeURIComponent(item.id)}/stream?app_name=Manifestudio`,
   };
 }
 
-async function fetchItunesIndonesia(query, limit = 2, isIndo = true) {
-  const res = await fetch(
-    `https://itunes.apple.com/search?term=${encodeURIComponent(query)}&country=ID&media=music&limit=${limit}`,
-    { cache: 'no-store' }
-  );
-  if (!res.ok) return [];
-  const json = await res.json();
-  return (json?.results || []).map((item) => mapItunesTrack(item, isIndo)).filter(Boolean);
-}
-
-async function fetchAudiusSearch(query, limit = 4, isIndo = false) {
+async function fetchAudiusSearch(query, limit = 6, isIndo = true) {
   const q = String(query || '').trim();
   if (!q) return [];
   const res = await fetch(
@@ -195,7 +251,9 @@ async function fetchAudiusSearch(query, limit = 4, isIndo = false) {
   );
   if (!res.ok) return [];
   const json = await res.json();
-  return (json?.data || []).map((item) => mapAudiusTrack(item, isIndo)).filter(Boolean);
+  const mapped = (json?.data || []).map((item) => mapAudiusTrack(item, isIndo)).filter(Boolean);
+  const full = filterFullLengthTracks(mapped, MIN_FULL_TRACK_SECONDS);
+  return full.length > 0 ? full : mapped;
 }
 
 function escapeHtml(str) {
@@ -222,6 +280,7 @@ export function initMusicPlayer() {
 
   let prefs = readPrefs();
   let session = readSessionState();
+  let musicMode = readMusicMode();
   let customPos = readSavedPos();
   let tracks = [...FALLBACK_TRACKS];
   let poolLoaded = false;
@@ -235,6 +294,7 @@ export function initMusicPlayer() {
   let searchDebounce = null;
   let playedLoggedForId = null;
   let suppressNextFabClick = false;
+  let scWidget = null;
 
   function applyRootPosition() {
     const fabSize = window.innerWidth <= 640 ? 40 : 44;
@@ -304,19 +364,14 @@ export function initMusicPlayer() {
     if (poolPromise) return poolPromise;
     poolPromise = (async () => {
       try {
-        // Pick a rich batch of Indonesian Viral 2026 Gen-Z + DJ/Cover tracks in parallel
-        const shuffledQueries = [...VIRAL_INDO_2026_QUERIES].sort(() => Math.random() - 0.5);
-        const batchQueries = shuffledQueries.slice(0, 7);
-        const djQueries = [...AUDIUS_INDO_DJ_QUERIES].sort(() => Math.random() - 0.5).slice(0, 2);
+        const shuffled = [...AUDIUS_INDO_FULL_QUERIES].sort(() => Math.random() - 0.5);
+        const batchQueries = shuffled.slice(0, 6);
         const topTerms = getTopSearchKeywords(prefs, 2);
 
-        const itunesJobs = batchQueries.map((q) => fetchItunesIndonesia(q, 2, true).catch(() => []));
-        const userTermJobs = topTerms.map((term) =>
-          fetchItunesIndonesia(term, 3, true).catch(() => [])
-        );
-        const djJobs = djQueries.map((q) => fetchAudiusSearch(q, 2, true).catch(() => []));
+        const userJobs = topTerms.map((term) => fetchAudiusSearch(term, 4, true).catch(() => []));
+        const indoJobs = batchQueries.map((q) => fetchAudiusSearch(q, 4, true).catch(() => []));
 
-        const results = await Promise.all([...userTermJobs, ...itunesJobs, ...djJobs]);
+        const results = await Promise.all([...userJobs, ...indoJobs]);
         const mergedMap = new Map();
         for (const group of results) {
           for (const t of group) {
@@ -325,8 +380,9 @@ export function initMusicPlayer() {
             }
           }
         }
-        if (mergedMap.size > 0) {
-          tracks = [...mergedMap.values()];
+        const fullTracks = filterFullLengthTracks([...mergedMap.values()], MIN_FULL_TRACK_SECONDS);
+        if (fullTracks.length > 0) {
+          tracks = fullTracks;
         }
         poolLoaded = true;
       } catch {
@@ -337,39 +393,188 @@ export function initMusicPlayer() {
     return poolPromise;
   }
 
-  function renderWidget() {
-    applyRootPosition();
+  function getActiveSoundCloudStation() {
+    return (
+      SOUNDCLOUD_STATIONS.find((s) => s.id === session.scStationId) || SOUNDCLOUD_STATIONS[0]
+    );
+  }
+
+  function getActiveSpotifyStation() {
+    return SPOTIFY_STATIONS.find((s) => s.id === session.spStationId) || SPOTIFY_STATIONS[0];
+  }
+
+  function renderFullAudioBody() {
     const score = currentTrack ? scoreTrackForUser(currentTrack, prefs) : 1;
     const matchBadge = currentTrack
       ? currentTrack.isIndonesianViral && score > 3.5
-        ? 'Viral Indo · Sesuai Minatmu'
-        : currentTrack.sourceLabel || 'Viral Indonesia 2026'
-      : 'Viral Indonesia 2026';
+        ? 'Full Song · Sesuai Minatmu'
+        : `${currentTrack.sourceLabel || 'Full Song'} · ${formatAudioTime(currentTrack.duration)}`
+      : 'Lagu Full Version Bebas Iklan';
 
-    const trackTitle = currentTrack ? currentTrack.title : 'Musik Viral Indonesia';
-    const trackArtist = currentTrack
-      ? `${currentTrack.artist} · ${currentTrack.genre}`
-      : 'Klik tombol apa saja · Geser ikon untuk pindah';
     const curSec = Number.isFinite(audio.currentTime) ? audio.currentTime : 0;
     const durSec =
       Number.isFinite(audio.duration) && audio.duration > 0
         ? audio.duration
-        : currentTrack?.duration || 30;
+        : currentTrack?.duration || 180;
     const pct = durSec > 0 ? Math.min(100, Math.round((curSec / durSec) * 100)) : 0;
+
+    return `
+      <div class="music-algo-row">
+        <span class="music-algo-pill">${escapeHtml(matchBadge)}</span>
+        <span class="music-time mono-num" id="music-time-label">${formatAudioTime(curSec)} / ${formatAudioTime(durSec)}</span>
+      </div>
+
+      <div class="music-progress-row">
+        <input
+          type="range"
+          id="music-seek-slider"
+          class="music-seek-slider"
+          min="0"
+          max="100"
+          step="0.5"
+          value="${pct}"
+          aria-label="Geser progres lagu"
+        />
+      </div>
+
+      <div class="music-controls-row">
+        <button
+          type="button"
+          class="btn btn-primary btn-sm music-ctrl-btn"
+          id="music-playpause-btn"
+          aria-label="${isPlaying ? 'Jeda musik' : 'Putar musik'}"
+        >
+          ${isLoading ? 'Memuat...' : isPlaying ? '❚❚ Jeda' : '▶ Putar Full'}
+        </button>
+        <button
+          type="button"
+          class="btn btn-secondary btn-sm music-ctrl-btn"
+          id="music-next-btn"
+          aria-label="Ganti lagu viral berikutnya"
+        >
+          ⏭ Lagu Lain
+        </button>
+      </div>
+
+      <form id="music-search-form" class="music-search-row">
+        <input
+          type="search"
+          id="music-search-input"
+          class="music-search-input"
+          placeholder="Cari lagu Indo, cover, atau DJ full..."
+          value="${escapeHtml(searchQuery)}"
+          aria-label="Cari lagu Indonesia full version"
+        />
+        <button type="submit" class="btn btn-secondary btn-sm" aria-label="Cari dan putar lagu">Cari</button>
+      </form>
+    `;
+  }
+
+  function renderSoundCloudBody() {
+    const active = getActiveSoundCloudStation();
+    const embedSrc = buildMusicEmbedUrl('soundcloud', active.url);
+    return `
+      <div class="music-station-pills" role="group" aria-label="Pilih stasiun SoundCloud">
+        ${SOUNDCLOUD_STATIONS.map(
+          (st) => `
+          <button
+            type="button"
+            class="music-station-pill ${st.id === active.id ? 'is-active' : ''}"
+            data-sc-station="${escapeHtml(st.id)}"
+          >
+            ${escapeHtml(st.label)}
+          </button>
+        `
+        ).join('')}
+      </div>
+      <div class="music-embed-wrap is-soundcloud">
+        <iframe
+          id="music-sc-iframe"
+          class="music-embed-iframe"
+          title="SoundCloud Player ${escapeHtml(active.label)}"
+          scrolling="no"
+          frameborder="no"
+          allow="autoplay"
+          src="${escapeHtml(embedSrc)}"
+        ></iframe>
+      </div>
+    `;
+  }
+
+  function renderSpotifyBody() {
+    const active = getActiveSpotifyStation();
+    const embedSrc = buildMusicEmbedUrl('spotify', active.playlistId);
+    return `
+      <div class="music-station-pills" role="group" aria-label="Pilih playlist Spotify">
+        ${SPOTIFY_STATIONS.map(
+          (st) => `
+          <button
+            type="button"
+            class="music-station-pill ${st.id === active.id ? 'is-active' : ''}"
+            data-sp-station="${escapeHtml(st.id)}"
+          >
+            ${escapeHtml(st.label)}
+          </button>
+        `
+        ).join('')}
+      </div>
+      <div class="music-embed-wrap is-spotify">
+        <iframe
+          id="music-sp-iframe"
+          class="music-embed-iframe"
+          title="Spotify Player ${escapeHtml(active.label)}"
+          frameborder="0"
+          allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture"
+          loading="lazy"
+          src="${escapeHtml(embedSrc)}"
+        ></iframe>
+      </div>
+    `;
+  }
+
+  function renderWidget() {
+    applyRootPosition();
+
+    const activeSc = getActiveSoundCloudStation();
+    const activeSp = getActiveSpotifyStation();
+
+    const trackTitle =
+      musicMode === 'soundcloud'
+        ? activeSc.label
+        : musicMode === 'spotify'
+        ? activeSp.label
+        : currentTrack
+        ? currentTrack.title
+        : 'Musik Viral Indonesia (Full)';
+    const trackArtist =
+      musicMode === 'soundcloud'
+        ? 'SoundCloud Official Player · Full Stream'
+        : musicMode === 'spotify'
+        ? 'Spotify Embed Player · Playlist Indonesia'
+        : currentTrack
+        ? `${currentTrack.artist} · ${currentTrack.genre}`
+        : 'Klik tombol apa saja · Versi penuh tanpa iklan';
+
+    const modeBody =
+      musicMode === 'soundcloud'
+        ? renderSoundCloudBody()
+        : musicMode === 'spotify'
+        ? renderSpotifyBody()
+        : renderFullAudioBody();
 
     root.innerHTML = `
       <div
         id="music-popover"
         class="music-popover"
         role="dialog"
-        aria-label="Pemutar Musik Viral Indonesia Bebas Iklan"
+        aria-label="Pemutar Musik Full Version Bebas Iklan"
         ${isOpen ? '' : 'hidden'}
       >
         <div class="music-pop-head">
           <div class="music-pop-track">
             <div class="music-art-wrap">
               ${
-                currentTrack?.artwork
+                musicMode === 'full-audio' && currentTrack?.artwork
                   ? `<img src="${escapeHtml(currentTrack.artwork)}" alt="" width="40" height="40" class="music-art-img" />`
                   : `<span class="music-art-fallback" aria-hidden="true">♪</span>`
               }
@@ -394,55 +599,39 @@ export function initMusicPlayer() {
           </div>
         </div>
 
-        <div class="music-algo-row">
-          <span class="music-algo-pill">${escapeHtml(matchBadge)}</span>
-          <span class="music-time mono-num" id="music-time-label">${formatAudioTime(curSec)} / ${formatAudioTime(durSec)}</span>
-        </div>
-
-        <div class="music-progress-row">
-          <input
-            type="range"
-            id="music-seek-slider"
-            class="music-seek-slider"
-            min="0"
-            max="100"
-            step="0.5"
-            value="${pct}"
-            aria-label="Geser progres lagu"
-          />
-        </div>
-
-        <div class="music-controls-row">
+        <div class="music-mode-tabs" role="tablist" aria-label="Pilih sumber pemutar musik">
           <button
             type="button"
-            class="btn btn-primary btn-sm music-ctrl-btn"
-            id="music-playpause-btn"
-            aria-label="${isPlaying ? 'Jeda musik' : 'Putar musik'}"
+            role="tab"
+            class="music-mode-btn ${musicMode === 'full-audio' ? 'is-active' : ''}"
+            data-music-mode="full-audio"
+            aria-selected="${musicMode === 'full-audio'}"
           >
-            ${isLoading ? 'Memuat...' : isPlaying ? '❚❚ Jeda' : '▶ Putar'}
+            Full Audio
           </button>
           <button
             type="button"
-            class="btn btn-secondary btn-sm music-ctrl-btn"
-            id="music-next-btn"
-            aria-label="Ganti lagu viral berikutnya"
+            role="tab"
+            class="music-mode-btn ${musicMode === 'soundcloud' ? 'is-active' : ''}"
+            data-music-mode="soundcloud"
+            aria-selected="${musicMode === 'soundcloud'}"
           >
-            ⏭ Lagu Lain
+            SoundCloud
+          </button>
+          <button
+            type="button"
+            role="tab"
+            class="music-mode-btn ${musicMode === 'spotify' ? 'is-active' : ''}"
+            data-music-mode="spotify"
+            aria-selected="${musicMode === 'spotify'}"
+          >
+            Spotify
           </button>
         </div>
 
-        <form id="music-search-form" class="music-search-row">
-          <input
-            type="search"
-            id="music-search-input"
-            class="music-search-input"
-            placeholder="Cari lagu Indo, cover, atau DJ..."
-            value="${escapeHtml(searchQuery)}"
-            aria-label="Cari lagu Indonesia, cover, atau DJ"
-          />
-          <button type="submit" class="btn btn-secondary btn-sm" aria-label="Cari dan putar lagu">Cari</button>
-        </form>
-        <div class="music-drag-tip">Tips: Tekan &amp; geser ikon musik ke posisi mana saja.</div>
+        ${modeBody}
+
+        <div class="music-drag-tip">Tekan &amp; geser ikon musik ke posisi mana saja.</div>
       </div>
 
       <button
@@ -464,14 +653,14 @@ export function initMusicPlayer() {
   }
 
   function syncProgressDomOnly() {
-    if (!isOpen || isSeeking) return;
+    if (!isOpen || isSeeking || musicMode !== 'full-audio') return;
     const slider = root.querySelector('#music-seek-slider');
     const timeEl = root.querySelector('#music-time-label');
     const cur = Number.isFinite(audio.currentTime) ? audio.currentTime : 0;
     const dur =
       Number.isFinite(audio.duration) && audio.duration > 0
         ? audio.duration
-        : currentTrack?.duration || 30;
+        : currentTrack?.duration || 180;
     if (slider && dur > 0) {
       slider.value = String(Math.min(100, (cur / dur) * 100));
     }
@@ -481,7 +670,7 @@ export function initMusicPlayer() {
   }
 
   async function playTrack(track, { recordPlay = true } = {}) {
-    if (!track || !track.streamUrl) return;
+    if (!track || !track.streamUrl || musicMode !== 'full-audio') return;
     currentTrack = track;
     session.lastTrackId = track.id;
     session.userPaused = false;
@@ -511,6 +700,7 @@ export function initMusicPlayer() {
   }
 
   async function playNextSmartTrack({ wasSkip = false } = {}) {
+    if (musicMode !== 'full-audio') return;
     if (wasSkip && currentTrack) {
       prefs = recordMusicPreference(prefs, { type: 'skip', track: currentTrack });
       savePrefs(prefs);
@@ -534,12 +724,7 @@ export function initMusicPlayer() {
     isLoading = true;
     renderWidget();
     try {
-      // Search Indonesian iTunes hits + Audius DJ/Remix in parallel
-      const [indoResults, djResults] = await Promise.all([
-        fetchItunesIndonesia(q, 6, true).catch(() => []),
-        fetchAudiusSearch(q, 4, false).catch(() => []),
-      ]);
-      const results = [...indoResults, ...djResults];
+      const results = await fetchAudiusSearch(q, 8, true);
       if (results.length > 0) {
         const merged = new Map(tracks.map((t) => [t.id, t]));
         for (const r of results) merged.set(r.id, r);
@@ -551,12 +736,13 @@ export function initMusicPlayer() {
         }
       }
     } catch {
-      // Fallback to weighted local pool
+      // Fallback to weighted full-track pool
     }
     await playNextSmartTrack();
   }
 
   function togglePlayPause() {
+    if (musicMode !== 'full-audio') return;
     if (!currentTrack) {
       playNextSmartTrack();
       return;
@@ -579,6 +765,30 @@ export function initMusicPlayer() {
       session.userPaused = true;
       saveSessionState(session);
       renderWidget();
+    }
+  }
+
+  async function setupSoundCloudWidgetBindings() {
+    const iframe = root.querySelector('#music-sc-iframe');
+    if (!iframe) return;
+    const SC = await ensureSoundCloudApiLoaded();
+    if (!SC?.Widget || musicMode !== 'soundcloud') return;
+    try {
+      scWidget = SC.Widget(iframe);
+      scWidget.bind(SC.Widget.Events.PLAY, () => {
+        isPlaying = true;
+        root.querySelector('#music-fab-btn')?.classList.add('is-playing');
+      });
+      scWidget.bind(SC.Widget.Events.PAUSE, () => {
+        isPlaying = false;
+        root.querySelector('#music-fab-btn')?.classList.remove('is-playing');
+      });
+      scWidget.bind(SC.Widget.Events.FINISH, () => {
+        isPlaying = false;
+        root.querySelector('#music-fab-btn')?.classList.remove('is-playing');
+      });
+    } catch {
+      scWidget = null;
     }
   }
 
@@ -657,7 +867,7 @@ export function initMusicPlayer() {
       }
       isOpen = !isOpen;
       renderWidget();
-      if (isOpen && !currentTrack) {
+      if (isOpen && musicMode === 'full-audio' && !currentTrack) {
         ensureTrackPool();
       }
     });
@@ -677,6 +887,44 @@ export function initMusicPlayer() {
       renderWidget();
     });
 
+    root.querySelectorAll('[data-music-mode]').forEach((btn) => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const nextMode = normalizeMusicMode(btn.getAttribute('data-music-mode'));
+        if (nextMode === musicMode) return;
+        musicMode = nextMode;
+        saveMusicMode(nextMode);
+        if (nextMode !== 'full-audio' && !audio.paused) {
+          audio.pause();
+          isPlaying = false;
+        }
+        scWidget = null;
+        renderWidget();
+      });
+    });
+
+    root.querySelectorAll('[data-sc-station]').forEach((btn) => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const id = btn.getAttribute('data-sc-station');
+        if (!id || id === session.scStationId) return;
+        session.scStationId = id;
+        saveSessionState(session);
+        renderWidget();
+      });
+    });
+
+    root.querySelectorAll('[data-sp-station]').forEach((btn) => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const id = btn.getAttribute('data-sp-station');
+        if (!id || id === session.spStationId) return;
+        session.spStationId = id;
+        saveSessionState(session);
+        renderWidget();
+      });
+    });
+
     root.querySelector('#music-playpause-btn')?.addEventListener('click', (e) => {
       e.stopPropagation();
       togglePlayPause();
@@ -693,7 +941,7 @@ export function initMusicPlayer() {
       const dur =
         Number.isFinite(audio.duration) && audio.duration > 0
           ? audio.duration
-          : currentTrack?.duration || 30;
+          : currentTrack?.duration || 180;
       const targetSec = (Number(slider.value) / 100) * dur;
       const timeEl = root.querySelector('#music-time-label');
       if (timeEl) {
@@ -704,7 +952,7 @@ export function initMusicPlayer() {
       const dur =
         Number.isFinite(audio.duration) && audio.duration > 0
           ? audio.duration
-          : currentTrack?.duration || 30;
+          : currentTrack?.duration || 180;
       if (Number.isFinite(audio.duration) && audio.duration > 0) {
         audio.currentTime = (Number(slider.value) / 100) * dur;
       }
@@ -720,6 +968,10 @@ export function initMusicPlayer() {
       e.preventDefault();
       handleMusicSearch(searchInput?.value || '');
     });
+
+    if (isOpen && musicMode === 'soundcloud') {
+      setupSoundCloudWidgetBindings();
+    }
   }
 
   // Audio lifecycle listeners
@@ -734,10 +986,12 @@ export function initMusicPlayer() {
     root.querySelector('#music-fab-btn')?.classList.remove('is-playing');
   });
   audio.addEventListener('ended', () => {
-    playNextSmartTrack({ wasSkip: false });
+    if (musicMode === 'full-audio') {
+      playNextSmartTrack({ wasSkip: false });
+    }
   });
   audio.addEventListener('error', () => {
-    if (!session.userPaused && currentTrack) {
+    if (musicMode === 'full-audio' && !session.userPaused && currentTrack) {
       const prevId = currentTrack.id;
       tracks = tracks.filter((t) => t.id !== prevId);
       if (tracks.length === 0) tracks = [...FALLBACK_TRACKS];
@@ -773,7 +1027,7 @@ export function initMusicPlayer() {
     }
   });
 
-  // Auto-start smart music when any interactive button/tile is clicked
+  // Auto-start smart full-version music when any interactive button/tile is clicked
   document.addEventListener('click', (e) => {
     const target = e.target;
     if (!(target instanceof Element)) return;
@@ -782,7 +1036,7 @@ export function initMusicPlayer() {
       'button, a, [role="button"], [role="tab"], .product-tile'
     );
     if (!clickable) return;
-    if (session.userPaused) return;
+    if (musicMode !== 'full-audio' || session.userPaused) return;
     if (!isPlaying && !isLoading) {
       playNextSmartTrack({ wasSkip: false });
     }

@@ -5,6 +5,58 @@
 
 export const MAX_SEARCH_TERMS = 24;
 export const MAX_TRACK_STATS = 40;
+export const MIN_FULL_TRACK_SECONDS = 75;
+export const MUSIC_MODES = ['full-audio', 'soundcloud', 'spotify'];
+
+export function normalizeMusicMode(mode) {
+  const clean = String(mode || '').trim().toLowerCase();
+  return MUSIC_MODES.includes(clean) ? clean : 'full-audio';
+}
+
+export function filterFullLengthTracks(tracks = [], minSeconds = MIN_FULL_TRACK_SECONDS) {
+  const minDur = Math.max(0, Number(minSeconds) || 0);
+  if (!Array.isArray(tracks)) return [];
+  return tracks.filter(
+    (t) => t && t.id && t.streamUrl && Number(t.duration || 0) >= minDur
+  );
+}
+
+export function buildMusicEmbedUrl(mode, target) {
+  const safeMode = normalizeMusicMode(mode);
+  const raw = String(target || '').trim();
+  if (!raw) return '';
+
+  if (safeMode === 'soundcloud') {
+    const params = new URLSearchParams({
+      url: raw,
+      color: '#2563eb',
+      auto_play: 'false',
+      hide_related: 'true',
+      show_comments: 'false',
+      show_user: 'true',
+      show_reposts: 'false',
+      show_teaser: 'false',
+      visual: 'false',
+      show_artwork: 'true',
+    });
+    return `https://w.soundcloud.com/player/?${params.toString()}`;
+  }
+
+  if (safeMode === 'spotify') {
+    if (raw.startsWith('https://open.spotify.com/embed/')) {
+      return raw;
+    }
+    if (raw.startsWith('https://open.spotify.com/')) {
+      return raw.replace('https://open.spotify.com/', 'https://open.spotify.com/embed/');
+    }
+    const cleanId = raw.replace(/^spotify:(playlist|track|album):/i, '');
+    const kindMatch = raw.match(/^spotify:(playlist|track|album):/i);
+    const kind = kindMatch ? kindMatch[1].toLowerCase() : 'playlist';
+    return `https://open.spotify.com/embed/${kind}/${encodeURIComponent(cleanId)}?utm_source=generator&theme=0`;
+  }
+
+  return '';
+}
 
 export function createDefaultMusicPrefs() {
   return {
@@ -165,7 +217,13 @@ export function pickWeightedRandomTrack(
   currentTrackId = null,
   rng = Math.random
 ) {
-  const list = Array.isArray(tracks) ? tracks.filter((t) => t && t.id && t.streamUrl) : [];
+  const fullOnly = filterFullLengthTracks(tracks, MIN_FULL_TRACK_SECONDS);
+  const list =
+    fullOnly.length > 0
+      ? fullOnly
+      : Array.isArray(tracks)
+      ? tracks.filter((t) => t && t.id && t.streamUrl)
+      : [];
   if (list.length === 0) return null;
 
   const pool =

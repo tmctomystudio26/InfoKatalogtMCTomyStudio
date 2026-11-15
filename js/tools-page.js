@@ -2,7 +2,7 @@ import { createToolsHubController } from './tools-ui.js';
 import { initMusicPlayer } from './music.js';
 
 const THEME_STORAGE_KEY = 'manifestudio_theme_v1';
-const VALID_TABS = new Set(['prayer', 'weather', 'worldclock', 'speedtest']);
+const VALID_TABS = new Set(['prayer', 'weather', 'worldclock', 'speedtest', 'downloader']);
 
 const TAB_META = {
   prayer: {
@@ -20,6 +20,10 @@ const TAB_META = {
   speedtest: {
     title: 'Speedtest Internet',
     subtitle: 'Ukur ping, jitter, download, upload, server, ISP, dan info perangkat.',
+  },
+  downloader: {
+    title: 'Downloader Video Tanpa Watermark',
+    subtitle: 'Unduh video HD & audio dari TikTok, YouTube, Instagram, dan Facebook.',
   },
 };
 
