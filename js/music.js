@@ -1,13 +1,16 @@
 /**
  * Ad-Free Smart Music Player Widget
- * - Triggers playback smoothly when any interactive button is clicked (unless user paused).
- * - Recommends songs randomly weighted by what the user searches & frequently plays.
- * - Floating compact dock icon + non-intrusive player popover with Play/Pause, Next, Seek Progress & Music Search.
+ * - Draggable / movable music icon (persists user-selected coordinates cleanly).
+ * - Prioritizes Viral Indonesia 2026 Gen-Z songs, DJ remixes, & covers (ad-free streams).
+ * - Auto-triggers playback when any interactive button is clicked (unless user paused).
+ * - Learns from user search terms & frequent plays for weighted random picks.
  */
 
 import {
+  clampMusicFabPosition,
   createDefaultMusicPrefs,
   formatAudioTime,
+  getPopoverAnchorClasses,
   getTopSearchKeywords,
   pickWeightedRandomTrack,
   recordMusicPreference,
@@ -16,36 +19,53 @@ import {
 
 const MUSIC_PREFS_KEY = 'manifestudio_music_prefs_v1';
 const MUSIC_STATE_KEY = 'manifestudio_music_session_v1';
+const MUSIC_POS_KEY = 'manifestudio_music_pos_v1';
 const AUDIUS_API_BASE = 'https://api.audius.co/v1';
 
-// Built-in backup curated royalty-free CC0 chill/lofi/electronic streams if API fails
+// Curated Viral Indonesia 2025-2026 Gen-Z hits, DJ edits & Acoustic/Koplo covers
+const VIRAL_INDO_2026_QUERIES = [
+  'tabola bale silet open up',
+  'garam dan madu tenxi naykilla',
+  'mangu whisnu santika',
+  'stecu stecu faris adam',
+  'pica pica juan reza',
+  'everything u are hindia',
+  'bunga maaf the lantis',
+  'bergema sampai selamanya nadhif',
+  'satu bulan bernadya',
+  'sialan juicy luicy',
+  'terbuang dalam waktu barasuara',
+  'calon mantu idaman koplo',
+];
+
+const AUDIUS_INDO_DJ_QUERIES = [
+  'Whisnu Santika',
+  'Weird Genius',
+  'Feel Koplo',
+  'Dipha Barus',
+];
+
+// Built-in backup curated royalty-free ambient streams if offline
 const FALLBACK_TRACKS = [
   {
     id: 'cc-lofi-1',
-    title: 'Midnight Study Beat',
+    title: 'Midnight Chill Beat (Offline)',
     artist: 'FreePD Ambient',
     genre: 'Lo-Fi Chill',
     duration: 148,
     artwork: '',
+    isIndonesianViral: false,
     streamUrl: 'https://freepd.com/music/Aerosol%20of%20My%20Love.mp3',
   },
   {
     id: 'cc-synth-2',
-    title: 'Neon Horizon',
+    title: 'Neon Horizon (Offline)',
     artist: 'FreePD Electronic',
     genre: 'Synthwave',
     duration: 132,
     artwork: '',
+    isIndonesianViral: false,
     streamUrl: 'https://freepd.com/music/Neon%20Laser%20Horizon.mp3',
-  },
-  {
-    id: 'cc-chill-3',
-    title: 'City Lights Coffee',
-    artist: 'FreePD Chillhop',
-    genre: 'Chill',
-    duration: 160,
-    artwork: '',
-    streamUrl: 'https://freepd.com/music/Study%20and%20Relax.mp3',
   },
 ];
 
@@ -91,43 +111,91 @@ function saveSessionState(sess) {
   }
 }
 
-function mapAudiusTrack(item) {
+function readSavedPos() {
+  try {
+    const raw = localStorage.getItem(MUSIC_POS_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (Number.isFinite(parsed?.x) && Number.isFinite(parsed?.y)) {
+      return { x: parsed.x, y: parsed.y };
+    }
+  } catch {
+    // Ignore
+  }
+  return null;
+}
+
+function savePos(pos) {
+  try {
+    if (!pos) {
+      localStorage.removeItem(MUSIC_POS_KEY);
+    } else {
+      localStorage.setItem(MUSIC_POS_KEY, JSON.stringify(pos));
+    }
+  } catch {
+    // Ignore
+  }
+}
+
+function mapItunesTrack(item, isIndo = true) {
+  if (!item || !item.trackId || !item.previewUrl) return null;
+  const art = String(item.artworkUrl100 || item.artworkUrl60 || '').replace('100x100', '300x300');
+  const tags = `${item.collectionName || ''} ${item.primaryGenreName || ''} indonesia viral gen z`;
+  return {
+    id: `it-${item.trackId}`,
+    title: String(item.trackName || 'Lagu Viral Indonesia'),
+    artist: String(item.artistName || 'Artis Indonesia'),
+    genre: String(item.primaryGenreName || 'Indo Pop / Viral'),
+    tags,
+    duration: 30,
+    artwork: art,
+    isIndonesianViral: isIndo,
+    sourceLabel: 'Viral Indonesia',
+    streamUrl: String(item.previewUrl),
+  };
+}
+
+function mapAudiusTrack(item, isIndo = false) {
   if (!item || !item.id) return null;
   const art =
-    item.artwork?.['150x150'] || item.artwork?.['480x480'] || item.user?.profile_picture?.['150x150'] || '';
+    item.artwork?.['150x150'] ||
+    item.artwork?.['480x480'] ||
+    item.user?.profile_picture?.['150x150'] ||
+    '';
   return {
-    id: String(item.id),
-    title: String(item.title || 'Lagu Tanpa Judul'),
-    artist: String(item.user?.name || 'Artis Indie'),
-    genre: String(item.genre || 'Music'),
-    tags: String(item.tags || ''),
+    id: `au-${item.id}`,
+    title: String(item.title || 'DJ Remix'),
+    artist: String(item.user?.name || 'DJ Creator'),
+    genre: String(item.genre || 'DJ / Remix'),
+    tags: `${item.tags || ''} ${isIndo ? 'indonesia dj remix cover' : ''}`,
     duration: Number(item.duration || 0),
     artwork: art,
+    isIndonesianViral: isIndo,
+    sourceLabel: isIndo ? 'DJ / Cover Indo' : 'Musik Bebas Iklan',
     streamUrl: `${AUDIUS_API_BASE}/tracks/${encodeURIComponent(item.id)}/stream?app_name=Manifestudio`,
   };
 }
 
-async function fetchAudiusTrending() {
-  const res = await fetch(`${AUDIUS_API_BASE}/tracks/trending?app_name=Manifestudio&limit=25`, {
-    cache: 'no-store',
-  });
-  if (!res.ok) throw new Error('Audius trending error');
-  const json = await res.json();
-  const mapped = (json?.data || []).map(mapAudiusTrack).filter(Boolean);
-  if (mapped.length === 0) throw new Error('Empty Audius list');
-  return mapped;
-}
-
-async function fetchAudiusSearch(query) {
-  const q = String(query || '').trim();
-  if (!q) return [];
+async function fetchItunesIndonesia(query, limit = 2, isIndo = true) {
   const res = await fetch(
-    `${AUDIUS_API_BASE}/tracks/search?query=${encodeURIComponent(q)}&app_name=Manifestudio&limit=12`,
+    `https://itunes.apple.com/search?term=${encodeURIComponent(query)}&country=ID&media=music&limit=${limit}`,
     { cache: 'no-store' }
   );
   if (!res.ok) return [];
   const json = await res.json();
-  return (json?.data || []).map(mapAudiusTrack).filter(Boolean);
+  return (json?.results || []).map((item) => mapItunesTrack(item, isIndo)).filter(Boolean);
+}
+
+async function fetchAudiusSearch(query, limit = 4, isIndo = false) {
+  const q = String(query || '').trim();
+  if (!q) return [];
+  const res = await fetch(
+    `${AUDIUS_API_BASE}/tracks/search?query=${encodeURIComponent(q)}&app_name=Manifestudio&limit=${limit}`,
+    { cache: 'no-store' }
+  );
+  if (!res.ok) return [];
+  const json = await res.json();
+  return (json?.data || []).map((item) => mapAudiusTrack(item, isIndo)).filter(Boolean);
 }
 
 function escapeHtml(str) {
@@ -150,11 +218,11 @@ export function initMusicPlayer() {
 
   const audio = new Audio();
   audio.preload = 'none';
-  audio.crossOrigin = 'anonymous';
   audio.volume = 0.65;
 
   let prefs = readPrefs();
   let session = readSessionState();
+  let customPos = readSavedPos();
   let tracks = [...FALLBACK_TRACKS];
   let poolLoaded = false;
   let poolPromise = null;
@@ -166,8 +234,51 @@ export function initMusicPlayer() {
   let isSeeking = false;
   let searchDebounce = null;
   let playedLoggedForId = null;
+  let suppressNextFabClick = false;
+
+  function applyRootPosition() {
+    const fabSize = window.innerWidth <= 640 ? 40 : 44;
+    if (customPos) {
+      const clamped = clampMusicFabPosition({
+        x: customPos.x,
+        y: customPos.y,
+        viewportWidth: window.innerWidth,
+        viewportHeight: window.innerHeight,
+        fabSize,
+        margin: 10,
+      });
+      customPos = clamped;
+      root.classList.add('is-custom-pos');
+      root.style.left = `${clamped.x}px`;
+      root.style.top = `${clamped.y}px`;
+      root.style.bottom = 'auto';
+      root.style.right = 'auto';
+      const anchor = getPopoverAnchorClasses({
+        ...clamped,
+        viewportWidth: window.innerWidth,
+        viewportHeight: window.innerHeight,
+        fabSize,
+      });
+      root.dataset.hAnchor = anchor.horizontal;
+      root.dataset.vAnchor = anchor.vertical;
+      root.style.setProperty('--music-pop-offset-x', `${anchor.offsetX}px`);
+    } else {
+      root.classList.remove('is-custom-pos');
+      root.style.left = '';
+      root.style.top = '';
+      root.style.bottom = '';
+      root.style.right = '';
+      root.style.removeProperty('--music-pop-offset-x');
+      root.dataset.hAnchor = 'align-left';
+      root.dataset.vAnchor = 'open-up';
+    }
+  }
 
   function updateCartOverlapOffset() {
+    if (customPos) {
+      root.classList.remove('is-above-mobile-cart');
+      return;
+    }
     const cartBar = document.getElementById('mobile-cart-bar');
     const hasCart = Boolean(cartBar && !cartBar.hidden);
     root.classList.toggle('is-above-mobile-cart', hasCart);
@@ -178,23 +289,40 @@ export function initMusicPlayer() {
     const mo = new MutationObserver(updateCartOverlapOffset);
     mo.observe(cartBarEl, { attributes: true, attributeFilter: ['hidden'] });
   }
+
+  window.addEventListener('resize', () => {
+    if (customPos) {
+      applyRootPosition();
+      savePos(customPos);
+    }
+  });
+
+  applyRootPosition();
   updateCartOverlapOffset();
 
-  async function ensureTrackPool(forcePersonalFetch = false) {
-    if (poolPromise && !forcePersonalFetch) return poolPromise;
+  async function ensureTrackPool() {
+    if (poolPromise) return poolPromise;
     poolPromise = (async () => {
       try {
-        const trending = await fetchAudiusTrending();
+        // Pick a rich batch of Indonesian Viral 2026 Gen-Z + DJ/Cover tracks in parallel
+        const shuffledQueries = [...VIRAL_INDO_2026_QUERIES].sort(() => Math.random() - 0.5);
+        const batchQueries = shuffledQueries.slice(0, 7);
+        const djQueries = [...AUDIUS_INDO_DJ_QUERIES].sort(() => Math.random() - 0.5).slice(0, 2);
         const topTerms = getTopSearchKeywords(prefs, 2);
-        let personalized = [];
-        for (const term of topTerms) {
-          const found = await fetchAudiusSearch(term).catch(() => []);
-          personalized = personalized.concat(found);
-        }
+
+        const itunesJobs = batchQueries.map((q) => fetchItunesIndonesia(q, 2, true).catch(() => []));
+        const userTermJobs = topTerms.map((term) =>
+          fetchItunesIndonesia(term, 3, true).catch(() => [])
+        );
+        const djJobs = djQueries.map((q) => fetchAudiusSearch(q, 2, true).catch(() => []));
+
+        const results = await Promise.all([...userTermJobs, ...itunesJobs, ...djJobs]);
         const mergedMap = new Map();
-        for (const t of [...personalized, ...trending]) {
-          if (t && t.id && !mergedMap.has(t.id)) {
-            mergedMap.set(t.id, t);
+        for (const group of results) {
+          for (const t of group) {
+            if (t && t.id && !mergedMap.has(t.id)) {
+              mergedMap.set(t.id, t);
+            }
           }
         }
         if (mergedMap.size > 0) {
@@ -210,18 +338,23 @@ export function initMusicPlayer() {
   }
 
   function renderWidget() {
+    applyRootPosition();
     const score = currentTrack ? scoreTrackForUser(currentTrack, prefs) : 1;
-    const matchBadge =
-      score > 2.2 ? 'Sesuai Minat & Pencarianmu' : 'Acak Bebas Iklan';
-    const trackTitle = currentTrack ? currentTrack.title : 'Siap Memutar Musik';
+    const matchBadge = currentTrack
+      ? currentTrack.isIndonesianViral && score > 3.5
+        ? 'Viral Indo · Sesuai Minatmu'
+        : currentTrack.sourceLabel || 'Viral Indonesia 2026'
+      : 'Viral Indonesia 2026';
+
+    const trackTitle = currentTrack ? currentTrack.title : 'Musik Viral Indonesia';
     const trackArtist = currentTrack
       ? `${currentTrack.artist} · ${currentTrack.genre}`
-      : 'Klik tombol apa saja untuk mulai';
+      : 'Klik tombol apa saja · Geser ikon untuk pindah';
     const curSec = Number.isFinite(audio.currentTime) ? audio.currentTime : 0;
     const durSec =
       Number.isFinite(audio.duration) && audio.duration > 0
         ? audio.duration
-        : currentTrack?.duration || 100;
+        : currentTrack?.duration || 30;
     const pct = durSec > 0 ? Math.min(100, Math.round((curSec / durSec) * 100)) : 0;
 
     root.innerHTML = `
@@ -229,7 +362,7 @@ export function initMusicPlayer() {
         id="music-popover"
         class="music-popover"
         role="dialog"
-        aria-label="Pemutar Musik Bebas Iklan"
+        aria-label="Pemutar Musik Viral Indonesia Bebas Iklan"
         ${isOpen ? '' : 'hidden'}
       >
         <div class="music-pop-head">
@@ -246,12 +379,19 @@ export function initMusicPlayer() {
               <span class="music-artist" id="music-now-artist">${escapeHtml(trackArtist)}</span>
             </div>
           </div>
-          <button
-            type="button"
-            class="music-close-btn"
-            id="music-close-btn"
-            aria-label="Tutup panel musik"
-          >✕</button>
+          <div class="music-head-btns">
+            ${
+              customPos
+                ? `<button type="button" class="music-reset-pos-btn" id="music-reset-pos-btn" title="Kembalikan posisi ikon" aria-label="Reset posisi ikon musik">↺</button>`
+                : ''
+            }
+            <button
+              type="button"
+              class="music-close-btn"
+              id="music-close-btn"
+              aria-label="Tutup panel musik"
+            >✕</button>
+          </div>
         </div>
 
         <div class="music-algo-row">
@@ -279,19 +419,13 @@ export function initMusicPlayer() {
             id="music-playpause-btn"
             aria-label="${isPlaying ? 'Jeda musik' : 'Putar musik'}"
           >
-            ${
-              isLoading
-                ? 'Memuat...'
-                : isPlaying
-                ? '❚❚ Jeda'
-                : '▶ Putar'
-            }
+            ${isLoading ? 'Memuat...' : isPlaying ? '❚❚ Jeda' : '▶ Putar'}
           </button>
           <button
             type="button"
             class="btn btn-secondary btn-sm music-ctrl-btn"
             id="music-next-btn"
-            aria-label="Ganti lagu acak berikutnya"
+            aria-label="Ganti lagu viral berikutnya"
           >
             ⏭ Lagu Lain
           </button>
@@ -302,21 +436,22 @@ export function initMusicPlayer() {
             type="search"
             id="music-search-input"
             class="music-search-input"
-            placeholder="Cari lagu, artis, atau genre..."
+            placeholder="Cari lagu Indo, cover, atau DJ..."
             value="${escapeHtml(searchQuery)}"
-            aria-label="Cari lagu atau genre musik"
+            aria-label="Cari lagu Indonesia, cover, atau DJ"
           />
-          <button type="submit" class="btn btn-secondary btn-sm" aria-label="Cari dan putar musik">Cari</button>
+          <button type="submit" class="btn btn-secondary btn-sm" aria-label="Cari dan putar lagu">Cari</button>
         </form>
+        <div class="music-drag-tip">Tips: Tekan &amp; geser ikon musik ke posisi mana saja.</div>
       </div>
 
       <button
         type="button"
         id="music-fab-btn"
         class="music-fab-btn ${isPlaying ? 'is-playing' : ''}"
-        aria-label="${isOpen ? 'Tutup kontrol musik' : 'Buka kontrol musik'}"
+        aria-label="${isOpen ? 'Tutup kontrol musik (bisa digeser)' : 'Buka atau geser ikon musik'}"
         aria-expanded="${isOpen}"
-        title="Musik Bebas Iklan"
+        title="Ketuk untuk kontrol · Tekan & geser untuk pindah posisi"
       >
         <span class="music-fab-eq" aria-hidden="true">
           <span></span><span></span><span></span>
@@ -336,7 +471,7 @@ export function initMusicPlayer() {
     const dur =
       Number.isFinite(audio.duration) && audio.duration > 0
         ? audio.duration
-        : currentTrack?.duration || 100;
+        : currentTrack?.duration || 30;
     if (slider && dur > 0) {
       slider.value = String(Math.min(100, (cur / dur) * 100));
     }
@@ -399,7 +534,12 @@ export function initMusicPlayer() {
     isLoading = true;
     renderWidget();
     try {
-      const results = await fetchAudiusSearch(q);
+      // Search Indonesian iTunes hits + Audius DJ/Remix in parallel
+      const [indoResults, djResults] = await Promise.all([
+        fetchItunesIndonesia(q, 6, true).catch(() => []),
+        fetchAudiusSearch(q, 4, false).catch(() => []),
+      ]);
+      const results = [...indoResults, ...djResults];
       if (results.length > 0) {
         const merged = new Map(tracks.map((t) => [t.id, t]));
         for (const r of results) merged.set(r.id, r);
@@ -442,14 +582,93 @@ export function initMusicPlayer() {
     }
   }
 
+  function attachDragHandlers(fabBtn) {
+    if (!fabBtn) return;
+    let dragging = false;
+    let moved = false;
+    let pointerId = null;
+    let startClientX = 0;
+    let startClientY = 0;
+    let originX = 0;
+    let originY = 0;
+
+    fabBtn.addEventListener('pointerdown', (e) => {
+      if (e.button !== 0 && e.pointerType === 'mouse') return;
+      dragging = true;
+      moved = false;
+      pointerId = e.pointerId;
+      startClientX = e.clientX;
+      startClientY = e.clientY;
+      const rect = fabBtn.getBoundingClientRect();
+      originX = rect.left;
+      originY = rect.top;
+      fabBtn.setPointerCapture?.(pointerId);
+    });
+
+    fabBtn.addEventListener('pointermove', (e) => {
+      if (!dragging || e.pointerId !== pointerId) return;
+      const dx = e.clientX - startClientX;
+      const dy = e.clientY - startClientY;
+      if (!moved && Math.hypot(dx, dy) > 6) {
+        moved = true;
+        suppressNextFabClick = true;
+        fabBtn.classList.add('is-dragging');
+      }
+      if (!moved) return;
+      const fabSize = window.innerWidth <= 640 ? 40 : 44;
+      customPos = clampMusicFabPosition({
+        x: originX + dx,
+        y: originY + dy,
+        viewportWidth: window.innerWidth,
+        viewportHeight: window.innerHeight,
+        fabSize,
+        margin: 10,
+      });
+      applyRootPosition();
+    });
+
+    const finishDrag = (e) => {
+      if (!dragging || e.pointerId !== pointerId) return;
+      dragging = false;
+      fabBtn.classList.remove('is-dragging');
+      fabBtn.releasePointerCapture?.(pointerId);
+      if (moved && customPos) {
+        savePos(customPos);
+        updateCartOverlapOffset();
+        setTimeout(() => {
+          suppressNextFabClick = false;
+        }, 120);
+      }
+    };
+
+    fabBtn.addEventListener('pointerup', finishDrag);
+    fabBtn.addEventListener('pointercancel', finishDrag);
+  }
+
   function bindWidgetEvents() {
-    root.querySelector('#music-fab-btn')?.addEventListener('click', (e) => {
+    const fabBtn = root.querySelector('#music-fab-btn');
+    attachDragHandlers(fabBtn);
+
+    fabBtn?.addEventListener('click', (e) => {
       e.stopPropagation();
+      if (suppressNextFabClick) {
+        suppressNextFabClick = false;
+        return;
+      }
       isOpen = !isOpen;
       renderWidget();
       if (isOpen && !currentTrack) {
         ensureTrackPool();
       }
+    });
+
+    root.querySelector('#music-reset-pos-btn')?.addEventListener('click', (e) => {
+      e.stopPropagation();
+      customPos = null;
+      savePos(null);
+      applyRootPosition();
+      updateCartOverlapOffset();
+      renderWidget();
     });
 
     root.querySelector('#music-close-btn')?.addEventListener('click', (e) => {
@@ -474,7 +693,7 @@ export function initMusicPlayer() {
       const dur =
         Number.isFinite(audio.duration) && audio.duration > 0
           ? audio.duration
-          : currentTrack?.duration || 100;
+          : currentTrack?.duration || 30;
       const targetSec = (Number(slider.value) / 100) * dur;
       const timeEl = root.querySelector('#music-time-label');
       if (timeEl) {
@@ -485,7 +704,7 @@ export function initMusicPlayer() {
       const dur =
         Number.isFinite(audio.duration) && audio.duration > 0
           ? audio.duration
-          : currentTrack?.duration || 100;
+          : currentTrack?.duration || 30;
       if (Number.isFinite(audio.duration) && audio.duration > 0) {
         audio.currentTime = (Number(slider.value) / 100) * dur;
       }
@@ -518,7 +737,6 @@ export function initMusicPlayer() {
     playNextSmartTrack({ wasSkip: false });
   });
   audio.addEventListener('error', () => {
-    // Seamlessly switch to next working track if a stream node fails
     if (!session.userPaused && currentTrack) {
       const prevId = currentTrack.id;
       tracks = tracks.filter((t) => t.id !== prevId);
@@ -559,7 +777,7 @@ export function initMusicPlayer() {
   document.addEventListener('click', (e) => {
     const target = e.target;
     if (!(target instanceof Element)) return;
-    if (root.contains(target)) return; // Don't hijack widget controls
+    if (root.contains(target)) return;
     const clickable = target.closest(
       'button, a, [role="button"], [role="tab"], .product-tile'
     );
@@ -570,7 +788,6 @@ export function initMusicPlayer() {
     }
   });
 
-  // Warm pool quietly in background
   ensureTrackPool();
   renderWidget();
 }

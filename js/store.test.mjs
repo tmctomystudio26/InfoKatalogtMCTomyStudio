@@ -27,8 +27,10 @@ import {
   validateOrderForm,
 } from './store.js';
 import {
+  clampMusicFabPosition,
   createDefaultMusicPrefs,
   formatAudioTime,
+  getPopoverAnchorClasses,
   getTopSearchKeywords,
   pickWeightedRandomTrack,
   recordMusicPreference,
@@ -523,5 +525,87 @@ test('smart music algorithm weights frequently searched and played songs without
 
   assert.equal(formatAudioTime(125), '02:05');
 });
+
+test('music player prioritizes Indonesian viral 2026, DJ/cover remixes, and clamps draggable position + popover offset cleanly', () => {
+  const prefs = createDefaultMusicPrefs();
+  const viralIndo = {
+    id: 'indo-1',
+    title: 'Tabola Bale (DJ Remix)',
+    artist: 'Silet Open Up',
+    genre: 'Indo Viral',
+    isIndonesianViral: true,
+    streamUrl: 'https://x/indo.m4a',
+  };
+  const coverIndo = {
+    id: 'indo-2',
+    title: 'Garam & Madu (Acoustic Cover)',
+    artist: 'Naykilla',
+    genre: 'Pop Indo',
+    isIndonesianViral: false,
+    streamUrl: 'https://x/cover.m4a',
+  };
+  const plainGlobal = {
+    id: 'global-1',
+    title: 'Generic Ambient Loop',
+    artist: 'Unknown',
+    genre: 'Ambient',
+    isIndonesianViral: false,
+    streamUrl: 'https://x/global.mp3',
+  };
+
+  const sViral = scoreTrackForUser(viralIndo, prefs);
+  const sCover = scoreTrackForUser(coverIndo, prefs);
+  const sPlain = scoreTrackForUser(plainGlobal, prefs);
+  assert.ok(sViral > sCover);
+  assert.ok(sCover > sPlain);
+
+  // Out-of-bounds drag coordinates clamp strictly inside viewport margins
+  const clampedTopLeft = clampMusicFabPosition({
+    x: -50,
+    y: -25,
+    viewportWidth: 390,
+    viewportHeight: 844,
+    fabSize: 40,
+    margin: 10,
+  });
+  assert.deepEqual(clampedTopLeft, { x: 10, y: 10 });
+
+  const clampedBottomRight = clampMusicFabPosition({
+    x: 9999,
+    y: 9999,
+    viewportWidth: 1440,
+    viewportHeight: 900,
+    fabSize: 44,
+    margin: 10,
+  });
+  assert.deepEqual(clampedBottomRight, { x: 1386, y: 846 });
+
+  // Top-right corner anchors align-right + open-down, staying inside viewport
+  const topRightAnchor = getPopoverAnchorClasses({
+    x: 1386,
+    y: 12,
+    viewportWidth: 1440,
+    viewportHeight: 900,
+    fabSize: 44,
+  });
+  assert.equal(topRightAnchor.horizontal, 'align-right');
+  assert.equal(topRightAnchor.vertical, 'open-down');
+  assert.ok(1386 + topRightAnchor.offsetX + 320 <= 1440 - 16);
+
+  // Middle of narrow 390px mobile viewport clamps popover offsetX so neither edge clips
+  const mobileCenterAnchor = getPopoverAnchorClasses({
+    x: 175,
+    y: 700,
+    viewportWidth: 390,
+    viewportHeight: 844,
+    fabSize: 40,
+  });
+  assert.equal(mobileCenterAnchor.vertical, 'open-up');
+  const popLeft = 175 + mobileCenterAnchor.offsetX;
+  const popWidth = Math.min(320, 390 - 32);
+  assert.ok(popLeft >= 16);
+  assert.ok(popLeft + popWidth <= 390 - 16);
+});
+
 
 

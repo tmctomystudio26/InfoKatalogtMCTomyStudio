@@ -1,4 +1,4 @@
-const CACHE_NAME = 'manifestudio-cache-v8';
+const CACHE_NAME = 'manifestudio-cache-v9';
 
 const PRECACHE_ASSETS = [
   './',
@@ -28,6 +28,7 @@ const PRECACHE_ASSETS = [
   './js/order.js',
   './js/admin.js',
   './assets/hero-banner.jpg',
+  './assets/og-manifestudio.jpg',
   './assets/banner-prayer.jpg',
   './assets/banner-weather.jpg',
   './assets/banner-worldclock.jpg',

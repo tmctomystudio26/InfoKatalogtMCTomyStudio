@@ -115,6 +115,14 @@ export function scoreTrackForUser(track, prefs) {
   let score = 1;
   const hay = `${track.title || ''} ${track.artist || ''} ${track.genre || ''} ${track.tags || ''}`.toLowerCase();
 
+  // Prioritize Indonesian viral 2026 Gen-Z songs, DJ remixes, & covers
+  if (track.isIndonesianViral) {
+    score += 2.5;
+  }
+  if (/\b(remix|dj|edit|koplo|cover|acoustic|sped up|slowed|indonesia|indo)\b/i.test(hay)) {
+    score += 1.4;
+  }
+
   // Search keyword & token affinity boost
   for (const [term, meta] of Object.entries(prefs?.searches || {})) {
     if (!term || term.length < 2) continue;
@@ -188,3 +196,51 @@ export function formatAudioTime(seconds) {
   const secs = s % 60;
   return `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
 }
+
+export function clampMusicFabPosition({
+  x,
+  y,
+  viewportWidth,
+  viewportHeight,
+  fabSize = 44,
+  margin = 10,
+}) {
+  const vw = Math.max(fabSize + margin * 2, Number(viewportWidth) || 390);
+  const vh = Math.max(fabSize + margin * 2, Number(viewportHeight) || 844);
+  const maxX = Math.max(margin, vw - fabSize - margin);
+  const maxY = Math.max(margin, vh - fabSize - margin);
+  return {
+    x: Math.round(Math.min(maxX, Math.max(margin, Number(x) || margin))),
+    y: Math.round(Math.min(maxY, Math.max(margin, Number(y) || margin))),
+  };
+}
+
+export function getPopoverAnchorClasses({
+  x,
+  y,
+  viewportWidth,
+  viewportHeight,
+  fabSize = 44,
+  margin = 16,
+}) {
+  const vw = Math.max(320, Number(viewportWidth) || 390);
+  const vh = Math.max(480, Number(viewportHeight) || 844);
+  const fabX = Number(x) || 0;
+  const centerX = fabX + fabSize / 2;
+  const centerY = (Number(y) || 0) + fabSize / 2;
+  const horizontal = centerX > vw * 0.52 ? 'align-right' : 'align-left';
+  const vertical = centerY < vh * 0.48 ? 'open-down' : 'open-up';
+
+  const popWidth = Math.min(320, vw - margin * 2);
+  const idealLeft = horizontal === 'align-right' ? fabX + fabSize - popWidth : fabX;
+  const maxLeft = Math.max(margin, vw - popWidth - margin);
+  const clampedLeft = Math.min(maxLeft, Math.max(margin, idealLeft));
+  const offsetX = Math.round(clampedLeft - fabX);
+
+  return {
+    horizontal,
+    vertical,
+    offsetX,
+  };
+}
+
