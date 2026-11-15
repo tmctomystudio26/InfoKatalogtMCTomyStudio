@@ -19,6 +19,12 @@ import {
   setManualLocation,
 } from './location.js';
 import { createInteractiveGlobe } from './globe.js';
+import {
+  createSpeedometerGauge,
+  fetchSpeedtestEnvironment,
+  readClientDeviceTelemetry,
+  runInternetSpeedtest,
+} from './speedtest.js';
 
 const PRAYER_CACHE_KEY = 'manifestudio_prayer_cache_v1';
 const MYQURAN_CITIES_KEY = 'manifestudio_myquran_cities_v1';
@@ -252,12 +258,16 @@ async function fetchWeatherForecast(loc) {
   throw new Error('Tidak dapat memuat prakiraan cuaca. Periksa koneksi internet Anda.');
 }
 
-export function createToolsHubController({ rootEl, onToast = () => {} }) {
+export function createToolsHubController({
+  rootEl,
+  onToast = () => {},
+  onSubTabChange = () => {},
+}) {
   const today = getTodayParts();
   const initialClock = getZoneTimeParts(new Date(), 'Asia/Jakarta');
 
   const toolState = {
-    activeSubTab: 'prayer', // 'prayer' | 'weather' | 'worldclock'
+    activeSubTab: 'prayer', // 'prayer' | 'weather' | 'worldclock' | 'speedtest'
     location: null,
     locationLoading: false,
     prayerData: null,
@@ -276,10 +286,23 @@ export function createToolsHubController({ rootEl, onToast = () => {} }) {
     convDate: initialClock.isoDate || today.iso,
     convTime: initialClock.timeShort || '12:00',
     convSourceZone: 'Asia/Jakarta',
+    speedRunning: false,
+    speedPhase: 'idle', // 'idle' | 'ping' | 'download' | 'upload' | 'done'
+    speedPhaseLabel: 'Siap menguji koneksi',
+    speedProgress: 0,
+    speedLiveMbps: 0,
+    speedSamples: [],
+    speedResult: null,
+    speedEnv: null,
+    speedEnvLoading: false,
+    speedError: '',
+    speedDevice: readClientDeviceTelemetry(),
   };
 
   let clockTimer = null;
   let globeInstance = null;
+  let gaugeInstance = null;
+  let speedAbort = null;
   let mounted = false;
 
   function stopLiveTimers() {
@@ -290,6 +313,10 @@ export function createToolsHubController({ rootEl, onToast = () => {} }) {
     if (globeInstance) {
       globeInstance.destroy();
       globeInstance = null;
+    }
+    if (gaugeInstance) {
+      gaugeInstance.destroy();
+      gaugeInstance = null;
     }
   }
 
@@ -367,6 +394,22 @@ export function createToolsHubController({ rootEl, onToast = () => {} }) {
     }
 
     await Promise.all([loadPrayerForCurrentLocation(), loadWeatherForCurrentLocation()]);
+  }
+
+  async function ensureSpeedtestEnv() {
+    if (toolState.speedEnv || toolState.speedEnvLoading) return;
+    toolState.speedEnvLoading = true;
+    try {
+      const env = await fetchSpeedtestEnvironment();
+      toolState.speedEnv = env;
+      if (mounted && toolState.activeSubTab === 'speedtest' && !toolState.speedRunning) {
+        render();
+      }
+    } catch {
+      // Ignore optional prefill failure
+    } finally {
+      toolState.speedEnvLoading = false;
+    }
   }
 
   async function loadPrayerForCurrentLocation(explicitCityId = null) {
@@ -469,7 +512,7 @@ export function createToolsHubController({ rootEl, onToast = () => {} }) {
               type="search"
               id="prayer-city-search"
               class="search-input"
-              placeholder="Cari Kab/Kota di Indonesia (contoh: Bandung, Sleman, Surabaya)..."
+              placeholder="Cari Kab/Kota (contoh: Bandung, Sleman, Surabaya)..."
               value="${escapeHtml(toolState.prayerSearchQuery)}"
               aria-label="Cari kota jadwal sholat Indonesia"
             />
@@ -586,7 +629,7 @@ export function createToolsHubController({ rootEl, onToast = () => {} }) {
               type="search"
               id="weather-city-search"
               class="search-input"
-              placeholder="Cari kota prakiraan cuaca (contoh: Yogyakarta, Tokyo, Bali)..."
+              placeholder="Cari kota (contoh: Yogyakarta, Tokyo, Bali)..."
               value="${escapeHtml(toolState.weatherSearchQuery)}"
               aria-label="Cari kota prakiraan cuaca"
             />
@@ -763,7 +806,7 @@ export function createToolsHubController({ rootEl, onToast = () => {} }) {
             <div class="globe-card-head">
               <div>
                 <h3 class="tool-subhead">Bola Dunia Interaktif</h3>
-                <p class="tool-hint">Geser untuk memutar bola dunia &amp; klik negara target.</p>
+                <p class="tool-hint">Geser untuk memutar, klik negara target.</p>
               </div>
               <div class="globe-toolbar">
                 <button type="button" class="btn btn-ghost btn-sm" id="globe-focus-id-btn">
@@ -842,8 +885,8 @@ export function createToolsHubController({ rootEl, onToast = () => {} }) {
           <div class="converter-card">
             <div class="converter-head">
               <div>
-                <h3 class="tool-subhead">Konversi Waktu &amp; Jam Lokal Indonesia</h3>
-                <p class="tool-hint">Konversi dua arah antara jam lokal Indonesia (WIB/WITA/WIT), UTC, dan negara target.</p>
+                <h3 class="tool-subhead">Konversi Waktu</h3>
+                <p class="tool-hint">Konversi WIB/WITA/WIT, UTC, dan negara target.</p>
               </div>
               <button type="button" class="btn btn-secondary btn-sm" id="conv-now-btn">
                 Waktu Sekarang
@@ -947,14 +990,293 @@ export function createToolsHubController({ rootEl, onToast = () => {} }) {
     `;
   }
 
+  function renderSpeedtestPanel() {
+    const res = toolState.speedResult;
+    const env = res?.env || toolState.speedEnv;
+    const loc = toolState.location;
+    const dev = toolState.speedDevice;
+
+    const pingDisplay = res?.pingMs ?? (toolState.speedRunning ? toolState.speedResult?.pingMs : null);
+    const jitterDisplay = res?.jitterMs ?? null;
+    const dlDisplay = res?.downloadMbps ?? null;
+    const ulDisplay = res?.uploadMbps ?? null;
+
+    const locText = loc
+      ? `${loc.city}${loc.region ? `, ${loc.region}` : ''}`
+      : env?.networkCity || 'Mendeteksi lokasi...';
+    const locSub = loc
+      ? describeLocationSource(loc.source)
+      : 'Estimasi jaringan';
+
+    const waveBarsHtml = Array.from({ length: 28 }, (_, idx) => {
+      const val = toolState.speedSamples[idx] || 0;
+      const maxRef = Math.max(10, ...toolState.speedSamples);
+      const pct = val > 0 ? Math.max(14, Math.min(100, Math.round((val / maxRef) * 100))) : 8;
+      return `<span class="speed-wave-bar ${val > 0 ? 'is-live' : ''}" style="height: ${pct}%"></span>`;
+    }).join('');
+
+    const quality = res?.quality || null;
+
+    return `
+      <div class="tool-panel" data-testid="speedtest-panel">
+        ${renderLocationBar('speedtest')}
+
+        <div class="speedtest-workspace">
+          <div class="speed-gauge-card">
+            <div class="speed-gauge-head">
+              <div>
+                <span class="tool-kicker">Cloudflare Speed Edge</span>
+                <h3 class="tool-subhead">Tes Kecepatan Internet</h3>
+              </div>
+              <span id="speed-phase-badge" class="speed-phase-text ${toolState.speedRunning ? 'is-running' : ''}">
+                ${escapeHtml(toolState.speedPhaseLabel)}
+              </span>
+            </div>
+
+            <div class="speed-canvas-wrap">
+              <canvas
+                id="speedtest-gauge-canvas"
+                class="speedtest-gauge-canvas"
+                data-testid="speedtest-gauge-canvas"
+                aria-label="Meter pengukur kecepatan internet"
+              ></canvas>
+            </div>
+
+            <div class="speed-progress-track" aria-hidden="true">
+              <div
+                id="speed-progress-fill"
+                class="speed-progress-fill"
+                style="width: ${Math.round(toolState.speedProgress * 100)}%"
+              ></div>
+            </div>
+
+            <div id="speed-wave-strip" class="speed-wave-strip" aria-hidden="true">
+              ${waveBarsHtml}
+            </div>
+
+            ${
+              toolState.speedError
+                ? `<div class="form-error" role="alert">${escapeHtml(toolState.speedError)}</div>`
+                : ''
+            }
+
+            <div class="speed-cta-row">
+              ${
+                toolState.speedRunning
+                  ? `<button type="button" class="btn btn-secondary btn-full" id="speedtest-cancel-btn">Batalkan Tes</button>`
+                  : `<button type="button" class="btn btn-primary btn-full" id="speedtest-start-btn" data-testid="speedtest-start-btn">${res ? 'Uji Ulang Kecepatan' : 'Mulai Speedtest'}</button>`
+              }
+            </div>
+          </div>
+
+          <div class="speed-details-col">
+            <div class="speed-kpi-grid">
+              <div class="speed-kpi-card">
+                <span class="speed-kpi-label">Download</span>
+                <strong id="speed-kpi-dl" class="speed-kpi-val mono-num">${dlDisplay != null ? dlDisplay.toFixed(1) : '--'} <small>Mbps</small></strong>
+              </div>
+              <div class="speed-kpi-card">
+                <span class="speed-kpi-label">Upload</span>
+                <strong id="speed-kpi-ul" class="speed-kpi-val mono-num">${ulDisplay != null ? ulDisplay.toFixed(1) : '--'} <small>Mbps</small></strong>
+              </div>
+              <div class="speed-kpi-card">
+                <span class="speed-kpi-label">Ping / Latensi</span>
+                <strong id="speed-kpi-ping" class="speed-kpi-val mono-num">${pingDisplay != null ? pingDisplay : '--'} <small>ms</small></strong>
+                <span id="speed-kpi-loaded" class="speed-kpi-sub mono-num">${res?.loadedLatencyMs != null ? `Beban: ${res.loadedLatencyMs} ms` : 'Idle RTT'}</span>
+              </div>
+              <div class="speed-kpi-card">
+                <span class="speed-kpi-label">Jitter</span>
+                <strong id="speed-kpi-jitter" class="speed-kpi-val mono-num">${jitterDisplay != null ? jitterDisplay : '--'} <small>ms</small></strong>
+                <span id="speed-kpi-minping" class="speed-kpi-sub mono-num">${res?.minPingMs != null ? `Min: ${res.minPingMs} ms` : 'Stabilitas'}</span>
+              </div>
+            </div>
+
+            ${
+              quality
+                ? `
+              <div class="speed-quality-card">
+                <div class="speed-quality-head">
+                  <span>Kualitas Koneksi</span>
+                  <strong>${escapeHtml(quality.grade)}</strong>
+                </div>
+                <div class="speed-suit-grid">
+                  ${quality.suitability
+                    .map(
+                      (s) => `
+                    <div class="speed-suit-item ${s.ok ? 'is-ok' : 'is-limit'}">
+                      <span>${escapeHtml(s.label)}</span>
+                      <strong>${s.ok ? 'Lancar' : 'Terbatas'}</strong>
+                    </div>
+                  `
+                    )
+                    .join('')}
+                </div>
+              </div>
+            `
+                : ''
+            }
+
+            <div class="speed-meta-card">
+              <h4 class="speed-meta-title">Info Jaringan &amp; Perangkat</h4>
+              <div class="speed-meta-list">
+                <div class="speed-meta-row">
+                  <span>Lokasi</span>
+                  <strong>${escapeHtml(locText)} · ${escapeHtml(locSub)}</strong>
+                </div>
+                <div class="speed-meta-row">
+                  <span>Server Tes</span>
+                  <strong>${escapeHtml(env?.serverLabel || 'Mendeteksi server...')}</strong>
+                </div>
+                <div class="speed-meta-row">
+                  <span>Provider (ISP)</span>
+                  <strong>${escapeHtml(env?.isp || 'Mendeteksi ISP...')}${env?.asn ? ` (${escapeHtml(env.asn)})` : ''}</strong>
+                </div>
+                <div class="speed-meta-row">
+                  <span>Alamat IP &amp; Protokol</span>
+                  <strong class="mono-num">${escapeHtml(env?.ip || '--')}${env?.protocol ? ` · ${escapeHtml(env.protocol)}` : ''}</strong>
+                </div>
+                <div class="speed-meta-row">
+                  <span>Perangkat &amp; OS</span>
+                  <strong>${escapeHtml(dev.deviceType)} · ${escapeHtml(dev.os)} (${escapeHtml(dev.browser)})</strong>
+                </div>
+                <div class="speed-meta-row">
+                  <span>Layar &amp; Hardware</span>
+                  <strong class="mono-num">${escapeHtml(dev.screenText)} · ${escapeHtml(dev.cores)} · ${escapeHtml(dev.memory)}</strong>
+                </div>
+                <div class="speed-meta-row">
+                  <span>Tipe Koneksi</span>
+                  <strong>${escapeHtml(dev.networkType)}</strong>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
+  function syncSpeedtestLiveDom(update) {
+    if (!mounted || toolState.activeSubTab !== 'speedtest') return;
+    const phaseBadge = rootEl.querySelector('#speed-phase-badge');
+    if (phaseBadge && update.phaseLabel) {
+      phaseBadge.textContent = update.phaseLabel;
+    }
+    const progressFill = rootEl.querySelector('#speed-progress-fill');
+    if (progressFill && typeof update.progress === 'number') {
+      progressFill.style.width = `${Math.round(update.progress * 100)}%`;
+    }
+
+    const pingEl = rootEl.querySelector('#speed-kpi-ping');
+    if (pingEl && update.pingMs != null) {
+      pingEl.innerHTML = `${update.pingMs} <small>ms</small>`;
+    }
+    const jitterEl = rootEl.querySelector('#speed-kpi-jitter');
+    if (jitterEl && update.jitterMs != null) {
+      jitterEl.innerHTML = `${update.jitterMs} <small>ms</small>`;
+    }
+    const minPingEl = rootEl.querySelector('#speed-kpi-minping');
+    if (minPingEl && update.minPingMs != null) {
+      minPingEl.textContent = `Min: ${update.minPingMs} ms`;
+    }
+    const loadedEl = rootEl.querySelector('#speed-kpi-loaded');
+    if (loadedEl && update.loadedLatencyMs != null) {
+      loadedEl.textContent = `Beban: ${update.loadedLatencyMs} ms`;
+    }
+    const dlEl = rootEl.querySelector('#speed-kpi-dl');
+    if (dlEl && update.downloadMbps != null) {
+      dlEl.innerHTML = `${update.downloadMbps.toFixed(1)} <small>Mbps</small>`;
+    }
+    const ulEl = rootEl.querySelector('#speed-kpi-ul');
+    if (ulEl && update.uploadMbps != null) {
+      ulEl.innerHTML = `${update.uploadMbps.toFixed(1)} <small>Mbps</small>`;
+    }
+
+    if (Array.isArray(update.samples)) {
+      toolState.speedSamples = update.samples;
+      const waveStrip = rootEl.querySelector('#speed-wave-strip');
+      if (waveStrip) {
+        const maxRef = Math.max(25, ...update.samples);
+        waveStrip.innerHTML = Array.from({ length: 28 }, (_, idx) => {
+          const val = update.samples[idx] || 0;
+          const pct = val > 0 ? Math.max(12, Math.min(100, Math.round((val / maxRef) * 100))) : 8;
+          return `<span class="speed-wave-bar ${val > 0 ? 'is-live' : ''}" style="height: ${pct}%"></span>`;
+        }).join('');
+      }
+    }
+
+    if (gaugeInstance && typeof update.liveMbps === 'number') {
+      gaugeInstance.setValue(update.liveMbps, update.phase || 'idle');
+    }
+  }
+
+  async function startSpeedtest() {
+    if (toolState.speedRunning) return;
+    if (speedAbort) speedAbort.abort();
+    speedAbort = new AbortController();
+
+    toolState.speedRunning = true;
+    toolState.speedPhase = 'ping';
+    toolState.speedPhaseLabel = 'Memulai pengujian...';
+    toolState.speedProgress = 0.03;
+    toolState.speedLiveMbps = 0;
+    toolState.speedSamples = [];
+    toolState.speedResult = null;
+    toolState.speedError = '';
+    render();
+
+    try {
+      const result = await runInternetSpeedtest({
+        signal: speedAbort.signal,
+        onUpdate: (upd) => {
+          toolState.speedPhase = upd.phase;
+          toolState.speedPhaseLabel = upd.phaseLabel;
+          toolState.speedProgress = upd.progress ?? toolState.speedProgress;
+          toolState.speedLiveMbps = upd.liveMbps ?? toolState.speedLiveMbps;
+          syncSpeedtestLiveDom(upd);
+        },
+      });
+      toolState.speedResult = result;
+      toolState.speedEnv = result.env;
+      toolState.speedPhase = 'done';
+      toolState.speedPhaseLabel = 'Pengujian selesai';
+      toolState.speedProgress = 1;
+      toolState.speedLiveMbps = result.downloadMbps;
+    } catch (err) {
+      if (err?.name === 'AbortError') {
+        toolState.speedPhase = 'idle';
+        toolState.speedPhaseLabel = 'Tes dibatalkan';
+        toolState.speedProgress = 0;
+      } else {
+        toolState.speedPhase = 'idle';
+        toolState.speedPhaseLabel = 'Pengujian gagal';
+        toolState.speedError = err?.message || 'Gagal menguji koneksi internet.';
+      }
+    } finally {
+      toolState.speedRunning = false;
+      speedAbort = null;
+      render();
+    }
+  }
+
   function bindToolEvents() {
     rootEl.querySelectorAll('[data-tool-subtab]').forEach((btn) => {
       btn.addEventListener('click', () => {
         const nextTab = btn.getAttribute('data-tool-subtab') || 'prayer';
+        if (speedAbort && nextTab !== 'speedtest') {
+          speedAbort.abort();
+          speedAbort = null;
+          toolState.speedRunning = false;
+        }
         toolState.activeSubTab = nextTab;
+        onSubTabChange(nextTab);
         render();
         if ((nextTab === 'prayer' || nextTab === 'weather') && !toolState.location && !toolState.locationLoading) {
           ensureLocationAndLoad();
+        } else if (nextTab === 'speedtest') {
+          ensureSpeedtestEnv();
+          if (!toolState.location && !toolState.locationLoading) {
+            ensureLocationAndLoad();
+          }
         }
       });
     });
@@ -1143,6 +1465,22 @@ export function createToolsHubController({ rootEl, onToast = () => {} }) {
         render();
       });
     }
+
+    if (toolState.activeSubTab === 'speedtest') {
+      const gaugeCanvas = rootEl.querySelector('#speedtest-gauge-canvas');
+      if (gaugeCanvas) {
+        gaugeInstance = createSpeedometerGauge(gaugeCanvas);
+        const initialGaugeVal = toolState.speedRunning
+          ? toolState.speedLiveMbps
+          : toolState.speedResult?.downloadMbps || 0;
+        const initialMode = toolState.speedRunning ? toolState.speedPhase : toolState.speedResult ? 'download' : 'idle';
+        gaugeInstance.setValue(initialGaugeVal, initialMode);
+      }
+      rootEl.querySelector('#speedtest-start-btn')?.addEventListener('click', startSpeedtest);
+      rootEl.querySelector('#speedtest-cancel-btn')?.addEventListener('click', () => {
+        if (speedAbort) speedAbort.abort();
+      });
+    }
   }
 
   function render() {
@@ -1154,11 +1492,13 @@ export function createToolsHubController({ rootEl, onToast = () => {} }) {
         ? renderPrayerPanel()
         : toolState.activeSubTab === 'weather'
         ? renderWeatherPanel()
-        : renderWorldClockPanel();
+        : toolState.activeSubTab === 'worldclock'
+        ? renderWorldClockPanel()
+        : renderSpeedtestPanel();
 
     rootEl.innerHTML = `
       <div class="tools-hub">
-        <div class="tools-subnav" role="tablist" aria-label="Kategori Menu Lainnya">
+        <div class="tools-subnav" role="tablist" aria-label="Menu Tambahan">
           <button
             type="button"
             role="tab"
@@ -1189,6 +1529,16 @@ export function createToolsHubController({ rootEl, onToast = () => {} }) {
             <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20"/><path d="M2 12h20"/></svg>
             <span>Jam Dunia &amp; Globe</span>
           </button>
+          <button
+            type="button"
+            role="tab"
+            class="tools-subtab ${toolState.activeSubTab === 'speedtest' ? 'is-active' : ''}"
+            data-tool-subtab="speedtest"
+            aria-selected="${toolState.activeSubTab === 'speedtest'}"
+          >
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m12 14 4-4"/><path d="M3.34 19a10 10 0 1 1 17.32 0"/></svg>
+            <span>Speedtest</span>
+          </button>
         </div>
 
         ${activeTabHtml}
@@ -1202,21 +1552,35 @@ export function createToolsHubController({ rootEl, onToast = () => {} }) {
   return {
     mount(subTab = null) {
       mounted = true;
-      if (subTab === 'prayer' || subTab === 'weather' || subTab === 'worldclock') {
+      if (
+        subTab === 'prayer' ||
+        subTab === 'weather' ||
+        subTab === 'worldclock' ||
+        subTab === 'speedtest'
+      ) {
         toolState.activeSubTab = subTab;
       }
       render();
       if (!toolState.location && !toolState.locationLoading) {
         ensureLocationAndLoad();
       }
+      if (toolState.activeSubTab === 'speedtest') {
+        ensureSpeedtestEnv();
+      }
     },
     unmount() {
       mounted = false;
+      if (speedAbort) {
+        speedAbort.abort();
+        speedAbort = null;
+        toolState.speedRunning = false;
+      }
       stopLiveTimers();
       if (rootEl) rootEl.innerHTML = '';
     },
     redrawTheme() {
       globeInstance?.redraw();
+      gaugeInstance?.redraw();
     },
   };
 }

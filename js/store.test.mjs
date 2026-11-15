@@ -28,13 +28,19 @@ import {
 } from './vault.js';
 import {
   WORLD_LOCATIONS,
+  calculatePingStats,
+  computeMbps,
   convertWorldTime,
+  describeCloudflareColo,
   describeWeatherCode,
+  evaluateConnectionQuality,
   findNearestLocationOnGlobe,
   getNextPrayerInfo,
   inverseOrthographic,
   matchIndonesianCityQuery,
+  parseDeviceTelemetry,
   projectOrthographic,
+  speedToGaugeRatio,
 } from './tools-logic.js';
 
 test('formatRupiah formats Indonesian currency accurately', () => {
@@ -396,6 +402,48 @@ test('orthographic globe projection and hit detection accurately project and loc
 
   const hit = findNearestLocationOnGlobe(200, 200, WORLD_LOCATIONS, -6.21, 106.85, 150, 200, 200, 24);
   assert.equal(hit?.location?.id, 'id-wib');
+});
+
+test('speedtest throughput, ping/jitter stats, gauge scaling, quality rating, and telemetry parser work accurately', () => {
+  assert.equal(computeMbps(12_500_000, 1000), 100);
+  assert.equal(computeMbps(0, 1000), 0);
+
+  const pingStats = calculatePingStats([20, 26, 22, 24]);
+  assert.equal(pingStats.minMs, 20);
+  assert.equal(pingStats.maxMs, 26);
+  assert.equal(pingStats.avgMs, 23);
+  assert.equal(pingStats.jitterMs, 4);
+  assert.equal(pingStats.sampleCount, 4);
+
+  assert.equal(speedToGaugeRatio(0), 0);
+  assert.equal(speedToGaugeRatio(1000), 1);
+  assert.ok(speedToGaugeRatio(50) > 0.45 && speedToGaugeRatio(50) < 0.55);
+
+  assert.equal(describeCloudflareColo('CGK'), 'Jakarta, Indonesia (CGK)');
+  assert.equal(describeCloudflareColo('SIN'), 'Singapura (SIN)');
+
+  const fast = evaluateConnectionQuality({ downloadMbps: 120, uploadMbps: 40, pingMs: 18, jitterMs: 4 });
+  assert.equal(fast.grade, 'Sangat Cepat');
+  assert.equal(fast.suitability.every((s) => s.ok), true);
+
+  const slow = evaluateConnectionQuality({ downloadMbps: 4, uploadMbps: 1.5, pingMs: 140, jitterMs: 35 });
+  assert.equal(slow.suitability.every((s) => !s.ok), true);
+
+  const dev = parseDeviceTelemetry({
+    userAgent: 'Mozilla/5.0 (Linux; Android 14) Chrome/130.0 Mobile',
+    hardwareConcurrency: 8,
+    deviceMemory: 8,
+    screenWidth: 390,
+    screenHeight: 844,
+    connection: { type: 'wifi', effectiveType: '4g', downlink: 42 },
+  });
+  assert.equal(dev.os, 'Android');
+  assert.equal(dev.browser, 'Google Chrome');
+  assert.equal(dev.deviceType, 'Mobile / HP');
+  assert.equal(dev.cores, '8 Core');
+  assert.equal(dev.memory, '8 GB RAM');
+  assert.equal(dev.screenText, '390×844');
+  assert.equal(dev.networkType, 'WIFI · 4G · ~42 Mbps');
 });
 
 

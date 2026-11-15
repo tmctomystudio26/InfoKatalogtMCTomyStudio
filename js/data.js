@@ -25,14 +25,14 @@ export const PAYMENT_OPTIONS = [
     id: 'Bayar Sekarang',
     label: 'Bayar Sekarang (QRIS / E-Wallet / Bank)',
     badge: '0% Biaya',
-    note: 'Tanpa biaya tambahan · Proses prioritas instan setelah bukti transfer dikonfirmasi.',
+    note: 'Tanpa biaya tambahan · Diproses prioritas setelah konfirmasi.',
     surchargeRate: 0,
   },
   {
     id: 'Bayar Belakangan (Setelah Akun Diterima)',
     label: 'Bayar Nanti (Setelah Akun Diterima)',
     badge: '+10% Biaya Layanan',
-    note: 'Dikenakan biaya tambahan 10% dari total tagihan karena pembayaran dilakukan setelah akun aktif.',
+    note: 'Biaya +10% karena pembayaran setelah akun aktif.',
     surchargeRate: 0.1,
   },
 ];
@@ -240,24 +240,39 @@ export const PRODUCTS = [
 
 export const FAQ_ITEMS = [
   {
-    question: 'Berapa lama proses aktivasi setelah pemesanan?',
+    question: 'Berapa lama proses aktivasi pesanan?',
     answer:
-      'Pesanan yang sudah dibayar diproses rata-rata dalam 3 hingga 10 menit selama jam operasional admin melalui WhatsApp.',
+      'Pesanan diproses 3–10 menit via WhatsApp pada jam operasional setelah pembayaran dikonfirmasi.',
   },
   {
-    question: 'Apa perbedaan paket Sharing dan Privat?',
+    question: 'Apa beda paket Sharing dan Privat?',
     answer:
-      'Paket Sharing menggunakan profil terpisah dalam satu akun bersama sesuai kuota (misal 1P1U atau 1P2U), sedangkan paket Privat memberikan kendali penuh atas seluruh akun.',
+      'Sharing memakai satu akun bersama sesuai kuota profil (misal 1P1U atau 1P2U). Privat memberi kendali penuh atas seluruh akun.',
   },
   {
-    question: 'Bagaimana sistem garansi penggantian akun bekerja?',
+    question: 'Bagaimana cara klaim garansi akun?',
     answer:
-      'Setiap paket dengan keterangan garansi akan mendapat penggantian akun baru sesuai ketentuan masa garansi apabila terjadi kendala akses bukan karena pelanggaran aturan penggunaan.',
+      'Paket bergaransi mendapat penggantian akun baru selama masa aktif jika kendala bukan karena pelanggaran aturan pemakaian.',
   },
   {
-    question: 'Apakah ada biaya tambahan untuk opsi Bayar Nanti setelah akun diterima?',
+    question: 'Apa ketentuan Bayar Sekarang dan Bayar Nanti?',
     answer:
-      'Ya. Untuk opsi Bayar Nanti (Setelah Akun Diterima) dikenakan biaya layanan tambahan sebesar 10% dari total tagihan yang ditampilkan transparan sebelum checkout. Jika memilih Bayar Sekarang, tidak ada biaya tambahan (0%).',
+      'Bayar Sekarang bebas biaya (0%). Bayar Nanti (setelah akun diterima) dikenakan biaya layanan +10% yang dihitung otomatis saat checkout.',
+  },
+  {
+    question: 'Bagaimana memakai voucher dan struk digital?',
+    answer:
+      'Masukkan kode voucher di keranjang sebelum checkout. Setelah pesanan dibuat, struk PNG siap diunduh dan dikirim ke WhatsApp admin.',
+  },
+  {
+    question: 'Bagaimana kerja Jadwal Sholat, Cuaca, Jam Dunia, dan Speedtest?',
+    answer:
+      'Buka Menu Lainnya untuk mengakses semua utilitas di halaman terpisah. Lokasi memakai izin GPS browser terlebih dahulu, lalu otomatis fallback ke IP atau pencarian kota manual.',
+  },
+  {
+    question: 'Bisakah request aplikasi atau paket durasi khusus?',
+    answer:
+      'Bisa. Pilih Request & Custom di katalog untuk memesan aplikasi atau durasi paket sesuai kebutuhan.',
   },
 ];
 

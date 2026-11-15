@@ -435,3 +435,188 @@ export function findNearestLocationOnGlobe(
 
   return nearestByAngle;
 }
+
+const CLOUDFLARE_COLOS = {
+  CGK: 'Jakarta, Indonesia',
+  SUB: 'Surabaya, Indonesia',
+  DPS: 'Denpasar, Indonesia',
+  KNO: 'Medan, Indonesia',
+  UPG: 'Makassar, Indonesia',
+  SIN: 'Singapura',
+  KUL: 'Kuala Lumpur, Malaysia',
+  BKK: 'Bangkok, Thailand',
+  MNL: 'Manila, Filipina',
+  HKG: 'Hong Kong',
+  TPE: 'Taipei, Taiwan',
+  NRT: 'Tokyo, Jepang',
+  KIX: 'Osaka, Jepang',
+  ICN: 'Seoul, Korea Selatan',
+  BOM: 'Mumbai, India',
+  DEL: 'New Delhi, India',
+  DXB: 'Dubai, UEA',
+  SYD: 'Sydney, Australia',
+  MEL: 'Melbourne, Australia',
+  LHR: 'London, Inggris',
+  AMS: 'Amsterdam, Belanda',
+  FRA: 'Frankfurt, Jerman',
+  LAX: 'Los Angeles, AS',
+  SJC: 'San Jose, AS',
+  EWR: 'Newark, AS',
+};
+
+export function describeCloudflareColo(code) {
+  const clean = String(code || '').trim().toUpperCase();
+  if (!clean) return 'Server CDN Global';
+  const city = CLOUDFLARE_COLOS[clean];
+  return city ? `${city} (${clean})` : `Node ${clean}`;
+}
+
+export function computeMbps(bytesTransferred, durationMs) {
+  const bytes = Number(bytesTransferred);
+  const ms = Number(durationMs);
+  if (!Number.isFinite(bytes) || !Number.isFinite(ms) || bytes <= 0 || ms <= 0) {
+    return 0;
+  }
+  const mbps = (bytes * 8) / (ms / 1000) / 1_000_000;
+  return Number(mbps.toFixed(2));
+}
+
+export function calculatePingStats(samplesMs = []) {
+  const valid = (Array.isArray(samplesMs) ? samplesMs : [])
+    .map(Number)
+    .filter((n) => Number.isFinite(n) && n >= 0);
+
+  if (valid.length === 0) {
+    return { minMs: 0, avgMs: 0, maxMs: 0, jitterMs: 0, sampleCount: 0 };
+  }
+
+  const minMs = Math.min(...valid);
+  const maxMs = Math.max(...valid);
+  const avgMs = valid.reduce((sum, val) => sum + val, 0) / valid.length;
+
+  let jitterMs = 0;
+  if (valid.length > 1) {
+    let diffSum = 0;
+    for (let i = 1; i < valid.length; i += 1) {
+      diffSum += Math.abs(valid[i] - valid[i - 1]);
+    }
+    jitterMs = diffSum / (valid.length - 1);
+  }
+
+  return {
+    minMs: Math.round(minMs),
+    avgMs: Math.round(avgMs),
+    maxMs: Math.round(maxMs),
+    jitterMs: Number(jitterMs.toFixed(1)),
+    sampleCount: valid.length,
+  };
+}
+
+const GAUGE_SCALE_STOPS = [0, 5, 10, 25, 50, 100, 250, 500, 1000];
+
+export function speedToGaugeRatio(mbps = 0) {
+  const val = Math.max(0, Number(mbps) || 0);
+  if (val <= 0) return 0;
+  const maxStop = GAUGE_SCALE_STOPS[GAUGE_SCALE_STOPS.length - 1];
+  if (val >= maxStop) return 1;
+
+  const segments = GAUGE_SCALE_STOPS.length - 1;
+  for (let i = 0; i < segments; i += 1) {
+    const low = GAUGE_SCALE_STOPS[i];
+    const high = GAUGE_SCALE_STOPS[i + 1];
+    if (val <= high) {
+      const localProgress = (val - low) / (high - low);
+      return (i + localProgress) / segments;
+    }
+  }
+  return 1;
+}
+
+export function evaluateConnectionQuality({
+  downloadMbps = 0,
+  uploadMbps = 0,
+  pingMs = 0,
+  jitterMs = 0,
+} = {}) {
+  const dl = Number(downloadMbps) || 0;
+  const ul = Number(uploadMbps) || 0;
+  const ping = Number(pingMs) || 0;
+  const jitter = Number(jitterMs) || 0;
+
+  let grade = 'Sangat Cepat';
+  let tone = 'excellent';
+  if (dl >= 100 && ul >= 25 && ping <= 45) {
+    grade = 'Sangat Cepat';
+    tone = 'excellent';
+  } else if (dl >= 40 && ul >= 10 && ping <= 75) {
+    grade = 'Cepat & Stabil';
+    tone = 'good';
+  } else if (dl >= 15 && ul >= 5 && ping <= 120) {
+    grade = 'Cukup Stabil';
+    tone = 'fair';
+  } else {
+    grade = 'Perlu Optimasi';
+    tone = 'slow';
+  }
+
+  return {
+    grade,
+    tone,
+    suitability: [
+      { label: 'Streaming 4K', ok: dl >= 25 },
+      { label: 'Video Call HD', ok: dl >= 5 && ul >= 3 && jitter <= 30 },
+      { label: 'Gaming Online', ok: ping > 0 && ping <= 65 && jitter <= 20 },
+      { label: 'Upload File Besar', ok: ul >= 15 },
+    ],
+  };
+}
+
+export function parseDeviceTelemetry(env = {}) {
+  const ua = String(env.userAgent || '');
+  const uad = env.userAgentData || null;
+  const platformRaw = String(uad?.platform || env.platform || '');
+
+  let os = 'Perangkat Lain';
+  if (/android/i.test(ua)) os = 'Android';
+  else if (/iphone|ipad|ipod/i.test(ua)) os = 'iOS / iPadOS';
+  else if (/windows/i.test(ua) || /win/i.test(platformRaw)) os = 'Windows';
+  else if (/mac/i.test(ua) || /mac/i.test(platformRaw)) os = 'macOS';
+  else if (/linux/i.test(ua) || /linux/i.test(platformRaw)) os = 'Linux';
+
+  let browser = 'Browser Web';
+  if (/edg\//i.test(ua)) browser = 'Microsoft Edge';
+  else if (/opr\/|opera/i.test(ua)) browser = 'Opera';
+  else if (/chrome|crios/i.test(ua)) browser = 'Google Chrome';
+  else if (/firefox|fxios/i.test(ua)) browser = 'Mozilla Firefox';
+  else if (/safari/i.test(ua)) browser = 'Safari';
+
+  const isMobile = Boolean(uad?.mobile) || /android|iphone|ipad|ipod|mobile/i.test(ua);
+  const deviceType = isMobile ? 'Mobile / HP' : 'Desktop / Laptop';
+
+  const cores = Number(env.hardwareConcurrency) > 0 ? `${env.hardwareConcurrency} Core` : '-';
+  const memory = Number(env.deviceMemory) > 0 ? `${env.deviceMemory} GB RAM` : '-';
+  const screenText =
+    Number(env.screenWidth) > 0 && Number(env.screenHeight) > 0
+      ? `${env.screenWidth}×${env.screenHeight}`
+      : '-';
+
+  const conn = env.connection || null;
+  let networkType = 'Tidak terdeteksi';
+  if (conn) {
+    const parts = [];
+    if (conn.type && conn.type !== 'unknown') parts.push(String(conn.type).toUpperCase());
+    if (conn.effectiveType) parts.push(String(conn.effectiveType).toUpperCase());
+    if (Number(conn.downlink) > 0) parts.push(`~${conn.downlink} Mbps`);
+    if (parts.length > 0) networkType = parts.join(' · ');
+  }
+
+  return {
+    os,
+    browser,
+    deviceType,
+    cores,
+    memory,
+    screenText,
+    networkType,
+  };
+}
