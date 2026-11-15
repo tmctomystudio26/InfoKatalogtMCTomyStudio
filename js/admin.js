@@ -400,6 +400,16 @@ function renderProductList() {
                 value="${escapeHtml(product.summary || '')}"
               />
             </div>
+            <div class="form-field">
+              <label for="plogo-${escapeHtml(product.id)}">URL / Path Logo</label>
+              <input
+                type="text"
+                id="plogo-${escapeHtml(product.id)}"
+                data-prod-meta="${escapeHtml(product.id)}"
+                data-meta-field="logo"
+                value="${escapeHtml(product.logo || '')}"
+              />
+            </div>
           </div>
 
           <div class="admin-variant-list">

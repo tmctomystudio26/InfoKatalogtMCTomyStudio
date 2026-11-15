@@ -70,7 +70,7 @@
       </section>
 
       <section id="order-ready-view" class="order-page-stack" hidden>
-        <!-- 1. Primary Action & Order Ready Card -->
+        <!-- 1. Header & Order Code -->
         <div class="order-panel-card order-hero-card">
           <div class="order-status-head">
             <div>
@@ -79,12 +79,31 @@
             </div>
             <span class="order-size-tag mono-num" id="order-receipt-size">Membuat struk...</span>
           </div>
+        </div>
 
-          <p class="order-lead">
-            Keranjang belanja Anda telah dikosongkan otomatis untuk pemesanan berikutnya. Silakan kirim rincian pesanan ini ke WhatsApp Admin (<strong>085122936027</strong>).
-          </p>
+        <!-- 2. Receipt Preview (Minimalist, no title or bloated text) -->
+        <div class="order-panel-card order-receipt-panel">
+          <div class="receipt-preview-wrap" id="receipt-preview-container">
+            <div class="receipt-loading" id="receipt-loading-text">Menyiapkan gambar struk...</div>
+            <img
+              id="order-receipt-img"
+              src=""
+              alt="Preview struk belanja Manifestudio"
+              class="receipt-preview-img"
+              hidden
+            />
+          </div>
+        </div>
 
-          <div class="order-actions-stack">
+        <!-- 3. Transaction Summary & Action Buttons at the Bottom -->
+        <div class="order-panel-card">
+          <h2 class="order-subhead">Ringkasan Transaksi</h2>
+          <div id="order-meta-list" class="order-meta-list"></div>
+          <div id="order-items-summary" class="order-items-summary"></div>
+          <div id="order-totals-summary" class="summary-breakdown"></div>
+
+          <!-- Action buttons placed below Total Bayar -->
+          <div class="order-actions-stack" style="margin-top: 0.85rem;">
             <a
               href="#"
               target="_blank"
@@ -109,36 +128,6 @@
               </button>
             </div>
           </div>
-
-          <p class="order-tip">
-            Saat menekan <strong>Kirim Pesanan ke WhatsApp Admin</strong>, gambar struk belanja otomatis diunduh ke perangkat Anda sambil membuka chat WhatsApp Admin secara langsung.
-          </p>
-        </div>
-
-        <!-- 2. Receipt Preview Card -->
-        <div class="order-panel-card">
-          <div class="order-receipt-head">
-            <h2 class="order-subhead">Bukti Struk Otomatis</h2>
-            <span class="order-receipt-hint">Format ringan · Siap kirim WhatsApp</span>
-          </div>
-          <div class="receipt-preview-wrap" id="receipt-preview-container">
-            <div class="receipt-loading" id="receipt-loading-text">Menyiapkan gambar struk...</div>
-            <img
-              id="order-receipt-img"
-              src=""
-              alt="Preview struk belanja Manifestudio"
-              class="receipt-preview-img"
-              hidden
-            />
-          </div>
-        </div>
-
-        <!-- 3. Transaction Summary Card (Moved to Bottom) -->
-        <div class="order-panel-card">
-          <h2 class="order-subhead">Ringkasan Transaksi</h2>
-          <div id="order-meta-list" class="order-meta-list"></div>
-          <div id="order-items-summary" class="order-items-summary"></div>
-          <div id="order-totals-summary" class="summary-breakdown"></div>
         </div>
 
         <!-- 4. Back to Catalog CTA -->
