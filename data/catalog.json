@@ -51,33 +51,18 @@
   ],
   "vouchers": [
     {
-      "code": "HEMAT2K",
-      "type": "fixed",
-      "value": 2000,
-      "minSubtotal": 15000,
-      "label": "Potongan Rp2.000 (min. Rp15.000)"
-    },
-    {
-      "code": "MANIFEST5",
-      "type": "fixed",
-      "value": 5000,
-      "minSubtotal": 40000,
-      "label": "Potongan Rp5.000 (min. Rp40.000)"
-    },
-    {
-      "code": "PROMO10",
-      "type": "percent",
-      "value": 10,
-      "maxDiscount": 10000,
-      "minSubtotal": 25000,
-      "label": "Diskon 10% maks. Rp10.000 (min. Rp25.000)"
-    },
-    {
       "code": "RESELLERNOVEMBER",
       "type": "fixed",
       "value": 2000,
       "minSubtotal": 12000,
       "label": "Potongan Rp2.000 (min. Rp12.000)"
+    },
+    {
+      "code": "TOMYLOVEBILLA",
+      "type": "fixed",
+      "value": 3000,
+      "minSubtotal": 15000,
+      "label": "Potongan Rp3.000 (min. Rp15.000)"
     }
   ],
   "products": [
@@ -391,6 +376,30 @@
           "id": "prime-1m-privat",
           "name": "1 Bulan Privat",
           "price": 15000,
+          "outOfStock": false
+        }
+      ]
+    },
+    {
+      "id": "cek-turnitin",
+      "name": "Cek Turnitin",
+      "category": "custom",
+      "logo": "https://img.icons8.com/fluent/1200/turnitin.jpg",
+      "isBestSeller": false,
+      "outOfStock": false,
+      "tag": "Tersedia",
+      "summary": "Cek Plagiasi Turnitin",
+      "variants": [
+        {
+          "id": "cek-turnitin-v1",
+          "name": "Turnitin V1",
+          "price": 17000,
+          "outOfStock": false
+        },
+        {
+          "id": "cek-turnitin-8fnd",
+          "name": "Turnitin V2",
+          "price": 25000,
           "outOfStock": false
         }
       ]
