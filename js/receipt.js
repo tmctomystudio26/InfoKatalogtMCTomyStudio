@@ -1,7 +1,8 @@
 /**
  * Zero-dependency HTML5 Canvas 2D Receipt Image Generator
- * Produces lightweight (~25-55 KB) high-contrast JPEG/PNG order receipts
- * directly inside static GitHub Pages browsers (even offline).
+ * Anime Aesthetic Theme + National Standard Invoice Layout
+ * Produces lightweight (~35-50 KB) high-contrast JPEG receipts
+ * optimized for instant sharing via WhatsApp.
  */
 
 import { formatRupiah } from './store.js';
@@ -55,7 +56,7 @@ export async function generateReceiptImage({
   createdAt = new Date(),
 }) {
   const width = 580;
-  const padX = 28;
+  const padX = 26;
   const innerW = width - padX * 2;
   const sans = '"Plus Jakarta Sans", "Inter", system-ui, -apple-system, sans-serif';
   const mono = '"JetBrains Mono", "SFMono-Regular", Consolas, monospace';
@@ -66,35 +67,35 @@ export async function generateReceiptImage({
   measureCanvas.height = 100;
   const mctx = measureCanvas.getContext('2d');
 
-  mctx.font = `600 15px ${sans}`;
+  mctx.font = `600 14px ${sans}`;
   const itemLayouts = cart.map((item) => {
-    const titleLines = wrapLines(mctx, `${item.productName}`, innerW - 140);
-    mctx.font = `400 13px ${sans}`;
-    const variantLines = wrapLines(mctx, `${item.variantName} · Qty ${item.quantity}`, innerW - 140);
-    mctx.font = `600 15px ${sans}`;
-    const rowHeight = Math.max(46, titleLines.length * 19 + variantLines.length * 17 + 14);
+    const titleLines = wrapLines(mctx, `${item.productName}`, innerW - 130);
+    mctx.font = `400 12px ${sans}`;
+    const variantLines = wrapLines(mctx, `${item.variantName} · Qty ${item.quantity}`, innerW - 130);
+    mctx.font = `600 14px ${sans}`;
+    const rowHeight = Math.max(42, titleLines.length * 18 + variantLines.length * 16 + 12);
     return { item, titleLines, variantLines, rowHeight };
   });
 
-  mctx.font = `500 13px ${sans}`;
+  mctx.font = `500 12px ${sans}`;
   const noteText = whatsappNote.trim();
-  const noteLines = noteText ? wrapLines(mctx, noteText, innerW - 125) : [];
-  const paymentLines = wrapLines(mctx, paymentOption, innerW - 125);
+  const noteLines = noteText ? wrapLines(mctx, noteText, innerW - 120) : [];
+  const paymentLines = wrapLines(mctx, paymentOption, innerW - 120);
 
-  const headerH = 112;
+  const headerH = 124;
   const metaH =
-    78 +
+    74 +
     paymentLines.length * 18 +
-    (totals.voucherCode ? 24 : 0) +
-    (noteLines.length > 0 ? noteLines.length * 18 + 8 : 0);
-  const itemsH = 38 + itemLayouts.reduce((sum, l) => sum + l.rowHeight, 0) + 12;
+    (totals.voucherCode ? 22 : 0) +
+    (noteLines.length > 0 ? noteLines.length * 18 + 6 : 0);
+  const itemsH = 34 + itemLayouts.reduce((sum, l) => sum + l.rowHeight, 0) + 12;
 
   let breakdownRows = 2; // Subtotal + Total
   if (totals.discount > 0) breakdownRows += 1;
   if (totals.voucherCode) breakdownRows += 1;
   if (totals.isPayLater) breakdownRows += 1;
-  const summaryH = 36 + breakdownRows * 26 + (totals.isPayLater ? 46 : 0) + 20;
-  const footerH = 74;
+  const summaryH = 32 + breakdownRows * 24 + (totals.isPayLater ? 42 : 0) + 16;
+  const footerH = 68;
 
   const totalH = headerH + metaH + itemsH + summaryH + footerH;
 
@@ -103,62 +104,73 @@ export async function generateReceiptImage({
   canvas.height = totalH;
   const ctx = canvas.getContext('2d');
 
-  // Crisp paper background
-  ctx.fillStyle = '#FFFFFF';
+  // Crisp invoice paper background with subtle anime aesthetic hue
+  ctx.fillStyle = '#FAFAFC';
   ctx.fillRect(0, 0, width, totalH);
 
-  // Header band
-  ctx.fillStyle = '#0B1220';
+  // Header band (Cyberpunk Anime Indigo/Violet gradient effect)
+  ctx.fillStyle = '#0F172A';
   ctx.fillRect(0, 0, width, headerH);
-  ctx.fillStyle = '#2563EB';
-  ctx.fillRect(0, 0, width, 6);
 
+  // Neon Anime accent top bars (Cyan & Magenta)
+  ctx.fillStyle = '#06B6D4';
+  ctx.fillRect(0, 0, width, 5);
+  ctx.fillStyle = '#EC4899';
+  ctx.fillRect(0, 5, width, 3);
+
+  // Store title & Anime Edition Badge
   ctx.fillStyle = '#FFFFFF';
-  ctx.font = `800 22px ${sans}`;
-  ctx.fillText('MANIFESTUDIO', padX, 44);
+  ctx.font = `800 21px ${sans}`;
+  ctx.fillText('MANIFESTUDIO', padX, 42);
+
+  // Anime aesthetic star badge
+  ctx.fillStyle = '#38BDF8';
+  ctx.font = `700 11px ${sans}`;
+  ctx.fillText('★ ANIME STORE EDITION ★', padX + 185, 41);
 
   ctx.fillStyle = '#94A3B8';
-  ctx.font = `500 12px ${sans}`;
-  ctx.fillText('STRUK PEMESANAN DIGITAL RESMI · BUKTI CHECKOUT', padX, 66);
+  ctx.font = `500 11px ${sans}`;
+  ctx.fillText('FAKTUR PEMBAYARAN DIGITAL RESMI · STANDAR NASIONAL', padX, 64);
 
+  // Invoice Code & Timestamp
   ctx.fillStyle = '#E2E8F0';
   ctx.font = `600 12px ${mono}`;
-  ctx.fillText(`NO: ${orderCode}`, padX, 92);
+  ctx.fillText(`FAKTUR NO: ${orderCode}`, padX, 98);
 
   const dateText = formatReceiptDate(createdAt);
   const dateW = ctx.measureText(dateText).width;
-  ctx.fillText(dateText, width - padX - dateW, 92);
+  ctx.fillText(dateText, width - padX - dateW, 98);
 
   // Meta block
-  let y = headerH + 26;
+  let y = headerH + 22;
   const drawMetaRow = (label, valueLines, valueColor = '#0F172A') => {
     ctx.fillStyle = '#64748B';
-    ctx.font = `500 13px ${sans}`;
+    ctx.font = `500 12px ${sans}`;
     ctx.fillText(label, padX, y);
 
     ctx.fillStyle = valueColor;
-    ctx.font = `600 13px ${sans}`;
+    ctx.font = `600 12px ${sans}`;
     valueLines.forEach((line, idx) => {
-      ctx.fillText(line, padX + 125, y + idx * 18);
+      ctx.fillText(line, padX + 120, y + idx * 18);
     });
-    y += Math.max(24, valueLines.length * 18 + 6);
+    y += Math.max(22, valueLines.length * 18 + 6);
   };
 
   drawMetaRow('Pemesan', [customerName.trim()]);
-  drawMetaRow('Pembayaran', paymentLines, totals.isPayLater ? '#B45309' : '#0F172A');
+  drawMetaRow('Metode Bayar', paymentLines, totals.isPayLater ? '#B45309' : '#0F172A');
   if (totals.voucherCode) {
     const voucherTag =
       totals.voucherDiscount > 0
         ? `${totals.voucherCode} (-${formatRupiah(totals.voucherDiscount)})`
-        : `${totals.voucherCode} (Cek Admin)`;
+        : `${totals.voucherCode} (Verifikasi Admin)`;
     drawMetaRow('Kode Voucher', [voucherTag], '#047857');
   }
   if (noteLines.length > 0) {
-    drawMetaRow('Catatan/Email', noteLines);
+    drawMetaRow('Catatan / Email', noteLines);
   }
 
-  // Divider
-  y += 6;
+  // Divider line
+  y += 4;
   ctx.strokeStyle = '#E2E8F0';
   ctx.lineWidth = 1;
   ctx.beginPath();
@@ -166,37 +178,37 @@ export async function generateReceiptImage({
   ctx.lineTo(width - padX, y);
   ctx.stroke();
 
-  // Items header
-  y += 24;
+  // Items table header
+  y += 22;
   ctx.fillStyle = '#475569';
-  ctx.font = `700 12px ${sans}`;
-  ctx.fillText('RINCIAN PAKET DIPESAN', padX, y);
+  ctx.font = `700 11px ${sans}`;
+  ctx.fillText('RINCIAN PRODUK & VARIAN', padX, y);
   const rightHead = 'SUBTOTAL';
   ctx.fillText(rightHead, width - padX - ctx.measureText(rightHead).width, y);
-  y += 14;
+  y += 12;
 
   // Items rows
   for (const layout of itemLayouts) {
     const { item, titleLines, variantLines, rowHeight } = layout;
-    const rowTop = y + 14;
+    const rowTop = y + 12;
 
     ctx.fillStyle = '#0F172A';
-    ctx.font = `600 15px ${sans}`;
+    ctx.font = `600 14px ${sans}`;
     titleLines.forEach((line, idx) => {
-      ctx.fillText(line, padX, rowTop + idx * 19);
+      ctx.fillText(line, padX, rowTop + idx * 18);
     });
 
-    const variantStart = rowTop + titleLines.length * 19;
+    const variantStart = rowTop + titleLines.length * 18;
     ctx.fillStyle = '#64748B';
-    ctx.font = `400 13px ${sans}`;
+    ctx.font = `400 12px ${sans}`;
     variantLines.forEach((line, idx) => {
-      ctx.fillText(line, padX, variantStart + idx * 17);
+      ctx.fillText(line, padX, variantStart + idx * 16);
     });
 
     const lineTotalText =
       item.price === 0 ? 'Custom' : formatRupiah(item.price * item.quantity);
     ctx.fillStyle = '#0F172A';
-    ctx.font = `600 14px ${mono}`;
+    ctx.font = `600 13px ${mono}`;
     const priceW = ctx.measureText(lineTotalText).width;
     ctx.fillText(lineTotalText, width - padX - priceW, rowTop);
 
@@ -209,24 +221,24 @@ export async function generateReceiptImage({
   }
 
   // Summary box
-  y += 16;
+  y += 14;
   const summaryBoxTop = y;
-  const summaryBoxH = summaryH - 18;
-  ctx.fillStyle = '#F8FAFC';
+  const summaryBoxH = summaryH - 14;
+  ctx.fillStyle = '#FFFFFF';
   ctx.fillRect(padX, summaryBoxTop, innerW, summaryBoxH);
   ctx.strokeStyle = '#E2E8F0';
   ctx.strokeRect(padX, summaryBoxTop, innerW, summaryBoxH);
 
-  let sy = summaryBoxTop + 26;
+  let sy = summaryBoxTop + 22;
   const drawSummaryRow = (label, valText, color = '#334155', bold = false) => {
     ctx.fillStyle = color;
-    ctx.font = `${bold ? '700' : '500'} ${bold ? 16 : 13}px ${sans}`;
-    ctx.fillText(label, padX + 16, sy);
+    ctx.font = `${bold ? '700' : '500'} ${bold ? 15 : 12}px ${sans}`;
+    ctx.fillText(label, padX + 14, sy);
 
-    ctx.font = `${bold ? '700' : '600'} ${bold ? 17 : 13}px ${mono}`;
+    ctx.font = `${bold ? '700' : '600'} ${bold ? 16 : 12}px ${mono}`;
     const w = ctx.measureText(valText).width;
-    ctx.fillText(valText, width - padX - 16 - w, sy);
-    sy += bold ? 28 : 24;
+    ctx.fillText(valText, width - padX - 14 - w, sy);
+    sy += bold ? 26 : 22;
   };
 
   drawSummaryRow('Subtotal', formatRupiah(totals.subtotal));
@@ -237,7 +249,7 @@ export async function generateReceiptImage({
     const vText =
       totals.voucherDiscount > 0
         ? `-${formatRupiah(totals.voucherDiscount)}`
-        : 'Cek Admin';
+        : 'Verifikasi Admin';
     drawSummaryRow(`Voucher (${totals.voucherCode})`, vText, '#047857');
   }
   if (totals.isPayLater) {
@@ -249,34 +261,34 @@ export async function generateReceiptImage({
   // Separator inside summary
   ctx.strokeStyle = '#CBD5E1';
   ctx.beginPath();
-  ctx.moveTo(padX + 16, sy - 10);
-  ctx.lineTo(width - padX - 16, sy - 10);
+  ctx.moveTo(padX + 14, sy - 8);
+  ctx.lineTo(width - padX - 14, sy - 8);
   ctx.stroke();
-  sy += 10;
+  sy += 8;
 
-  drawSummaryRow('TOTAL BAYAR', formatRupiah(totals.total), '#0F172A', true);
+  drawSummaryRow('TOTAL PEMBAYARAN', formatRupiah(totals.total), '#0F172A', true);
 
   if (totals.isPayLater) {
     ctx.fillStyle = '#92400E';
-    ctx.font = `500 12px ${sans}`;
+    ctx.font = `500 11px ${sans}`;
     ctx.fillText(
-      '* Termasuk biaya layanan 10% untuk metode Bayar Setelah Akun Diterima.',
-      padX + 16,
-      sy + 4
+      '* Sudah termasuk biaya layanan 10% untuk metode Bayar Setelah Akun Diterima.',
+      padX + 14,
+      sy + 2
     );
   }
 
   // Footer
-  const fy = totalH - 42;
+  const fy = totalH - 36;
   ctx.fillStyle = '#64748B';
-  ctx.font = `500 12px ${sans}`;
-  ctx.fillText('Kirim gambar struk ini ke WhatsApp Admin Manifestudio: +62 851-2293-6027', padX, fy);
+  ctx.font = `500 11px ${sans}`;
+  ctx.fillText('Kirim bukti faktur ini ke WhatsApp Admin: +62 851-2293-6027', padX, fy);
   ctx.fillStyle = '#94A3B8';
-  ctx.font = `400 11px ${sans}`;
-  ctx.fillText('Struk dibuat otomatis oleh web statis Manifestudio (tMC Tomy Studio)', padX, fy + 18);
+  ctx.font = `400 10px ${sans}`;
+  ctx.fillText('Faktur digital resmi divalidasi otomatis oleh Manifestudio (tMC Tomy Studio)', padX, fy + 16);
 
-  // Encode as lightweight JPEG (typically 30-55 KB) with PNG fallback
-  let blob = await canvasToBlob(canvas, 'image/jpeg', 0.86);
+  // Encode as lightweight JPEG (~35-50 KB)
+  let blob = await canvasToBlob(canvas, 'image/jpeg', 0.85);
   let ext = 'jpg';
   let mimeType = 'image/jpeg';
   if (!blob) {
@@ -285,12 +297,11 @@ export async function generateReceiptImage({
     mimeType = 'image/png';
   }
 
-  const fileName = `struk-${String(orderCode || 'manifestudio').toLowerCase()}.${ext}`;
+  const fileName = `faktur-${String(orderCode || 'manifestudio').toLowerCase()}.${ext}`;
   const file = new File([blob], fileName, { type: mimeType });
   const objectUrl = URL.createObjectURL(blob);
   const sizeKb = Math.max(1, Math.round(blob.size / 1024));
 
-  // Also keep a lightweight PNG blob promise helper for ClipboardItem if needed
   const getPngBlob = () => canvasToBlob(canvas, 'image/png');
 
   return {

@@ -82,7 +82,7 @@ export function removeFromCart(cart, productId, variantId) {
   );
 }
 
-export function evaluateVoucher(codeInput = '', subtotal = 0, vouchers = []) {
+export function evaluateVoucher(codeInput = '', subtotal = 0, vouchers = [], usedVouchers = []) {
   const cleanCode = String(codeInput || '').trim().toUpperCase();
   if (!cleanCode) {
     return {
@@ -90,6 +90,18 @@ export function evaluateVoucher(codeInput = '', subtotal = 0, vouchers = []) {
       code: '',
       discount: 0,
       message: '',
+    };
+  }
+
+  if (
+    Array.isArray(usedVouchers) &&
+    usedVouchers.map((v) => String(v || '').trim().toUpperCase()).includes(cleanCode)
+  ) {
+    return {
+      status: 'used',
+      code: cleanCode,
+      discount: 0,
+      message: `Kode voucher "${cleanCode}" sudah pernah digunakan (sekali pakai).`,
     };
   }
 
@@ -141,6 +153,7 @@ export function calculateCartTotals(
     discountAmount = 2000,
     voucherCode = '',
     vouchers = [],
+    usedVouchers = [],
     paymentOption = 'Bayar Sekarang',
     payLaterRate = 0.1,
   } = {}
@@ -151,7 +164,7 @@ export function calculateCartTotals(
   const discount = qualifiesDiscount ? discountAmount : 0;
   const afterAutoDiscount = Math.max(0, subtotal - discount);
 
-  const voucherResult = evaluateVoucher(voucherCode, subtotal, vouchers);
+  const voucherResult = evaluateVoucher(voucherCode, subtotal, vouchers, usedVouchers);
   const voucherDiscount = Math.min(afterAutoDiscount, voucherResult.discount);
   const afterDiscounts = Math.max(0, afterAutoDiscount - voucherDiscount);
 

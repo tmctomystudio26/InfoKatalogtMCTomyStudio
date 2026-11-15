@@ -91,6 +91,10 @@ test('evaluateVoucher and Pay Later 10% surcharge compute accurately', () => {
   assert.equal(validFixed.code, 'HEMAT2K');
   assert.equal(validFixed.discount, 2000);
 
+  const usedResult = evaluateVoucher('HEMAT2K', 22500, VOUCHERS, ['HEMAT2K']);
+  assert.equal(usedResult.status, 'used');
+  assert.equal(usedResult.discount, 0);
+
   const ineligible = evaluateVoucher('MANIFEST5', 20000, VOUCHERS);
   assert.equal(ineligible.status, 'ineligible');
   assert.equal(ineligible.discount, 0);

@@ -458,6 +458,35 @@ function closeCartDrawer() {
   renderCartDrawer();
 }
 
+const USED_VOUCHERS_STORAGE_KEY = 'manifestudio_used_vouchers_v1';
+
+function getUsedVouchers() {
+  try {
+    const raw = localStorage.getItem(USED_VOUCHERS_STORAGE_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) return parsed;
+    }
+  } catch {
+    // Ignore
+  }
+  return [];
+}
+
+function markVoucherAsUsed(code) {
+  const clean = String(code || '').trim().toUpperCase();
+  if (!clean) return;
+  try {
+    const list = getUsedVouchers();
+    if (!list.includes(clean)) {
+      list.push(clean);
+      localStorage.setItem(USED_VOUCHERS_STORAGE_KEY, JSON.stringify(list));
+    }
+  } catch {
+    // Ignore
+  }
+}
+
 function getCartTotals() {
   const brand = getBrand();
   return calculateCartTotals(state.cart, {
@@ -465,6 +494,7 @@ function getCartTotals() {
     discountAmount: brand.discountAmount,
     voucherCode: state.voucherCode,
     vouchers: getVouchers(),
+    usedVouchers: getUsedVouchers(),
     paymentOption: state.paymentOption,
     payLaterRate: brand.payLaterSurchargeRate ?? PAY_LATER_SURCHARGE_RATE,
   });
@@ -900,6 +930,9 @@ function renderCartDrawer() {
     syncCheckoutDynamicParts(drawerRoot);
 
     const activeTotals = getCartTotals();
+    if (activeTotals.voucherCode && activeTotals.voucherStatus === 'applied') {
+      markVoucherAsUsed(activeTotals.voucherCode);
+    }
     const orderCode = generateOrderCode();
     const brand = getBrand();
 
