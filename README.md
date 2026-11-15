@@ -11,16 +11,17 @@ Katalog web statis resmi **Manifestudio** (dikelola oleh tMC Tomy Studio) untuk 
   - `Bayar Sekarang`: 0% biaya tambahan.
   - `Bayar Nanti (Setelah Akun Diterima)`: biaya layanan tambahan **+10%** ditampilkan secara transparan sebelum checkout.
 - **Checkout Langsung WhatsApp + Unduh Otomatis Struk**: Klik **Kirim Pesanan ke WhatsApp** langsung menuju chat Admin (`085122936027` / `wa.me/6285122936027`) membawa teks rincian rapi sekaligus otomatis mengunduh gambar struk JPEG ringan (`~30–55 KB`) dari HTML5 Canvas 2D (`js/receipt.js`).
-- **Panel Admin Statis Tanpa Edit Kode (`admin.html`)**: Ubah harga, status stok, tambah varian/produk baru, serta kelola voucher langsung lewat browser lalu publikasikan ke `data/catalog.json` via GitHub API agar sinkron ke semua pengguna GitHub Pages.
+- **Panel Admin Terenkripsi Tanpa Edit Kode (`admin.html`)**: Halaman *unlisted* (tidak ditautkan di footer publik) yang dilindungi layar kunci **AES-256-GCM + PBKDF2-SHA256** dan verifikasi izin tulis Token GitHub. Ubah harga, stok, produk baru, serta voucher langsung dari browser lalu publikasikan ke `data/catalog.json`.
 - **PWA Installable**: Banner install dengan tombol **Minimize (`−`)** ke dock melayang dan **Hilangkan (`×`)** permanen, plus dukungan cache offline (`sw.js`).
 
 ## Struktur Folder
 - `index.html` — Halaman utama katalog & modal/drawer checkout.
-- `admin.html` — Panel Admin statis untuk mengelola stok, harga, produk baru, & sinkronisasi GitHub.
+- `admin.html` — Panel Admin statis terenkripsi (`AES-256-GCM`) untuk mengelola stok, harga, produk baru, & sinkronisasi GitHub.
 - `data/catalog.json` — Sumber data tunggal katalog, varian, harga, voucher, dan FAQ.
 - `css/tokens.css`, `css/styles.css` — Token tema terang/gelap dan styling responsif.
 - `js/data.js` — Loader `catalog.json` (+ dukungan pratinjau lokal admin) dan data fallback offline.
 - `js/store.js` — Logika murni (filter, harga, voucher, biaya 10%, format WhatsApp, helper admin) + `js/store.test.mjs`.
+- `js/vault.js` — Enkripsi brankas Web Crypto (`PBKDF2` + `AES-GCM-256`) & verifikasi izin tulis GitHub.
 - `js/receipt.js` — Generator gambar struk otomatis berbasis HTML5 Canvas 2D.
 - `js/admin.js` — Logika Panel Admin & integrasi GitHub Contents REST API.
 - `js/pwa.js`, `sw.js`, `manifest.webmanifest` — Manajemen siklus hidup PWA & offline cache.

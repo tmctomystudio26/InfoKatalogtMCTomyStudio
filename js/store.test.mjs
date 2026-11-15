@@ -16,6 +16,11 @@ import {
   upsertProductInCatalog,
   validateOrderForm,
 } from './store.js';
+import {
+  decryptVault,
+  encryptVault,
+  verifyGitHubTokenAccess,
+} from './vault.js';
 
 test('formatRupiah formats Indonesian currency accurately', () => {
   assert.equal(formatRupiah(22500), 'Rp22.500');
@@ -196,4 +201,45 @@ test('admin catalog helpers toggle stock and add or update products', () => {
   const capcut = added.products.find((p) => p.id === 'capcut-pro');
   assert.ok(capcut);
   assert.equal(capcut.variants[0].price, 18000);
+});
+
+test('vault encrypts and decrypts credentials via AES-256-GCM and verifies GitHub permissions', async () => {
+  const payload = {
+    owner: 'owner-demo',
+    repo: 'repo-demo',
+    branch: 'main',
+    token: 'ghp_CaseSensitiveToken123',
+  };
+  const encrypted = await encryptVault(payload, 'SandiRahasia99');
+  assert.equal(encrypted.alg, 'AES-GCM-256');
+  assert.equal(JSON.stringify(encrypted).includes('ghp_CaseSensitiveToken123'), false);
+
+  const decrypted = await decryptVault(encrypted, 'SandiRahasia99');
+  assert.deepEqual(decrypted, payload);
+
+  await assert.rejects(() => decryptVault(encrypted, 'SandiSalah'), /Password brankas salah/);
+
+  const readOnlyCheck = await verifyGitHubTokenAccess({
+    owner: 'owner-demo',
+    repo: 'repo-demo',
+    token: 'tok-readonly',
+    fetchImpl: async () => ({
+      ok: true,
+      status: 200,
+      json: async () => ({ permissions: { push: false, pull: true } }),
+    }),
+  });
+  assert.equal(readOnlyCheck.ok, false);
+
+  const pushCheck = await verifyGitHubTokenAccess({
+    owner: 'owner-demo',
+    repo: 'repo-demo',
+    token: 'tok-push',
+    fetchImpl: async () => ({
+      ok: true,
+      status: 200,
+      json: async () => ({ full_name: 'owner-demo/repo-demo', permissions: { push: true } }),
+    }),
+  });
+  assert.equal(pushCheck.ok, true);
 });

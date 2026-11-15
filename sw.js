@@ -1,4 +1,4 @@
-const CACHE_NAME = 'manifestudio-cache-v3';
+const CACHE_NAME = 'manifestudio-cache-v4';
 
 const PRECACHE_ASSETS = [
   './',
@@ -11,6 +11,7 @@ const PRECACHE_ASSETS = [
   './js/data.js',
   './js/store.js',
   './js/receipt.js',
+  './js/vault.js',
   './js/pwa.js',
   './js/app.js',
   './js/admin.js',

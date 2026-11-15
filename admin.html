@@ -3,10 +3,10 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Panel Admin — Manifestudio</title>
+    <title>Brankas Admin — Manifestudio</title>
     <meta
       name="description"
-      content="Panel Admin statis Manifestudio untuk mengelola stok, harga, produk baru, dan voucher dengan sinkronisasi GitHub Pages."
+      content="Halaman admin terenkripsi Manifestudio."
     />
     <meta name="robots" content="noindex, nofollow" />
     <meta name="theme-color" content="#090D16" />
@@ -34,12 +34,25 @@
             class="brand-mark"
           />
           <div class="brand-text">
-            <span class="brand-name">Manifestudio Admin</span>
-            <span class="brand-tagline">Kelola Stok, Harga &amp; Produk Tanpa Editor Kode</span>
+            <span class="brand-name">Admin Panel</span>
+            <span class="brand-tagline">Manifestudio · Terenkripsi</span>
           </div>
         </a>
 
         <div class="header-actions">
+          <button
+            type="button"
+            id="lock-vault-btn"
+            class="header-btn"
+            aria-label="Kunci sesi admin"
+            hidden
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <rect width="18" height="11" x="3" y="11" rx="2" ry="2" />
+              <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+            </svg>
+            <span class="hide-xs">Kunci</span>
+          </button>
           <button
             type="button"
             id="theme-toggle-btn"
@@ -47,261 +60,352 @@
             aria-label="Ubah tema tampilan"
           ></button>
           <a href="./index.html" class="header-btn header-cart-btn">
-            Lihat Toko
+            Toko
           </a>
         </div>
       </div>
     </header>
 
     <main class="container admin-shell">
-      <section class="admin-card" aria-labelledby="sync-heading">
+      <!-- Gate Terenkripsi: Tampil pertama kali / saat terkunci -->
+      <section id="admin-lock-screen" class="admin-card admin-lock-card" aria-labelledby="lock-heading">
         <div class="admin-card-head">
           <div>
-            <h1 id="sync-heading" class="admin-title">Sinkronisasi Katalog Publik</h1>
-            <p class="admin-subtitle">
-              Perubahan disimpan langsung ke <code>data/catalog.json</code> di GitHub agar otomatis sinkron ke seluruh pembeli tanpa membuka editor kodingan.
+            <h1 id="lock-heading" class="admin-title">Akses Admin Terkunci</h1>
+            <p id="lock-subtitle" class="admin-subtitle">
+              Panel ini dilindungi enkripsi <strong>AES-256-GCM</strong> (PBKDF2) dan verifikasi izin tulis GitHub agar tidak dapat diakses pihak tidak berwenang.
             </p>
           </div>
-          <span id="admin-source-badge" class="admin-badge">Memuat katalog...</span>
+          <span class="admin-badge is-ok">AES-256-GCM</span>
         </div>
 
-        <div class="admin-form-grid">
+        <!-- Form Buka Brankas (jika perangkat ini sudah pernah aktivasi) -->
+        <form id="unlock-vault-form" class="admin-add-form" hidden>
           <div class="form-field">
-            <label for="gh-owner">Pemilik GitHub</label>
-            <input type="text" id="gh-owner" value="tmctomystudio26" autocomplete="off" />
-          </div>
-          <div class="form-field">
-            <label for="gh-repo">Nama Repositori</label>
-            <input type="text" id="gh-repo" value="InfoKatalogtMCTomyStudio" autocomplete="off" />
-          </div>
-          <div class="form-field">
-            <label for="gh-branch">Branch</label>
-            <input type="text" id="gh-branch" value="main" autocomplete="off" />
-          </div>
-          <div class="form-field">
-            <label for="gh-token">Token GitHub (PAT · Disimpan di Browser Ini)</label>
-            <div class="voucher-input-row">
+            <label for="unlock-password">Password Brankas Admin <span class="req">*</span></label>
+            <div class="token-input-row">
               <input
                 type="password"
-                id="gh-token"
-                placeholder="github_pat_... (izin Contents: Read & Write)"
-                autocomplete="off"
+                id="unlock-password"
+                placeholder="Masukkan password brankas Anda"
+                autocomplete="current-password"
+                required
               />
-              <button type="button" class="btn btn-secondary btn-sm" id="toggle-token-btn">
+              <button type="button" class="btn btn-secondary btn-sm" data-toggle-secret="unlock-password">
                 Lihat
               </button>
             </div>
           </div>
-        </div>
 
-        <div class="admin-action-bar">
-          <button type="button" id="publish-github-btn" class="btn btn-primary btn-sm">
-            Simpan &amp; Publikasikan ke GitHub
-          </button>
-          <button type="button" id="pull-github-btn" class="btn btn-secondary btn-sm">
-            Muat Ulang dari GitHub
-          </button>
-          <button type="button" id="save-preview-btn" class="btn btn-secondary btn-sm">
-            Simpan Pratinjau Lokal
-          </button>
-          <button type="button" id="clear-preview-btn" class="btn btn-ghost btn-sm">
-            Hapus Pratinjau
-          </button>
-          <button type="button" id="download-json-btn" class="btn btn-ghost btn-sm">
-            Unduh catalog.json
-          </button>
-        </div>
-
-        <div id="admin-status-box" class="admin-status-box" role="status" hidden></div>
-      </section>
-
-      <div class="admin-tabs" role="tablist" aria-label="Bagian Panel Admin">
-        <button
-          type="button"
-          role="tab"
-          id="tab-btn-products"
-          class="cat-tab is-active"
-          data-admin-tab="products"
-          aria-selected="true"
-        >
-          Produk &amp; Harga
-        </button>
-        <button
-          type="button"
-          role="tab"
-          id="tab-btn-add"
-          class="cat-tab"
-          data-admin-tab="add"
-          aria-selected="false"
-        >
-          + Tambah Produk Baru
-        </button>
-        <button
-          type="button"
-          role="tab"
-          id="tab-btn-vouchers"
-          class="cat-tab"
-          data-admin-tab="vouchers"
-          aria-selected="false"
-        >
-          Voucher Promo
-        </button>
-      </div>
-
-      <section id="panel-products" class="admin-panel" aria-labelledby="tab-btn-products">
-        <div class="admin-toolbar">
-          <div class="search-box">
-            <svg class="search-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-              <circle cx="11" cy="11" r="8" />
-              <path d="m21 21-4.3-4.3" />
-            </svg>
-            <input
-              type="search"
-              id="admin-product-search"
-              class="search-input"
-              placeholder="Cari produk atau varian untuk edit harga & stok..."
-              aria-label="Cari produk di panel admin"
-            />
+          <div class="admin-action-bar">
+            <button type="submit" id="unlock-submit-btn" class="btn btn-primary btn-sm">
+              Buka Brankas Admin
+            </button>
+            <button type="button" id="reset-vault-btn" class="btn btn-ghost btn-sm">
+              Ganti Token / Reset Brankas
+            </button>
           </div>
-          <span id="admin-product-count" class="catalog-count">0 produk</span>
-        </div>
+        </form>
 
-        <div id="admin-product-list" class="admin-product-list"></div>
-      </section>
-
-      <section id="panel-add" class="admin-panel" aria-labelledby="tab-btn-add" hidden>
-        <div class="admin-card">
-          <h2 class="admin-section-title">Tambah Layanan / Produk Baru</h2>
-          <p class="admin-subtitle">
-            Tambahkan layanan baru ke katalog lengkap dengan varian paket pertamanya.
-          </p>
-
-          <form id="add-product-form" class="admin-add-form">
-            <div class="admin-form-grid">
-              <div class="form-field">
-                <label for="new-prod-name">Nama Layanan <span class="req">*</span></label>
-                <input type="text" id="new-prod-name" placeholder="Contoh: CapCut Pro" required />
-              </div>
-
-              <div class="form-field">
-                <label for="new-prod-category">Kategori</label>
-                <select id="new-prod-category" class="admin-select">
-                  <option value="streaming">Streaming Film</option>
-                  <option value="music">Musik &amp; Hiburan</option>
-                  <option value="creative">Desain &amp; Editing</option>
-                  <option value="custom">Request &amp; Custom</option>
-                </select>
-              </div>
-
-              <div class="form-field">
-                <label for="new-prod-logo-preset">Ikon Logo</label>
-                <select id="new-prod-logo-preset" class="admin-select">
-                  <option value="./assets/logos/custom-request.svg">Ikon Umum / Custom</option>
-                  <option value="./assets/logos/netflix.svg">Netflix</option>
-                  <option value="./assets/logos/canva.svg">Canva</option>
-                  <option value="./assets/logos/youtube.svg">YouTube</option>
-                  <option value="./assets/logos/spotify.svg">Spotify</option>
-                  <option value="./assets/logos/viu.svg">Viu</option>
-                  <option value="./assets/logos/vidio.svg">Vidio</option>
-                  <option value="./assets/logos/alight-motion.svg">Alight Motion</option>
-                  <option value="./assets/logos/wetv.svg">WeTV</option>
-                  <option value="./assets/logos/prime-video.svg">Prime Video</option>
-                </select>
-              </div>
-
-              <div class="form-field">
-                <label for="new-prod-logo-url">Path / URL Logo</label>
+        <!-- Form Aktivasi Brankas (perangkat baru / setelah reset) -->
+        <form id="setup-vault-form" class="admin-add-form" hidden>
+          <div class="admin-form-grid">
+            <div class="form-field">
+              <label for="setup-owner">Username Pemilik GitHub <span class="req">*</span></label>
+              <input
+                type="text"
+                id="setup-owner"
+                placeholder="Contoh: username-github"
+                autocomplete="off"
+                required
+              />
+            </div>
+            <div class="form-field">
+              <label for="setup-repo">Nama Repositori <span class="req">*</span></label>
+              <input
+                type="text"
+                id="setup-repo"
+                placeholder="Contoh: nama-repo"
+                autocomplete="off"
+                required
+              />
+            </div>
+            <div class="form-field">
+              <label for="setup-branch">Branch <span class="req">*</span></label>
+              <input
+                type="text"
+                id="setup-branch"
+                value="main"
+                autocomplete="off"
+                required
+              />
+            </div>
+            <div class="form-field">
+              <label for="setup-password">Buat Password Brankas (min. 6 karakter) <span class="req">*</span></label>
+              <div class="token-input-row">
                 <input
-                  type="text"
-                  id="new-prod-logo-url"
-                  value="./assets/logos/custom-request.svg"
-                />
-              </div>
-
-              <div class="form-field">
-                <label for="new-prod-tag">Label Status</label>
-                <input type="text" id="new-prod-tag" value="Tersedia" placeholder="Contoh: Populer" />
-              </div>
-
-              <div class="form-field">
-                <label for="new-prod-summary">Ringkasan Fitur</label>
-                <input
-                  type="text"
-                  id="new-prod-summary"
-                  placeholder="Contoh: Ekspor 4K tanpa watermark · Template Pro"
-                />
-              </div>
-
-              <div class="form-field">
-                <label for="new-prod-variant-name">Nama Paket Pertama <span class="req">*</span></label>
-                <input
-                  type="text"
-                  id="new-prod-variant-name"
-                  placeholder="Contoh: 1 Bulan Privat"
+                  type="password"
+                  id="setup-password"
+                  placeholder="Password rahasia perangkat ini"
+                  autocomplete="new-password"
+                  minlength="6"
                   required
                 />
-              </div>
-
-              <div class="form-field">
-                <label for="new-prod-variant-price">Harga Paket (Rp) <span class="req">*</span></label>
-                <input
-                  type="number"
-                  id="new-prod-variant-price"
-                  min="0"
-                  step="500"
-                  value="15000"
-                  required
-                />
+                <button type="button" class="btn btn-secondary btn-sm" data-toggle-secret="setup-password">
+                  Lihat
+                </button>
               </div>
             </div>
+          </div>
 
-            <div class="admin-action-bar">
-              <button type="submit" class="btn btn-primary btn-sm">
-                Tambahkan ke Katalog
+          <div class="form-field">
+            <label for="setup-token">Token GitHub (PAT · Izin Contents: Read &amp; Write) <span class="req">*</span></label>
+            <div class="token-input-row">
+              <input
+                type="password"
+                id="setup-token"
+                placeholder="github_pat_... atau ghp_..."
+                autocomplete="off"
+                required
+              />
+              <button type="button" class="btn btn-secondary btn-sm" data-toggle-secret="setup-token">
+                Lihat
               </button>
             </div>
-          </form>
-        </div>
+          </div>
+
+          <div class="admin-action-bar">
+            <button type="submit" id="setup-submit-btn" class="btn btn-primary btn-sm">
+              Verifikasi Token &amp; Kunci ke Brankas
+            </button>
+          </div>
+        </form>
+
+        <div id="lock-status-box" class="admin-status-box" role="status" hidden></div>
       </section>
 
-      <section id="panel-vouchers" class="admin-panel" aria-labelledby="tab-btn-vouchers" hidden>
-        <div class="admin-card">
-          <h2 class="admin-section-title">Kelola Kode Voucher</h2>
-          <p class="admin-subtitle">
-            Kode voucher yang aktif di bawah akan dihitung otomatis pada keranjang pelanggan.
-          </p>
-
-          <div id="admin-voucher-list" class="admin-voucher-list"></div>
-
-          <form id="add-voucher-form" class="admin-add-form">
-            <h3 class="admin-subhead">Tambah Voucher Baru</h3>
-            <div class="admin-form-grid">
-              <div class="form-field">
-                <label for="new-voucher-code">Kode Voucher <span class="req">*</span></label>
-                <input type="text" id="new-voucher-code" placeholder="Contoh: BARU5K" required />
-              </div>
-              <div class="form-field">
-                <label for="new-voucher-type">Jenis Potongan</label>
-                <select id="new-voucher-type" class="admin-select">
-                  <option value="fixed">Potongan Tetap (Rp)</option>
-                  <option value="percent">Persentase (%)</option>
-                </select>
-              </div>
-              <div class="form-field">
-                <label for="new-voucher-value">Nilai Potongan <span class="req">*</span></label>
-                <input type="number" id="new-voucher-value" min="1" value="3000" required />
-              </div>
-              <div class="form-field">
-                <label for="new-voucher-min">Minimal Belanja (Rp)</label>
-                <input type="number" id="new-voucher-min" min="0" step="1000" value="15000" />
-              </div>
+      <!-- Dashboard Admin: Tersembunyi & kosong sampai berhasil verifikasi/unlock -->
+      <div id="admin-dashboard" class="admin-dashboard" hidden>
+        <section class="admin-card" aria-labelledby="sync-heading">
+          <div class="admin-card-head">
+            <div>
+              <h1 id="sync-heading" class="admin-title">Sinkronisasi Katalog Publik</h1>
+              <p class="admin-subtitle">
+                Terhubung terenkripsi ke <code id="connected-repo-label">-</code>. Setiap publikasi memperbarui <code>data/catalog.json</code> di GitHub Pages.
+              </p>
             </div>
-            <div class="admin-action-bar">
-              <button type="submit" class="btn btn-primary btn-sm">Tambah Voucher</button>
-            </div>
-          </form>
+            <span id="admin-source-badge" class="admin-badge">Siap</span>
+          </div>
+
+          <div class="admin-action-bar">
+            <button type="button" id="publish-github-btn" class="btn btn-primary btn-sm">
+              Simpan &amp; Publikasikan ke GitHub
+            </button>
+            <button type="button" id="pull-github-btn" class="btn btn-secondary btn-sm">
+              Muat Ulang dari GitHub
+            </button>
+            <button type="button" id="save-preview-btn" class="btn btn-secondary btn-sm">
+              Simpan Pratinjau Lokal
+            </button>
+            <button type="button" id="clear-preview-btn" class="btn btn-ghost btn-sm">
+              Hapus Pratinjau
+            </button>
+            <button type="button" id="download-json-btn" class="btn btn-ghost btn-sm">
+              Unduh catalog.json
+            </button>
+          </div>
+
+          <div id="admin-status-box" class="admin-status-box" role="status" hidden></div>
+        </section>
+
+        <div class="admin-tabs" role="tablist" aria-label="Bagian Panel Admin">
+          <button
+            type="button"
+            role="tab"
+            id="tab-btn-products"
+            class="cat-tab is-active"
+            data-admin-tab="products"
+            aria-selected="true"
+          >
+            Produk &amp; Harga
+          </button>
+          <button
+            type="button"
+            role="tab"
+            id="tab-btn-add"
+            class="cat-tab"
+            data-admin-tab="add"
+            aria-selected="false"
+          >
+            + Tambah Produk Baru
+          </button>
+          <button
+            type="button"
+            role="tab"
+            id="tab-btn-vouchers"
+            class="cat-tab"
+            data-admin-tab="vouchers"
+            aria-selected="false"
+          >
+            Voucher Promo
+          </button>
         </div>
-      </section>
+
+        <section id="panel-products" class="admin-panel" aria-labelledby="tab-btn-products">
+          <div class="admin-toolbar">
+            <div class="search-box">
+              <svg class="search-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <circle cx="11" cy="11" r="8" />
+                <path d="m21 21-4.3-4.3" />
+              </svg>
+              <input
+                type="search"
+                id="admin-product-search"
+                class="search-input"
+                placeholder="Cari produk atau varian untuk edit harga & stok..."
+                aria-label="Cari produk di panel admin"
+              />
+            </div>
+            <span id="admin-product-count" class="catalog-count">0 produk</span>
+          </div>
+
+          <div id="admin-product-list" class="admin-product-list"></div>
+        </section>
+
+        <section id="panel-add" class="admin-panel" aria-labelledby="tab-btn-add" hidden>
+          <div class="admin-card">
+            <h2 class="admin-section-title">Tambah Layanan / Produk Baru</h2>
+            <p class="admin-subtitle">
+              Tambahkan layanan baru ke katalog lengkap dengan varian paket pertamanya.
+            </p>
+
+            <form id="add-product-form" class="admin-add-form">
+              <div class="admin-form-grid">
+                <div class="form-field">
+                  <label for="new-prod-name">Nama Layanan <span class="req">*</span></label>
+                  <input type="text" id="new-prod-name" placeholder="Contoh: CapCut Pro" required />
+                </div>
+
+                <div class="form-field">
+                  <label for="new-prod-category">Kategori</label>
+                  <select id="new-prod-category" class="admin-select">
+                    <option value="streaming">Streaming Film</option>
+                    <option value="music">Musik &amp; Hiburan</option>
+                    <option value="creative">Desain &amp; Editing</option>
+                    <option value="custom">Request &amp; Custom</option>
+                  </select>
+                </div>
+
+                <div class="form-field">
+                  <label for="new-prod-logo-preset">Ikon Logo</label>
+                  <select id="new-prod-logo-preset" class="admin-select">
+                    <option value="./assets/logos/custom-request.svg">Ikon Umum / Custom</option>
+                    <option value="./assets/logos/netflix.svg">Netflix</option>
+                    <option value="./assets/logos/canva.svg">Canva</option>
+                    <option value="./assets/logos/youtube.svg">YouTube</option>
+                    <option value="./assets/logos/spotify.svg">Spotify</option>
+                    <option value="./assets/logos/viu.svg">Viu</option>
+                    <option value="./assets/logos/vidio.svg">Vidio</option>
+                    <option value="./assets/logos/alight-motion.svg">Alight Motion</option>
+                    <option value="./assets/logos/wetv.svg">WeTV</option>
+                    <option value="./assets/logos/prime-video.svg">Prime Video</option>
+                  </select>
+                </div>
+
+                <div class="form-field">
+                  <label for="new-prod-logo-url">Path / URL Logo</label>
+                  <input
+                    type="text"
+                    id="new-prod-logo-url"
+                    value="./assets/logos/custom-request.svg"
+                  />
+                </div>
+
+                <div class="form-field">
+                  <label for="new-prod-tag">Label Status</label>
+                  <input type="text" id="new-prod-tag" value="Tersedia" placeholder="Contoh: Populer" />
+                </div>
+
+                <div class="form-field">
+                  <label for="new-prod-summary">Ringkasan Fitur</label>
+                  <input
+                    type="text"
+                    id="new-prod-summary"
+                    placeholder="Contoh: Ekspor 4K tanpa watermark · Template Pro"
+                  />
+                </div>
+
+                <div class="form-field">
+                  <label for="new-prod-variant-name">Nama Paket Pertama <span class="req">*</span></label>
+                  <input
+                    type="text"
+                    id="new-prod-variant-name"
+                    placeholder="Contoh: 1 Bulan Privat"
+                    required
+                  />
+                </div>
+
+                <div class="form-field">
+                  <label for="new-prod-variant-price">Harga Paket (Rp) <span class="req">*</span></label>
+                  <input
+                    type="number"
+                    id="new-prod-variant-price"
+                    min="0"
+                    step="500"
+                    value="15000"
+                    required
+                  />
+                </div>
+              </div>
+
+              <div class="admin-action-bar">
+                <button type="submit" class="btn btn-primary btn-sm">
+                  Tambahkan ke Katalog
+                </button>
+              </div>
+            </form>
+          </div>
+        </section>
+
+        <section id="panel-vouchers" class="admin-panel" aria-labelledby="tab-btn-vouchers" hidden>
+          <div class="admin-card">
+            <h2 class="admin-section-title">Kelola Kode Voucher</h2>
+            <p class="admin-subtitle">
+              Kode voucher yang aktif di bawah akan dihitung otomatis pada keranjang pelanggan.
+            </p>
+
+            <div id="admin-voucher-list" class="admin-voucher-list"></div>
+
+            <form id="add-voucher-form" class="admin-add-form">
+              <h3 class="admin-subhead">Tambah Voucher Baru</h3>
+              <div class="admin-form-grid">
+                <div class="form-field">
+                  <label for="new-voucher-code">Kode Voucher <span class="req">*</span></label>
+                  <input type="text" id="new-voucher-code" placeholder="Contoh: BARU5K" required />
+                </div>
+                <div class="form-field">
+                  <label for="new-voucher-type">Jenis Potongan</label>
+                  <select id="new-voucher-type" class="admin-select">
+                    <option value="fixed">Potongan Tetap (Rp)</option>
+                    <option value="percent">Persentase (%)</option>
+                  </select>
+                </div>
+                <div class="form-field">
+                  <label for="new-voucher-value">Nilai Potongan <span class="req">*</span></label>
+                  <input type="number" id="new-voucher-value" min="1" value="3000" required />
+                </div>
+                <div class="form-field">
+                  <label for="new-voucher-min">Minimal Belanja (Rp)</label>
+                  <input type="number" id="new-voucher-min" min="0" step="1000" value="15000" />
+                </div>
+              </div>
+              <div class="admin-action-bar">
+                <button type="submit" class="btn btn-primary btn-sm">Tambah Voucher</button>
+              </div>
+            </form>
+          </div>
+        </section>
+      </div>
     </main>
 
     <div id="toast-notification" class="toast-notification" role="status" aria-live="polite" hidden></div>

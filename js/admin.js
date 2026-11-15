@@ -9,12 +9,20 @@ import {
   toggleProductStockInCatalog,
   upsertProductInCatalog,
 } from './store.js';
+import {
+  decryptVault,
+  encryptVault,
+  verifyGitHubTokenAccess,
+} from './vault.js';
 
 const THEME_STORAGE_KEY = 'manifestudio_theme_v1';
-const ADMIN_GH_STORAGE_KEY = 'manifestudio_admin_gh_v1';
+const ADMIN_VAULT_STORAGE_KEY = 'manifestudio_admin_vault_v1';
+const LEGACY_GH_STORAGE_KEY = 'manifestudio_admin_gh_v1';
 
 const adminState = {
   theme: 'dark',
+  unlocked: false,
+  confirmResetVault: false,
   catalog: getDefaultCatalogSnapshot(),
   source: 'fallback',
   activeTab: 'products',
@@ -23,8 +31,8 @@ const adminState = {
   confirmDeleteProductId: null,
   remoteSha: null,
   ghConfig: {
-    owner: 'tmctomystudio26',
-    repo: 'InfoKatalogtMCTomyStudio',
+    owner: '',
+    repo: '',
     branch: 'main',
     token: '',
   },
@@ -72,8 +80,8 @@ function showToast(message) {
   }, 2800);
 }
 
-function setStatusBox(message, tone = 'info') {
-  const box = document.getElementById('admin-status-box');
+function setStatusBox(id, message, tone = 'info') {
+  const box = document.getElementById(id);
   if (!box) return;
   if (!message) {
     box.hidden = true;
@@ -115,50 +123,84 @@ function applyTheme() {
   }
 }
 
-function loadGhConfig() {
+function getStoredVaultRecord() {
   try {
-    const raw = localStorage.getItem(ADMIN_GH_STORAGE_KEY);
-    if (!raw) return;
+    // Purge any legacy unencrypted config immediately if present
+    localStorage.removeItem(LEGACY_GH_STORAGE_KEY);
+    const raw = localStorage.getItem(ADMIN_VAULT_STORAGE_KEY);
+    if (!raw) return null;
     const parsed = JSON.parse(raw);
-    if (parsed && typeof parsed === 'object') {
-      adminState.ghConfig = {
-        owner: parsed.owner || 'tmctomystudio26',
-        repo: parsed.repo || 'InfoKatalogtMCTomyStudio',
-        branch: parsed.branch || 'main',
-        token: parsed.token || '',
-      };
+    return parsed && parsed.v === 1 && parsed.ct ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+function renderGateScreen() {
+  const lockScreen = document.getElementById('admin-lock-screen');
+  const dashboard = document.getElementById('admin-dashboard');
+  const lockBtn = document.getElementById('lock-vault-btn');
+  const unlockForm = document.getElementById('unlock-vault-form');
+  const setupForm = document.getElementById('setup-vault-form');
+  const resetBtn = document.getElementById('reset-vault-btn');
+
+  if (!lockScreen || !dashboard) return;
+
+  if (adminState.unlocked) {
+    lockScreen.hidden = true;
+    dashboard.hidden = false;
+    if (lockBtn) lockBtn.hidden = false;
+
+    const repoLabel = document.getElementById('connected-repo-label');
+    if (repoLabel) {
+      repoLabel.textContent = `${adminState.ghConfig.owner}/${adminState.ghConfig.repo} (${adminState.ghConfig.branch})`;
     }
-  } catch {
-    // Ignore
+    return;
+  }
+
+  lockScreen.hidden = false;
+  dashboard.hidden = true;
+  if (lockBtn) lockBtn.hidden = true;
+
+  // Clear rendered sensitive lists when locked
+  const prodList = document.getElementById('admin-product-list');
+  const voucherList = document.getElementById('admin-voucher-list');
+  if (prodList) prodList.innerHTML = '';
+  if (voucherList) voucherList.innerHTML = '';
+
+  const hasVault = Boolean(getStoredVaultRecord());
+  if (unlockForm) unlockForm.hidden = !hasVault;
+  if (setupForm) setupForm.hidden = hasVault;
+  if (resetBtn) {
+    resetBtn.textContent = adminState.confirmResetVault
+      ? 'Konfirmasi Reset Brankas'
+      : 'Ganti Token / Reset Brankas';
+    resetBtn.classList.toggle('is-danger-confirm', adminState.confirmResetVault);
   }
 }
 
-function saveGhConfig() {
-  try {
-    localStorage.setItem(ADMIN_GH_STORAGE_KEY, JSON.stringify(adminState.ghConfig));
-  } catch {
-    // Ignore
-  }
+function lockVaultSession() {
+  adminState.unlocked = false;
+  adminState.ghConfig = { owner: '', repo: '', branch: 'main', token: '' };
+  adminState.confirmResetVault = false;
+  const unlockInput = document.getElementById('unlock-password');
+  if (unlockInput) unlockInput.value = '';
+  setStatusBox('lock-status-box', '');
+  renderGateScreen();
+  showToast('Brankas Admin dikunci.');
 }
 
-function syncGhInputsFromState() {
-  const ownerEl = document.getElementById('gh-owner');
-  const repoEl = document.getElementById('gh-repo');
-  const branchEl = document.getElementById('gh-branch');
-  const tokenEl = document.getElementById('gh-token');
-  if (ownerEl) ownerEl.value = adminState.ghConfig.owner;
-  if (repoEl) repoEl.value = adminState.ghConfig.repo;
-  if (branchEl) branchEl.value = adminState.ghConfig.branch;
-  if (tokenEl) tokenEl.value = adminState.ghConfig.token;
-}
+async function openUnlockedDashboard() {
+  adminState.unlocked = true;
+  renderGateScreen();
 
-function readGhInputsToState() {
-  adminState.ghConfig.owner = document.getElementById('gh-owner')?.value.trim() || 'tmctomystudio26';
-  adminState.ghConfig.repo =
-    document.getElementById('gh-repo')?.value.trim() || 'InfoKatalogtMCTomyStudio';
-  adminState.ghConfig.branch = document.getElementById('gh-branch')?.value.trim() || 'main';
-  adminState.ghConfig.token = document.getElementById('gh-token')?.value.trim() || '';
-  saveGhConfig();
+  const loaded = await loadCatalogData({ allowLocalPreview: true });
+  adminState.catalog = loaded.data;
+  adminState.source = loaded.source;
+  updateSourceBadge();
+  renderTabs();
+  renderProductList();
+  renderVoucherList();
 }
 
 function updateSourceBadge() {
@@ -209,6 +251,7 @@ function renderTabs() {
 }
 
 function renderProductList() {
+  if (!adminState.unlocked) return;
   const container = document.getElementById('admin-product-list');
   const countEl = document.getElementById('admin-product-count');
   if (!container) return;
@@ -522,6 +565,7 @@ function bindProductListEvents(container) {
 }
 
 function renderVoucherList() {
+  if (!adminState.unlocked) return;
   const container = document.getElementById('admin-voucher-list');
   if (!container) return;
 
@@ -567,14 +611,14 @@ function renderVoucherList() {
 }
 
 async function pullFromGitHub() {
-  readGhInputsToState();
+  if (!adminState.unlocked) return;
   const { owner, repo, branch, token } = adminState.ghConfig;
   const url = `https://api.github.com/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/contents/data/catalog.json?ref=${encodeURIComponent(branch)}`;
 
   const headers = { Accept: 'application/vnd.github+json' };
   if (token) headers.Authorization = `Bearer ${token}`;
 
-  setStatusBox('Mengambil data terbaru dari GitHub...', 'info');
+  setStatusBox('admin-status-box', 'Mengambil data terbaru dari GitHub...', 'info');
   try {
     const res = await fetch(url, { headers, cache: 'no-store' });
     if (!res.ok) {
@@ -593,25 +637,22 @@ async function pullFromGitHub() {
     updateSourceBadge();
     renderProductList();
     renderVoucherList();
-    setStatusBox('Berhasil memuat katalog terbaru langsung dari GitHub.', 'ok');
+    setStatusBox('admin-status-box', 'Berhasil memuat katalog terbaru langsung dari GitHub.', 'ok');
     showToast('Katalog berhasil disinkronkan dari GitHub.');
   } catch (err) {
     setStatusBox(
-      `Gagal memuat dari GitHub (${err.message}). Pastikan repo & token benar.`,
+      'admin-status-box',
+      `Gagal memuat dari GitHub (${err.message}).`,
       'error'
     );
   }
 }
 
 async function publishToGitHub() {
-  readGhInputsToState();
+  if (!adminState.unlocked) return;
   const { owner, repo, branch, token } = adminState.ghConfig;
   if (!token) {
-    setStatusBox(
-      'Masukkan Token GitHub (PAT dengan izin Contents: Read & Write) terlebih dahulu agar bisa menyimpan ke GitHub Pages.',
-      'error'
-    );
-    document.getElementById('gh-token')?.focus();
+    setStatusBox('admin-status-box', 'Sesi token kosong. Kunci lalu buka kembali brankas Anda.', 'error');
     return;
   }
 
@@ -622,7 +663,7 @@ async function publishToGitHub() {
     'Content-Type': 'application/json',
   };
 
-  setStatusBox('Mempublikasikan perubahan ke GitHub Pages...', 'info');
+  setStatusBox('admin-status-box', 'Mempublikasikan perubahan ke GitHub Pages...', 'info');
   try {
     const getRes = await fetch(`${endpoint}?ref=${encodeURIComponent(branch)}`, {
       headers: {
@@ -670,12 +711,13 @@ async function publishToGitHub() {
     }
     updateSourceBadge();
     setStatusBox(
-      'Berhasil dipublikasikan ke GitHub! GitHub Pages akan otomatis memperbarui katalog publik untuk semua pembeli dalam ~30 detik.',
+      'admin-status-box',
+      'Berhasil dipublikasikan ke GitHub! GitHub Pages otomatis memperbarui katalog publik dalam ~30 detik.',
       'ok'
     );
     showToast('Perubahan katalog berhasil dipublikasikan ke GitHub.');
   } catch (err) {
-    setStatusBox(`Gagal mempublikasikan: ${err.message}`, 'error');
+    setStatusBox('admin-status-box', `Gagal mempublikasikan: ${err.message}`, 'error');
   }
 }
 
@@ -690,39 +732,134 @@ function bindEvents() {
     applyTheme();
   });
 
-  document.getElementById('toggle-token-btn')?.addEventListener('click', () => {
-    const tokenEl = document.getElementById('gh-token');
-    const btn = document.getElementById('toggle-token-btn');
-    if (!tokenEl || !btn) return;
-    const isPassword = tokenEl.type === 'password';
-    tokenEl.type = isPassword ? 'text' : 'password';
-    btn.textContent = isPassword ? 'Tutup' : 'Lihat';
+  document.getElementById('lock-vault-btn')?.addEventListener('click', lockVaultSession);
+
+  document.querySelectorAll('[data-toggle-secret]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const targetId = btn.getAttribute('data-toggle-secret');
+      const input = targetId ? document.getElementById(targetId) : null;
+      if (!input) return;
+      const isPassword = input.type === 'password';
+      input.type = isPassword ? 'text' : 'password';
+      btn.textContent = isPassword ? 'Tutup' : 'Lihat';
+    });
   });
 
-  ['gh-owner', 'gh-repo', 'gh-branch', 'gh-token'].forEach((id) => {
-    document.getElementById(id)?.addEventListener('change', readGhInputsToState);
+  document.getElementById('reset-vault-btn')?.addEventListener('click', () => {
+    if (!adminState.confirmResetVault) {
+      adminState.confirmResetVault = true;
+      renderGateScreen();
+      return;
+    }
+    try {
+      localStorage.removeItem(ADMIN_VAULT_STORAGE_KEY);
+    } catch {
+      // Ignore
+    }
+    adminState.confirmResetVault = false;
+    setStatusBox('lock-status-box', 'Brankas lama dihapus. Silakan verifikasi token untuk setup baru.', 'info');
+    renderGateScreen();
+  });
+
+  document.getElementById('unlock-vault-form')?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const password = document.getElementById('unlock-password')?.value || '';
+    const vaultRecord = getStoredVaultRecord();
+    if (!vaultRecord) {
+      renderGateScreen();
+      return;
+    }
+
+    const submitBtn = document.getElementById('unlock-submit-btn');
+    if (submitBtn) submitBtn.disabled = true;
+    setStatusBox('lock-status-box', 'Mendekripsi brankas AES-256-GCM...', 'info');
+
+    try {
+      const decrypted = await decryptVault(vaultRecord, password);
+      if (!decrypted || !decrypted.token || !decrypted.owner || !decrypted.repo) {
+        throw new Error('Data brankas tidak lengkap.');
+      }
+      adminState.ghConfig = {
+        owner: decrypted.owner,
+        repo: decrypted.repo,
+        branch: decrypted.branch || 'main',
+        token: decrypted.token,
+      };
+      setStatusBox('lock-status-box', '');
+      await openUnlockedDashboard();
+      showToast('Brankas Admin terbuka.');
+    } catch (err) {
+      setStatusBox('lock-status-box', err.message || 'Password brankas salah.', 'error');
+    } finally {
+      if (submitBtn) submitBtn.disabled = false;
+    }
+  });
+
+  document.getElementById('setup-vault-form')?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const owner = document.getElementById('setup-owner')?.value.trim() || '';
+    const repo = document.getElementById('setup-repo')?.value.trim() || '';
+    const branch = document.getElementById('setup-branch')?.value.trim() || 'main';
+    const token = document.getElementById('setup-token')?.value.trim() || '';
+    const password = document.getElementById('setup-password')?.value || '';
+
+    if (password.length < 6) {
+      setStatusBox('lock-status-box', 'Password brankas minimal 6 karakter.', 'error');
+      return;
+    }
+
+    const submitBtn = document.getElementById('setup-submit-btn');
+    if (submitBtn) submitBtn.disabled = true;
+    setStatusBox('lock-status-box', 'Memverifikasi izin tulis Token GitHub...', 'info');
+
+    try {
+      const verification = await verifyGitHubTokenAccess({ owner, repo, token });
+      if (!verification.ok) {
+        setStatusBox('lock-status-box', verification.error, 'error');
+        return;
+      }
+
+      const encryptedVault = await encryptVault({ owner, repo, branch, token }, password);
+      localStorage.setItem(ADMIN_VAULT_STORAGE_KEY, JSON.stringify(encryptedVault));
+      adminState.ghConfig = { owner, repo, branch, token };
+      e.target.reset();
+      setStatusBox('lock-status-box', '');
+      await openUnlockedDashboard();
+      showToast('Token terverifikasi & dienkripsi ke brankas.');
+    } catch (err) {
+      setStatusBox(
+        'lock-status-box',
+        err.message || 'Gagal mengenkripsi brankas admin.',
+        'error'
+      );
+    } finally {
+      if (submitBtn) submitBtn.disabled = false;
+    }
   });
 
   document.getElementById('pull-github-btn')?.addEventListener('click', pullFromGitHub);
   document.getElementById('publish-github-btn')?.addEventListener('click', publishToGitHub);
 
   document.getElementById('save-preview-btn')?.addEventListener('click', () => {
+    if (!adminState.unlocked) return;
     try {
       localStorage.setItem(CATALOG_PREVIEW_STORAGE_KEY, JSON.stringify(adminState.catalog));
       adminState.source = 'preview';
       adminState.dirty = false;
       updateSourceBadge();
       setStatusBox(
-        'Pratinjau lokal tersimpan. Klik "Lihat Toko" untuk mengecek tampilan langsung sebelum publish ke GitHub.',
+        'admin-status-box',
+        'Pratinjau lokal tersimpan. Klik "Toko" untuk mengetes perubahan sebelum publish ke GitHub.',
         'ok'
       );
       showToast('Pratinjau lokal disimpan.');
     } catch {
-      setStatusBox('Penyimpanan browser dibatasi — gunakan tombol Unduh catalog.json.', 'error');
+      setStatusBox('admin-status-box', 'Penyimpanan browser dibatasi — gunakan Unduh catalog.json.', 'error');
     }
   });
 
   document.getElementById('clear-preview-btn')?.addEventListener('click', async () => {
+    if (!adminState.unlocked) return;
     try {
       localStorage.removeItem(CATALOG_PREVIEW_STORAGE_KEY);
     } catch {
@@ -735,11 +872,12 @@ function bindEvents() {
     updateSourceBadge();
     renderProductList();
     renderVoucherList();
-    setStatusBox('Pratinjau lokal dihapus — kembali mengikuti catalog.json live.', 'info');
+    setStatusBox('admin-status-box', 'Pratinjau lokal dihapus — kembali mengikuti catalog.json live.', 'info');
     showToast('Pratinjau lokal dihapus.');
   });
 
   document.getElementById('download-json-btn')?.addEventListener('click', () => {
+    if (!adminState.unlocked) return;
     const formatted = `${JSON.stringify(adminState.catalog, null, 2)}\n`;
     const blob = new Blob([formatted], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
@@ -775,6 +913,7 @@ function bindEvents() {
 
   document.getElementById('add-product-form')?.addEventListener('submit', (e) => {
     e.preventDefault();
+    if (!adminState.unlocked) return;
     const name = document.getElementById('new-prod-name')?.value.trim() || '';
     const category = document.getElementById('new-prod-category')?.value || 'streaming';
     const logo =
@@ -811,6 +950,7 @@ function bindEvents() {
 
   document.getElementById('add-voucher-form')?.addEventListener('submit', (e) => {
     e.preventDefault();
+    if (!adminState.unlocked) return;
     const code = (document.getElementById('new-voucher-code')?.value || '').trim().toUpperCase();
     const type = document.getElementById('new-voucher-type')?.value || 'fixed';
     const value = Math.max(1, Math.round(Number(document.getElementById('new-voucher-value')?.value) || 0));
@@ -837,20 +977,11 @@ function bindEvents() {
   });
 }
 
-async function bootstrapAdmin() {
+function bootstrapAdmin() {
   loadTheme();
   applyTheme();
-  loadGhConfig();
-  syncGhInputsFromState();
   bindEvents();
-  renderTabs();
-
-  const loaded = await loadCatalogData({ allowLocalPreview: true });
-  adminState.catalog = loaded.data;
-  adminState.source = loaded.source;
-  updateSourceBadge();
-  renderProductList();
-  renderVoucherList();
+  renderGateScreen();
 }
 
 bootstrapAdmin();

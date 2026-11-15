@@ -24,6 +24,10 @@ img {
   max-width: 100%;
 }
 
+[hidden] {
+  display: none !important;
+}
+
 button,
 input {
   font-family: inherit;
@@ -93,15 +97,18 @@ a {
   display: flex;
   flex-direction: column;
   min-width: 0;
+  overflow: hidden;
 }
 
 .brand-name {
   font-family: var(--font-display);
-  font-size: clamp(1rem, 3.2vw, 1.15rem);
+  font-size: clamp(0.98rem, 3.2vw, 1.15rem);
   font-weight: 700;
   letter-spacing: -0.02em;
   line-height: 1.15;
   white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .brand-tagline {
@@ -1649,6 +1656,33 @@ a {
   padding-bottom: 4rem;
   display: grid;
   gap: 1.25rem;
+}
+
+.admin-lock-card {
+  max-width: 680px;
+  width: 100%;
+  margin-inline: auto;
+}
+
+.admin-dashboard {
+  display: grid;
+  gap: 1.25rem;
+}
+
+.admin-dashboard[hidden] {
+  display: none;
+}
+
+.token-input-row {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.token-input-row input {
+  flex: 1;
+  min-width: 0;
+  text-transform: none;
 }
 
 .admin-card {
