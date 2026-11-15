@@ -1,6 +1,6 @@
 export const BRAND = {
   name: 'Manifestudio',
-  tagline: 'Akun Premium & Layanan Digital Terpercaya',
+  tagline: 'Katalog Layanan Digital & Akun Premium',
   whatsappNumber: '6285122936027',
   tiktokUrl: 'https://www.tiktok.com/@tmctomystudio',
   tiktokHandle: '@tmctomystudio',
@@ -18,6 +18,13 @@ export const CATEGORIES = [
   { id: 'custom', label: 'Request & Custom' },
 ];
 
+export const CATEGORY_LABELS = {
+  streaming: 'Streaming',
+  music: 'Musik',
+  creative: 'Desain & Editing',
+  custom: 'Custom',
+};
+
 export const PAYMENT_OPTIONS = [
   {
     id: 'Bayar Sekarang',
@@ -31,6 +38,21 @@ export const PAYMENT_OPTIONS = [
   },
 ];
 
+export const ORDER_STEPS = [
+  {
+    step: '01. Pilih Paket & Durasi',
+    detail: 'Buka produk yang diinginkan, periksa keterangan garansi, lalu tambahkan varian ke keranjang.',
+  },
+  {
+    step: '02. Periksa Diskon Otomatis',
+    detail: 'Total belanja minimal Rp50.000 otomatis mendapatkan potongan harga Rp2.000 di keranjang.',
+  },
+  {
+    step: '03. Kirim Format ke WhatsApp',
+    detail: 'Isi nama panggilan dan metode pembayaran, lalu kirim rincian terformat langsung ke admin.',
+  },
+];
+
 export const PRODUCTS = [
   {
     id: 'netflix-premium',
@@ -39,7 +61,7 @@ export const PRODUCTS = [
     logo: './assets/logos/netflix.svg',
     isBestSeller: true,
     outOfStock: false,
-    tag: 'Paling Laris',
+    tag: 'Paling laris',
     summary: '4K Ultra HD · Profil terkelola · Anti-hold',
     notice:
       'Harga produk Netflix sedang mengalami penyesuaian ringan akibat tingginya permintaan dan keterbatasan stok akun.',
@@ -56,7 +78,7 @@ export const PRODUCTS = [
     logo: './assets/logos/canva.svg',
     isBestSeller: true,
     outOfStock: false,
-    tag: 'Populer Kreator',
+    tag: 'Populer kreator',
     summary: 'Akses template Pro, Brand Kit & hapus background',
     variants: [
       { id: 'canva-1m', name: '1 Bulan', price: 3000, outOfStock: false },
@@ -80,7 +102,7 @@ export const PRODUCTS = [
     isBestSeller: false,
     outOfStock: true,
     restockMessage: 'Akan segera restock',
-    tag: 'Segera Restock',
+    tag: 'Segera restock',
     summary: 'Bebas iklan · Putar di latar belakang · YouTube Music',
     variants: [
       { id: 'yt-3m-ng', name: '3 Bulan - No Garansi', price: 15000, outOfStock: true },
@@ -97,7 +119,7 @@ export const PRODUCTS = [
     isBestSeller: false,
     outOfStock: true,
     restockMessage: 'Akan segera restock',
-    tag: 'Segera Restock',
+    tag: 'Segera restock',
     summary: 'Audio kualitas tinggi · Unduh offline tanpa iklan',
     variants: [
       { id: 'sp-3m-ng', name: '3 Bulan - No Garansi', price: 15000, outOfStock: true },
@@ -143,7 +165,7 @@ export const PRODUCTS = [
     logo: './assets/logos/alight-motion.svg',
     isBestSeller: false,
     outOfStock: false,
-    tag: 'Favorit Editor',
+    tag: 'Favorit editor',
     summary: 'Preset XML terbuka · Ekspor tanpa watermark',
     variants: [
       { id: 'am-1y-ng', name: '1 Tahun - No Garansi', price: 15000, outOfStock: false },
@@ -186,7 +208,7 @@ export const PRODUCTS = [
     logo: './assets/logos/custom-request.svg',
     isBestSeller: false,
     outOfStock: false,
-    tag: 'Layanan Custom',
+    tag: 'Layanan custom',
     summary: 'Pesan aplikasi khusus atau paket kombinasi durasi',
     variants: [
       {

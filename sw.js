@@ -1,4 +1,4 @@
-const CACHE_NAME = 'manifestudio-cache-v1';
+const CACHE_NAME = 'manifestudio-editorial-v3';
 
 const PRECACHE_ASSETS = [
   './',
@@ -10,7 +10,7 @@ const PRECACHE_ASSETS = [
   './js/store.js',
   './js/pwa.js',
   './js/app.js',
-  './assets/hero-banner.jpg',
+  './assets/hero-editorial.jpg',
   './assets/icons/brand-icon.svg',
   './assets/icons/icon-192.png',
   './assets/icons/icon-512.png',

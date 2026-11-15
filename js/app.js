@@ -1,4 +1,12 @@
-import { BRAND, CATEGORIES, FAQ_ITEMS, PAYMENT_OPTIONS, PRODUCTS } from './data.js';
+import {
+  BRAND,
+  CATEGORIES,
+  CATEGORY_LABELS,
+  FAQ_ITEMS,
+  ORDER_STEPS,
+  PAYMENT_OPTIONS,
+  PRODUCTS,
+} from './data.js';
 import {
   addToCart,
   buildWhatsAppOrderMessage,
@@ -12,12 +20,12 @@ import {
 } from './store.js';
 import { initPwaManager } from './pwa.js';
 
-const THEME_STORAGE_KEY = 'manifestudio_theme_v1';
+const THEME_STORAGE_KEY = 'manifestudio_theme_v2';
 const CART_STORAGE_KEY = 'manifestudio_cart_v1';
 const NAME_STORAGE_KEY = 'manifestudio_customer_name_v1';
 
 const state = {
-  theme: 'dark',
+  theme: 'light',
   category: 'all',
   query: '',
   inStockOnly: false,
@@ -39,8 +47,8 @@ function loadPersistedState() {
     const savedTheme = localStorage.getItem(THEME_STORAGE_KEY);
     if (savedTheme === 'light' || savedTheme === 'dark') {
       state.theme = savedTheme;
-    } else if (window.matchMedia('(prefers-color-scheme: light)').matches) {
-      state.theme = 'light';
+    } else if (window.matchMedia('(prefers-color-scheme: dark)').matches) {
+      state.theme = 'dark';
     }
 
     const savedCart = localStorage.getItem(CART_STORAGE_KEY);
@@ -58,7 +66,7 @@ function loadPersistedState() {
       state.customerName = savedName;
     }
   } catch {
-    // Graceful fallback if localStorage is unavailable
+    // Fallback silently if storage is blocked
   }
 }
 
@@ -99,19 +107,15 @@ function applyTheme() {
   document.documentElement.setAttribute('data-theme', state.theme);
   const metaTheme = document.querySelector('meta[name="theme-color"]');
   if (metaTheme) {
-    metaTheme.setAttribute('content', state.theme === 'dark' ? '#090D16' : '#F8FAFC');
+    metaTheme.setAttribute('content', state.theme === 'dark' ? '#0E0E0D' : '#F5F4F0');
   }
-  const themeBtn = document.getElementById('theme-toggle-btn');
-  if (themeBtn) {
-    const isDark = state.theme === 'dark';
-    themeBtn.setAttribute(
-      'aria-label',
-      isDark ? 'Aktifkan mode terang' : 'Aktifkan mode gelap'
-    );
-    themeBtn.innerHTML = isDark
-      ? `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.93 4.93 1.41 1.41"/><path d="m17.66 17.66 1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="m6.34 17.66-1.41 1.41"/><path d="m19.07 4.93-1.41 1.41"/></svg><span class="hide-xs">Terang</span>`
-      : `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></svg><span class="hide-xs">Gelap</span>`;
-  }
+
+  document.querySelectorAll('[data-theme-choice]').forEach((btn) => {
+    const val = btn.getAttribute('data-theme-choice');
+    const isActive = val === state.theme;
+    btn.classList.toggle('is-active', isActive);
+    btn.setAttribute('aria-pressed', String(isActive));
+  });
 }
 
 function renderCategories() {
@@ -123,7 +127,7 @@ function renderCategories() {
     return `
       <button
         type="button"
-        class="cat-tab ${active ? 'is-active' : ''}"
+        class="seg-btn ${active ? 'is-active' : ''}"
         data-category="${escapeHtml(cat.id)}"
         aria-pressed="${active}"
       >
@@ -132,7 +136,7 @@ function renderCategories() {
     `;
   }).join('');
 
-  container.querySelectorAll('.cat-tab').forEach((btn) => {
+  container.querySelectorAll('.seg-btn').forEach((btn) => {
     btn.addEventListener('click', () => {
       state.category = btn.getAttribute('data-category') || 'all';
       renderCategories();
@@ -153,16 +157,15 @@ function renderCatalog() {
   });
 
   if (countLabel) {
-    countLabel.textContent = `${filtered.length} layanan tersedia`;
+    countLabel.textContent = `${filtered.length} layanan`;
   }
 
   if (filtered.length === 0) {
     grid.innerHTML = `
       <div class="empty-state">
-        <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
         <h3>Layanan tidak ditemukan</h3>
-        <p>Coba kata kunci lain atau pilih kategori "Semua Layanan" untuk melihat seluruh katalog.</p>
-        <button type="button" class="btn btn-secondary btn-sm" id="reset-filters-btn">Reset Filter</button>
+        <p>Coba kata kunci lain atau tampilkan kembali seluruh kategori.</p>
+        <button type="button" class="btn btn-secondary btn-sm" id="reset-filters-btn">Tampilkan Semua</button>
       </div>
     `;
     document.getElementById('reset-filters-btn')?.addEventListener('click', () => {
@@ -171,6 +174,8 @@ function renderCatalog() {
       state.inStockOnly = false;
       const searchEl = document.getElementById('catalog-search');
       if (searchEl) searchEl.value = '';
+      const clearBtn = document.getElementById('clear-search-btn');
+      if (clearBtn) clearBtn.hidden = true;
       const stockToggle = document.getElementById('in-stock-toggle');
       if (stockToggle) stockToggle.checked = false;
       renderCategories();
@@ -183,49 +188,41 @@ function renderCatalog() {
     .map((product) => {
       const startPrice = getStartingPrice(product);
       const isCustom = product.category === 'custom';
-      const priceDisplay = isCustom
-        ? 'Harga Fleksibel'
-        : `Mulai ${formatRupiah(startPrice)}`;
-
-      const statusClass = product.outOfStock
-        ? 'status-restock'
-        : product.isBestSeller
-        ? 'status-hot'
-        : 'status-ready';
-
+      const priceDisplay = isCustom ? 'Harga fleksibel' : `Mulai ${formatRupiah(startPrice)}`;
+      const catLabel = CATEGORY_LABELS[product.category] || 'Layanan';
       const statusText = product.outOfStock
-        ? product.restockMessage || 'Segera Restock'
+        ? product.restockMessage || 'Segera restock'
         : product.tag || 'Tersedia';
-
-      const variantCount = product.variants.length;
 
       return `
         <article class="product-card ${product.outOfStock ? 'is-restock' : ''}">
-          <div class="product-card-head">
-            <div class="product-logo-wrap">
+          <div class="product-media-row">
+            <div class="product-logo-frame">
               <img
                 src="${escapeHtml(product.logo)}"
                 alt="Logo ${escapeHtml(product.name)}"
-                width="48"
-                height="48"
+                width="52"
+                height="52"
                 loading="lazy"
+                referrerPolicy="no-referrer"
               />
             </div>
-            <div class="product-status ${statusClass}">
-              <span class="status-dot" aria-hidden="true"></span>
+            <div class="product-meta-line ${product.outOfStock ? 'is-warn' : ''}">
+              <span>${escapeHtml(catLabel)}</span>
+              <span aria-hidden="true">·</span>
               <span>${escapeHtml(statusText)}</span>
             </div>
           </div>
 
-          <div class="product-card-body">
+          <div class="product-copy">
             <h3 class="product-title">${escapeHtml(product.name)}</h3>
             <p class="product-summary">${escapeHtml(product.summary)}</p>
           </div>
 
-          <div class="product-card-foot">
-            <div class="product-price-col">
-              <span class="price-caption">${variantCount} opsi paket</span>
-              <span class="price-value">${escapeHtml(priceDisplay)}</span>
+          <div class="product-foot">
+            <div class="product-price-block">
+              <span class="product-variant-count">${product.variants.length} varian</span>
+              <span class="product-price">${escapeHtml(priceDisplay)}</span>
             </div>
             <button
               type="button"
@@ -233,7 +230,7 @@ function renderCatalog() {
               data-product-id="${escapeHtml(product.id)}"
               aria-label="${product.outOfStock ? 'Lihat detail' : 'Pilih paket'} ${escapeHtml(product.name)}"
             >
-              ${product.outOfStock ? 'Lihat Detail' : isCustom ? 'Ajukan Request' : 'Pilih Paket'}
+              ${product.outOfStock ? 'Lihat Detail' : isCustom ? 'Ajukan' : 'Pilih Paket'}
             </button>
           </div>
         </article>
@@ -245,6 +242,53 @@ function renderCatalog() {
     btn.addEventListener('click', () => {
       const id = btn.getAttribute('data-product-id');
       if (id) openProductModal(id);
+    });
+  });
+}
+
+function renderOrderSteps() {
+  const container = document.getElementById('order-steps-list');
+  if (!container) return;
+
+  container.innerHTML = ORDER_STEPS.map(
+    (item) => `
+      <li class="editorial-step">
+        <h3 class="editorial-step-title">${escapeHtml(item.step)}</h3>
+        <p class="editorial-step-desc">${escapeHtml(item.detail)}</p>
+      </li>
+    `
+  ).join('');
+}
+
+function renderFaq() {
+  const container = document.getElementById('faq-list');
+  if (!container) return;
+
+  container.innerHTML = FAQ_ITEMS.map((item, idx) => {
+    const isOpen = state.openFaqIndex === idx;
+    return `
+      <div class="faq-item ${isOpen ? 'is-open' : ''}">
+        <button
+          type="button"
+          class="faq-trigger"
+          data-faq-idx="${idx}"
+          aria-expanded="${isOpen}"
+        >
+          <span>${escapeHtml(item.question)}</span>
+          <svg class="faq-chevron" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
+        </button>
+        <div class="faq-panel" ${isOpen ? '' : 'hidden'}>
+          <p>${escapeHtml(item.answer)}</p>
+        </div>
+      </div>
+    `;
+  }).join('');
+
+  container.querySelectorAll('.faq-trigger').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const idx = Number(btn.getAttribute('data-faq-idx'));
+      state.openFaqIndex = state.openFaqIndex === idx ? -1 : idx;
+      renderFaq();
     });
   });
 }
@@ -308,7 +352,7 @@ function renderProductModal() {
             </div>
             <button
               type="button"
-              class="btn ${unavailable ? 'btn-secondary' : 'btn-primary'} btn-sm add-variant-btn"
+              class="btn ${unavailable ? 'btn-secondary' : 'btn-primary'} btn-xs add-variant-btn"
               data-variant-id="${escapeHtml(variant.id)}"
               ${unavailable ? 'disabled' : ''}
               aria-label="Tambah ${escapeHtml(product.name)} ${escapeHtml(variant.name)} ke keranjang"
@@ -326,14 +370,14 @@ function renderProductModal() {
     <div class="modal-dialog" role="dialog" aria-modal="true" aria-labelledby="modal-product-title">
       <div class="modal-header">
         <div class="modal-brand-row">
-          <img src="${escapeHtml(product.logo)}" alt="" width="44" height="44" class="modal-logo" />
+          <img src="${escapeHtml(product.logo)}" alt="" width="44" height="44" class="modal-logo" referrerPolicy="no-referrer" />
           <div>
             <h2 id="modal-product-title">${escapeHtml(product.name)}</h2>
             <p class="modal-subtitle">${escapeHtml(product.summary)}</p>
           </div>
         </div>
         <button type="button" class="icon-close-btn" id="close-product-modal-btn" aria-label="Tutup detail produk">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
         </button>
       </div>
 
@@ -353,7 +397,7 @@ function renderProductModal() {
       </div>
 
       <div class="modal-footer">
-        <span class="modal-hint">Pesanan diproses cepat via WhatsApp Admin</span>
+        <span class="modal-hint">Pesanan diproses via WhatsApp Admin</span>
         <button type="button" class="btn btn-secondary btn-sm" id="modal-open-cart-btn">
           Lihat Keranjang (${calculateCartTotals(state.cart).itemCount})
         </button>
@@ -385,7 +429,7 @@ function renderProductModal() {
       state.generatedOrderUrl = '';
       state.checkoutError = '';
       saveCart();
-      updateCartBadges();
+      updateCartIndicators();
 
       btn.textContent = 'Ditambahkan';
       btn.classList.add('is-added');
@@ -408,16 +452,15 @@ function closeCartDrawer() {
   renderCartDrawer();
 }
 
-function updateCartBadges() {
+function updateCartIndicators() {
   const totals = calculateCartTotals(state.cart, {
     discountThreshold: BRAND.discountThreshold,
     discountAmount: BRAND.discountAmount,
   });
 
-  const badge = document.getElementById('header-cart-badge');
-  if (badge) {
-    badge.textContent = String(totals.itemCount);
-    badge.hidden = totals.itemCount === 0;
+  const countEl = document.getElementById('header-cart-count');
+  if (countEl) {
+    countEl.textContent = totals.itemCount > 0 ? `(${totals.itemCount})` : '';
   }
 
   const floatCartCount = document.getElementById('mobile-cart-count');
@@ -434,7 +477,7 @@ function renderCartDrawer() {
   const drawerRoot = document.getElementById('cart-drawer-root');
   if (!drawerRoot) return;
 
-  updateCartBadges();
+  updateCartIndicators();
 
   if (!state.isCartOpen) {
     drawerRoot.hidden = true;
@@ -450,23 +493,22 @@ function renderCartDrawer() {
   });
 
   const progressText = totals.qualifiesDiscount
-    ? `Selamat! Diskon ${formatRupiah(BRAND.discountAmount)} otomatis aktif.`
+    ? `Diskon ${formatRupiah(BRAND.discountAmount)} otomatis aktif.`
     : `Tambah ${formatRupiah(totals.remainingForDiscount)} lagi untuk diskon ${formatRupiah(BRAND.discountAmount)}.`;
 
   const itemsHtml =
     state.cart.length === 0
       ? `
         <div class="cart-empty">
-          <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="8" cy="21" r="1"/><circle cx="19" cy="21" r="1"/><path d="M2.05 2.05h2l2.66 12.42a2 2 0 0 0 2 1.58h9.78a2 2 0 0 0 1.95-1.57l1.65-7.43H5.12"/></svg>
           <p>Keranjang belanja masih kosong.</p>
-          <span>Pilih paket aplikasi favorit Anda dari katalog.</span>
+          <span>Pilih paket aplikasi dari katalog untuk memulai pesanan.</span>
         </div>
       `
       : state.cart
           .map(
             (item) => `
           <div class="cart-item">
-            <img src="${escapeHtml(item.logo || './assets/icons/brand-icon.svg')}" alt="" width="36" height="36" class="cart-item-logo" />
+            <img src="${escapeHtml(item.logo || './assets/icons/brand-icon.svg')}" alt="" width="36" height="36" class="cart-item-logo" referrerPolicy="no-referrer" />
             <div class="cart-item-info">
               <div class="cart-item-name">${escapeHtml(item.productName)}</div>
               <div class="cart-item-variant">${escapeHtml(item.variantName)}</div>
@@ -535,7 +577,7 @@ function renderCartDrawer() {
           <p class="drawer-sub">${totals.itemCount} item dipilih</p>
         </div>
         <button type="button" class="icon-close-btn" id="close-cart-btn" aria-label="Tutup keranjang belanja">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
         </button>
       </div>
 
@@ -616,7 +658,7 @@ function renderCartDrawer() {
                 ? `
               <div class="order-ready-box" role="status">
                 <p class="order-ready-title">Format Pesanan Siap Dikirim</p>
-                <p class="order-ready-desc">Klik tombol di bawah untuk langsung membuka chat WhatsApp Admin Manifestudio dengan rincian pesanan Anda.</p>
+                <p class="order-ready-desc">Klik tombol di bawah untuk langsung membuka chat WhatsApp Admin Manifestudio.</p>
                 <div class="order-ready-actions">
                   <a
                     href="${escapeHtml(state.generatedOrderUrl)}"
@@ -666,15 +708,13 @@ function renderCartDrawer() {
     });
   });
 
-  const nameInput = drawerRoot.querySelector('#checkout-name');
-  nameInput?.addEventListener('input', (e) => {
+  drawerRoot.querySelector('#checkout-name')?.addEventListener('input', (e) => {
     state.customerName = e.target.value;
     state.checkoutError = '';
     saveCustomerName(state.customerName);
   });
 
-  const noteInput = drawerRoot.querySelector('#checkout-note');
-  noteInput?.addEventListener('input', (e) => {
+  drawerRoot.querySelector('#checkout-note')?.addEventListener('input', (e) => {
     state.whatsappNote = e.target.value;
   });
 
@@ -727,58 +767,28 @@ function renderCartDrawer() {
   });
 }
 
-function renderFaq() {
-  const container = document.getElementById('faq-list');
-  if (!container) return;
-
-  container.innerHTML = FAQ_ITEMS.map((item, idx) => {
-    const isOpen = state.openFaqIndex === idx;
-    return `
-      <div class="faq-item ${isOpen ? 'is-open' : ''}">
-        <button
-          type="button"
-          class="faq-trigger"
-          data-faq-idx="${idx}"
-          aria-expanded="${isOpen}"
-        >
-          <span>${escapeHtml(item.question)}</span>
-          <svg class="faq-chevron" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
-        </button>
-        <div class="faq-panel" ${isOpen ? '' : 'hidden'}>
-          <p>${escapeHtml(item.answer)}</p>
-        </div>
-      </div>
-    `;
-  }).join('');
-
-  container.querySelectorAll('.faq-trigger').forEach((btn) => {
-    btn.addEventListener('click', () => {
-      const idx = Number(btn.getAttribute('data-faq-idx'));
-      state.openFaqIndex = state.openFaqIndex === idx ? -1 : idx;
-      renderFaq();
-    });
-  });
-}
-
 let toastTimer = null;
 function showToast(message) {
   const toast = document.getElementById('toast-notification');
   if (!toast) return;
   toast.textContent = message;
   toast.hidden = false;
-  toast.classList.add('is-visible');
   clearTimeout(toastTimer);
   toastTimer = setTimeout(() => {
-    toast.classList.remove('is-visible');
     toast.hidden = true;
-  }, 2600);
+  }, 2400);
 }
 
 function bindGlobalEvents() {
-  document.getElementById('theme-toggle-btn')?.addEventListener('click', () => {
-    state.theme = state.theme === 'dark' ? 'light' : 'dark';
-    saveTheme(state.theme);
-    applyTheme();
+  document.querySelectorAll('[data-theme-choice]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const next = btn.getAttribute('data-theme-choice');
+      if (next === 'light' || next === 'dark') {
+        state.theme = next;
+        saveTheme(next);
+        applyTheme();
+      }
+    });
   });
 
   const searchInput = document.getElementById('catalog-search');
@@ -824,8 +834,9 @@ function bootstrap() {
   applyTheme();
   renderCategories();
   renderCatalog();
+  renderOrderSteps();
   renderFaq();
-  updateCartBadges();
+  updateCartIndicators();
   bindGlobalEvents();
   initPwaManager();
 }

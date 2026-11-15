@@ -1,21 +1,18 @@
-# Manifestudio — Digital Store & Premium Catalog
+# Manifestudio — Katalog Layanan Digital & Akun Premium
 
-Storefront web statis modern bergaya e-commerce & top-up digital untuk katalog akun premium, desain kreatif, dan layanan streaming bergaransi. Dirancang agar ringan, responsif di mobile maupun desktop, mendukung **Mode Gelap / Terang**, dapat diinstal sebagai **PWA (Progressive Web App)**, dan berjalan 100% di **GitHub Pages** tanpa server backend.
+Storefront web statis untuk katalog layanan digital dan akun premium bergaransi. Dirancang dengan arsitektur modular tanpa server backend sehingga berjalan 100% di **GitHub Pages**, responsif di desktop maupun mobile, mendukung **Mode Terang / Gelap**, dan dapat diinstal sebagai **PWA (Progressive Web App)**.
 
 ## Fitur Utama
-- **Desain Modern & Responsif**: Layout grid adaptif, tipografi rapi (`Outfit`, `Plus Jakarta Sans`, `JetBrains Mono`), dan transisi halus yang ramah mobile maupun desktop.
-- **Mode Gelap & Mode Terang**: Tombol pengubah tema instan yang tersimpan otomatis.
-- **Katalog & Pencarian Cepat**: Filter berdasarkan kategori (`Streaming Film`, `Musik & Hiburan`, `Desain & Editing`, `Request & Custom`), filter stok tersedia, serta pencarian langsung.
-- **Logo Khusus Setiap Aplikasi**: Aset SVG lokal tajam untuk Netflix, Canva Pro, YouTube Premium, Spotify, Viu, Vidio, Alight Motion, WeTV, Prime Video, dan Custom Request.
-- **Keranjang & Diskon Otomatis**: Tambah banyak paket sekaligus, atur jumlah, pantau progress diskon otomatis (`Rp2.000` untuk belanja minimal `Rp50.000`), dan buat format pesanan WhatsApp instan.
-- **PWA Siap Install**: Mendukung mode offline via Service Worker (`sw.js`) serta banner penawaran install yang dapat **di-minimize** maupun **dihilangkan** sesuai pilihan pengguna.
+- **Desain Editorial Retail**: Tata letak split-hero, tipografi `Bricolage Grotesque`, `Manrope`, dan angka tabular `IBM Plex Mono`, tanpa dekorasi berlebihan.
+- **Mode Terang & Mode Gelap**: Pengubah tema langsung di toolbar katalog yang tersimpan otomatis di `localStorage`.
+- **Katalog & Filter Cepat**: Filter kategori (`Streaming Film`, `Musik & Hiburan`, `Desain & Editing`, `Request & Custom`), filter stok tersedia, dan pencarian instan.
+- **Logo Khusus Setiap Aplikasi**: Aset SVG lokal untuk seluruh 10 layanan.
+- **Keranjang & Diskon Otomatis**: Tambah banyak varian, atur jumlah, pantau progress diskon otomatis (`Rp2.000` untuk belanja minimal `Rp50.000`), dan buat format pesanan WhatsApp instan.
+- **PWA Siap Install**: Mendukung cache offline (`sw.js`) serta banner penawaran install yang dapat **di-minimize** maupun **dihilangkan** oleh pengguna.
 
 ## Menjalankan Secara Lokal
-Karena menggunakan ES Modules (`<script type="module">`), buka folder ini melalui static server HTTP lokal (bukan `file://`):
-
+Karena menggunakan ES Modules (`<script type="module">`), buka melalui HTTP server lokal:
 ```bash
-npx serve .
-# atau
 python3 -m http.server 4173
 ```
 
@@ -24,5 +21,5 @@ python3 -m http.server 4173
 node --test js/store.test.mjs
 ```
 
-## Arah Pengembangan Selanjutnya
-Lihat [`ROADMAP.md`](./ROADMAP.md) untuk daftar lengkap struktur arsitektur dan rencana pengembangan fitur berikutnya.
+## Roadmap Pengembangan
+Lihat [`ROADMAP.md`](./ROADMAP.md) untuk panduan arsitektur dan rencana fase berikutnya.

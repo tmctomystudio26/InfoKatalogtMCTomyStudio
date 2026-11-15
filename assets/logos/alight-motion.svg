@@ -1,12 +1,5 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none">
-  <defs>
-    <linearGradient id="amGrad" x1="14" y1="14" x2="50" y2="50" gradientUnits="userSpaceOnUse">
-      <stop stop-color="#34D399"/>
-      <stop offset="1" stop-color="#0EA5E9"/>
-    </linearGradient>
-  </defs>
-  <rect width="64" height="64" rx="16" fill="#0C1920"/>
-  <circle cx="32" cy="32" r="19" stroke="url(#amGrad)" stroke-width="3.5"/>
-  <path d="M32 18L44 42H20L32 18Z" stroke="#34D399" stroke-width="3" stroke-linejoin="round"/>
-  <circle cx="32" cy="34" r="4" fill="#38BDF8"/>
+  <rect width="64" height="64" rx="12" fill="#141413"/>
+  <circle cx="32" cy="32" r="18" stroke="#14B8A6" stroke-width="3.2"/>
+  <path d="M23 41l9-18 9 18h-4.6l-4.4-9-4.4 9H23z" fill="#F4F3EF"/>
 </svg>
