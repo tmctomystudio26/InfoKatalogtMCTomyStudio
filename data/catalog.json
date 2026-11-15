@@ -82,6 +82,30 @@
   ],
   "products": [
     {
+      "id": "capcut-pro",
+      "name": "Capcut Pro",
+      "category": "creative",
+      "logo": "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcSQjbP_6uEVA1zrKcoQ7hEz2hX6lwXqHiTy-iez_Ml2ww&s=10",
+      "isBestSeller": false,
+      "outOfStock": false,
+      "tag": "Tersedia",
+      "summary": "Semua Fitur Pro",
+      "variants": [
+        {
+          "id": "capcut-pro-v1",
+          "name": "7 Hari Privat",
+          "price": 14500,
+          "outOfStock": false
+        },
+        {
+          "id": "capcut-pro-qy2e",
+          "name": "1 Bulan Privat",
+          "price": 27500,
+          "outOfStock": false
+        }
+      ]
+    },
+    {
       "id": "netflix-premium",
       "name": "Netflix Premium",
       "category": "streaming",
@@ -394,30 +418,6 @@
           "price": 0,
           "outOfStock": false,
           "description": "Ingin menggabungkan beberapa aplikasi atau mengatur durasi paket khusus."
-        }
-      ]
-    },
-    {
-      "id": "capcut-pro",
-      "name": "Capcut Pro",
-      "category": "creative",
-      "logo": "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcSQjbP_6uEVA1zrKcoQ7hEz2hX6lwXqHiTy-iez_Ml2ww&s=10",
-      "isBestSeller": false,
-      "outOfStock": false,
-      "tag": "Tersedia",
-      "summary": "Semua Fitur Pro",
-      "variants": [
-        {
-          "id": "capcut-pro-v1",
-          "name": "7 Hari Privat",
-          "price": 14500,
-          "outOfStock": false
-        },
-        {
-          "id": "capcut-pro-qy2e",
-          "name": "1 Bulan Privat",
-          "price": 27500,
-          "outOfStock": false
         }
       ]
     }
