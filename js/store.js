@@ -472,3 +472,104 @@ export function collectOrphanedUploadLogos(previousProducts = [], nextProducts =
   return orphaned;
 }
 
+export const MAX_HISTORY_LOGS = 12;
+
+export function getProductCardTone(index = 0) {
+  const safe = Math.abs(Math.trunc(Number(index) || 0));
+  return safe % 6;
+}
+
+export function compactCatalogForHistory(catalog) {
+  const safe = catalog && typeof catalog === 'object' ? catalog : {};
+  return {
+    ...(safe.brand ? { brand: structuredClone(safe.brand) } : {}),
+    ...(Array.isArray(safe.categories) ? { categories: structuredClone(safe.categories) } : {}),
+    ...(Array.isArray(safe.paymentOptions) ? { paymentOptions: structuredClone(safe.paymentOptions) } : {}),
+    ...(Array.isArray(safe.faqItems) ? { faqItems: structuredClone(safe.faqItems) } : {}),
+    vouchers: Array.isArray(safe.vouchers) ? structuredClone(safe.vouchers) : [],
+    products: (Array.isArray(safe.products) ? safe.products : []).map((p) => {
+      const logoStr = String(p?.logo || '');
+      const compactLogo =
+        logoStr.startsWith('data:') && logoStr.length > 4096
+          ? './assets/logos/custom-request.svg'
+          : logoStr;
+      return {
+        ...structuredClone(p),
+        logo: compactLogo,
+      };
+    }),
+  };
+}
+
+export function pruneCatalogHistory(entries = [], maxEntries = MAX_HISTORY_LOGS) {
+  const limit = Math.max(1, Math.trunc(Number(maxEntries) || MAX_HISTORY_LOGS));
+  const list = Array.isArray(entries) ? entries.filter((e) => e && e.id && e.snapshot) : [];
+  const sorted = [...list].sort(
+    (a, b) => Date.parse(b.createdAt || 0) - Date.parse(a.createdAt || 0)
+  );
+  return sorted.slice(0, limit);
+}
+
+export function appendCatalogHistory(entries = [], entryInput = {}, maxEntries = MAX_HISTORY_LOGS) {
+  const nextEntry = {
+    id:
+      entryInput.id ||
+      `rev-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`,
+    createdAt: entryInput.createdAt || new Date().toISOString(),
+    action: String(entryInput.action || 'publish'),
+    summary: String(entryInput.summary || 'Pembaruan katalog'),
+    productCount: Number.isFinite(entryInput.productCount)
+      ? entryInput.productCount
+      : Array.isArray(entryInput.snapshot?.products)
+      ? entryInput.snapshot.products.length
+      : 0,
+    voucherCount: Number.isFinite(entryInput.voucherCount)
+      ? entryInput.voucherCount
+      : Array.isArray(entryInput.snapshot?.vouchers)
+      ? entryInput.snapshot.vouchers.length
+      : 0,
+    snapshot: compactCatalogForHistory(entryInput.snapshot),
+  };
+
+  return pruneCatalogHistory([nextEntry, ...(Array.isArray(entries) ? entries : [])], maxEntries);
+}
+
+export function summarizeCatalogDiff(prevCatalog, nextCatalog) {
+  const prevProducts = Array.isArray(prevCatalog?.products) ? prevCatalog.products : [];
+  const nextProducts = Array.isArray(nextCatalog?.products) ? nextCatalog.products : [];
+  const prevMap = new Map(prevProducts.map((p, idx) => [p.id, { item: p, idx }]));
+  const nextMap = new Map(nextProducts.map((p, idx) => [p.id, { item: p, idx }]));
+
+  let added = 0;
+  let removed = 0;
+  let modified = 0;
+  let reordered = 0;
+
+  for (const [id, nextWrap] of nextMap.entries()) {
+    const prevWrap = prevMap.get(id);
+    if (!prevWrap) {
+      added += 1;
+    } else {
+      if (prevWrap.idx !== nextWrap.idx) reordered += 1;
+      if (JSON.stringify(prevWrap.item) !== JSON.stringify(nextWrap.item)) modified += 1;
+    }
+  }
+  for (const id of prevMap.keys()) {
+    if (!nextMap.has(id)) removed += 1;
+  }
+
+  const prevVouchers = JSON.stringify(prevCatalog?.vouchers || []);
+  const nextVouchers = JSON.stringify(nextCatalog?.vouchers || []);
+  const voucherChanged = prevVouchers !== nextVouchers;
+
+  const parts = [];
+  if (added > 0) parts.push(`+${added} produk`);
+  if (removed > 0) parts.push(`-${removed} produk`);
+  if (modified > 0) parts.push(`${modified} produk diubah`);
+  if (reordered > 0 && modified === 0 && added === 0 && removed === 0) {
+    parts.push('urutan produk diperbarui');
+  }
+  if (voucherChanged) parts.push('voucher diperbarui');
+
+  return parts.length > 0 ? parts.join(' · ') : 'Sinkronisasi katalog terbaru';
+}

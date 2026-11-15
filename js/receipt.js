@@ -104,29 +104,24 @@ export async function generateReceiptImage({
   canvas.height = totalH;
   const ctx = canvas.getContext('2d');
 
-  // Crisp invoice paper background with subtle anime aesthetic hue
+  // Crisp invoice paper background
   ctx.fillStyle = '#FAFAFC';
   ctx.fillRect(0, 0, width, totalH);
 
-  // Header band (Cyberpunk Anime Indigo/Violet gradient effect)
+  // Header band
   ctx.fillStyle = '#0F172A';
   ctx.fillRect(0, 0, width, headerH);
 
-  // Neon Anime accent top bars (Cyan & Magenta)
+  // Accent top bars
   ctx.fillStyle = '#06B6D4';
   ctx.fillRect(0, 0, width, 5);
   ctx.fillStyle = '#EC4899';
   ctx.fillRect(0, 5, width, 3);
 
-  // Store title & Anime Edition Badge
+  // Store title
   ctx.fillStyle = '#FFFFFF';
   ctx.font = `800 21px ${sans}`;
   ctx.fillText('MANIFESTUDIO', padX, 42);
-
-  // Anime aesthetic star badge
-  ctx.fillStyle = '#38BDF8';
-  ctx.font = `700 11px ${sans}`;
-  ctx.fillText('★ ANIME STORE EDITION ★', padX + 185, 41);
 
   ctx.fillStyle = '#94A3B8';
   ctx.font = `500 11px ${sans}`;

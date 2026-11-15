@@ -4,12 +4,17 @@ import {
   loadCatalogData,
 } from './data.js';
 import {
+  MAX_HISTORY_LOGS,
+  appendCatalogHistory,
   collectOrphanedUploadLogos,
   extractManagedUploadLogoPath,
   formatRupiah,
+  getProductCardTone,
   moveProductInCatalog,
+  pruneCatalogHistory,
   reorderProductToIndex,
   slugifyId,
+  summarizeCatalogDiff,
   toggleProductStockInCatalog,
   upsertProductInCatalog,
 } from './store.js';
@@ -23,6 +28,7 @@ const THEME_STORAGE_KEY = 'manifestudio_theme_v1';
 const ADMIN_VAULT_STORAGE_KEY = 'manifestudio_admin_vault_v1';
 const LEGACY_GH_STORAGE_KEY = 'manifestudio_admin_gh_v1';
 const ADMIN_LOGO_OPS_KEY = 'manifestudio_admin_logo_ops_v1';
+const ADMIN_HISTORY_STORAGE_KEY = 'manifestudio_admin_history_v1';
 
 const LOGO_PRESETS = [
   { value: './assets/logos/custom-request.svg', label: 'Ikon Umum / Custom' },
@@ -54,6 +60,9 @@ const adminState = {
   deletedUploadPaths: [], // managed repo paths queued for deletion on publish
   newProdLogoMode: 'upload',
   newProdPendingUpload: null,
+  history: [],
+  historySha: null,
+  isPublishing: false,
   ghConfig: {
     owner: '',
     repo: '',
@@ -344,6 +353,7 @@ async function openUnlockedDashboard() {
   renderGateScreen();
 
   restorePendingLogoOps();
+  loadLocalHistory();
   const loaded = await loadCatalogData({ allowLocalPreview: true });
   adminState.catalog = loaded.data;
   adminState.source = loaded.source;
@@ -360,7 +370,9 @@ async function openUnlockedDashboard() {
   renderTabs();
   renderProductList();
   renderVoucherList();
+  renderHistoryList();
   syncNewProductLogoUi();
+  pullHistoryFromGitHub().catch(() => {});
 }
 
 function updateSourceBadge() {
@@ -403,6 +415,7 @@ function renderTabs() {
     products: 'panel-products',
     add: 'panel-add',
     vouchers: 'panel-vouchers',
+    history: 'panel-history',
   };
   Object.entries(panelMap).forEach(([tab, id]) => {
     const panel = document.getElementById(id);
@@ -549,14 +562,15 @@ function renderProductList() {
         .join('');
 
       const isConfirmingDelete = adminState.confirmDeleteProductId === product.id;
+      const cardTone = getProductCardTone(globalIndex);
 
       return `
-        <article class="admin-product-card" data-admin-product="${escapeHtml(product.id)}">
+        <article class="admin-product-card" data-admin-product="${escapeHtml(product.id)}" data-card-tone="${cardTone}">
           <div class="admin-prod-head">
             <div class="admin-prod-brand">
               <span class="admin-order-badge mono-num" title="Urutan tampil di katalog">#${globalIndex + 1}</span>
               <img src="${escapeHtml(product.logo)}" alt="" width="42" height="42" class="modal-logo" />
-              <div>
+              <div class="admin-prod-title-wrap">
                 <h2 class="admin-prod-name">${escapeHtml(product.name)}</h2>
                 <span class="admin-prod-meta">ID: ${escapeHtml(product.id)} · ${(product.variants || []).length} varian</span>
               </div>
@@ -593,24 +607,36 @@ function renderProductList() {
                 </select>
               </div>
 
-              <button
-                type="button"
-                class="btn ${product.outOfStock ? 'btn-primary' : 'btn-secondary'} btn-sm"
-                data-toggle-stock="${escapeHtml(product.id)}"
-              >
-                ${product.outOfStock ? 'Aktifkan Semua Stok' : 'Tandai Habis Semua'}
-              </button>
-              <button
-                type="button"
-                class="btn btn-ghost btn-sm ${isConfirmingDelete ? 'is-danger-confirm' : ''}"
-                data-delete-product="${escapeHtml(product.id)}"
-              >
-                ${isConfirmingDelete ? 'Konfirmasi Hapus' : 'Hapus Produk'}
-              </button>
+              <div class="admin-prod-action-pair">
+                <button
+                  type="button"
+                  class="btn ${product.outOfStock ? 'btn-primary' : 'btn-secondary'} btn-sm"
+                  data-toggle-stock="${escapeHtml(product.id)}"
+                >
+                  ${product.outOfStock ? 'Aktifkan Stok' : 'Tandai Habis'}
+                </button>
+                <button
+                  type="button"
+                  class="btn btn-ghost btn-sm ${isConfirmingDelete ? 'is-danger-confirm' : ''}"
+                  data-delete-product="${escapeHtml(product.id)}"
+                >
+                  ${isConfirmingDelete ? 'Konfirmasi Hapus' : 'Hapus Produk'}
+                </button>
+              </div>
             </div>
           </div>
 
           <div class="admin-prod-meta-grid">
+            <div class="form-field">
+              <label for="pname-${escapeHtml(product.id)}">Nama Produk</label>
+              <input
+                type="text"
+                id="pname-${escapeHtml(product.id)}"
+                data-prod-meta="${escapeHtml(product.id)}"
+                data-meta-field="name"
+                value="${escapeHtml(product.name || '')}"
+              />
+            </div>
             <div class="form-field">
               <label for="ptag-${escapeHtml(product.id)}">Label Tag</label>
               <input
@@ -867,6 +893,13 @@ function bindProductListEvents(container) {
         card?.querySelectorAll('.admin-logo-thumb, .admin-prod-brand .modal-logo').forEach((img) => {
           img.src = nextVal;
         });
+      } else if (field === 'name') {
+        prod.name = e.target.value;
+        const card = input.closest('.admin-product-card');
+        const headingEl = card?.querySelector('.admin-prod-name');
+        if (headingEl) {
+          headingEl.textContent = e.target.value.trim() || 'Produk Tanpa Nama';
+        }
       } else {
         prod[field] = e.target.value;
       }
@@ -1162,40 +1195,388 @@ async function pullFromGitHub() {
   }
 }
 
-async function publishToGitHub() {
+function setPublishProgress({ visible = true, percent = 0, label = '' }) {
+  const box = document.getElementById('admin-publish-progress');
+  const labelEl = document.getElementById('admin-progress-label');
+  const pctEl = document.getElementById('admin-progress-pct');
+  const barEl = document.getElementById('admin-progress-bar');
+  const fillEl = document.getElementById('admin-progress-fill');
+  if (!box) return;
+
+  if (!visible) {
+    box.hidden = true;
+    return;
+  }
+  const safePct = Math.max(0, Math.min(100, Math.round(Number(percent) || 0)));
+  box.hidden = false;
+  if (labelEl && label) labelEl.textContent = label;
+  if (pctEl) pctEl.textContent = `${safePct}%`;
+  if (barEl) barEl.setAttribute('aria-valuenow', String(safePct));
+  if (fillEl) fillEl.style.width = `${safePct}%`;
+}
+
+function loadLocalHistory() {
+  try {
+    const raw = localStorage.getItem(ADMIN_HISTORY_STORAGE_KEY);
+    if (!raw) {
+      adminState.history = [];
+      return;
+    }
+    const parsed = JSON.parse(raw);
+    adminState.history = pruneCatalogHistory(parsed, MAX_HISTORY_LOGS);
+  } catch {
+    adminState.history = [];
+  }
+}
+
+function saveLocalHistory(entries) {
+  const pruned = pruneCatalogHistory(entries, MAX_HISTORY_LOGS);
+  adminState.history = pruned;
+  try {
+    localStorage.setItem(ADMIN_HISTORY_STORAGE_KEY, JSON.stringify(pruned));
+  } catch {
+    // Ignore storage quota
+  }
+  return pruned;
+}
+
+function recordLocalHistory(action, summary, snapshot) {
+  const updated = appendCatalogHistory(
+    adminState.history,
+    { action, summary, snapshot },
+    MAX_HISTORY_LOGS
+  );
+  saveLocalHistory(updated);
+  renderHistoryList();
+  return updated;
+}
+
+function formatHistoryDate(isoString) {
+  try {
+    return new Intl.DateTimeFormat('id-ID', {
+      day: '2-digit',
+      month: 'short',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+    }).format(new Date(isoString));
+  } catch {
+    return String(isoString || '');
+  }
+}
+
+function renderHistoryList() {
   if (!adminState.unlocked) return;
+  const limitEl = document.getElementById('history-limit-label');
+  if (limitEl) limitEl.textContent = String(MAX_HISTORY_LOGS);
+
+  const listEl = document.getElementById('admin-history-list');
+  if (!listEl) return;
+
+  const logs = pruneCatalogHistory(adminState.history, MAX_HISTORY_LOGS);
+  if (logs.length === 0) {
+    listEl.innerHTML = `
+      <div class="empty-state">
+        <h3>Belum ada riwayat perubahan</h3>
+        <p>Log otomatis dicatat setiap kali Anda mempublikasikan ke GitHub atau menyimpan snapshot manual.</p>
+      </div>
+    `;
+    return;
+  }
+
+  const badgeLabel = {
+    publish: 'Publikasi GitHub',
+    preview: 'Pratinjau Lokal',
+    restore: 'Cadangan Sebelum Restore',
+    manual: 'Snapshot Manual',
+  };
+
+  listEl.innerHTML = logs
+    .map(
+      (entry, idx) => `
+      <article class="admin-history-row" data-history-id="${escapeHtml(entry.id)}">
+        <div class="admin-history-main">
+          <div class="admin-history-meta-top">
+            <span class="admin-badge ${entry.action === 'publish' ? 'is-ok' : 'is-warn'}">${escapeHtml(badgeLabel[entry.action] || 'Perubahan')}</span>
+            <time class="admin-prod-meta mono-num">${escapeHtml(formatHistoryDate(entry.createdAt))}</time>
+            ${idx === 0 ? '<span class="admin-history-latest">Terbaru</span>' : ''}
+          </div>
+          <strong class="admin-history-summary">${escapeHtml(entry.summary || 'Pembaruan katalog')}</strong>
+          <span class="admin-prod-meta">${Number(entry.productCount || 0)} produk · ${Number(entry.voucherCount || 0)} voucher</span>
+        </div>
+        <div class="admin-history-actions">
+          <button
+            type="button"
+            class="btn btn-primary btn-sm"
+            data-restore-history="${escapeHtml(entry.id)}"
+          >
+            Pulihkan
+          </button>
+          <button
+            type="button"
+            class="btn btn-ghost btn-sm"
+            data-delete-history="${escapeHtml(entry.id)}"
+            aria-label="Hapus log ${escapeHtml(entry.summary || entry.id)}"
+          >
+            Hapus
+          </button>
+        </div>
+      </article>
+    `
+    )
+    .join('');
+
+  listEl.querySelectorAll('[data-restore-history]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const id = btn.getAttribute('data-restore-history');
+      const target = adminState.history.find((h) => h.id === id);
+      if (!target || !target.snapshot) return;
+
+      // Save backup of current state before restoring (auto-pruned cleanly)
+      recordLocalHistory(
+        'restore',
+        `Cadangan sebelum restore ke versi ${formatHistoryDate(target.createdAt)}`,
+        adminState.catalog
+      );
+
+      adminState.catalog = structuredClone(target.snapshot);
+      markDirty();
+      try {
+        localStorage.setItem(CATALOG_PREVIEW_STORAGE_KEY, JSON.stringify(adminState.catalog));
+      } catch {
+        // Ignore
+      }
+      adminState.activeTab = 'products';
+      renderTabs();
+      renderProductList();
+      renderVoucherList();
+      setStatusBox(
+        'admin-status-box',
+        `Katalog dipulihkan ke versi ${formatHistoryDate(target.createdAt)}. Klik "Simpan & Publikasikan ke GitHub" untuk menerapkan secara live.`,
+        'info'
+      );
+      showToast('Katalog berhasil dipulihkan dari riwayat.');
+    });
+  });
+
+  listEl.querySelectorAll('[data-delete-history]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const id = btn.getAttribute('data-delete-history');
+      const next = adminState.history.filter((h) => h.id !== id);
+      saveLocalHistory(next);
+      renderHistoryList();
+      showToast('Log riwayat dihapus.');
+    });
+  });
+}
+
+async function pullHistoryFromGitHub() {
+  if (!adminState.unlocked) return;
+  const { owner, repo, branch, token } = adminState.ghConfig;
+  if (!owner || !repo) return;
+
+  const url = `https://api.github.com/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/contents/data/catalog-history.json?ref=${encodeURIComponent(branch)}`;
+  const headers = { Accept: 'application/vnd.github+json' };
+  if (token) headers.Authorization = `Bearer ${token}`;
+
+  const res = await fetch(url, { headers, cache: 'no-store' });
+  if (!res.ok) return;
+  const payload = await res.json();
+  adminState.historySha = payload.sha || null;
+  const decoded = decodeBase64Utf8(payload.content);
+  const parsed = JSON.parse(decoded);
+  const remoteLogs = Array.isArray(parsed?.logs) ? parsed.logs : [];
+
+  const mergedMap = new Map();
+  for (const item of [...remoteLogs, ...adminState.history]) {
+    if (item && item.id && !mergedMap.has(item.id)) {
+      mergedMap.set(item.id, item);
+    }
+  }
+  saveLocalHistory([...mergedMap.values()]);
+  renderHistoryList();
+}
+
+async function syncHistoryToGitHub({ owner, repo, branch, token, logs }) {
+  const endpoint = `https://api.github.com/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/contents/data/catalog-history.json`;
+  let sha = adminState.historySha;
+  try {
+    const getRes = await fetch(`${endpoint}?ref=${encodeURIComponent(branch)}`, {
+      headers: {
+        Accept: 'application/vnd.github+json',
+        Authorization: `Bearer ${token}`,
+      },
+      cache: 'no-store',
+    });
+    if (getRes.ok) {
+      const meta = await getRes.json();
+      sha = meta.sha || sha;
+    } else if (getRes.status === 404) {
+      sha = null;
+    }
+  } catch {
+    // Use existing sha if available
+  }
+
+  const pruned = pruneCatalogHistory(logs, MAX_HISTORY_LOGS);
+  const bodyJson = JSON.stringify(
+    {
+      updatedAt: new Date().toISOString(),
+      maxLogs: MAX_HISTORY_LOGS,
+      logs: pruned,
+    },
+    null,
+    2
+  );
+  const payload = await putGitHubFile({
+    owner,
+    repo,
+    branch,
+    token,
+    filePath: 'data/catalog-history.json',
+    base64Content: encodeBase64Utf8(`${bodyJson}\n`),
+    message: `chore(history): catat riwayat katalog (maks ${MAX_HISTORY_LOGS} log)`,
+    sha,
+  });
+  adminState.historySha = payload.content?.sha || sha;
+}
+
+function putGitHubFileWithProgress({
+  owner,
+  repo,
+  branch,
+  token,
+  filePath,
+  base64Content,
+  message,
+  sha = null,
+  onUploadProgress = null,
+}) {
+  const endpoint = `https://api.github.com/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/contents/${encodeRepoPathSegments(filePath)}`;
+  const bodyStr = JSON.stringify({
+    message,
+    content: base64Content,
+    branch,
+    ...(sha ? { sha } : {}),
+  });
+
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open('PUT', endpoint, true);
+    xhr.setRequestHeader('Accept', 'application/vnd.github+json');
+    xhr.setRequestHeader('Authorization', `Bearer ${token}`);
+    xhr.setRequestHeader('Content-Type', 'application/json');
+
+    if (xhr.upload && typeof onUploadProgress === 'function') {
+      xhr.upload.onprogress = (evt) => {
+        if (evt.lengthComputable && evt.total > 0) {
+          onUploadProgress(evt.loaded / evt.total);
+        }
+      };
+    }
+
+    xhr.onload = () => {
+      let data = {};
+      try {
+        data = JSON.parse(xhr.responseText || '{}');
+      } catch {
+        data = {};
+      }
+      if (xhr.status >= 200 && xhr.status < 300) {
+        onUploadProgress?.(1);
+        resolve(data);
+      } else {
+        reject(new Error(data.message || `GitHub HTTP ${xhr.status} (${filePath})`));
+      }
+    };
+
+    xhr.onerror = () => reject(new Error(`Koneksi gagal saat mengunggah ${filePath}`));
+    xhr.send(bodyStr);
+  });
+}
+
+async function publishToGitHub() {
+  if (!adminState.unlocked || adminState.isPublishing) return;
   const { owner, repo, branch, token } = adminState.ghConfig;
   if (!token) {
     setStatusBox('admin-status-box', 'Sesi token kosong. Kunci lalu buka kembali brankas Anda.', 'error');
     return;
   }
 
+  adminState.isPublishing = true;
+  const publishBtn = document.getElementById('publish-github-btn');
+  if (publishBtn) publishBtn.disabled = true;
+
   const endpoint = `https://api.github.com/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/contents/data/catalog.json`;
   setStatusBox('admin-status-box', 'Mengunggah perubahan & logo ke GitHub Pages...', 'info');
 
   try {
     const nextCatalog = structuredClone(adminState.catalog);
-
-    // 1. Upload any pending compressed logo files directly to assets/logos/uploads/
-    let uploadedLogosCount = 0;
-    for (const prod of nextCatalog.products || []) {
+    const pendingItems = (nextCatalog.products || []).filter((prod) => {
       const pending = adminState.pendingUploads[prod.id];
-      if (pending && prod.logo === pending.previewDataUrl) {
-        await putGitHubFile({
-          owner,
-          repo,
-          branch,
-          token,
-          filePath: pending.targetPath,
-          base64Content: pending.base64Content,
-          message: `chore(logo): upload logo ${prod.name} via Panel Admin`,
-        });
-        prod.logo = `./${pending.targetPath}`;
-        uploadedLogosCount += 1;
-      }
+      return Boolean(pending && prod.logo === pending.previewDataUrl);
+    });
+
+    const diffOrphans = collectOrphanedUploadLogos(
+      adminState.lastPublishedProducts,
+      nextCatalog.products
+    );
+    const stillActiveSet = new Set(
+      (nextCatalog.products || []).map((p) => extractManagedUploadLogoPath(p.logo)).filter(Boolean)
+    );
+    // Calculate expected orphans proactively for accurate denominator
+    const preUploadActiveSet = new Set(stillActiveSet);
+    for (const p of pendingItems) {
+      const pending = adminState.pendingUploads[p.id];
+      if (pending?.targetPath) preUploadActiveSet.add(pending.targetPath);
+    }
+    const plannedOrphans = [...new Set([...diffOrphans, ...adminState.deletedUploadPaths])].filter(
+      (p) => p && !preUploadActiveSet.has(p)
+    );
+
+    const totalWeight =
+      pendingItems.length * 1.2 +
+      0.5 + // fetch remote SHA
+      1.8 + // upload catalog.json
+      plannedOrphans.length * 0.5 +
+      0.8; // sync history log
+    let completedWeight = 0;
+
+    const updateWeightedProgress = (partialWeight, label) => {
+      const ratio = totalWeight > 0 ? Math.min(0.99, (completedWeight + partialWeight) / totalWeight) : 0;
+      setPublishProgress({
+        visible: true,
+        percent: Math.max(2, Math.round(ratio * 100)),
+        label,
+      });
+    };
+
+    updateWeightedProgress(0.05, 'Memvalidasi data katalog & gambar...');
+
+    // 1. Upload pending compressed logo files directly to assets/logos/uploads/
+    let uploadedLogosCount = 0;
+    for (let i = 0; i < pendingItems.length; i += 1) {
+      const prod = pendingItems[i];
+      const pending = adminState.pendingUploads[prod.id];
+      const stepLabel = `Mengunggah logo (${i + 1}/${pendingItems.length}): ${prod.name}...`;
+      await putGitHubFileWithProgress({
+        owner,
+        repo,
+        branch,
+        token,
+        filePath: pending.targetPath,
+        base64Content: pending.base64Content,
+        message: `chore(logo): upload logo ${prod.name} via Panel Admin`,
+        onUploadProgress: (frac) => updateWeightedProgress(frac * 1.2, stepLabel),
+      });
+      prod.logo = `./${pending.targetPath}`;
+      uploadedLogosCount += 1;
+      completedWeight += 1.2;
     }
 
-    // 2. Fetch latest catalog.json SHA and update catalog.json
+    // 2. Fetch latest catalog.json SHA
+    updateWeightedProgress(0.15, 'Memeriksa versi catalog.json di GitHub...');
+    let prevRemoteCatalog = null;
     const getRes = await fetch(`${endpoint}?ref=${encodeURIComponent(branch)}`, {
       headers: {
         Accept: 'application/vnd.github+json',
@@ -1208,12 +1589,19 @@ async function publishToGitHub() {
     if (getRes.ok) {
       const currentMeta = await getRes.json();
       latestSha = currentMeta.sha || latestSha;
+      try {
+        prevRemoteCatalog = JSON.parse(decodeBase64Utf8(currentMeta.content));
+      } catch {
+        prevRemoteCatalog = null;
+      }
     } else if (getRes.status !== 404) {
       throw new Error(`Gagal cek versi file (HTTP ${getRes.status})`);
     }
+    completedWeight += 0.5;
 
+    // 3. Upload updated catalog.json with realtime byte progress
     const formattedJson = `${JSON.stringify(nextCatalog, null, 2)}\n`;
-    const putPayload = await putGitHubFile({
+    const putPayload = await putGitHubFileWithProgress({
       owner,
       repo,
       branch,
@@ -1222,22 +1610,26 @@ async function publishToGitHub() {
       base64Content: encodeBase64Utf8(formattedJson),
       message: 'chore(catalog): update produk, urutan, logo, atau stok via Panel Admin',
       sha: latestSha,
+      onUploadProgress: (frac) =>
+        updateWeightedProgress(frac * 1.8, 'Mengunggah catalog.json ke GitHub...'),
     });
+    completedWeight += 1.8;
 
-    // 3. Delete previous uploaded logo files that were replaced or removed
-    const diffOrphans = collectOrphanedUploadLogos(
-      adminState.lastPublishedProducts,
-      nextCatalog.products
-    );
-    const stillActiveSet = new Set(
+    // 4. Delete previous uploaded logo files that were replaced or removed
+    const finalActiveSet = new Set(
       (nextCatalog.products || []).map((p) => extractManagedUploadLogoPath(p.logo)).filter(Boolean)
     );
     const allOrphansToDelete = [...new Set([...diffOrphans, ...adminState.deletedUploadPaths])].filter(
-      (p) => p && !stillActiveSet.has(p)
+      (p) => p && !finalActiveSet.has(p)
     );
 
     let deletedLogosCount = 0;
-    for (const orphanPath of allOrphansToDelete) {
+    for (let i = 0; i < allOrphansToDelete.length; i += 1) {
+      const orphanPath = allOrphansToDelete[i];
+      updateWeightedProgress(
+        0.2,
+        `Membersihkan logo lama (${i + 1}/${allOrphansToDelete.length})...`
+      );
       const removed = await deleteGitHubFile({
         owner,
         repo,
@@ -1247,6 +1639,23 @@ async function publishToGitHub() {
         message: `chore(logo): hapus file logo lama ${orphanPath}`,
       });
       if (removed) deletedLogosCount += 1;
+      completedWeight += 0.5;
+    }
+
+    // 5. Record change history & enforce log limit cleanly
+    updateWeightedProgress(0.3, `Menyimpan riwayat perubahan (maks ${MAX_HISTORY_LOGS} log)...`);
+    const changeSummary = summarizeCatalogDiff(prevRemoteCatalog, nextCatalog);
+    const updatedLogs = recordLocalHistory('publish', changeSummary, nextCatalog);
+    try {
+      await syncHistoryToGitHub({
+        owner,
+        repo,
+        branch,
+        token,
+        logs: updatedLogs,
+      });
+    } catch {
+      // Non-fatal: history stays safely saved locally
     }
 
     adminState.catalog = nextCatalog;
@@ -1267,6 +1676,13 @@ async function publishToGitHub() {
 
     updateSourceBadge();
     renderProductList();
+    renderHistoryList();
+
+    setPublishProgress({
+      visible: true,
+      percent: 100,
+      label: 'Publikasi selesai & riwayat tercatat!',
+    });
 
     const cleanupNote =
       deletedLogosCount > 0 ? ` (${deletedLogosCount} file logo lama otomatis dihapus)` : '';
@@ -1274,12 +1690,20 @@ async function publishToGitHub() {
       uploadedLogosCount > 0 ? ` · ${uploadedLogosCount} logo baru diunggah` : '';
     setStatusBox(
       'admin-status-box',
-      `Berhasil dipublikasikan ke GitHub!${uploadNote}${cleanupNote} GitHub Pages otomatis memperbarui katalog publik dalam ~30 detik.`,
+      `Berhasil dipublikasikan ke GitHub!${uploadNote}${cleanupNote} (${changeSummary})`,
       'ok'
     );
     showToast('Perubahan katalog berhasil dipublikasikan ke GitHub.');
   } catch (err) {
+    setPublishProgress({
+      visible: true,
+      percent: 0,
+      label: `Gagal: ${err.message}`,
+    });
     setStatusBox('admin-status-box', `Gagal mempublikasikan: ${err.message}`, 'error');
+  } finally {
+    adminState.isPublishing = false;
+    if (publishBtn) publishBtn.disabled = false;
   }
 }
 
@@ -1407,6 +1831,11 @@ function bindEvents() {
     try {
       localStorage.setItem(CATALOG_PREVIEW_STORAGE_KEY, JSON.stringify(adminState.catalog));
       persistPendingLogoOps();
+      recordLocalHistory(
+        'preview',
+        `Simpan pratinjau lokal (${(adminState.catalog.products || []).length} produk)`,
+        adminState.catalog
+      );
       adminState.source = 'preview';
       adminState.dirty = false;
       updateSourceBadge();
@@ -1419,6 +1848,23 @@ function bindEvents() {
     } catch {
       setStatusBox('admin-status-box', 'Penyimpanan browser dibatasi — gunakan Unduh catalog.json.', 'error');
     }
+  });
+
+  document.getElementById('snapshot-history-btn')?.addEventListener('click', () => {
+    if (!adminState.unlocked) return;
+    recordLocalHistory(
+      'manual',
+      `Snapshot manual (${(adminState.catalog.products || []).length} produk)`,
+      adminState.catalog
+    );
+    showToast(`Snapshot disimpan ke riwayat (maks ${MAX_HISTORY_LOGS} log).`);
+  });
+
+  document.getElementById('clear-history-btn')?.addEventListener('click', () => {
+    if (!adminState.unlocked) return;
+    saveLocalHistory([]);
+    renderHistoryList();
+    showToast('Seluruh log riwayat lokal dibersihkan.');
   });
 
   document.getElementById('clear-preview-btn')?.addEventListener('click', async () => {
@@ -1463,6 +1909,9 @@ function bindEvents() {
     btn.addEventListener('click', () => {
       adminState.activeTab = btn.getAttribute('data-admin-tab') || 'products';
       renderTabs();
+      if (adminState.activeTab === 'history') {
+        renderHistoryList();
+      }
     });
   });
 

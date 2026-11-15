@@ -1,5 +1,6 @@
 import { PENDING_ORDER_STORAGE_KEY, formatRupiah } from './store.js';
 import { generateReceiptImage } from './receipt.js';
+import { initMusicPlayer } from './music.js';
 
 const THEME_STORAGE_KEY = 'manifestudio_theme_v1';
 
@@ -301,6 +302,8 @@ async function initOrderPage() {
       }
     }
   });
+
+  initMusicPlayer();
 }
 
 initOrderPage();

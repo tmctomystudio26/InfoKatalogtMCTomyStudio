@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none">
+  <defs>
+    <linearGradient id="weatherBg" x1="6" y1="6" x2="58" y2="58" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#38BDF8" />
+      <stop offset="55%" stop-color="#2563EB" />
+      <stop offset="100%" stop-color="#312E81" />
+    </linearGradient>
+    <linearGradient id="weatherSun" x1="32" y1="12" x2="48" y2="30" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#FDE047" />
+      <stop offset="100%" stop-color="#F97316" />
+    </linearGradient>
+    <linearGradient id="weatherCloud" x1="16" y1="24" x2="48" y2="48" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#FFFFFF" />
+      <stop offset="100%" stop-color="#E0F2FE" />
+    </linearGradient>
+  </defs>
+  <rect x="4" y="4" width="56" height="56" rx="18" fill="url(#weatherBg)" />
+  <rect x="4.75" y="4.75" width="54.5" height="54.5" rx="17.25" stroke="white" stroke-opacity="0.28" stroke-width="1.5" />
+  <circle cx="41" cy="22" r="9.5" fill="url(#weatherSun)" />
+  <path d="M41 9v2.2M51.5 13.5l-1.6 1.6M54 22h-2.2M30.5 13.5l1.6 1.6" stroke="#FEF08A" stroke-width="2" stroke-linecap="round" />
+  <path d="M21 44h23.5a7.5 7.5 0 0 0 1.3-14.9A10.5 10.5 0 0 0 25.3 26a8.8 8.8 0 0 0-4.3 18Z" fill="url(#weatherCloud)" />
+  <path d="M23 48.5 21 53M32 48.5 30 53M41 48.5 39 53" stroke="#7DD3FC" stroke-width="2.6" stroke-linecap="round" />
+</svg>

@@ -1,4 +1,5 @@
 import { createToolsHubController } from './tools-ui.js';
+import { initMusicPlayer } from './music.js';
 
 const THEME_STORAGE_KEY = 'manifestudio_theme_v1';
 const VALID_TABS = new Set(['prayer', 'weather', 'worldclock', 'speedtest']);
@@ -134,6 +135,8 @@ function bootstrap() {
     }
     applyTheme();
   });
+
+  initMusicPlayer();
 }
 
 bootstrap();

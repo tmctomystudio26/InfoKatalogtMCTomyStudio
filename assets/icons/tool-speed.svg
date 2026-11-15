@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none">
+  <defs>
+    <linearGradient id="speedBg" x1="6" y1="6" x2="58" y2="58" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#EC4899" />
+      <stop offset="50%" stop-color="#7C3AED" />
+      <stop offset="100%" stop-color="#06B6D4" />
+    </linearGradient>
+    <linearGradient id="speedArc" x1="16" y1="42" x2="48" y2="20" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#22D3EE" />
+      <stop offset="55%" stop-color="#34D399" />
+      <stop offset="100%" stop-color="#FDE047" />
+    </linearGradient>
+  </defs>
+  <rect x="4" y="4" width="56" height="56" rx="18" fill="url(#speedBg)" />
+  <rect x="4.75" y="4.75" width="54.5" height="54.5" rx="17.25" stroke="white" stroke-opacity="0.28" stroke-width="1.5" />
+  <path d="M17.5 43.5a16.5 16.5 0 1 1 29 0" stroke="white" stroke-opacity="0.28" stroke-width="5" stroke-linecap="round" />
+  <path d="M17.5 43.5A16.5 16.5 0 0 1 46 25" stroke="url(#speedArc)" stroke-width="5" stroke-linecap="round" />
+  <path d="M32 39l11.5-11.5" stroke="#FFFFFF" stroke-width="3.2" stroke-linecap="round" />
+  <circle cx="32" cy="39" r="4.2" fill="#FFFFFF" />
+  <path d="M30 46h4l-2 6-1.5-3.5H28l2-2.5Z" fill="#FDE047" />
+</svg>

@@ -19,6 +19,7 @@ import {
   validateOrderForm,
 } from './store.js';
 import { initPwaManager } from './pwa.js';
+import { initMusicPlayer } from './music.js';
 
 const THEME_STORAGE_KEY = 'manifestudio_theme_v1';
 const CART_STORAGE_KEY = 'manifestudio_cart_v1';
@@ -1245,6 +1246,7 @@ async function bootstrap() {
   renderAllStorefrontViews();
   bindGlobalEvents();
   initPwaManager();
+  initMusicPlayer();
 
   document.getElementById('exit-preview-btn')?.addEventListener('click', async () => {
     try {

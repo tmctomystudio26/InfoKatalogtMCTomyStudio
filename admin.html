@@ -215,6 +215,23 @@
             </button>
           </div>
 
+          <div id="admin-publish-progress" class="admin-progress-box" hidden>
+            <div class="admin-progress-head">
+              <span id="admin-progress-label" class="admin-progress-label">Menyiapkan publikasi...</span>
+              <strong id="admin-progress-pct" class="admin-progress-pct mono-num">0%</strong>
+            </div>
+            <div
+              class="admin-progress-track"
+              role="progressbar"
+              id="admin-progress-bar"
+              aria-valuemin="0"
+              aria-valuemax="100"
+              aria-valuenow="0"
+            >
+              <div id="admin-progress-fill" class="admin-progress-fill" style="width: 0%"></div>
+            </div>
+          </div>
+
           <div id="admin-status-box" class="admin-status-box" role="status" hidden></div>
         </section>
 
@@ -248,6 +265,16 @@
             aria-selected="false"
           >
             Voucher Promo
+          </button>
+          <button
+            type="button"
+            role="tab"
+            id="tab-btn-history"
+            class="cat-tab"
+            data-admin-tab="history"
+            aria-selected="false"
+          >
+            Riwayat Perubahan
           </button>
         </div>
 
@@ -459,6 +486,29 @@
                 <button type="submit" class="btn btn-primary btn-sm">Tambah Voucher</button>
               </div>
             </form>
+          </div>
+        </section>
+
+        <section id="panel-history" class="admin-panel" aria-labelledby="tab-btn-history" hidden>
+          <div class="admin-card">
+            <div class="admin-card-head">
+              <div>
+                <h2 class="admin-section-title">Riwayat Perubahan Katalog</h2>
+                <p class="admin-subtitle">
+                  Otomatis menyimpan hingga <strong id="history-limit-label">12</strong> log terbaru. Log lama otomatis terhapus agar tidak menumpuk.
+                </p>
+              </div>
+              <div class="admin-history-toolbar">
+                <button type="button" id="snapshot-history-btn" class="btn btn-secondary btn-sm">
+                  + Simpan Snapshot Sekarang
+                </button>
+                <button type="button" id="clear-history-btn" class="btn btn-ghost btn-sm">
+                  Bersihkan Log
+                </button>
+              </div>
+            </div>
+
+            <div id="admin-history-list" class="admin-history-list"></div>
           </div>
         </section>
       </div>

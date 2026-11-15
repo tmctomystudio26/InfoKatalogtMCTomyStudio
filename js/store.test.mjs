@@ -2,7 +2,9 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { getDefaultCatalogSnapshot, PRODUCTS, VOUCHERS } from './data.js';
 import {
+  MAX_HISTORY_LOGS,
   addToCart,
+  appendCatalogHistory,
   buildWhatsAppOrderCaption,
   buildWhatsAppOrderMessage,
   calculateCartTotals,
@@ -12,15 +14,26 @@ import {
   extractManagedUploadLogoPath,
   filterProducts,
   formatRupiah,
+  getProductCardTone,
   getStartingPrice,
   moveProductInCatalog,
+  pruneCatalogHistory,
   removeFromCart,
   reorderProductToIndex,
+  summarizeCatalogDiff,
   toggleProductStockInCatalog,
   updateCartQty,
   upsertProductInCatalog,
   validateOrderForm,
 } from './store.js';
+import {
+  createDefaultMusicPrefs,
+  formatAudioTime,
+  getTopSearchKeywords,
+  pickWeightedRandomTrack,
+  recordMusicPreference,
+  scoreTrackForUser,
+} from './music-logic.js';
 import {
   decryptVault,
   encryptVault,
@@ -444,6 +457,71 @@ test('speedtest throughput, ping/jitter stats, gauge scaling, quality rating, an
   assert.equal(dev.memory, '8 GB RAM');
   assert.equal(dev.screenText, '390×844');
   assert.equal(dev.networkType, 'WIFI · 4G · ~42 Mbps');
+});
+
+test('catalog history records snapshots, summarizes diffs, and auto-prunes old logs past MAX_HISTORY_LOGS', () => {
+  const base = getDefaultCatalogSnapshot();
+  const modified = structuredClone(base);
+  modified.products[0].name = 'Netflix UHD Pro';
+
+  const summary = summarizeCatalogDiff(base, modified);
+  assert.equal(summary.includes('1 produk diubah'), true);
+
+  let logs = [];
+  for (let i = 0; i < MAX_HISTORY_LOGS + 5; i += 1) {
+    const snap = structuredClone(base);
+    snap.products[0].name = `Version ${i + 1}`;
+    logs = appendCatalogHistory(
+      logs,
+      {
+        id: `log-${i + 1}`,
+        createdAt: new Date(2026, 10, 15, 10, i, 0).toISOString(),
+        action: 'publish',
+        summary: `Update ${i + 1}`,
+        snapshot: snap,
+      },
+      MAX_HISTORY_LOGS
+    );
+  }
+
+  assert.equal(logs.length, MAX_HISTORY_LOGS);
+  assert.equal(logs[0].id, `log-${MAX_HISTORY_LOGS + 5}`);
+  assert.equal(logs.some((l) => l.id === 'log-1'), false);
+
+  const customPruned = pruneCatalogHistory(logs, 3);
+  assert.equal(customPruned.length, 3);
+  assert.equal(getProductCardTone(0) !== getProductCardTone(1), true);
+  assert.equal(getProductCardTone(6), 0);
+});
+
+test('smart music algorithm weights frequently searched and played songs without repeating current track', () => {
+  let prefs = createDefaultMusicPrefs();
+  prefs = recordMusicPreference(prefs, { type: 'search', term: 'lofi anime' });
+  prefs = recordMusicPreference(prefs, { type: 'search', term: 'lofi' });
+
+  const tracks = [
+    { id: 't1', title: 'Heavy Metal', artist: 'RockBand', genre: 'Metal', streamUrl: 'https://x/1.mp3' },
+    { id: 't2', title: 'Tokyo LoFi Vibes', artist: 'Kitsune', genre: 'LoFi', streamUrl: 'https://x/2.mp3' },
+    { id: 't3', title: 'Chill Jazz', artist: 'BlueNote', genre: 'Jazz', streamUrl: 'https://x/3.mp3' },
+  ];
+
+  prefs = recordMusicPreference(prefs, { type: 'play', track: tracks[1] });
+  assert.equal(getTopSearchKeywords(prefs, 1)[0], 'lofi');
+
+  const sMetal = scoreTrackForUser(tracks[0], prefs);
+  const sLofi = scoreTrackForUser(tracks[1], prefs);
+  assert.ok(sLofi > sMetal * 3);
+
+  // When currentTrackId is t2, weighted picker avoids repeating t2
+  const nextPick = pickWeightedRandomTrack(tracks, prefs, 't2', () => 0.5);
+  assert.ok(nextPick);
+  assert.notEqual(nextPick.id, 't2');
+
+  // With rng favoring dominant weighted pool when t2 is allowed, picks t2
+  const favPick = pickWeightedRandomTrack(tracks, prefs, 't1', () => 0.3);
+  assert.equal(favPick?.id, 't2');
+
+  assert.equal(formatAudioTime(125), '02:05');
 });
 
 

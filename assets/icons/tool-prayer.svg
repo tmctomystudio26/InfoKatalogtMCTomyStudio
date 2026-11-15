@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none">
+  <defs>
+    <linearGradient id="prayerBg" x1="8" y1="6" x2="58" y2="58" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#10B981" />
+      <stop offset="52%" stop-color="#0EA5E9" />
+      <stop offset="100%" stop-color="#4F46E5" />
+    </linearGradient>
+    <linearGradient id="prayerMoon" x1="20" y1="12" x2="42" y2="40" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#FEF08A" />
+      <stop offset="100%" stop-color="#F59E0B" />
+    </linearGradient>
+    <linearGradient id="prayerDome" x1="20" y1="32" x2="48" y2="56" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#FFFFFF" />
+      <stop offset="100%" stop-color="#D1FAE5" />
+    </linearGradient>
+  </defs>
+  <rect x="4" y="4" width="56" height="56" rx="18" fill="url(#prayerBg)" />
+  <rect x="4.75" y="4.75" width="54.5" height="54.5" rx="17.25" stroke="white" stroke-opacity="0.28" stroke-width="1.5" />
+  <circle cx="46" cy="18" r="2.2" fill="#FEF08A" />
+  <path d="M46 12.5v2M46 21.5v2M40.5 18h2M49.5 18h2" stroke="#FEF9C3" stroke-width="1.6" stroke-linecap="round" />
+  <path d="M27.5 14a11 11 0 1 0 11.4 13.5A8.8 8.8 0 0 1 27.5 14Z" fill="url(#prayerMoon)" />
+  <path d="M18 47v-7.5c0-4.8 4.4-8.2 14-12.5 9.6 4.3 14 7.7 14 12.5V47H18Z" fill="url(#prayerDome)" fill-opacity="0.95" />
+  <path d="M32 23v4M27 47v-6.5a5 5 0 0 1 10 0V47" stroke="#059669" stroke-width="2.4" stroke-linecap="round" />
+  <rect x="14" y="46" width="36" height="4.5" rx="2.25" fill="#A7F3D0" />
+</svg>

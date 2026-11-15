@@ -1506,7 +1506,7 @@ export function createToolsHubController({
             data-tool-subtab="prayer"
             aria-selected="${toolState.activeSubTab === 'prayer'}"
           >
-            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></svg>
+            <img src="./assets/icons/tool-prayer.svg" alt="" width="28" height="28" class="tools-subtab-icon" />
             <span>Jadwal Sholat</span>
           </button>
           <button
@@ -1516,7 +1516,7 @@ export function createToolsHubController({
             data-tool-subtab="weather"
             aria-selected="${toolState.activeSubTab === 'weather'}"
           >
-            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z"/></svg>
+            <img src="./assets/icons/tool-weather.svg" alt="" width="28" height="28" class="tools-subtab-icon" />
             <span>Prakiraan Cuaca</span>
           </button>
           <button
@@ -1526,7 +1526,7 @@ export function createToolsHubController({
             data-tool-subtab="worldclock"
             aria-selected="${toolState.activeSubTab === 'worldclock'}"
           >
-            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20"/><path d="M2 12h20"/></svg>
+            <img src="./assets/icons/tool-world.svg" alt="" width="28" height="28" class="tools-subtab-icon" />
             <span>Jam Dunia &amp; Globe</span>
           </button>
           <button
@@ -1536,7 +1536,7 @@ export function createToolsHubController({
             data-tool-subtab="speedtest"
             aria-selected="${toolState.activeSubTab === 'speedtest'}"
           >
-            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m12 14 4-4"/><path d="M3.34 19a10 10 0 1 1 17.32 0"/></svg>
+            <img src="./assets/icons/tool-speed.svg" alt="" width="28" height="28" class="tools-subtab-icon" />
             <span>Speedtest</span>
           </button>
         </div>
