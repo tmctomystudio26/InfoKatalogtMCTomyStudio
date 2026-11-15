@@ -296,38 +296,85 @@
                   </select>
                 </div>
 
-                <div class="form-field">
-                  <label for="new-prod-logo-preset">Ikon Logo</label>
-                  <select id="new-prod-logo-preset" class="admin-select">
-                    <option value="./assets/logos/custom-request.svg">Ikon Umum / Custom</option>
-                    <option value="./assets/logos/netflix.svg">Netflix</option>
-                    <option value="./assets/logos/canva.svg">Canva</option>
-                    <option value="./assets/logos/youtube.svg">YouTube</option>
-                    <option value="./assets/logos/spotify.svg">Spotify</option>
-                    <option value="./assets/logos/viu.svg">Viu</option>
-                    <option value="./assets/logos/vidio.svg">Vidio</option>
-                    <option value="./assets/logos/alight-motion.svg">Alight Motion</option>
-                    <option value="./assets/logos/wetv.svg">WeTV</option>
-                    <option value="./assets/logos/prime-video.svg">Prime Video</option>
-                  </select>
-                </div>
+                <div class="admin-logo-manager admin-logo-manager-full">
+                  <div class="admin-logo-head">
+                    <div class="admin-logo-preview-wrap">
+                      <img
+                        src="./assets/logos/custom-request.svg"
+                        alt="Pratinjau logo produk baru"
+                        width="44"
+                        height="44"
+                        id="new-prod-logo-preview"
+                        class="modal-logo"
+                      />
+                      <div>
+                        <strong class="admin-logo-title">Logo Layanan</strong>
+                        <span id="new-prod-logo-status" class="admin-prod-meta">Gunakan upload gambar atau link URL</span>
+                      </div>
+                    </div>
+                    <div class="admin-logo-tabs" role="group" aria-label="Pilih sumber logo produk baru">
+                      <button
+                        type="button"
+                        class="admin-logo-mode-btn is-active"
+                        data-new-logo-mode="upload"
+                        aria-pressed="true"
+                      >
+                        Upload File
+                      </button>
+                      <button
+                        type="button"
+                        class="admin-logo-mode-btn"
+                        data-new-logo-mode="link"
+                        aria-pressed="false"
+                      >
+                        Link / URL
+                      </button>
+                    </div>
+                  </div>
 
-                <div class="form-field">
-                  <label for="new-prod-logo-url">Path / URL Logo</label>
-                  <input
-                    type="text"
-                    id="new-prod-logo-url"
-                    value="./assets/logos/custom-request.svg"
-                  />
-                </div>
+                  <div id="new-prod-logo-upload-pane" class="admin-logo-pane">
+                    <div class="admin-file-row">
+                      <label for="new-prod-logo-file" class="btn btn-secondary btn-sm admin-file-trigger">
+                        Pilih File Gambar Logo
+                      </label>
+                      <input
+                        type="file"
+                        id="new-prod-logo-file"
+                        class="visually-hidden-file"
+                        accept="image/*"
+                      />
+                      <span class="admin-prod-meta">PNG / JPG / WebP / SVG otomatis dioptimalkan ke 256×256.</span>
+                    </div>
+                  </div>
 
-                <div class="form-field">
-                  <label for="new-prod-logo-file">Atau Unggah Gambar Logo Baru</label>
-                  <input
-                    type="file"
-                    id="new-prod-logo-file"
-                    accept="image/*"
-                  />
+                  <div id="new-prod-logo-link-pane" class="admin-logo-pane" hidden>
+                    <div class="admin-logo-link-grid">
+                      <div class="form-field">
+                        <label for="new-prod-logo-preset">Preset Ikon Bawaan</label>
+                        <select id="new-prod-logo-preset" class="admin-select">
+                          <option value="./assets/logos/custom-request.svg">Ikon Umum / Custom</option>
+                          <option value="./assets/logos/netflix.svg">Netflix</option>
+                          <option value="./assets/logos/canva.svg">Canva</option>
+                          <option value="./assets/logos/youtube.svg">YouTube</option>
+                          <option value="./assets/logos/spotify.svg">Spotify</option>
+                          <option value="./assets/logos/viu.svg">Viu</option>
+                          <option value="./assets/logos/vidio.svg">Vidio</option>
+                          <option value="./assets/logos/alight-motion.svg">Alight Motion</option>
+                          <option value="./assets/logos/wetv.svg">WeTV</option>
+                          <option value="./assets/logos/prime-video.svg">Prime Video</option>
+                        </select>
+                      </div>
+                      <div class="form-field">
+                        <label for="new-prod-logo-url">Path / URL Link Logo</label>
+                        <input
+                          type="text"
+                          id="new-prod-logo-url"
+                          value="./assets/logos/custom-request.svg"
+                          placeholder="https://... atau ./assets/logos/..."
+                        />
+                      </div>
+                    </div>
+                  </div>
                 </div>
 
                 <div class="form-field">

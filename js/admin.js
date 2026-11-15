@@ -4,7 +4,11 @@ import {
   loadCatalogData,
 } from './data.js';
 import {
+  collectOrphanedUploadLogos,
+  extractManagedUploadLogoPath,
   formatRupiah,
+  moveProductInCatalog,
+  reorderProductToIndex,
   slugifyId,
   toggleProductStockInCatalog,
   upsertProductInCatalog,
@@ -18,18 +22,38 @@ import {
 const THEME_STORAGE_KEY = 'manifestudio_theme_v1';
 const ADMIN_VAULT_STORAGE_KEY = 'manifestudio_admin_vault_v1';
 const LEGACY_GH_STORAGE_KEY = 'manifestudio_admin_gh_v1';
+const ADMIN_LOGO_OPS_KEY = 'manifestudio_admin_logo_ops_v1';
+
+const LOGO_PRESETS = [
+  { value: './assets/logos/custom-request.svg', label: 'Ikon Umum / Custom' },
+  { value: './assets/logos/netflix.svg', label: 'Netflix' },
+  { value: './assets/logos/canva.svg', label: 'Canva' },
+  { value: './assets/logos/youtube.svg', label: 'YouTube' },
+  { value: './assets/logos/spotify.svg', label: 'Spotify' },
+  { value: './assets/logos/viu.svg', label: 'Viu' },
+  { value: './assets/logos/vidio.svg', label: 'Vidio' },
+  { value: './assets/logos/alight-motion.svg', label: 'Alight Motion' },
+  { value: './assets/logos/wetv.svg', label: 'WeTV' },
+  { value: './assets/logos/prime-video.svg', label: 'Prime Video' },
+];
 
 const adminState = {
   theme: 'dark',
   unlocked: false,
   confirmResetVault: false,
   catalog: getDefaultCatalogSnapshot(),
+  lastPublishedProducts: [],
   source: 'fallback',
   activeTab: 'products',
   searchQuery: '',
   dirty: false,
   confirmDeleteProductId: null,
   remoteSha: null,
+  logoEditMode: {}, // { [prodId]: 'upload' | 'link' }
+  pendingUploads: {}, // { [prodId]: { targetPath, base64Content, previewDataUrl, fileName } }
+  deletedUploadPaths: [], // managed repo paths queued for deletion on publish
+  newProdLogoMode: 'upload',
+  newProdPendingUpload: null,
   ghConfig: {
     owner: '',
     repo: '',
@@ -64,6 +88,133 @@ function decodeBase64Utf8(base64Text) {
     bytes[i] = binary.charCodeAt(i);
   }
   return new TextDecoder().decode(bytes);
+}
+
+function encodeRepoPathSegments(filePath) {
+  return String(filePath || '')
+    .split('/')
+    .filter(Boolean)
+    .map((seg) => encodeURIComponent(seg))
+    .join('/');
+}
+
+function persistPendingLogoOps() {
+  try {
+    const payload = {
+      deletedUploadPaths: adminState.deletedUploadPaths,
+      lastPublishedProducts: adminState.lastPublishedProducts.map((p) => ({
+        id: p.id,
+        logo: p.logo,
+      })),
+    };
+    localStorage.setItem(ADMIN_LOGO_OPS_KEY, JSON.stringify(payload));
+  } catch {
+    // Ignore quota limits
+  }
+}
+
+function restorePendingLogoOps() {
+  try {
+    const raw = localStorage.getItem(ADMIN_LOGO_OPS_KEY);
+    if (!raw) return;
+    const parsed = JSON.parse(raw);
+    if (Array.isArray(parsed?.deletedUploadPaths)) {
+      adminState.deletedUploadPaths = [...new Set(parsed.deletedUploadPaths.filter(Boolean))];
+    }
+    if (Array.isArray(parsed?.lastPublishedProducts) && parsed.lastPublishedProducts.length > 0) {
+      adminState.lastPublishedProducts = parsed.lastPublishedProducts;
+    }
+  } catch {
+    // Ignore
+  }
+}
+
+function clearPendingLogoOps() {
+  adminState.pendingUploads = {};
+  adminState.deletedUploadPaths = [];
+  try {
+    localStorage.removeItem(ADMIN_LOGO_OPS_KEY);
+  } catch {
+    // Ignore
+  }
+}
+
+function queueManagedLogoForDeletion(logoUrl) {
+  const managedPath = extractManagedUploadLogoPath(logoUrl);
+  if (!managedPath) return;
+  if (!adminState.deletedUploadPaths.includes(managedPath)) {
+    adminState.deletedUploadPaths.push(managedPath);
+    persistPendingLogoOps();
+  }
+}
+
+async function compressLogoFile(file) {
+  if (!file || !String(file.type || '').startsWith('image/')) {
+    throw new Error('Pilih file gambar yang valid (PNG, JPG, WebP, atau SVG).');
+  }
+
+  if (file.type === 'image/svg+xml') {
+    const text = await file.text();
+    const cleanedSvg = text.replace(/<script[\s\S]*?>[\s\S]*?<\/script>/gi, '');
+    const base64Content = encodeBase64Utf8(cleanedSvg);
+    return {
+      ext: 'svg',
+      base64Content,
+      previewDataUrl: `data:image/svg+xml;base64,${base64Content}`,
+    };
+  }
+
+  const rawDataUrl = await new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result || ''));
+    reader.onerror = () => reject(new Error('Gagal membaca file gambar.'));
+    reader.readAsDataURL(file);
+  });
+
+  try {
+    const img = await new Promise((resolve, reject) => {
+      const image = new Image();
+      image.onload = () => resolve(image);
+      image.onerror = () => reject(new Error('Format gambar tidak dapat dirender browser.'));
+      image.src = rawDataUrl;
+    });
+
+    const maxSide = 256;
+    const width = Math.max(1, img.naturalWidth || img.width || 256);
+    const height = Math.max(1, img.naturalHeight || img.height || 256);
+    const scale = Math.min(1, maxSide / Math.max(width, height));
+    const targetW = Math.max(1, Math.round(width * scale));
+    const targetH = Math.max(1, Math.round(height * scale));
+
+    const canvas = document.createElement('canvas');
+    canvas.width = targetW;
+    canvas.height = targetH;
+    const ctx = canvas.getContext('2d');
+    if (ctx) {
+      ctx.clearRect(0, 0, targetW, targetH);
+      ctx.drawImage(img, 0, 0, targetW, targetH);
+      const pngDataUrl = canvas.toDataURL('image/png');
+      const base64Content = pngDataUrl.split(',')[1] || '';
+      if (base64Content) {
+        return {
+          ext: 'png',
+          base64Content,
+          previewDataUrl: pngDataUrl,
+        };
+      }
+    }
+  } catch {
+    // Fallback to raw data URL if canvas resize unavailable
+  }
+
+  const commaIdx = rawDataUrl.indexOf(',');
+  const base64Content = commaIdx >= 0 ? rawDataUrl.slice(commaIdx + 1) : '';
+  const ext = file.type.includes('jpeg') || file.type.includes('jpg') ? 'jpg' : file.type.includes('webp') ? 'webp' : 'png';
+  return {
+    ext,
+    base64Content,
+    previewDataUrl: rawDataUrl,
+  };
 }
 
 let toastTimer = null;
@@ -125,7 +276,6 @@ function applyTheme() {
 
 function getStoredVaultRecord() {
   try {
-    // Purge any legacy unencrypted config immediately if present
     localStorage.removeItem(LEGACY_GH_STORAGE_KEY);
     const raw = localStorage.getItem(ADMIN_VAULT_STORAGE_KEY);
     if (!raw) return null;
@@ -162,7 +312,6 @@ function renderGateScreen() {
   dashboard.hidden = true;
   if (lockBtn) lockBtn.hidden = true;
 
-  // Clear rendered sensitive lists when locked
   const prodList = document.getElementById('admin-product-list');
   const voucherList = document.getElementById('admin-voucher-list');
   if (prodList) prodList.innerHTML = '';
@@ -194,13 +343,24 @@ async function openUnlockedDashboard() {
   adminState.unlocked = true;
   renderGateScreen();
 
+  restorePendingLogoOps();
   const loaded = await loadCatalogData({ allowLocalPreview: true });
   adminState.catalog = loaded.data;
   adminState.source = loaded.source;
+
+  if (loaded.source !== 'preview' || adminState.lastPublishedProducts.length === 0) {
+    const baseLoaded = await loadCatalogData({ allowLocalPreview: false });
+    adminState.lastPublishedProducts = (baseLoaded.data.products || []).map((p) => ({
+      id: p.id,
+      logo: p.logo,
+    }));
+  }
+
   updateSourceBadge();
   renderTabs();
   renderProductList();
   renderVoucherList();
+  syncNewProductLogoUi();
 }
 
 function updateSourceBadge() {
@@ -250,14 +410,26 @@ function renderTabs() {
   });
 }
 
+function getProductLogoMode(product) {
+  if (adminState.logoEditMode[product.id]) {
+    return adminState.logoEditMode[product.id];
+  }
+  if (adminState.pendingUploads[product.id] || extractManagedUploadLogoPath(product.logo)) {
+    return 'upload';
+  }
+  return 'link';
+}
+
 function renderProductList() {
   if (!adminState.unlocked) return;
   const container = document.getElementById('admin-product-list');
   const countEl = document.getElementById('admin-product-count');
   if (!container) return;
 
+  const allProducts = adminState.catalog.products || [];
+  const totalProducts = allProducts.length;
   const q = adminState.searchQuery.trim().toLowerCase();
-  const products = (adminState.catalog.products || []).filter((p) => {
+  const products = allProducts.filter((p) => {
     if (!q) return true;
     const inName = p.name.toLowerCase().includes(q);
     const inTag = (p.tag || '').toLowerCase().includes(q);
@@ -281,6 +453,33 @@ function renderProductList() {
 
   container.innerHTML = products
     .map((product) => {
+      const globalIndex = allProducts.findIndex((p) => p.id === product.id);
+      const isFirst = globalIndex <= 0;
+      const isLast = globalIndex >= totalProducts - 1;
+      const logoMode = getProductLogoMode(product);
+      const pendingUpload = adminState.pendingUploads[product.id];
+      const managedPath = extractManagedUploadLogoPath(product.logo);
+
+      const logoStatusText = pendingUpload
+        ? `File baru siap diupload: ${pendingUpload.fileName}`
+        : managedPath
+        ? `Tersimpan di repo: ${managedPath}`
+        : String(product.logo || '').startsWith('data:')
+        ? 'Gambar upload lokal siap dipublikasikan'
+        : 'Menggunakan URL / Preset ikon';
+
+      const positionOptionsHtml = allProducts
+        .map(
+          (_item, idx) =>
+            `<option value="${idx}" ${idx === globalIndex ? 'selected' : ''}>Posisi #${idx + 1}</option>`
+        )
+        .join('');
+
+      const presetOptionsHtml = LOGO_PRESETS.map(
+        (preset) =>
+          `<option value="${escapeHtml(preset.value)}" ${product.logo === preset.value ? 'selected' : ''}>${escapeHtml(preset.label)}</option>`
+      ).join('');
+
       const variantsHtml = (product.variants || [])
         .map(
           (variant, vIdx) => `
@@ -355,13 +554,45 @@ function renderProductList() {
         <article class="admin-product-card" data-admin-product="${escapeHtml(product.id)}">
           <div class="admin-prod-head">
             <div class="admin-prod-brand">
+              <span class="admin-order-badge mono-num" title="Urutan tampil di katalog">#${globalIndex + 1}</span>
               <img src="${escapeHtml(product.logo)}" alt="" width="42" height="42" class="modal-logo" />
               <div>
                 <h2 class="admin-prod-name">${escapeHtml(product.name)}</h2>
                 <span class="admin-prod-meta">ID: ${escapeHtml(product.id)} · ${(product.variants || []).length} varian</span>
               </div>
             </div>
+
             <div class="admin-prod-controls">
+              <div class="admin-order-controls" role="group" aria-label="Urutan tampil ${escapeHtml(product.name)}">
+                <button
+                  type="button"
+                  class="btn btn-secondary btn-sm admin-order-btn"
+                  data-move-prod="${escapeHtml(product.id)}"
+                  data-move-dir="up"
+                  ${isFirst ? 'disabled' : ''}
+                  aria-label="Naikkan urutan ${escapeHtml(product.name)}"
+                >
+                  ↑ Naik
+                </button>
+                <button
+                  type="button"
+                  class="btn btn-secondary btn-sm admin-order-btn"
+                  data-move-prod="${escapeHtml(product.id)}"
+                  data-move-dir="down"
+                  ${isLast ? 'disabled' : ''}
+                  aria-label="Turunkan urutan ${escapeHtml(product.name)}"
+                >
+                  ↓ Turun
+                </button>
+                <select
+                  class="admin-order-select"
+                  data-reorder-select="${escapeHtml(product.id)}"
+                  aria-label="Pilih urutan posisi ${escapeHtml(product.name)}"
+                >
+                  ${positionOptionsHtml}
+                </select>
+              </div>
+
               <button
                 type="button"
                 class="btn ${product.outOfStock ? 'btn-primary' : 'btn-secondary'} btn-sm"
@@ -390,7 +621,7 @@ function renderProductList() {
                 value="${escapeHtml(product.tag || '')}"
               />
             </div>
-            <div class="form-field">
+            <div class="form-field admin-sum-field">
               <label for="psum-${escapeHtml(product.id)}">Ringkasan</label>
               <input
                 type="text"
@@ -400,24 +631,91 @@ function renderProductList() {
                 value="${escapeHtml(product.summary || '')}"
               />
             </div>
-            <div class="form-field">
-              <label for="plogo-${escapeHtml(product.id)}">URL / Path Logo</label>
-              <input
-                type="text"
-                id="plogo-${escapeHtml(product.id)}"
-                data-prod-meta="${escapeHtml(product.id)}"
-                data-meta-field="logo"
-                value="${escapeHtml(product.logo || '')}"
-              />
-            </div>
-            <div class="form-field">
-              <label for="plogofile-${escapeHtml(product.id)}">Atau Ganti Gambar Logo (File)</label>
-              <input
-                type="file"
-                id="plogofile-${escapeHtml(product.id)}"
-                accept="image/*"
-                data-prod-file-logo="${escapeHtml(product.id)}"
-              />
+
+            <!-- Logo Manager: selalu tampil jelas di Mobile & Desktop -->
+            <div class="admin-logo-manager admin-logo-manager-full" data-testid="logo-manager-${escapeHtml(product.id)}">
+              <div class="admin-logo-head">
+                <div class="admin-logo-preview-wrap">
+                  <img
+                    src="${escapeHtml(product.logo)}"
+                    alt="Logo ${escapeHtml(product.name)}"
+                    width="42"
+                    height="42"
+                    class="modal-logo admin-logo-thumb"
+                  />
+                  <div>
+                    <strong class="admin-logo-title">Ganti Logo Produk</strong>
+                    <span class="admin-prod-meta">${escapeHtml(logoStatusText)}</span>
+                  </div>
+                </div>
+
+                <div class="admin-logo-tabs" role="group" aria-label="Pilih metode ganti logo ${escapeHtml(product.name)}">
+                  <button
+                    type="button"
+                    class="admin-logo-mode-btn ${logoMode === 'upload' ? 'is-active' : ''}"
+                    data-logo-mode-btn="${escapeHtml(product.id)}"
+                    data-logo-mode="upload"
+                    aria-pressed="${logoMode === 'upload'}"
+                  >
+                    Upload Gambar
+                  </button>
+                  <button
+                    type="button"
+                    class="admin-logo-mode-btn ${logoMode === 'link' ? 'is-active' : ''}"
+                    data-logo-mode-btn="${escapeHtml(product.id)}"
+                    data-logo-mode="link"
+                    aria-pressed="${logoMode === 'link'}"
+                  >
+                    Link / URL
+                  </button>
+                </div>
+              </div>
+
+              <div class="admin-logo-pane" ${logoMode === 'upload' ? '' : 'hidden'}>
+                <div class="admin-file-row">
+                  <label
+                    for="plogofile-${escapeHtml(product.id)}"
+                    class="btn btn-secondary btn-sm admin-file-trigger"
+                  >
+                    Pilih File Gambar
+                  </label>
+                  <input
+                    type="file"
+                    id="plogofile-${escapeHtml(product.id)}"
+                    class="visually-hidden-file"
+                    accept="image/*"
+                    data-prod-file-logo="${escapeHtml(product.id)}"
+                  />
+                  <span class="admin-prod-meta">Otomatis kompres &amp; hapus file upload lama saat publish ke GitHub.</span>
+                </div>
+              </div>
+
+              <div class="admin-logo-pane" ${logoMode === 'link' ? '' : 'hidden'}>
+                <div class="admin-logo-link-grid">
+                  <div class="form-field">
+                    <label for="plogopreset-${escapeHtml(product.id)}">Pilih Preset Cepat</label>
+                    <select
+                      id="plogopreset-${escapeHtml(product.id)}"
+                      class="admin-select"
+                      data-prod-preset-logo="${escapeHtml(product.id)}"
+                    >
+                      <option value="">— Pilih Ikon Bawaan —</option>
+                      ${presetOptionsHtml}
+                    </select>
+                  </div>
+                  <div class="form-field">
+                    <label for="plogo-${escapeHtml(product.id)}">URL / Path Logo</label>
+                    <input
+                      type="text"
+                      id="plogo-${escapeHtml(product.id)}"
+                      data-prod-meta="${escapeHtml(product.id)}"
+                      data-meta-field="logo"
+                      placeholder="https://... atau ./assets/logos/..."
+                      value="${escapeHtml(String(product.logo || '').startsWith('data:') ? '' : product.logo || '')}"
+                    />
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
 
@@ -457,6 +755,30 @@ function renderProductList() {
 }
 
 function bindProductListEvents(container) {
+  container.querySelectorAll('[data-move-prod]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const prodId = btn.getAttribute('data-move-prod');
+      const dir = btn.getAttribute('data-move-dir');
+      if (!prodId || !dir) return;
+      adminState.catalog = moveProductInCatalog(adminState.catalog, prodId, dir);
+      markDirty();
+      renderProductList();
+      showToast('Urutan produk diperbarui.');
+    });
+  });
+
+  container.querySelectorAll('[data-reorder-select]').forEach((select) => {
+    select.addEventListener('change', (e) => {
+      const prodId = select.getAttribute('data-reorder-select');
+      const targetIdx = Number(e.target.value);
+      if (!prodId || !Number.isFinite(targetIdx)) return;
+      adminState.catalog = reorderProductToIndex(adminState.catalog, prodId, targetIdx);
+      markDirty();
+      renderProductList();
+      showToast(`Posisi produk dipindahkan ke urutan #${targetIdx + 1}.`);
+    });
+  });
+
   container.querySelectorAll('[data-toggle-stock]').forEach((btn) => {
     btn.addEventListener('click', () => {
       const prodId = btn.getAttribute('data-toggle-stock');
@@ -485,11 +807,43 @@ function bindProductListEvents(container) {
         renderProductList();
         return;
       }
+      const deletedProd = adminState.catalog.products.find((p) => p.id === prodId);
+      if (deletedProd) {
+        queueManagedLogoForDeletion(deletedProd.logo);
+        delete adminState.pendingUploads[prodId];
+      }
       adminState.catalog.products = adminState.catalog.products.filter((p) => p.id !== prodId);
       adminState.confirmDeleteProductId = null;
       markDirty();
       renderProductList();
       showToast('Produk dihapus dari daftar kerja.');
+    });
+  });
+
+  container.querySelectorAll('[data-logo-mode-btn]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const prodId = btn.getAttribute('data-logo-mode-btn');
+      const mode = btn.getAttribute('data-logo-mode');
+      if (!prodId || (mode !== 'upload' && mode !== 'link')) return;
+      adminState.logoEditMode[prodId] = mode;
+      renderProductList();
+    });
+  });
+
+  container.querySelectorAll('[data-prod-preset-logo]').forEach((select) => {
+    select.addEventListener('change', (e) => {
+      const prodId = select.getAttribute('data-prod-preset-logo');
+      const nextUrl = e.target.value;
+      if (!prodId || !nextUrl) return;
+      const prod = adminState.catalog.products.find((p) => p.id === prodId);
+      if (!prod) return;
+      queueManagedLogoForDeletion(prod.logo);
+      delete adminState.pendingUploads[prodId];
+      prod.logo = nextUrl;
+      adminState.logoEditMode[prodId] = 'link';
+      markDirty();
+      renderProductList();
+      showToast(`Logo ${prod.name} diganti ke ikon preset.`);
     });
   });
 
@@ -499,29 +853,54 @@ function bindProductListEvents(container) {
       const field = input.getAttribute('data-meta-field');
       const prod = adminState.catalog.products.find((p) => p.id === prodId);
       if (!prod || !field) return;
-      prod[field] = e.target.value;
+
+      if (field === 'logo') {
+        const prevLogo = prod.logo;
+        const nextVal = e.target.value.trim();
+        if (!nextVal) return;
+        if (prevLogo !== nextVal) {
+          queueManagedLogoForDeletion(prevLogo);
+          delete adminState.pendingUploads[prodId];
+        }
+        prod.logo = nextVal;
+        const card = input.closest('.admin-product-card');
+        card?.querySelectorAll('.admin-logo-thumb, .admin-prod-brand .modal-logo').forEach((img) => {
+          img.src = nextVal;
+        });
+      } else {
+        prod[field] = e.target.value;
+      }
       markDirty();
     });
   });
 
   container.querySelectorAll('[data-prod-file-logo]').forEach((fileInput) => {
-    fileInput.addEventListener('change', (e) => {
+    fileInput.addEventListener('change', async (e) => {
       const prodId = fileInput.getAttribute('data-prod-file-logo');
       const file = e.target.files?.[0];
-      if (!file) return;
-      const reader = new FileReader();
-      reader.onload = (evt) => {
-        const base64 = evt.target?.result;
-        if (typeof base64 === 'string') {
-          const prod = adminState.catalog.products.find((p) => p.id === prodId);
-          if (!prod) return;
-          prod.logo = base64;
-          markDirty();
-          renderProductList();
-          showToast(`Logo ${prod.name} diperbarui dari file.`);
-        }
-      };
-      reader.readAsDataURL(file);
+      if (!file || !prodId) return;
+      const prod = adminState.catalog.products.find((p) => p.id === prodId);
+      if (!prod) return;
+
+      try {
+        const result = await compressLogoFile(file);
+        queueManagedLogoForDeletion(prod.logo);
+        const safeSlug = slugifyId(prodId);
+        const targetPath = `assets/logos/uploads/${safeSlug}-${Date.now().toString(36)}.${result.ext}`;
+        adminState.pendingUploads[prodId] = {
+          targetPath,
+          base64Content: result.base64Content,
+          previewDataUrl: result.previewDataUrl,
+          fileName: file.name,
+        };
+        adminState.logoEditMode[prodId] = 'upload';
+        prod.logo = result.previewDataUrl;
+        markDirty();
+        renderProductList();
+        showToast(`Logo ${prod.name} diperbarui (${file.name}). Klik Publikasikan untuk sinkron & hapus logo lama.`);
+      } catch (err) {
+        showToast(err.message || 'Gagal memproses file logo.');
+      }
     });
   });
 
@@ -650,6 +1029,99 @@ function renderVoucherList() {
   });
 }
 
+function syncNewProductLogoUi() {
+  const mode = adminState.newProdLogoMode;
+  document.querySelectorAll('[data-new-logo-mode]').forEach((btn) => {
+    const isActive = btn.getAttribute('data-new-logo-mode') === mode;
+    btn.classList.toggle('is-active', isActive);
+    btn.setAttribute('aria-pressed', String(isActive));
+  });
+
+  const uploadPane = document.getElementById('new-prod-logo-upload-pane');
+  const linkPane = document.getElementById('new-prod-logo-link-pane');
+  if (uploadPane) uploadPane.hidden = mode !== 'upload';
+  if (linkPane) linkPane.hidden = mode !== 'link';
+
+  const previewEl = document.getElementById('new-prod-logo-preview');
+  const statusEl = document.getElementById('new-prod-logo-status');
+  const urlInput = document.getElementById('new-prod-logo-url');
+
+  const activeSrc =
+    mode === 'upload' && adminState.newProdPendingUpload
+      ? adminState.newProdPendingUpload.previewDataUrl
+      : urlInput?.value.trim() || './assets/logos/custom-request.svg';
+
+  if (previewEl) previewEl.src = activeSrc;
+  if (statusEl) {
+    if (mode === 'upload' && adminState.newProdPendingUpload) {
+      statusEl.textContent = `File siap: ${adminState.newProdPendingUpload.fileName}`;
+    } else if (mode === 'upload') {
+      statusEl.textContent = 'Belum ada file dipilih (atau gunakan tab Link / URL)';
+    } else {
+      statusEl.textContent = `Link aktif: ${activeSrc}`;
+    }
+  }
+}
+
+async function putGitHubFile({ owner, repo, branch, token, filePath, base64Content, message, sha = null }) {
+  const endpoint = `https://api.github.com/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/contents/${encodeRepoPathSegments(filePath)}`;
+  const body = {
+    message,
+    content: base64Content,
+    branch,
+    ...(sha ? { sha } : {}),
+  };
+  const res = await fetch(endpoint, {
+    method: 'PUT',
+    headers: {
+      Accept: 'application/vnd.github+json',
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) {
+    const errData = await res.json().catch(() => ({}));
+    throw new Error(errData.message || `GitHub HTTP ${res.status} (${filePath})`);
+  }
+  return res.json();
+}
+
+async function deleteGitHubFile({ owner, repo, branch, token, filePath, message }) {
+  const endpoint = `https://api.github.com/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/contents/${encodeRepoPathSegments(filePath)}`;
+  const getRes = await fetch(`${endpoint}?ref=${encodeURIComponent(branch)}`, {
+    headers: {
+      Accept: 'application/vnd.github+json',
+      Authorization: `Bearer ${token}`,
+    },
+    cache: 'no-store',
+  });
+
+  if (getRes.status === 404) {
+    return false;
+  }
+  if (!getRes.ok) {
+    return false;
+  }
+  const meta = await getRes.json();
+  if (!meta?.sha) return false;
+
+  const delRes = await fetch(endpoint, {
+    method: 'DELETE',
+    headers: {
+      Accept: 'application/vnd.github+json',
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      message,
+      sha: meta.sha,
+      branch,
+    }),
+  });
+  return delRes.ok;
+}
+
 async function pullFromGitHub() {
   if (!adminState.unlocked) return;
   const { owner, repo, branch, token } = adminState.ghConfig;
@@ -671,9 +1143,11 @@ async function pullFromGitHub() {
       throw new Error('Format catalog.json tidak valid.');
     }
     adminState.catalog = parsed;
+    adminState.lastPublishedProducts = parsed.products.map((p) => ({ id: p.id, logo: p.logo }));
     adminState.remoteSha = payload.sha || null;
     adminState.source = 'github';
     adminState.dirty = false;
+    clearPendingLogoOps();
     updateSourceBadge();
     renderProductList();
     renderVoucherList();
@@ -697,14 +1171,31 @@ async function publishToGitHub() {
   }
 
   const endpoint = `https://api.github.com/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/contents/data/catalog.json`;
-  const headers = {
-    Accept: 'application/vnd.github+json',
-    Authorization: `Bearer ${token}`,
-    'Content-Type': 'application/json',
-  };
+  setStatusBox('admin-status-box', 'Mengunggah perubahan & logo ke GitHub Pages...', 'info');
 
-  setStatusBox('admin-status-box', 'Mempublikasikan perubahan ke GitHub Pages...', 'info');
   try {
+    const nextCatalog = structuredClone(adminState.catalog);
+
+    // 1. Upload any pending compressed logo files directly to assets/logos/uploads/
+    let uploadedLogosCount = 0;
+    for (const prod of nextCatalog.products || []) {
+      const pending = adminState.pendingUploads[prod.id];
+      if (pending && prod.logo === pending.previewDataUrl) {
+        await putGitHubFile({
+          owner,
+          repo,
+          branch,
+          token,
+          filePath: pending.targetPath,
+          base64Content: pending.base64Content,
+          message: `chore(logo): upload logo ${prod.name} via Panel Admin`,
+        });
+        prod.logo = `./${pending.targetPath}`;
+        uploadedLogosCount += 1;
+      }
+    }
+
+    // 2. Fetch latest catalog.json SHA and update catalog.json
     const getRes = await fetch(`${endpoint}?ref=${encodeURIComponent(branch)}`, {
       headers: {
         Accept: 'application/vnd.github+json',
@@ -721,38 +1212,69 @@ async function publishToGitHub() {
       throw new Error(`Gagal cek versi file (HTTP ${getRes.status})`);
     }
 
-    const formattedJson = `${JSON.stringify(adminState.catalog, null, 2)}\n`;
-    const body = {
-      message: 'chore(catalog): update produk, harga, atau stok via Panel Admin',
-      content: encodeBase64Utf8(formattedJson),
+    const formattedJson = `${JSON.stringify(nextCatalog, null, 2)}\n`;
+    const putPayload = await putGitHubFile({
+      owner,
+      repo,
       branch,
-      ...(latestSha ? { sha: latestSha } : {}),
-    };
-
-    const putRes = await fetch(endpoint, {
-      method: 'PUT',
-      headers,
-      body: JSON.stringify(body),
+      token,
+      filePath: 'data/catalog.json',
+      base64Content: encodeBase64Utf8(formattedJson),
+      message: 'chore(catalog): update produk, urutan, logo, atau stok via Panel Admin',
+      sha: latestSha,
     });
 
-    if (!putRes.ok) {
-      const errData = await putRes.json().catch(() => ({}));
-      throw new Error(errData.message || `GitHub HTTP ${putRes.status}`);
+    // 3. Delete previous uploaded logo files that were replaced or removed
+    const diffOrphans = collectOrphanedUploadLogos(
+      adminState.lastPublishedProducts,
+      nextCatalog.products
+    );
+    const stillActiveSet = new Set(
+      (nextCatalog.products || []).map((p) => extractManagedUploadLogoPath(p.logo)).filter(Boolean)
+    );
+    const allOrphansToDelete = [...new Set([...diffOrphans, ...adminState.deletedUploadPaths])].filter(
+      (p) => p && !stillActiveSet.has(p)
+    );
+
+    let deletedLogosCount = 0;
+    for (const orphanPath of allOrphansToDelete) {
+      const removed = await deleteGitHubFile({
+        owner,
+        repo,
+        branch,
+        token,
+        filePath: orphanPath,
+        message: `chore(logo): hapus file logo lama ${orphanPath}`,
+      });
+      if (removed) deletedLogosCount += 1;
     }
 
-    const putPayload = await putRes.json();
+    adminState.catalog = nextCatalog;
+    adminState.lastPublishedProducts = (nextCatalog.products || []).map((p) => ({
+      id: p.id,
+      logo: p.logo,
+    }));
     adminState.remoteSha = putPayload.content?.sha || latestSha;
     adminState.source = 'github';
     adminState.dirty = false;
+    clearPendingLogoOps();
+
     try {
       localStorage.removeItem(CATALOG_PREVIEW_STORAGE_KEY);
     } catch {
       // Ignore
     }
+
     updateSourceBadge();
+    renderProductList();
+
+    const cleanupNote =
+      deletedLogosCount > 0 ? ` (${deletedLogosCount} file logo lama otomatis dihapus)` : '';
+    const uploadNote =
+      uploadedLogosCount > 0 ? ` · ${uploadedLogosCount} logo baru diunggah` : '';
     setStatusBox(
       'admin-status-box',
-      'Berhasil dipublikasikan ke GitHub! GitHub Pages otomatis memperbarui katalog publik dalam ~30 detik.',
+      `Berhasil dipublikasikan ke GitHub!${uploadNote}${cleanupNote} GitHub Pages otomatis memperbarui katalog publik dalam ~30 detik.`,
       'ok'
     );
     showToast('Perubahan katalog berhasil dipublikasikan ke GitHub.');
@@ -884,6 +1406,7 @@ function bindEvents() {
     if (!adminState.unlocked) return;
     try {
       localStorage.setItem(CATALOG_PREVIEW_STORAGE_KEY, JSON.stringify(adminState.catalog));
+      persistPendingLogoOps();
       adminState.source = 'preview';
       adminState.dirty = false;
       updateSourceBadge();
@@ -905,8 +1428,13 @@ function bindEvents() {
     } catch {
       // Ignore
     }
+    clearPendingLogoOps();
     const fresh = await loadCatalogData({ allowLocalPreview: false });
     adminState.catalog = fresh.data;
+    adminState.lastPublishedProducts = (fresh.data.products || []).map((p) => ({
+      id: p.id,
+      logo: p.logo,
+    }));
     adminState.source = fresh.source;
     adminState.dirty = false;
     updateSourceBadge();
@@ -943,6 +1471,16 @@ function bindEvents() {
     renderProductList();
   });
 
+  // Add New Product Logo Mode Tabs + Listeners
+  document.querySelectorAll('[data-new-logo-mode]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const mode = btn.getAttribute('data-new-logo-mode');
+      if (mode !== 'upload' && mode !== 'link') return;
+      adminState.newProdLogoMode = mode;
+      syncNewProductLogoUi();
+    });
+  });
+
   const presetEl = document.getElementById('new-prod-logo-preset');
   const logoUrlEl = document.getElementById('new-prod-logo-url');
   const newProdFileEl = document.getElementById('new-prod-logo-file');
@@ -950,21 +1488,31 @@ function bindEvents() {
   presetEl?.addEventListener('change', () => {
     if (logoUrlEl && presetEl.value) {
       logoUrlEl.value = presetEl.value;
+      adminState.newProdPendingUpload = null;
+      syncNewProductLogoUi();
     }
   });
 
-  newProdFileEl?.addEventListener('change', (e) => {
+  logoUrlEl?.addEventListener('input', () => {
+    adminState.newProdPendingUpload = null;
+    syncNewProductLogoUi();
+  });
+
+  newProdFileEl?.addEventListener('change', async (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    const reader = new FileReader();
-    reader.onload = (evt) => {
-      const base64 = evt.target?.result;
-      if (typeof base64 === 'string' && logoUrlEl) {
-        logoUrlEl.value = base64;
-        showToast('File logo produk baru siap digunakan.');
-      }
-    };
-    reader.readAsDataURL(file);
+    try {
+      const result = await compressLogoFile(file);
+      adminState.newProdPendingUpload = {
+        ...result,
+        fileName: file.name,
+      };
+      adminState.newProdLogoMode = 'upload';
+      syncNewProductLogoUi();
+      showToast(`Logo "${file.name}" siap untuk produk baru.`);
+    } catch (err) {
+      showToast(err.message || 'Gagal membaca file logo.');
+    }
   });
 
   document.getElementById('add-product-form')?.addEventListener('submit', (e) => {
@@ -972,16 +1520,21 @@ function bindEvents() {
     if (!adminState.unlocked) return;
     const name = document.getElementById('new-prod-name')?.value.trim() || '';
     const category = document.getElementById('new-prod-category')?.value || 'streaming';
-    const logo =
-      document.getElementById('new-prod-logo-url')?.value.trim() ||
-      './assets/logos/custom-request.svg';
+    const pendingUpload =
+      adminState.newProdLogoMode === 'upload' ? adminState.newProdPendingUpload : null;
+    const logo = pendingUpload
+      ? pendingUpload.previewDataUrl
+      : document.getElementById('new-prod-logo-url')?.value.trim() ||
+        './assets/logos/custom-request.svg';
     const tag = document.getElementById('new-prod-tag')?.value.trim() || 'Tersedia';
     const summary = document.getElementById('new-prod-summary')?.value.trim() || '';
     const variantName = document.getElementById('new-prod-variant-name')?.value.trim() || '';
     const variantPrice = Number(document.getElementById('new-prod-variant-price')?.value || 0);
 
     try {
+      const newProdId = slugifyId(name);
       adminState.catalog = upsertProductInCatalog(adminState.catalog, {
+        id: newProdId,
         name,
         category,
         logo,
@@ -989,9 +1542,24 @@ function bindEvents() {
         summary,
         variants: [{ name: variantName, price: variantPrice, outOfStock: false }],
       });
+
+      if (pendingUpload) {
+        adminState.pendingUploads[newProdId] = {
+          targetPath: `assets/logos/uploads/${newProdId}-${Date.now().toString(36)}.${pendingUpload.ext}`,
+          base64Content: pendingUpload.base64Content,
+          previewDataUrl: pendingUpload.previewDataUrl,
+          fileName: pendingUpload.fileName,
+        };
+        adminState.logoEditMode[newProdId] = 'upload';
+      }
+
       markDirty();
       e.target.reset();
+      adminState.newProdPendingUpload = null;
+      adminState.newProdLogoMode = 'upload';
       if (logoUrlEl) logoUrlEl.value = './assets/logos/custom-request.svg';
+      syncNewProductLogoUi();
+
       adminState.activeTab = 'products';
       adminState.searchQuery = '';
       const searchEl = document.getElementById('admin-product-search');

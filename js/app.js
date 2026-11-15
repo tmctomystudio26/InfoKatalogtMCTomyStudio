@@ -19,10 +19,12 @@ import {
   validateOrderForm,
 } from './store.js';
 import { initPwaManager } from './pwa.js';
+import { createToolsHubController } from './tools-ui.js';
 
 const THEME_STORAGE_KEY = 'manifestudio_theme_v1';
 const CART_STORAGE_KEY = 'manifestudio_cart_v1';
 const NAME_STORAGE_KEY = 'manifestudio_customer_name_v1';
+const MENU_LAINNYA_ID = 'menu-lainnya';
 
 const initialCatalog = getDefaultCatalogSnapshot();
 
@@ -31,6 +33,7 @@ const state = {
   catalog: initialCatalog,
   catalogSource: 'fallback',
   category: 'all',
+  toolsSubTab: 'prayer',
   query: '',
   inStockOnly: false,
   cart: [],
@@ -43,7 +46,10 @@ const state = {
   activeProductId: null,
   isCartOpen: false,
   openFaqIndex: 0,
+  activeBannerSlide: 0,
 };
+
+let toolsHub = null;
 
 function getBrand() {
   return state.catalog.brand || DEFAULT_BRAND;
@@ -170,23 +176,59 @@ function applyTheme() {
       ? `<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.93 4.93 1.41 1.41"/><path d="m17.66 17.66 1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="m6.34 17.66-1.41 1.41"/><path d="m19.07 4.93-1.41 1.41"/></svg><span class="hide-xs">Terang</span>`
       : `<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></svg><span class="hide-xs">Gelap</span>`;
   }
+  toolsHub?.redrawTheme();
+}
+
+function syncHeaderQuickNav() {
+  document.querySelectorAll('[data-nav-target]').forEach((btn) => {
+    const target = btn.getAttribute('data-nav-target');
+    const isActive =
+      state.category === MENU_LAINNYA_ID
+        ? target === state.toolsSubTab
+        : target === 'catalog';
+    btn.classList.toggle('is-active', isActive);
+    btn.setAttribute('aria-current', isActive ? 'page' : 'false');
+  });
+}
+
+function openCategoryOrTool(categoryId, toolSubTab = null, { scrollToSection = false } = {}) {
+  state.category = categoryId || 'all';
+  if (toolSubTab === 'prayer' || toolSubTab === 'weather' || toolSubTab === 'worldclock') {
+    state.toolsSubTab = toolSubTab;
+  }
+
+  renderCategories();
+  renderCatalog();
+  syncHeaderQuickNav();
+
+  if (scrollToSection) {
+    document.getElementById('katalog')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
 }
 
 function renderCategories() {
   const container = document.getElementById('category-tabs');
   if (!container) return;
 
-  container.innerHTML = getCategories()
+  const baseCats = getCategories().filter((cat) => cat && cat.id !== MENU_LAINNYA_ID);
+  const allCats = [...baseCats, { id: MENU_LAINNYA_ID, label: 'Menu Lainnya' }];
+
+  container.innerHTML = allCats
     .map((cat) => {
       const active = state.category === cat.id;
+      const isTools = cat.id === MENU_LAINNYA_ID;
       return `
         <button
           type="button"
-          class="cat-tab ${active ? 'is-active' : ''}"
+          class="cat-tab ${isTools ? 'is-tools-tab' : ''} ${active ? 'is-active' : ''}"
           data-category="${escapeHtml(cat.id)}"
           aria-pressed="${active}"
         >
-          ${escapeHtml(cat.label)}
+          ${
+            isTools
+              ? `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="7" height="7" x="3" y="3" rx="1"/><rect width="7" height="7" x="14" y="3" rx="1"/><rect width="7" height="7" x="14" y="14" rx="1"/><rect width="7" height="7" x="3" y="14" rx="1"/></svg><span>${escapeHtml(cat.label)}</span>`
+              : escapeHtml(cat.label)
+          }
         </button>
       `;
     })
@@ -194,17 +236,46 @@ function renderCategories() {
 
   container.querySelectorAll('.cat-tab').forEach((btn) => {
     btn.addEventListener('click', () => {
-      state.category = btn.getAttribute('data-category') || 'all';
-      renderCategories();
-      renderCatalog();
+      const nextCat = btn.getAttribute('data-category') || 'all';
+      openCategoryOrTool(nextCat);
     });
   });
+
+  syncHeaderQuickNav();
 }
 
 function renderCatalog() {
   const grid = document.getElementById('product-grid');
+  const searchRow = document.getElementById('catalog-search-row');
+  const toolsRoot = document.getElementById('tools-hub-root');
   const countLabel = document.getElementById('catalog-count');
+  const sectionTitle = document.getElementById('catalog-section-title');
+  const sectionSubtitle = document.getElementById('catalog-section-subtitle');
+
   if (!grid) return;
+
+  if (state.category === MENU_LAINNYA_ID) {
+    if (searchRow) searchRow.hidden = true;
+    grid.hidden = true;
+    if (toolsRoot) toolsRoot.hidden = false;
+    if (sectionTitle) sectionTitle.textContent = 'Menu Lainnya';
+    if (sectionSubtitle) {
+      sectionSubtitle.textContent =
+        'Jadwal Sholat Kemenag RI, Prakiraan Cuaca real-time & Jam Dunia dengan Bola Dunia Interaktif.';
+    }
+    if (countLabel) countLabel.textContent = '3 fitur harian';
+    toolsHub?.mount(state.toolsSubTab);
+    return;
+  }
+
+  toolsHub?.unmount();
+  if (toolsRoot) toolsRoot.hidden = true;
+  if (searchRow) searchRow.hidden = false;
+  grid.hidden = false;
+  if (sectionTitle) sectionTitle.textContent = 'Pilih Layanan';
+  if (sectionSubtitle) {
+    sectionSubtitle.textContent = 'Klik aplikasi untuk memilih paket & garansi.';
+  }
 
   const filtered = filterProducts(getProducts(), {
     category: state.category,
@@ -288,6 +359,152 @@ function renderCatalog() {
       if (id) openProductModal(id);
     });
   });
+}
+
+function initBannerCarousel() {
+  const carousel = document.getElementById('hero-carousel');
+  const track = document.getElementById('banner-track');
+  const prevBtn = document.getElementById('banner-prev-btn');
+  const nextBtn = document.getElementById('banner-next-btn');
+  const dotsContainer = document.getElementById('banner-dots');
+  if (!carousel || !track) return;
+
+  const slides = Array.from(track.querySelectorAll('.banner-slide'));
+  const totalSlides = slides.length;
+  if (totalSlides <= 1) return;
+
+  let autoTimer = null;
+  let isDragging = false;
+  let dragStartX = 0;
+  let dragDeltaX = 0;
+
+  const prefersReducedMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+
+  function applySlide(index, { immediate = false } = {}) {
+    const wrapped = ((index % totalSlides) + totalSlides) % totalSlides;
+    state.activeBannerSlide = wrapped;
+    track.style.transition = immediate ? 'none' : '';
+    track.style.transform = `translate3d(-${wrapped * 100}%, 0, 0)`;
+
+    slides.forEach((slide, idx) => {
+      slide.setAttribute('aria-hidden', String(idx !== wrapped));
+    });
+
+    dotsContainer?.querySelectorAll('[data-slide-dot]').forEach((dot) => {
+      const dotIdx = Number(dot.getAttribute('data-slide-dot'));
+      const active = dotIdx === wrapped;
+      dot.classList.toggle('is-active', active);
+      dot.setAttribute('aria-selected', String(active));
+    });
+  }
+
+  function startAutoSlide() {
+    if (prefersReducedMotion) return;
+    stopAutoSlide();
+    autoTimer = setInterval(() => {
+      if (!document.hidden && !isDragging) {
+        applySlide(state.activeBannerSlide + 1);
+      }
+    }, 6500);
+  }
+
+  function stopAutoSlide() {
+    if (autoTimer) {
+      clearInterval(autoTimer);
+      autoTimer = null;
+    }
+  }
+
+  prevBtn?.addEventListener('click', () => {
+    applySlide(state.activeBannerSlide - 1);
+    startAutoSlide();
+  });
+
+  nextBtn?.addEventListener('click', () => {
+    applySlide(state.activeBannerSlide + 1);
+    startAutoSlide();
+  });
+
+  dotsContainer?.querySelectorAll('[data-slide-dot]').forEach((dot) => {
+    dot.addEventListener('click', () => {
+      const idx = Number(dot.getAttribute('data-slide-dot') || 0);
+      applySlide(idx);
+      startAutoSlide();
+    });
+  });
+
+  carousel.addEventListener('keydown', (e) => {
+    if (e.key === 'ArrowLeft') {
+      e.preventDefault();
+      applySlide(state.activeBannerSlide - 1);
+      startAutoSlide();
+    } else if (e.key === 'ArrowRight') {
+      e.preventDefault();
+      applySlide(state.activeBannerSlide + 1);
+      startAutoSlide();
+    }
+  });
+
+  carousel.addEventListener('mouseenter', stopAutoSlide);
+  carousel.addEventListener('mouseleave', startAutoSlide);
+  carousel.addEventListener('focusin', stopAutoSlide);
+  carousel.addEventListener('focusout', startAutoSlide);
+
+  carousel.addEventListener('pointerdown', (e) => {
+    if (e.button !== 0 && e.pointerType === 'mouse') return;
+    if (e.target.closest('button, a')) return;
+    isDragging = true;
+    dragStartX = e.clientX;
+    dragDeltaX = 0;
+    stopAutoSlide();
+    track.style.transition = 'none';
+    carousel.classList.add('is-dragging');
+  });
+
+  carousel.addEventListener('pointermove', (e) => {
+    if (!isDragging) return;
+    dragDeltaX = e.clientX - dragStartX;
+    const width = Math.max(1, carousel.clientWidth);
+    const offsetPercent = -(state.activeBannerSlide * 100) + (dragDeltaX / width) * 100;
+    track.style.transform = `translate3d(${offsetPercent}%, 0, 0)`;
+  });
+
+  const finishDrag = () => {
+    if (!isDragging) return;
+    isDragging = false;
+    carousel.classList.remove('is-dragging');
+    const threshold = Math.min(72, Math.max(36, carousel.clientWidth * 0.14));
+    if (dragDeltaX <= -threshold) {
+      applySlide(state.activeBannerSlide + 1);
+    } else if (dragDeltaX >= threshold) {
+      applySlide(state.activeBannerSlide - 1);
+    } else {
+      applySlide(state.activeBannerSlide);
+    }
+    dragDeltaX = 0;
+    startAutoSlide();
+  };
+
+  carousel.addEventListener('pointerup', finishDrag);
+  carousel.addEventListener('pointercancel', finishDrag);
+  carousel.addEventListener('pointerleave', () => {
+    if (isDragging) finishDrag();
+  });
+
+  // Banner CTA buttons opening Menu Lainnya tools directly
+  carousel.querySelectorAll('[data-banner-open-tool]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const toolTarget = btn.getAttribute('data-banner-open-tool');
+      const subTab =
+        toolTarget === 'prayer' || toolTarget === 'weather' || toolTarget === 'worldclock'
+          ? toolTarget
+          : 'prayer';
+      openCategoryOrTool(MENU_LAINNYA_ID, subTab, { scrollToSection: true });
+    });
+  });
+
+  applySlide(0, { immediate: true });
+  startAutoSlide();
 }
 
 function openProductModal(productId) {
@@ -1018,6 +1235,17 @@ function bindGlobalEvents() {
     applyTheme();
   });
 
+  document.querySelectorAll('[data-nav-target]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const target = btn.getAttribute('data-nav-target');
+      if (target === 'catalog') {
+        openCategoryOrTool('all', null, { scrollToSection: true });
+      } else if (target === 'prayer' || target === 'weather' || target === 'worldclock') {
+        openCategoryOrTool(MENU_LAINNYA_ID, target, { scrollToSection: true });
+      }
+    });
+  });
+
   const searchInput = document.getElementById('catalog-search');
   const clearSearchBtn = document.getElementById('clear-search-btn');
   if (searchInput) {
@@ -1085,7 +1313,17 @@ function renderAllStorefrontViews() {
 
 async function bootstrap() {
   loadPersistedState();
+
+  const toolsRoot = document.getElementById('tools-hub-root');
+  if (toolsRoot) {
+    toolsHub = createToolsHubController({
+      rootEl: toolsRoot,
+      onToast: showToast,
+    });
+  }
+
   applyTheme();
+  initBannerCarousel();
   renderAllStorefrontViews();
   bindGlobalEvents();
   initPwaManager();

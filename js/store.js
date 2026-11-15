@@ -407,3 +407,68 @@ export function upsertProductInCatalog(catalog, productInput) {
 
   return { ...catalog, products };
 }
+
+export function moveProductInCatalog(catalog, productId, direction) {
+  const products = [...(catalog?.products || [])];
+  const index = products.findIndex((p) => p.id === productId);
+  if (index < 0 || products.length <= 1) return { ...catalog, products };
+
+  let targetIndex = index;
+  if (direction === 'up') targetIndex = Math.max(0, index - 1);
+  else if (direction === 'down') targetIndex = Math.min(products.length - 1, index + 1);
+  else if (direction === 'top') targetIndex = 0;
+  else if (direction === 'bottom') targetIndex = products.length - 1;
+
+  if (targetIndex === index) return { ...catalog, products };
+
+  const [moved] = products.splice(index, 1);
+  products.splice(targetIndex, 0, moved);
+  return { ...catalog, products };
+}
+
+export function reorderProductToIndex(catalog, productId, targetIndex) {
+  const products = [...(catalog?.products || [])];
+  const index = products.findIndex((p) => p.id === productId);
+  if (index < 0 || products.length <= 1) return { ...catalog, products };
+
+  const clamped = Math.max(0, Math.min(products.length - 1, Math.round(Number(targetIndex) || 0)));
+  if (clamped === index) return { ...catalog, products };
+
+  const [moved] = products.splice(index, 1);
+  products.splice(clamped, 0, moved);
+  return { ...catalog, products };
+}
+
+export function extractManagedUploadLogoPath(logoUrl) {
+  const raw = String(logoUrl || '').trim();
+  if (!raw || raw.startsWith('data:') || /^https?:\/\//i.test(raw)) {
+    return null;
+  }
+  const normalized = raw.replace(/^\.\//, '').replace(/^\/+/, '');
+  if (!normalized.startsWith('assets/logos/uploads/')) {
+    return null;
+  }
+  if (normalized.includes('..')) {
+    return null;
+  }
+  return normalized;
+}
+
+export function collectOrphanedUploadLogos(previousProducts = [], nextProducts = []) {
+  const activeSet = new Set(
+    (Array.isArray(nextProducts) ? nextProducts : [])
+      .map((p) => extractManagedUploadLogoPath(p?.logo))
+      .filter(Boolean)
+  );
+  const orphaned = [];
+  const seen = new Set();
+  for (const prev of Array.isArray(previousProducts) ? previousProducts : []) {
+    const path = extractManagedUploadLogoPath(prev?.logo);
+    if (path && !activeSet.has(path) && !seen.has(path)) {
+      seen.add(path);
+      orphaned.push(path);
+    }
+  }
+  return orphaned;
+}
+

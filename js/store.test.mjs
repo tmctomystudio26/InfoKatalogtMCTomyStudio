@@ -6,12 +6,16 @@ import {
   buildWhatsAppOrderCaption,
   buildWhatsAppOrderMessage,
   calculateCartTotals,
+  collectOrphanedUploadLogos,
   createOrderSnapshot,
   evaluateVoucher,
+  extractManagedUploadLogoPath,
   filterProducts,
   formatRupiah,
   getStartingPrice,
+  moveProductInCatalog,
   removeFromCart,
+  reorderProductToIndex,
   toggleProductStockInCatalog,
   updateCartQty,
   upsertProductInCatalog,
@@ -22,6 +26,16 @@ import {
   encryptVault,
   verifyGitHubTokenAccess,
 } from './vault.js';
+import {
+  WORLD_LOCATIONS,
+  convertWorldTime,
+  describeWeatherCode,
+  findNearestLocationOnGlobe,
+  getNextPrayerInfo,
+  inverseOrthographic,
+  matchIndonesianCityQuery,
+  projectOrthographic,
+} from './tools-logic.js';
 
 test('formatRupiah formats Indonesian currency accurately', () => {
   assert.equal(formatRupiah(22500), 'Rp22.500');
@@ -281,4 +295,107 @@ test('createOrderSnapshot produces serializable handoff payload for dedicated or
   assert.equal(roundTrip.cart.length, 1);
   assert.equal(roundTrip.customerName, 'Hhbb');
 });
+
+test('product reordering moves items up, down, and to target index accurately', () => {
+  const base = getDefaultCatalogSnapshot();
+  const initialIds = base.products.map((p) => p.id);
+
+  const movedDown = moveProductInCatalog(base, initialIds[0], 'down');
+  assert.equal(movedDown.products[0].id, initialIds[1]);
+  assert.equal(movedDown.products[1].id, initialIds[0]);
+
+  const movedUp = moveProductInCatalog(movedDown, initialIds[0], 'up');
+  assert.deepEqual(movedUp.products.map((p) => p.id), initialIds);
+
+  const reordered = reorderProductToIndex(base, initialIds[0], 3);
+  assert.equal(reordered.products[3].id, initialIds[0]);
+  assert.equal(reordered.products[0].id, initialIds[1]);
+});
+
+test('extractManagedUploadLogoPath and collectOrphanedUploadLogos detect replaced uploaded files safely', () => {
+  assert.equal(extractManagedUploadLogoPath('./assets/logos/netflix.svg'), null);
+  assert.equal(extractManagedUploadLogoPath('https://example.com/logo.png'), null);
+  assert.equal(
+    extractManagedUploadLogoPath('./assets/logos/uploads/netflix-123.png'),
+    'assets/logos/uploads/netflix-123.png'
+  );
+
+  const prev = [
+    { id: 'a', logo: './assets/logos/uploads/a-old.png' },
+    { id: 'b', logo: './assets/logos/uploads/shared.png' },
+    { id: 'c', logo: './assets/logos/netflix.svg' },
+  ];
+  const next = [
+    { id: 'a', logo: './assets/logos/uploads/a-new.png' },
+    { id: 'b', logo: './assets/logos/uploads/shared.png' },
+    { id: 'c', logo: './assets/logos/netflix.svg' },
+  ];
+
+  const orphaned = collectOrphanedUploadLogos(prev, next);
+  assert.deepEqual(orphaned, ['assets/logos/uploads/a-old.png']);
+});
+
+test('getNextPrayerInfo and matchIndonesianCityQuery compute Kemenag schedule countdown and city matches', () => {
+  const timings = {
+    imsak: '04:05',
+    subuh: '04:15',
+    dzuhur: '11:45',
+    ashar: '15:05',
+    maghrib: '17:52',
+    isya: '19:03',
+  };
+  const morning = new Date(2026, 10, 15, 10, 15, 0);
+  const nextMorning = getNextPrayerInfo(timings, morning);
+  assert.equal(nextMorning.key, 'dzuhur');
+  assert.equal(nextMorning.countdownText, '01:30:00');
+  assert.equal(nextMorning.allPassedToday, false);
+
+  const lateNight = new Date(2026, 10, 15, 22, 0, 0);
+  const nextTomorrow = getNextPrayerInfo(timings, lateNight);
+  assert.equal(nextTomorrow.key, 'imsak');
+  assert.equal(nextTomorrow.allPassedToday, true);
+
+  const cities = [
+    { id: '1301', lokasi: 'KOTA JAKARTA' },
+    { id: '1219', lokasi: 'KOTA BANDUNG' },
+    { id: '1414', lokasi: 'KAB. SLEMAN' },
+  ];
+  assert.equal(matchIndonesianCityQuery(cities, 'Kota Bandung')?.id, '1219');
+  assert.equal(matchIndonesianCityQuery(cities, 'Sleman')?.id, '1414');
+});
+
+test('describeWeatherCode and convertWorldTime convert UTC, WIB, WITA, WIT, and international zones accurately', () => {
+  assert.equal(describeWeatherCode(0, 1).label, 'Cerah');
+  assert.equal(describeWeatherCode(95, 1).label, 'Hujan Disertai Petir');
+
+  // 12:00 WIB (UTC+7) == 05:00 UTC == 13:00 WITA == 14:00 WIT == 14:00 Tokyo (UTC+9)
+  const conv = convertWorldTime({
+    dateStr: '2026-11-15',
+    timeStr: '12:00',
+    sourceTimeZone: 'Asia/Jakarta',
+    targetTimeZone: 'Asia/Tokyo',
+  });
+  assert.equal(conv.utc.timeShort, '05:00');
+  assert.equal(conv.wib.timeShort, '12:00');
+  assert.equal(conv.wita.timeShort, '13:00');
+  assert.equal(conv.wit.timeShort, '14:00');
+  assert.equal(conv.target.timeShort, '14:00');
+  assert.equal(conv.wib.offsetLabel, 'UTC+07:00');
+});
+
+test('orthographic globe projection and hit detection accurately project and locate target countries', () => {
+  const proj = projectOrthographic(-6.21, 106.85, -6.21, 106.85, 150, 200, 200);
+  assert.equal(proj.visible, true);
+  assert.ok(Math.abs(proj.x - 200) < 1e-6);
+  assert.ok(Math.abs(proj.y - 200) < 1e-6);
+
+  const inv = inverseOrthographic(200, 200, -6.21, 106.85, 150, 200, 200);
+  assert.ok(inv);
+  assert.ok(Math.abs(inv.lat - -6.21) < 1e-4);
+  assert.ok(Math.abs(inv.lon - 106.85) < 1e-4);
+
+  const hit = findNearestLocationOnGlobe(200, 200, WORLD_LOCATIONS, -6.21, 106.85, 150, 200, 200, 24);
+  assert.equal(hit?.location?.id, 'id-wib');
+});
+
 

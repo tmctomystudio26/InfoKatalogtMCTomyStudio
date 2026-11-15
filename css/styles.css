@@ -119,6 +119,38 @@ a {
   text-overflow: ellipsis;
 }
 
+.header-nav {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  margin-inline: auto 0.25rem;
+}
+
+.header-nav-link {
+  height: 36px;
+  padding: 0 0.72rem;
+  border-radius: var(--radius-sm);
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--ink-secondary);
+  font-size: 0.83rem;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background-color 0.2s var(--ease), color 0.2s var(--ease), border-color 0.2s var(--ease);
+}
+
+.header-nav-link:hover {
+  background-color: var(--surface-elevated);
+  color: var(--ink);
+}
+
+.header-nav-link.is-active {
+  background-color: var(--surface-elevated);
+  border-color: var(--border-strong);
+  color: var(--ink);
+}
+
 .header-actions {
   display: flex;
   align-items: center;
@@ -261,10 +293,42 @@ a {
   background-color: rgba(248, 250, 252, 0.16);
 }
 
-/* Compact Codashop-Style Promo Banner */
+/* Gen-Z Swipeable Multi-Banner Carousel */
 .promo-banner-section {
   padding-top: 0.9rem;
-  padding-bottom: 1rem;
+  padding-bottom: 1.05rem;
+}
+
+.banner-carousel {
+  position: relative;
+  overflow: hidden;
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--border);
+  background-color: #0b1120;
+  box-shadow: var(--shadow-card);
+  touch-action: pan-y;
+  user-select: none;
+}
+
+.banner-carousel.is-dragging {
+  cursor: grabbing;
+}
+
+.banner-track {
+  display: flex;
+  width: 100%;
+  transition: transform 0.48s cubic-bezier(0.22, 1, 0.36, 1);
+  will-change: transform;
+}
+
+.promo-banner-frame.banner-slide {
+  flex: 0 0 100%;
+  width: 100%;
+  min-width: 100%;
+  border: none;
+  border-radius: 0;
+  box-shadow: none;
+  min-height: 172px;
 }
 
 .promo-banner-frame {
@@ -273,7 +337,7 @@ a {
   border-radius: var(--radius-lg);
   border: 1px solid var(--border);
   background-color: #0b1120;
-  min-height: 148px;
+  min-height: 156px;
   display: flex;
   align-items: center;
   box-shadow: var(--shadow-card);
@@ -286,13 +350,42 @@ a {
   height: 100%;
   object-fit: cover;
   object-position: center right;
-  opacity: 0.85;
+  opacity: 0.88;
+  pointer-events: none;
 }
 
 .promo-banner-scrim {
   position: absolute;
   inset: 0;
   background: var(--hero-scrim);
+}
+
+.promo-banner-scrim.scrim-prayer {
+  background: linear-gradient(96deg, rgba(6, 28, 36, 0.95) 0%, rgba(10, 42, 52, 0.84) 55%, rgba(6, 28, 36, 0.35) 100%);
+}
+
+.promo-banner-scrim.scrim-weather {
+  background: linear-gradient(96deg, rgba(11, 21, 44, 0.95) 0%, rgba(20, 44, 82, 0.84) 55%, rgba(11, 21, 44, 0.35) 100%);
+}
+
+.promo-banner-scrim.scrim-world {
+  background: linear-gradient(96deg, rgba(14, 16, 40, 0.95) 0%, rgba(30, 32, 74, 0.84) 55%, rgba(14, 16, 40, 0.35) 100%);
+}
+
+.banner-slide-gradient {
+  background: radial-gradient(circle at 86% 24%, rgba(56, 189, 248, 0.36), transparent 46%),
+    radial-gradient(circle at 18% 85%, rgba(16, 185, 129, 0.28), transparent 48%),
+    linear-gradient(112deg, #090e1c 0%, #101c38 56%, #132c4e 100%);
+}
+
+.banner-mesh-art {
+  position: absolute;
+  inset: 0;
+  background-image: linear-gradient(rgba(148, 163, 184, 0.08) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(148, 163, 184, 0.08) 1px, transparent 1px);
+  background-size: 28px 28px;
+  mask-image: linear-gradient(90deg, transparent 15%, rgba(0, 0, 0, 0.85) 100%);
+  pointer-events: none;
 }
 
 .promo-banner-content {
@@ -303,12 +396,12 @@ a {
   align-items: center;
   justify-content: space-between;
   gap: 1rem;
-  padding: 1.15rem 1.45rem;
+  padding: 1.25rem 3.3rem 1.95rem;
   color: #f8fafc;
 }
 
 .promo-banner-copy {
-  max-width: 620px;
+  max-width: 640px;
 }
 
 .promo-kicker {
@@ -323,21 +416,84 @@ a {
 
 .promo-heading {
   font-family: var(--font-display);
-  font-size: clamp(1.18rem, 2.5vw, 1.65rem);
+  font-size: clamp(1.15rem, 2.5vw, 1.65rem);
   font-weight: 800;
   line-height: 1.15;
   letter-spacing: -0.02em;
-  margin: 0 0 0.28rem;
+  text-wrap: balance;
+  margin: 0 0 0.32rem;
 }
 
 .promo-sub {
-  font-size: clamp(0.8rem, 1.3vw, 0.9rem);
+  font-size: clamp(0.81rem, 1.3vw, 0.91rem);
   color: #cbd5e1;
   margin: 0;
 }
 
 .promo-banner-cta {
   flex-shrink: 0;
+}
+
+.banner-nav-btn {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 4;
+  width: 36px;
+  height: 36px;
+  border-radius: 999px;
+  border: 1px solid rgba(248, 250, 252, 0.24);
+  background-color: rgba(9, 13, 22, 0.62);
+  backdrop-filter: blur(8px);
+  color: #f8fafc;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: background-color 0.2s var(--ease), transform 0.15s var(--ease);
+}
+
+.banner-nav-btn:hover {
+  background-color: rgba(15, 23, 42, 0.88);
+}
+
+.banner-nav-btn.is-prev {
+  left: 0.65rem;
+}
+
+.banner-nav-btn.is-next {
+  right: 0.65rem;
+}
+
+.banner-dots {
+  position: absolute;
+  left: 50%;
+  bottom: 0.62rem;
+  transform: translateX(-50%);
+  z-index: 4;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.25rem 0.55rem;
+  border-radius: 999px;
+  background-color: rgba(9, 13, 22, 0.45);
+  backdrop-filter: blur(6px);
+}
+
+.banner-dot {
+  width: 8px;
+  height: 8px;
+  padding: 0;
+  border: none;
+  border-radius: 999px;
+  background-color: rgba(248, 250, 252, 0.38);
+  cursor: pointer;
+  transition: width 0.25s var(--ease), background-color 0.25s var(--ease);
+}
+
+.banner-dot.is-active {
+  width: 22px;
+  background-color: #38bdf8;
 }
 
 /* Catalog Section & Controls */
@@ -491,6 +647,14 @@ a {
   flex-shrink: 0;
   cursor: pointer;
   transition: background-color 0.2s var(--ease), color 0.2s var(--ease), border-color 0.2s var(--ease);
+}
+
+.cat-tab.is-tools-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.42rem;
+  border-color: var(--accent);
+  color: var(--ink);
 }
 
 .cat-tab:hover {
@@ -1679,6 +1843,9 @@ a {
   bottom: 1.5rem;
   transform: translateX(-50%);
   z-index: 80;
+  width: max-content;
+  max-width: calc(100vw - 2rem);
+  text-align: center;
   padding: 0.7rem 1.15rem;
   border-radius: var(--radius-sm);
   background-color: var(--ink);
@@ -1772,6 +1939,8 @@ a {
   display: grid;
   gap: 1rem;
   box-shadow: var(--shadow-card);
+  min-width: 0;
+  max-width: 100%;
 }
 
 .admin-card-head {
@@ -1783,7 +1952,7 @@ a {
 }
 
 .admin-card-head > div:first-child {
-  flex: 1 1 320px;
+  flex: 1 1 220px;
   min-width: 0;
 }
 
@@ -1805,6 +1974,7 @@ a {
   font-size: 0.86rem;
   color: var(--ink-muted);
   margin: 0;
+  overflow-wrap: anywhere;
 }
 
 .admin-subtitle code {
@@ -1814,6 +1984,8 @@ a {
   border-radius: 5px;
   background-color: var(--surface-elevated);
   border: 1px solid var(--border);
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .admin-badge {
@@ -1934,6 +2106,8 @@ a {
   padding: 1.2rem;
   display: grid;
   gap: 0.95rem;
+  min-width: 0;
+  max-width: 100%;
 }
 
 .admin-prod-head {
@@ -2041,21 +2215,795 @@ a {
   background-color: var(--surface-elevated);
 }
 
+/* Admin Reorder + Mobile-Ready Logo Manager */
+.admin-shell input[type='search'] {
+  width: 100%;
+}
+
+.admin-order-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 34px;
+  height: 30px;
+  padding: 0 0.5rem;
+  border-radius: 8px;
+  background-color: var(--surface-elevated);
+  border: 1px solid var(--border-strong);
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: var(--ink);
+  flex-shrink: 0;
+}
+
+.admin-order-controls {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  flex-wrap: wrap;
+}
+
+.admin-order-btn {
+  min-height: 36px;
+  padding: 0.35rem 0.65rem;
+  font-size: 0.78rem;
+}
+
+.admin-shell .admin-order-select {
+  width: auto;
+  min-width: 104px;
+  height: 36px;
+  padding: 0 0.6rem;
+  font-size: 0.8rem;
+}
+
+.admin-sum-field {
+  grid-column: span 2;
+}
+
+.admin-logo-manager {
+  display: grid;
+  gap: 0.75rem;
+  padding: 0.85rem;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-strong);
+  background-color: var(--surface-elevated);
+  min-width: 0;
+}
+
+.admin-logo-manager-full {
+  grid-column: 1 / -1;
+}
+
+.admin-logo-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.admin-logo-preview-wrap {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  min-width: 0;
+  flex: 1 1 220px;
+}
+
+.admin-logo-preview-wrap > div {
+  display: grid;
+  gap: 0.1rem;
+  min-width: 0;
+}
+
+.admin-logo-title {
+  font-size: 0.86rem;
+  font-weight: 700;
+}
+
+.admin-logo-thumb {
+  background-color: var(--surface);
+  object-fit: contain;
+}
+
+.admin-logo-tabs {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.22rem;
+  border-radius: var(--radius-sm);
+  background-color: var(--bg);
+  border: 1px solid var(--border);
+}
+
+.admin-logo-mode-btn {
+  min-height: 36px;
+  padding: 0.35rem 0.78rem;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--ink-secondary);
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.admin-logo-mode-btn.is-active {
+  background-color: var(--primary);
+  color: var(--primary-ink);
+}
+
+.admin-logo-pane {
+  display: grid;
+  gap: 0.65rem;
+}
+
+.admin-file-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.65rem;
+}
+
+.admin-file-trigger {
+  min-height: 44px;
+  cursor: pointer;
+}
+
+.visually-hidden-file {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.admin-logo-link-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.3fr);
+  gap: 0.7rem;
+}
+
+/* Menu Lainnya: Jadwal Sholat, Prakiraan Cuaca, Jam Dunia & Bola Dunia */
+.tools-hub {
+  display: grid;
+  gap: 1.15rem;
+}
+
+.tools-subnav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.55rem;
+}
+
+.tools-subtab {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  min-height: 44px;
+  padding: 0.55rem 1.05rem;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-strong);
+  background-color: var(--surface);
+  color: var(--ink-secondary);
+  font-size: 0.88rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color 0.2s var(--ease), color 0.2s var(--ease), border-color 0.2s var(--ease);
+}
+
+.tools-subtab:hover {
+  background-color: var(--surface-elevated);
+  color: var(--ink);
+}
+
+.tools-subtab.is-active {
+  background-color: var(--primary);
+  border-color: var(--primary);
+  color: var(--primary-ink);
+}
+
+.tool-panel {
+  display: grid;
+  gap: 1rem;
+}
+
+.tool-location-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.85rem;
+  padding: 0.9rem 1.1rem;
+  border-radius: var(--radius-md);
+  background-color: var(--surface);
+  border: 1px solid var(--border);
+}
+
+.tool-loc-info {
+  display: grid;
+  gap: 0.15rem;
+  min-width: 0;
+}
+
+.tool-loc-title-row {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  color: var(--ink);
+  font-size: 0.94rem;
+}
+
+.tool-loc-meta {
+  font-size: 0.79rem;
+  color: var(--ink-muted);
+}
+
+.tool-city-search-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.65rem;
+}
+
+.tool-search-box {
+  max-width: 560px;
+}
+
+.tool-city-results {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+  padding: 0.7rem;
+  border-radius: var(--radius-md);
+  background-color: var(--surface);
+  border: 1px solid var(--border-strong);
+}
+
+.tool-city-option {
+  min-height: 38px;
+  padding: 0.4rem 0.8rem;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background-color: var(--surface-elevated);
+  color: var(--ink);
+  font-size: 0.82rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.tool-city-option:hover {
+  border-color: var(--primary);
+}
+
+.tool-loading-box {
+  padding: 2rem 1.25rem;
+  border-radius: var(--radius-md);
+  border: 1px dashed var(--border-strong);
+  background-color: var(--surface);
+  text-align: center;
+  color: var(--ink-muted);
+  font-size: 0.9rem;
+}
+
+.tool-kicker {
+  display: block;
+  font-size: 0.74rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--accent);
+}
+
+.tool-subhead {
+  font-family: var(--font-display);
+  font-size: 1.08rem;
+  font-weight: 700;
+  margin: 0;
+}
+
+.tool-hint {
+  font-size: 0.81rem;
+  color: var(--ink-muted);
+  margin: 0.15rem 0 0;
+}
+
+/* Jadwal Sholat */
+.prayer-hero-card {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 1.25rem 1.35rem;
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--border-strong);
+  background: linear-gradient(125deg, var(--surface) 0%, var(--surface-elevated) 100%);
+  box-shadow: var(--shadow-card);
+}
+
+.prayer-next-title {
+  font-family: var(--font-display);
+  font-size: clamp(1.2rem, 2.6vw, 1.65rem);
+  font-weight: 800;
+  margin: 0.25rem 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.55rem;
+}
+
+.prayer-date-sub {
+  margin: 0;
+  font-size: 0.85rem;
+  color: var(--ink-muted);
+}
+
+.prayer-countdown-box {
+  display: grid;
+  gap: 0.15rem;
+  padding: 0.8rem 1.1rem;
+  border-radius: var(--radius-md);
+  background-color: var(--bg);
+  border: 1px solid var(--border-strong);
+  text-align: right;
+  min-width: 170px;
+}
+
+.prayer-countdown-label {
+  font-size: 0.74rem;
+  font-weight: 600;
+  color: var(--ink-muted);
+}
+
+.prayer-countdown-value {
+  font-size: 1.45rem;
+  font-weight: 700;
+  color: var(--accent);
+}
+
+.prayer-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.75rem;
+}
+
+.prayer-slot-card {
+  display: grid;
+  gap: 0.25rem;
+  padding: 0.95rem 1rem;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border);
+  background-color: var(--surface);
+}
+
+.prayer-slot-card.is-next {
+  border-color: var(--accent);
+  background-color: var(--accent-soft);
+}
+
+.prayer-slot-name {
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--ink-secondary);
+}
+
+.prayer-slot-time {
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: var(--ink);
+}
+
+/* Prakiraan Cuaca */
+.weather-hero-card {
+  display: grid;
+  gap: 1.1rem;
+  padding: 1.25rem 1.35rem;
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--border-strong);
+  background: linear-gradient(125deg, var(--surface) 0%, var(--surface-elevated) 100%);
+  box-shadow: var(--shadow-card);
+}
+
+.weather-hero-main {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 1rem;
+}
+
+.weather-icon-wrap {
+  width: 60px;
+  height: 60px;
+  border-radius: var(--radius-md);
+  background-color: var(--accent-soft);
+  color: var(--accent);
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+}
+
+.weather-temp-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.65rem;
+  margin-top: 0.2rem;
+}
+
+.weather-temp-big {
+  font-size: clamp(1.85rem, 4vw, 2.5rem);
+  font-weight: 700;
+  line-height: 1.05;
+}
+
+.weather-condition {
+  font-family: var(--font-display);
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: var(--ink-secondary);
+}
+
+.weather-sub {
+  margin: 0.2rem 0 0;
+  font-size: 0.84rem;
+  color: var(--ink-muted);
+}
+
+.weather-metrics-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.7rem;
+}
+
+.weather-metric {
+  display: grid;
+  gap: 0.15rem;
+  padding: 0.75rem 0.9rem;
+  border-radius: var(--radius-sm);
+  background-color: var(--bg);
+  border: 1px solid var(--border);
+}
+
+.weather-metric span {
+  font-size: 0.76rem;
+  color: var(--ink-muted);
+}
+
+.weather-metric strong {
+  font-size: 1rem;
+}
+
+.weather-block {
+  display: grid;
+  gap: 0.65rem;
+}
+
+.weather-hourly-strip {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(86px, 1fr);
+  gap: 0.55rem;
+  overflow-x: auto;
+  padding-bottom: 0.35rem;
+}
+
+.weather-hour-card {
+  display: grid;
+  justify-items: center;
+  gap: 0.3rem;
+  padding: 0.75rem 0.5rem;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border);
+  background-color: var(--surface);
+  text-align: center;
+}
+
+.weather-hour-time {
+  font-size: 0.76rem;
+  color: var(--ink-muted);
+}
+
+.weather-hour-icon {
+  color: var(--accent);
+}
+
+.weather-hour-icon svg {
+  width: 24px;
+  height: 24px;
+}
+
+.weather-hour-temp {
+  font-size: 0.95rem;
+}
+
+.weather-hour-rain {
+  font-size: 0.73rem;
+  color: var(--accent);
+}
+
+.weather-daily-list {
+  display: grid;
+  gap: 0.5rem;
+}
+
+.weather-daily-row {
+  display: grid;
+  grid-template-columns: 110px 1fr auto auto;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.75rem 0.95rem;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border);
+  background-color: var(--surface);
+  font-size: 0.86rem;
+}
+
+.weather-daily-day {
+  font-weight: 700;
+}
+
+.weather-daily-cond {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  color: var(--ink-secondary);
+}
+
+.weather-daily-cond svg {
+  width: 20px;
+  height: 20px;
+  color: var(--accent);
+  flex-shrink: 0;
+}
+
+.weather-daily-rain {
+  font-size: 0.78rem;
+  color: var(--accent);
+}
+
+.weather-daily-temps {
+  text-align: right;
+}
+
+/* Jam Dunia & Bola Dunia Interaktif */
+.world-master-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.75rem;
+}
+
+.world-clock-card {
+  display: grid;
+  gap: 0.2rem;
+  padding: 0.9rem 1rem;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border);
+  background-color: var(--surface);
+}
+
+.world-clock-card.is-utc {
+  border-color: var(--accent);
+  background-color: var(--accent-soft);
+}
+
+.world-clock-title {
+  font-family: var(--font-display);
+  font-size: 0.92rem;
+  font-weight: 700;
+}
+
+.world-clock-digits {
+  font-size: clamp(1.2rem, 2.2vw, 1.55rem);
+  font-weight: 700;
+  color: var(--ink);
+}
+
+.world-clock-sub {
+  font-size: 0.76rem;
+  color: var(--ink-muted);
+}
+
+.world-workspace-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.05fr) minmax(0, 0.95fr);
+  gap: 1rem;
+  align-items: start;
+}
+
+.globe-card,
+.converter-card {
+  display: grid;
+  gap: 0.9rem;
+  padding: 1.1rem;
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--border);
+  background-color: var(--surface);
+  min-width: 0;
+}
+
+.globe-card-head,
+.converter-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.65rem;
+}
+
+.globe-toolbar {
+  display: inline-flex;
+  gap: 0.45rem;
+  flex-wrap: wrap;
+}
+
+.globe-canvas-wrap {
+  display: grid;
+  place-items: center;
+  padding: 0.35rem;
+  border-radius: var(--radius-md);
+  background-color: var(--bg);
+  border: 1px solid var(--border);
+}
+
+.world-globe-canvas {
+  display: block;
+  width: 100%;
+  max-width: 340px;
+  aspect-ratio: 1 / 1;
+  height: auto;
+  cursor: grab;
+  touch-action: none;
+}
+
+.world-globe-canvas:active {
+  cursor: grabbing;
+}
+
+.globe-target-readout {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.8rem 0.95rem;
+  border-radius: var(--radius-md);
+  background-color: var(--surface-elevated);
+  border: 1px solid var(--border-strong);
+}
+
+.globe-target-name {
+  display: block;
+  font-family: var(--font-display);
+  font-size: 1rem;
+  margin-top: 0.1rem;
+}
+
+.globe-search-input {
+  padding-left: 0.9rem;
+}
+
+.world-quick-countries {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.world-quick-countries .cat-tab {
+  height: 34px;
+  padding: 0 0.72rem;
+  font-size: 0.79rem;
+}
+
+.world-country-select-row {
+  display: grid;
+  gap: 0.35rem;
+  font-size: 0.82rem;
+  font-weight: 600;
+}
+
+.converter-inputs-grid {
+  display: grid;
+  grid-template-columns: 1.25fr 0.85fr 1fr;
+  gap: 0.65rem;
+}
+
+.tool-native-input,
+.world-country-select-row .admin-select,
+.converter-inputs-grid .admin-select {
+  width: 100%;
+  height: 42px;
+  padding: 0 0.75rem;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-strong);
+  background-color: var(--bg);
+  color: var(--ink);
+  font-family: inherit;
+  font-size: 0.86rem;
+}
+
+.converter-results-list {
+  display: grid;
+  gap: 0.5rem;
+}
+
+.converter-result-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.75rem 0.9rem;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border);
+  background-color: var(--surface-elevated);
+}
+
+.converter-result-row.is-highlight {
+  border-color: var(--accent);
+  background-color: var(--accent-soft);
+}
+
+.conv-zone-name {
+  display: block;
+  font-size: 0.86rem;
+  font-weight: 700;
+}
+
+.conv-zone-meta {
+  display: block;
+  font-size: 0.75rem;
+  color: var(--ink-muted);
+}
+
+.conv-time-col {
+  display: grid;
+  justify-items: end;
+  flex-shrink: 0;
+}
+
+.conv-time-col strong {
+  font-size: 1.1rem;
+}
+
+.conv-time-col span {
+  font-size: 0.72rem;
+  color: var(--ink-muted);
+}
+
 /* Responsive Breakpoints */
 @media (max-width: 1024px) {
   .product-grid {
     grid-template-columns: repeat(4, minmax(0, 1fr));
   }
+  .header-nav {
+    display: none;
+  }
 }
 
 @media (max-width: 900px) {
-  .order-page-grid {
+  .order-page-grid,
+  .world-workspace-grid {
     grid-template-columns: 1fr;
+  }
+  .prayer-grid,
+  .world-master-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
   .admin-form-grid,
   .admin-prod-meta-grid,
-  .admin-var-fields {
+  .admin-var-fields,
+  .admin-logo-link-grid,
+  .converter-inputs-grid {
     grid-template-columns: 1fr;
+  }
+  .admin-sum-field {
+    grid-column: span 1;
   }
   .admin-variant-row {
     grid-template-columns: 1fr;
@@ -2065,6 +3013,13 @@ a {
 @media (max-width: 760px) {
   .product-grid {
     grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+  .weather-daily-row {
+    grid-template-columns: 88px 1fr;
+    gap: 0.35rem 0.75rem;
+  }
+  .weather-daily-temps {
+    text-align: left;
   }
 }
 
@@ -2079,14 +3034,25 @@ a {
     padding: 0 0.65rem;
     height: 36px;
   }
-  .promo-banner-frame {
-    min-height: 128px;
+  .promo-banner-frame,
+  .promo-banner-frame.banner-slide {
+    min-height: 164px;
   }
   .promo-banner-content {
     flex-direction: column;
     align-items: flex-start;
-    padding: 0.95rem 1.05rem;
+    padding: 1rem 2.75rem 2.2rem;
     gap: 0.65rem;
+  }
+  .banner-nav-btn {
+    width: 30px;
+    height: 30px;
+  }
+  .banner-nav-btn.is-prev {
+    left: 0.4rem;
+  }
+  .banner-nav-btn.is-next {
+    right: 0.4rem;
   }
   .product-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -2111,6 +3077,19 @@ a {
   }
   .admin-add-variant-row {
     grid-template-columns: 1fr;
+  }
+  .admin-product-card {
+    padding: 0.95rem;
+  }
+  .admin-order-controls {
+    width: 100%;
+  }
+  .weather-metrics-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .prayer-countdown-box {
+    width: 100%;
+    text-align: left;
   }
   .pwa-minimized-dock {
     right: 1rem;

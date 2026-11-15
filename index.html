@@ -3,17 +3,17 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Manifestudio — Katalog Akun Premium &amp; Layanan Digital</title>
+    <title>Manifestudio — Katalog Akun Premium &amp; Utilitas Digital</title>
     <meta
       name="description"
-      content="Manifestudio menghadirkan akun premium dan layanan digital bergaransi dengan harga transparan dan proses cepat via WhatsApp."
+      content="Manifestudio menghadirkan akun premium bergaransi dengan checkout instan, ditambah menu Jadwal Sholat Kemenag RI, Prakiraan Cuaca, dan Jam Dunia Interaktif."
     />
 
     <!-- Open Graph -->
-    <meta property="og:title" content="Manifestudio — Akun Premium &amp; Layanan Digital" />
+    <meta property="og:title" content="Manifestudio — Akun Premium &amp; Utilitas Digital" />
     <meta
       property="og:description"
-      content="Platform katalog akun premium &amp; top up layanan digital terpercaya dengan garansi aktif dan checkout instan."
+      content="Platform katalog akun premium &amp; layanan digital terpercaya, lengkap dengan jadwal sholat akurat, prakiraan cuaca, dan jam dunia interaktif."
     />
     <meta property="og:image" content="./assets/hero-banner.jpg" />
     <meta property="og:type" content="website" />
@@ -65,9 +65,16 @@
           />
           <div class="brand-text">
             <span class="brand-name">Manifestudio</span>
-            <span class="brand-tagline">Top Up &amp; Akun Premium</span>
+            <span class="brand-tagline">Katalog &amp; Utilitas Harian</span>
           </div>
         </a>
+
+        <nav class="header-nav" aria-label="Navigasi cepat">
+          <button type="button" class="header-nav-link" data-nav-target="catalog">Katalog</button>
+          <button type="button" class="header-nav-link" data-nav-target="prayer">Jadwal Sholat</button>
+          <button type="button" class="header-nav-link" data-nav-target="weather">Cuaca</button>
+          <button type="button" class="header-nav-link" data-nav-target="worldclock">Jam Dunia</button>
+        </nav>
 
         <div class="header-actions">
           <button
@@ -110,48 +117,171 @@
     </header>
 
     <main id="top">
-      <!-- Compact Codashop-style Promo Banner -->
-      <section class="promo-banner-section" aria-label="Promo Manifestudio">
+      <!-- Swipeable Gen-Z Multi-Banner Carousel -->
+      <section class="promo-banner-section" aria-label="Sorotan Promo &amp; Fitur Manifestudio">
         <div class="container">
-          <div class="promo-banner-frame">
-            <img
-              src="./assets/hero-banner.jpg"
-              alt="Promo akun premium Manifestudio"
-              class="promo-banner-img"
-              width="1200"
-              height="400"
-            />
-            <div class="promo-banner-scrim" aria-hidden="true"></div>
-            <div class="promo-banner-content">
-              <div class="promo-banner-copy">
-                <span class="promo-kicker">Promo Otomatis · Proses 3–10 Menit</span>
-                <h1 class="promo-heading">Top Up &amp; Akun Premium Bergaransi</h1>
-                <p class="promo-sub">
-                  Belanja minimal <strong>Rp50.000</strong> otomatis diskon <strong>Rp2.000</strong> saat checkout.
-                </p>
-              </div>
-              <div class="promo-banner-cta">
-                <button type="button" id="hero-custom-btn" class="btn btn-outline-light btn-sm">
-                  Request Custom
-                </button>
-              </div>
+          <div
+            class="banner-carousel"
+            id="hero-carousel"
+            tabindex="0"
+            aria-roledescription="carousel"
+            aria-label="Banner informasi promo dan fitur tambahan"
+          >
+            <div class="banner-track" id="banner-track">
+              <!-- Slide 1: Promo Katalog Utama -->
+              <article class="promo-banner-frame banner-slide" data-slide-index="0">
+                <img
+                  src="./assets/hero-banner.jpg"
+                  alt="Promo akun premium Manifestudio"
+                  class="promo-banner-img"
+                  width="1200"
+                  height="400"
+                />
+                <div class="promo-banner-scrim" aria-hidden="true"></div>
+                <div class="promo-banner-content">
+                  <div class="promo-banner-copy">
+                    <span class="promo-kicker">Promo Otomatis · Proses 3–10 Menit</span>
+                    <h1 class="promo-heading">Top Up &amp; Akun Premium Bergaransi</h1>
+                    <p class="promo-sub">
+                      Belanja minimal <strong>Rp50.000</strong> otomatis diskon <strong>Rp2.000</strong> plus kode voucher &amp; opsi Bayar Nanti.
+                    </p>
+                  </div>
+                  <div class="promo-banner-cta">
+                    <button type="button" id="hero-custom-btn" class="btn btn-outline-light btn-sm">
+                      Request Custom
+                    </button>
+                  </div>
+                </div>
+              </article>
+
+              <!-- Slide 2: Menu Tambahan — Jadwal Sholat -->
+              <article class="promo-banner-frame banner-slide" data-slide-index="1">
+                <img
+                  src="./assets/banner-prayer.jpg"
+                  alt="Fitur baru Jadwal Sholat Kemenag RI sesuai lokasi"
+                  class="promo-banner-img"
+                  width="1200"
+                  height="400"
+                />
+                <div class="promo-banner-scrim scrim-prayer" aria-hidden="true"></div>
+                <div class="promo-banner-content">
+                  <div class="promo-banner-copy">
+                    <span class="promo-kicker">Menu Lainnya · Resmi Kemenag RI</span>
+                    <h2 class="promo-heading">Sholat On-Time, Hitung Mundur Real-Time</h2>
+                    <p class="promo-sub">
+                      Gak cuma jual akun—cek Imsak, Subuh sampai Isya otomatis sesuai lokasi GPS atau kotamu di seluruh Indonesia.
+                    </p>
+                  </div>
+                  <div class="promo-banner-cta">
+                    <button type="button" class="btn btn-outline-light btn-sm" data-banner-open-tool="prayer">
+                      Buka Jadwal Sholat
+                    </button>
+                  </div>
+                </div>
+              </article>
+
+              <!-- Slide 3: Menu Tambahan — Prakiraan Cuaca -->
+              <article class="promo-banner-frame banner-slide" data-slide-index="2">
+                <img
+                  src="./assets/banner-weather.jpg"
+                  alt="Fitur baru Prakiraan Cuaca real-time"
+                  class="promo-banner-img"
+                  width="1200"
+                  height="400"
+                />
+                <div class="promo-banner-scrim scrim-weather" aria-hidden="true"></div>
+                <div class="promo-banner-content">
+                  <div class="promo-banner-copy">
+                    <span class="promo-kicker">Menu Lainnya · Live Radar &amp; 7 Hari</span>
+                    <h2 class="promo-heading">Cek Cuaca Dulu Sebelum OTW &amp; Nongkrong</h2>
+                    <p class="promo-sub">
+                      Pantau suhu, kelembapan, angin, dan peluang hujan per jam hingga 7 hari ke depan sesuai posisi kamu.
+                    </p>
+                  </div>
+                  <div class="promo-banner-cta">
+                    <button type="button" class="btn btn-outline-light btn-sm" data-banner-open-tool="weather">
+                      Cek Cuaca Sekarang
+                    </button>
+                  </div>
+                </div>
+              </article>
+
+              <!-- Slide 4: Menu Tambahan — Jam Dunia & Bola Dunia Interaktif -->
+              <article class="promo-banner-frame banner-slide" data-slide-index="3">
+                <img
+                  src="./assets/banner-worldclock.jpg"
+                  alt="Fitur baru Jam Dunia UTC dan Bola Dunia Interaktif"
+                  class="promo-banner-img"
+                  width="1200"
+                  height="400"
+                />
+                <div class="promo-banner-scrim scrim-world" aria-hidden="true"></div>
+                <div class="promo-banner-content">
+                  <div class="promo-banner-copy">
+                    <span class="promo-kicker">Menu Lainnya · Standar UTC &amp; Globe 3D</span>
+                    <h2 class="promo-heading">Putar Bola Dunia, Konversi Jam WIB/WITA/WIT</h2>
+                    <p class="promo-sub">
+                      Klik negara target langsung di bola dunia interaktif untuk cek zona waktu &amp; konversi jadwal ke jam lokal Indonesia.
+                    </p>
+                  </div>
+                  <div class="promo-banner-cta">
+                    <button type="button" class="btn btn-outline-light btn-sm" data-banner-open-tool="worldclock">
+                      Putar Bola Dunia
+                    </button>
+                  </div>
+                </div>
+              </article>
+
+              <!-- Slide 5: Struk Instan & Garansi -->
+              <article class="promo-banner-frame banner-slide banner-slide-gradient" data-slide-index="4">
+                <div class="banner-mesh-art" aria-hidden="true"></div>
+                <div class="promo-banner-content">
+                  <div class="promo-banner-copy">
+                    <span class="promo-kicker">Anti Ribet · Transparan &amp; Terjamin</span>
+                    <h2 class="promo-heading">Struk Resmi Otomatis &amp; Klaim Garansi Jelas</h2>
+                    <p class="promo-sub">
+                      Setiap pesanan langsung dibuatkan struk JPEG ringan siap kirim WhatsApp, plus fitur lengkap di kategori <strong>Menu Lainnya</strong>.
+                    </p>
+                  </div>
+                  <div class="promo-banner-cta">
+                    <button type="button" class="btn btn-outline-light btn-sm" data-banner-open-tool="menu-hub">
+                      Jelajah Menu Lainnya
+                    </button>
+                  </div>
+                </div>
+              </article>
+            </div>
+
+            <button type="button" class="banner-nav-btn is-prev" id="banner-prev-btn" aria-label="Banner sebelumnya">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m15 18-6-6 6-6"/></svg>
+            </button>
+            <button type="button" class="banner-nav-btn is-next" id="banner-next-btn" aria-label="Banner berikutnya">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg>
+            </button>
+
+            <div class="banner-dots" id="banner-dots" role="tablist" aria-label="Pilih slide banner">
+              <button type="button" class="banner-dot is-active" data-slide-dot="0" aria-label="Slide 1: Promo Katalog"></button>
+              <button type="button" class="banner-dot" data-slide-dot="1" aria-label="Slide 2: Jadwal Sholat"></button>
+              <button type="button" class="banner-dot" data-slide-dot="2" aria-label="Slide 3: Prakiraan Cuaca"></button>
+              <button type="button" class="banner-dot" data-slide-dot="3" aria-label="Slide 4: Jam Dunia &amp; Globe"></button>
+              <button type="button" class="banner-dot" data-slide-dot="4" aria-label="Slide 5: Struk &amp; Fitur"></button>
             </div>
           </div>
         </div>
       </section>
 
-      <!-- Catalog Immediately Above The Fold -->
+      <!-- Catalog & Menu Lainnya Section -->
       <section id="katalog" class="catalog-section container">
         <div class="catalog-top-bar">
           <div>
-            <h2 class="section-title">Pilih Layanan</h2>
-            <p class="section-subtitle">Klik aplikasi untuk memilih paket &amp; garansi.</p>
+            <h2 id="catalog-section-title" class="section-title">Pilih Layanan</h2>
+            <p id="catalog-section-subtitle" class="section-subtitle">Klik aplikasi untuk memilih paket &amp; garansi.</p>
           </div>
           <span id="catalog-count" class="catalog-count">10 layanan</span>
         </div>
 
         <div class="filter-toolbar">
-          <div class="filter-top-row">
+          <div class="filter-top-row" id="catalog-search-row">
             <div class="search-box">
               <svg class="search-icon" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                 <circle cx="11" cy="11" r="8" />
@@ -181,15 +311,16 @@
             </label>
           </div>
 
-          <div id="category-tabs" class="category-tabs" role="group" aria-label="Filter kategori produk"></div>
+          <div id="category-tabs" class="category-tabs" role="group" aria-label="Filter kategori produk dan menu lainnya"></div>
         </div>
 
         <div id="product-grid" class="product-grid"></div>
+        <div id="tools-hub-root" hidden></div>
       </section>
 
       <div id="pwa-banner-root" class="pwa-banner-root"></div>
 
-      <section class="faq-section container" aria-labelledby="faq-heading">
+      <section id="faq" class="faq-section container" aria-labelledby="faq-heading">
         <h2 id="faq-heading" class="section-title">Pertanyaan Umum</h2>
         <p class="section-subtitle">Informasi singkat mengenai aktivasi akun, garansi, dan metode pembayaran.</p>
         <div id="faq-list" class="faq-list"></div>
@@ -201,7 +332,7 @@
         <div class="footer-brand">
           <strong class="brand-name">Manifestudio</strong>
           <p>
-            Katalog resmi akun premium &amp; layanan digital. Dikelola oleh tMC Tomy Studio.
+            Katalog resmi akun premium, layanan digital &amp; utilitas harian. Dikelola oleh tMC Tomy Studio.
             © 2026 Manifestudio.
           </p>
         </div>
