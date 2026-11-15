@@ -1,8 +1,9 @@
-const CACHE_NAME = 'manifestudio-cache-v4';
+const CACHE_NAME = 'manifestudio-cache-v5';
 
 const PRECACHE_ASSETS = [
   './',
   './index.html',
+  './order.html',
   './admin.html',
   './data/catalog.json',
   './manifest.webmanifest',
@@ -14,6 +15,7 @@ const PRECACHE_ASSETS = [
   './js/vault.js',
   './js/pwa.js',
   './js/app.js',
+  './js/order.js',
   './js/admin.js',
   './assets/hero-banner.jpg',
   './assets/icons/brand-icon.svg',

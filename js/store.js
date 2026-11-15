@@ -274,6 +274,50 @@ export function buildWhatsAppOrderMessage(params) {
   return encodeURIComponent(buildWhatsAppOrderCaption(params));
 }
 
+export const PENDING_ORDER_STORAGE_KEY = 'manifestudio_pending_order_v1';
+
+export function createOrderSnapshot({
+  orderCode,
+  whatsappNumber = '6285122936027',
+  customerName,
+  whatsappNote = '',
+  paymentOption,
+  cart = [],
+  totals,
+  now = new Date(),
+}) {
+  const safeCart = (Array.isArray(cart) ? cart : []).map((item) => ({
+    productId: item.productId,
+    productName: item.productName,
+    variantId: item.variantId,
+    variantName: item.variantName,
+    price: item.price,
+    logo: item.logo || '',
+    quantity: item.quantity,
+  }));
+  const caption = buildWhatsAppOrderCaption({
+    orderCode,
+    customerName,
+    whatsappNote,
+    paymentOption,
+    cart: safeCart,
+    totals,
+  });
+
+  return {
+    orderCode,
+    createdAt: now instanceof Date ? now.toISOString() : String(now),
+    whatsappNumber: String(whatsappNumber || '6285122936027'),
+    customerName: String(customerName || '').trim(),
+    whatsappNote: String(whatsappNote || '').trim(),
+    paymentOption,
+    cart: safeCart,
+    totals: { ...totals },
+    caption,
+    whatsappUrl: `https://wa.me/${String(whatsappNumber || '6285122936027')}?text=${encodeURIComponent(caption)}`,
+  };
+}
+
 export function slugifyId(text) {
   return String(text || '')
     .toLowerCase()

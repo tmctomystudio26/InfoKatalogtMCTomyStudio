@@ -225,6 +225,7 @@ export function initPwaManager() {
     showIosHelp = !deferredPrompt;
     saveBannerState('expanded');
     render();
+    root.scrollIntoView({ behavior: 'smooth', block: 'center' });
   };
 
   headerInstallBtn?.addEventListener('click', triggerExpand);

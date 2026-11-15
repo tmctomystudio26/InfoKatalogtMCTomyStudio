@@ -6,6 +6,7 @@ import {
   buildWhatsAppOrderCaption,
   buildWhatsAppOrderMessage,
   calculateCartTotals,
+  createOrderSnapshot,
   evaluateVoucher,
   filterProducts,
   formatRupiah,
@@ -243,3 +244,37 @@ test('vault encrypts and decrypts credentials via AES-256-GCM and verifies GitHu
   });
   assert.equal(pushCheck.ok, true);
 });
+
+test('createOrderSnapshot produces serializable handoff payload for dedicated order page', () => {
+  const cart = [
+    {
+      productId: 'canva-pro',
+      productName: 'Canva Pro',
+      variantId: 'canva-1m',
+      variantName: '1 Bulan',
+      price: 3000,
+      quantity: 4,
+    },
+  ];
+  const totals = calculateCartTotals(cart, {
+    paymentOption: 'Bayar Belakangan (Setelah Akun Diterima)',
+    payLaterRate: 0.1,
+  });
+  const snapshot = createOrderSnapshot({
+    orderCode: 'MS-261115-210207',
+    whatsappNumber: '6285122936027',
+    customerName: 'Hhbb',
+    whatsappNote: 'andi@mail.com',
+    paymentOption: 'Bayar Belakangan (Setelah Akun Diterima)',
+    cart,
+    totals,
+  });
+
+  assert.equal(snapshot.orderCode, 'MS-261115-210207');
+  assert.equal(snapshot.totals.total, 13200);
+  assert.equal(snapshot.whatsappUrl.startsWith('https://wa.me/6285122936027?text='), true);
+  const roundTrip = JSON.parse(JSON.stringify(snapshot));
+  assert.equal(roundTrip.cart.length, 1);
+  assert.equal(roundTrip.customerName, 'Hhbb');
+});
+

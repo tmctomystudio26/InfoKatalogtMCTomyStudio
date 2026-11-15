@@ -1,0 +1,155 @@
+<!doctype html>
+<html lang="id" data-theme="dark">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Konfirmasi Pesanan &amp; Struk — Manifestudio</title>
+    <meta
+      name="description"
+      content="Halaman konfirmasi pesanan dan unduh struk otomatis Manifestudio untuk dikirim langsung ke WhatsApp Admin."
+    />
+    <meta name="robots" content="noindex, nofollow" />
+    <meta name="theme-color" content="#090D16" />
+    <link rel="manifest" href="./manifest.webmanifest" />
+    <link rel="icon" type="image/svg+xml" href="./assets/icons/brand-icon.svg" />
+    <link rel="apple-touch-icon" href="./assets/icons/apple-touch-icon.png" />
+
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@500;700&family=Outfit:wght@600;700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+
+    <link rel="stylesheet" href="./css/tokens.css" />
+    <link rel="stylesheet" href="./css/styles.css" />
+  </head>
+  <body>
+    <header class="site-header">
+      <div class="container header-inner">
+        <a href="./index.html" class="brand-link" aria-label="Kembali ke katalog Manifestudio">
+          <img
+            src="./assets/icons/brand-icon.svg"
+            alt="Logo Manifestudio"
+            width="36"
+            height="36"
+            class="brand-mark"
+          />
+          <div class="brand-text">
+            <span class="brand-name">Manifestudio</span>
+            <span class="brand-tagline">Konfirmasi Pesanan</span>
+          </div>
+        </a>
+
+        <div class="header-actions">
+          <button
+            type="button"
+            id="theme-toggle-btn"
+            class="header-btn"
+            aria-label="Ubah tema tampilan"
+          ></button>
+          <a href="./index.html" class="header-btn header-cart-btn">
+            Katalog
+          </a>
+        </div>
+      </div>
+    </header>
+
+    <main class="container order-page-shell">
+      <section id="order-empty-state" class="order-empty-card" hidden>
+        <svg width="42" height="42" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+          <polyline points="14 2 14 8 20 8" />
+          <line x1="9" x2="15" y1="15" y2="15" />
+        </svg>
+        <h1>Belum Ada Pesanan Aktif</h1>
+        <p>
+          Silakan pilih layanan di katalog Manifestudio terlebih dahulu untuk membuat pesanan dan struk otomatis.
+        </p>
+        <a href="./index.html" class="btn btn-primary">Pilih Layanan di Katalog</a>
+      </section>
+
+      <section id="order-ready-view" class="order-page-grid" hidden>
+        <div class="order-summary-col">
+          <div class="order-panel-card">
+            <div class="order-status-head">
+              <div>
+                <p class="order-eyebrow">Pesanan Siap Dikirim</p>
+                <h1 class="order-page-title" id="order-code-heading">MS-000000</h1>
+              </div>
+              <span class="order-size-tag mono-num" id="order-receipt-size">Membuat struk...</span>
+            </div>
+
+            <p class="order-lead">
+              Keranjang belanja Anda telah dikosongkan otomatis untuk pemesanan berikutnya. Silakan kirim rincian pesanan ini ke WhatsApp Admin (<strong>085122936027</strong>).
+            </p>
+
+            <div class="order-actions-stack">
+              <a
+                href="#"
+                target="_blank"
+                rel="noopener noreferrer"
+                class="btn btn-primary btn-full"
+                id="open-whatsapp-link"
+              >
+                Kirim Pesanan ke WhatsApp Admin
+              </a>
+
+              <div class="order-secondary-actions">
+                <a
+                  href="#"
+                  download="struk-manifestudio.jpg"
+                  class="btn btn-secondary btn-sm"
+                  id="download-receipt-btn"
+                >
+                  Unduh Struk (.jpg)
+                </a>
+                <button type="button" class="btn btn-secondary btn-sm" id="copy-order-btn">
+                  Salin Teks
+                </button>
+              </div>
+            </div>
+
+            <p class="order-tip">
+              Saat menekan <strong>Kirim Pesanan ke WhatsApp Admin</strong>, gambar struk belanja otomatis diunduh ke perangkat Anda sambil membuka chat WhatsApp Admin secara langsung.
+            </p>
+          </div>
+
+          <div class="order-panel-card">
+            <h2 class="order-subhead">Ringkasan Transaksi</h2>
+            <div id="order-meta-list" class="order-meta-list"></div>
+            <div id="order-items-summary" class="order-items-summary"></div>
+            <div id="order-totals-summary" class="summary-breakdown"></div>
+          </div>
+
+          <a href="./index.html" class="btn btn-ghost btn-full" id="back-to-catalog-btn">
+            Buat Pesanan Baru / Kembali ke Katalog
+          </a>
+        </div>
+
+        <div class="order-receipt-col">
+          <div class="order-panel-card">
+            <div class="order-receipt-head">
+              <h2 class="order-subhead">Bukti Struk Otomatis</h2>
+              <span class="order-receipt-hint">Format ringan · Siap kirim WhatsApp</span>
+            </div>
+            <div class="receipt-preview-wrap" id="receipt-preview-container">
+              <div class="receipt-loading" id="receipt-loading-text">Menyiapkan gambar struk...</div>
+              <img
+                id="order-receipt-img"
+                src=""
+                alt="Preview struk belanja Manifestudio"
+                class="receipt-preview-img"
+                hidden
+              />
+            </div>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <div id="toast-notification" class="toast-notification" role="status" aria-live="polite" hidden></div>
+
+    <script type="module" src="./js/order.js"></script>
+  </body>
+</html>

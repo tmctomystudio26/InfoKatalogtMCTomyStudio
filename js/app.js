@@ -6,9 +6,10 @@ import {
   loadCatalogData,
 } from './data.js';
 import {
+  PENDING_ORDER_STORAGE_KEY,
   addToCart,
-  buildWhatsAppOrderCaption,
   calculateCartTotals,
+  createOrderSnapshot,
   filterProducts,
   formatRupiah,
   generateOrderCode,
@@ -17,7 +18,6 @@ import {
   updateCartQty,
   validateOrderForm,
 } from './store.js';
-import { generateReceiptImage } from './receipt.js';
 import { initPwaManager } from './pwa.js';
 
 const THEME_STORAGE_KEY = 'manifestudio_theme_v1';
@@ -39,16 +39,7 @@ const state = {
   paymentOption: initialCatalog.paymentOptions[0]?.id || 'Bayar Sekarang',
   whatsappNote: '',
   checkoutError: '',
-  isGeneratingReceipt: false,
-  generatedOrderCode: '',
-  generatedOrderUrl: '',
-  generatedOrderSummary: '',
-  receiptUrl: '',
-  receiptFile: null,
-  receiptFileName: '',
-  receiptSizeKb: 0,
-  receiptGetPngBlob: null,
-  copiedNotice: false,
+  isSubmittingOrder: false,
   activeProductId: null,
   isCartOpen: false,
   openFaqIndex: 0,
@@ -78,6 +69,23 @@ function getFaqItems() {
   return state.catalog.faqItems || [];
 }
 
+function readPersistedCart() {
+  try {
+    const savedCart = localStorage.getItem(CART_STORAGE_KEY);
+    if (savedCart) {
+      const parsed = JSON.parse(savedCart);
+      if (Array.isArray(parsed)) {
+        return parsed.filter(
+          (item) => item && item.productId && item.variantId && Number.isFinite(item.quantity)
+        );
+      }
+    }
+  } catch {
+    // Graceful fallback
+  }
+  return [];
+}
+
 function loadPersistedState() {
   try {
     const savedTheme = localStorage.getItem(THEME_STORAGE_KEY);
@@ -87,15 +95,7 @@ function loadPersistedState() {
       state.theme = 'light';
     }
 
-    const savedCart = localStorage.getItem(CART_STORAGE_KEY);
-    if (savedCart) {
-      const parsed = JSON.parse(savedCart);
-      if (Array.isArray(parsed)) {
-        state.cart = parsed.filter(
-          (item) => item && item.productId && item.variantId && Number.isFinite(item.quantity)
-        );
-      }
-    }
+    state.cart = readPersistedCart();
 
     const savedName = localStorage.getItem(NAME_STORAGE_KEY);
     if (savedName) {
@@ -130,6 +130,20 @@ function saveCustomerName(name) {
   }
 }
 
+function persistPendingOrder(snapshot) {
+  const serialized = JSON.stringify(snapshot);
+  try {
+    sessionStorage.setItem(PENDING_ORDER_STORAGE_KEY, serialized);
+  } catch {
+    // Ignore
+  }
+  try {
+    localStorage.setItem(PENDING_ORDER_STORAGE_KEY, serialized);
+  } catch {
+    // Ignore
+  }
+}
+
 function escapeHtml(str) {
   return String(str)
     .replaceAll('&', '&amp;')
@@ -153,8 +167,8 @@ function applyTheme() {
       isDark ? 'Aktifkan mode terang' : 'Aktifkan mode gelap'
     );
     themeBtn.innerHTML = isDark
-      ? `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.93 4.93 1.41 1.41"/><path d="m17.66 17.66 1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="m6.34 17.66-1.41 1.41"/><path d="m19.07 4.93-1.41 1.41"/></svg><span class="hide-xs">Terang</span>`
-      : `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></svg><span class="hide-xs">Gelap</span>`;
+      ? `<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.93 4.93 1.41 1.41"/><path d="m17.66 17.66 1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="m6.34 17.66-1.41 1.41"/><path d="m19.07 4.93-1.41 1.41"/></svg><span class="hide-xs">Terang</span>`
+      : `<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></svg><span class="hide-xs">Gelap</span>`;
   }
 }
 
@@ -162,19 +176,21 @@ function renderCategories() {
   const container = document.getElementById('category-tabs');
   if (!container) return;
 
-  container.innerHTML = getCategories().map((cat) => {
-    const active = state.category === cat.id;
-    return `
-      <button
-        type="button"
-        class="cat-tab ${active ? 'is-active' : ''}"
-        data-category="${escapeHtml(cat.id)}"
-        aria-pressed="${active}"
-      >
-        ${escapeHtml(cat.label)}
-      </button>
-    `;
-  }).join('');
+  container.innerHTML = getCategories()
+    .map((cat) => {
+      const active = state.category === cat.id;
+      return `
+        <button
+          type="button"
+          class="cat-tab ${active ? 'is-active' : ''}"
+          data-category="${escapeHtml(cat.id)}"
+          aria-pressed="${active}"
+        >
+          ${escapeHtml(cat.label)}
+        </button>
+      `;
+    })
+    .join('');
 
   container.querySelectorAll('.cat-tab').forEach((btn) => {
     btn.addEventListener('click', () => {
@@ -197,13 +213,13 @@ function renderCatalog() {
   });
 
   if (countLabel) {
-    countLabel.textContent = `${filtered.length} layanan tersedia`;
+    countLabel.textContent = `${filtered.length} layanan`;
   }
 
   if (filtered.length === 0) {
     grid.innerHTML = `
       <div class="empty-state">
-        <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+        <svg width="38" height="38" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
         <h3>Layanan tidak ditemukan</h3>
         <p>Coba kata kunci lain atau pilih kategori "Semua Layanan" untuk melihat seluruh katalog.</p>
         <button type="button" class="btn btn-secondary btn-sm" id="reset-filters-btn">Reset Filter</button>
@@ -215,6 +231,8 @@ function renderCatalog() {
       state.inStockOnly = false;
       const searchEl = document.getElementById('catalog-search');
       if (searchEl) searchEl.value = '';
+      const clearBtn = document.getElementById('clear-search-btn');
+      if (clearBtn) clearBtn.hidden = true;
       const stockToggle = document.getElementById('in-stock-toggle');
       if (stockToggle) stockToggle.checked = false;
       renderCategories();
@@ -227,67 +245,46 @@ function renderCatalog() {
     .map((product) => {
       const startPrice = getStartingPrice(product);
       const isCustom = product.category === 'custom';
-      const priceDisplay = isCustom
-        ? 'Harga Fleksibel'
-        : `Mulai ${formatRupiah(startPrice)}`;
+      const priceDisplay = isCustom ? 'Fleksibel' : `Mulai ${formatRupiah(startPrice)}`;
 
-      const statusClass = product.outOfStock
-        ? 'status-restock'
-        : product.isBestSeller
-        ? 'status-hot'
-        : 'status-ready';
-
-      const statusText = product.outOfStock
+      const quietNote = product.outOfStock
         ? product.restockMessage || 'Segera Restock'
-        : product.tag || 'Tersedia';
-
-      const variantCount = product.variants.length;
+        : product.isBestSeller
+        ? 'Terlaris'
+        : `${product.variants.length} paket`;
 
       return `
-        <article class="product-card ${product.outOfStock ? 'is-restock' : ''}">
-          <div class="product-card-head">
-            <div class="product-logo-wrap">
-              <img
-                src="${escapeHtml(product.logo)}"
-                alt="Logo ${escapeHtml(product.name)}"
-                width="48"
-                height="48"
-                loading="lazy"
-              />
-            </div>
-            <div class="product-status ${statusClass}">
-              <span class="status-dot" aria-hidden="true"></span>
-              <span>${escapeHtml(statusText)}</span>
-            </div>
+        <button
+          type="button"
+          class="product-tile ${product.outOfStock ? 'is-restock' : ''}"
+          data-product-id="${escapeHtml(product.id)}"
+          aria-label="${escapeHtml(product.name)} — ${escapeHtml(priceDisplay)}"
+        >
+          <div class="tile-stage">
+            <img
+              src="${escapeHtml(product.logo)}"
+              alt="${escapeHtml(product.name)}"
+              width="58"
+              height="58"
+              loading="lazy"
+              class="tile-logo"
+            />
           </div>
-
-          <div class="product-card-body">
-            <h3 class="product-title">${escapeHtml(product.name)}</h3>
-            <p class="product-summary">${escapeHtml(product.summary)}</p>
+          <div class="tile-body">
+            <span class="tile-title">${escapeHtml(product.name)}</span>
+            <span class="tile-price mono-num">${escapeHtml(priceDisplay)}</span>
+            <span class="tile-kicker ${product.outOfStock ? 'is-warn' : product.isBestSeller ? 'is-hot' : ''}">
+              ${escapeHtml(quietNote)}
+            </span>
           </div>
-
-          <div class="product-card-foot">
-            <div class="product-price-col">
-              <span class="price-caption">${variantCount} opsi paket</span>
-              <span class="price-value">${escapeHtml(priceDisplay)}</span>
-            </div>
-            <button
-              type="button"
-              class="btn ${product.outOfStock ? 'btn-secondary' : 'btn-primary'} btn-sm select-product-btn"
-              data-product-id="${escapeHtml(product.id)}"
-              aria-label="${product.outOfStock ? 'Lihat detail' : 'Pilih paket'} ${escapeHtml(product.name)}"
-            >
-              ${product.outOfStock ? 'Lihat Detail' : isCustom ? 'Ajukan Request' : 'Pilih Paket'}
-            </button>
-          </div>
-        </article>
+        </button>
       `;
     })
     .join('');
 
-  grid.querySelectorAll('.select-product-btn').forEach((btn) => {
-    btn.addEventListener('click', () => {
-      const id = btn.getAttribute('data-product-id');
+  grid.querySelectorAll('.product-tile').forEach((tile) => {
+    tile.addEventListener('click', () => {
+      const id = tile.getAttribute('data-product-id');
       if (id) openProductModal(id);
     });
   });
@@ -329,10 +326,14 @@ function renderProductModal() {
           ? `<span class="variant-old-price">${escapeHtml(formatRupiah(variant.oldPrice))}</span>`
           : '';
       const unavailable = Boolean(variant.outOfStock);
+      const inCartItem = state.cart.find(
+        (item) => item.productId === product.id && item.variantId === variant.id
+      );
+      const qtyInCart = inCartItem ? inCartItem.quantity : 0;
 
       return `
-        <div class="variant-row ${unavailable ? 'is-disabled' : ''}">
-          <div class="variant-info">
+        <div class="variant-card ${unavailable ? 'is-disabled' : ''} ${qtyInCart > 0 ? 'is-in-cart' : ''}">
+          <div class="variant-card-top">
             <div class="variant-name">${escapeHtml(variant.name)}</div>
             ${
               variant.description
@@ -345,19 +346,20 @@ function renderProductModal() {
                 : ''
             }
           </div>
-          <div class="variant-action">
+
+          <div class="variant-card-foot">
             <div class="variant-price-stack">
               ${oldPriceHtml}
               <span class="variant-price">${escapeHtml(priceLabel)}</span>
             </div>
             <button
               type="button"
-              class="btn ${unavailable ? 'btn-secondary' : 'btn-primary'} btn-sm add-variant-btn"
+              class="btn ${unavailable ? 'btn-secondary' : qtyInCart > 0 ? 'btn-secondary' : 'btn-primary'} btn-sm add-variant-btn"
               data-variant-id="${escapeHtml(variant.id)}"
               ${unavailable ? 'disabled' : ''}
               aria-label="Tambah ${escapeHtml(product.name)} ${escapeHtml(variant.name)} ke keranjang"
             >
-              ${unavailable ? 'Habis' : '+ Tambah'}
+              ${unavailable ? 'Habis' : qtyInCart > 0 ? `+ Tambah (${qtyInCart})` : '+ Tambah'}
             </button>
           </div>
         </div>
@@ -392,14 +394,14 @@ function renderProductModal() {
           : ''
       }
 
-      <div class="variant-list">
+      <div class="variant-grid">
         ${variantsHtml}
       </div>
 
       <div class="modal-footer">
-        <span class="modal-hint">Pesanan diproses cepat via WhatsApp Admin</span>
-        <button type="button" class="btn btn-secondary btn-sm" id="modal-open-cart-btn">
-          Lihat Keranjang (${calculateCartTotals(state.cart).itemCount})
+        <span class="modal-hint">Pilih satu atau beberapa nominal paket</span>
+        <button type="button" class="btn btn-primary btn-sm" id="modal-open-cart-btn">
+          Checkout (${calculateCartTotals(state.cart).itemCount})
         </button>
       </div>
     </div>
@@ -426,16 +428,20 @@ function renderProductModal() {
         price: variant.price,
         logo: product.logo,
       });
-      clearGeneratedOrder();
       state.checkoutError = '';
       saveCart();
       updateCartBadges();
 
-      btn.textContent = 'Ditambahkan';
-      btn.classList.add('is-added');
+      const updatedQty =
+        state.cart.find((i) => i.productId === product.id && i.variantId === variant.id)?.quantity || 1;
+      btn.textContent = `+ Tambah (${updatedQty})`;
+      btn.classList.remove('btn-primary');
+      btn.classList.add('btn-secondary', 'is-added');
+      btn.closest('.variant-card')?.classList.add('is-in-cart');
+
       const openCartShortcut = overlay.querySelector('#modal-open-cart-btn');
       if (openCartShortcut) {
-        openCartShortcut.textContent = `Buka Keranjang (${calculateCartTotals(state.cart).itemCount})`;
+        openCartShortcut.textContent = `Checkout (${calculateCartTotals(state.cart).itemCount})`;
       }
       showToast(`${product.name} (${variant.name}) masuk keranjang`);
     });
@@ -462,25 +468,6 @@ function getCartTotals() {
     paymentOption: state.paymentOption,
     payLaterRate: brand.payLaterSurchargeRate ?? PAY_LATER_SURCHARGE_RATE,
   });
-}
-
-function clearGeneratedOrder() {
-  if (state.receiptUrl) {
-    try {
-      URL.revokeObjectURL(state.receiptUrl);
-    } catch {
-      // Ignore
-    }
-  }
-  state.generatedOrderCode = '';
-  state.generatedOrderUrl = '';
-  state.generatedOrderSummary = '';
-  state.receiptUrl = '';
-  state.receiptFile = null;
-  state.receiptFileName = '';
-  state.receiptSizeKb = 0;
-  state.receiptGetPngBlob = null;
-  state.copiedNotice = false;
 }
 
 function updateCartBadges() {
@@ -559,108 +546,6 @@ function buildPayLaterNoticeHtml(totals) {
   `;
 }
 
-function triggerReceiptDownload() {
-  if (!state.receiptUrl || !state.receiptFileName) return;
-  const a = document.createElement('a');
-  a.href = state.receiptUrl;
-  a.download = state.receiptFileName;
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
-}
-
-function copyReceiptPngInBackground() {
-  if (
-    !state.receiptGetPngBlob ||
-    typeof ClipboardItem === 'undefined' ||
-    !navigator.clipboard?.write
-  ) {
-    return;
-  }
-  state
-    .receiptGetPngBlob()
-    .then((pngBlob) => {
-      if (pngBlob) {
-        return navigator.clipboard.write([new ClipboardItem({ 'image/png': pngBlob })]);
-      }
-      return undefined;
-    })
-    .catch(() => {
-      // Optional enhancement: file download already succeeded
-    });
-}
-
-function buildOrderReadySlotHtml() {
-  if (!state.generatedOrderUrl || !state.receiptUrl) return '';
-
-  return `
-    <div class="order-ready-box" role="status">
-      <div class="order-ready-head">
-        <div>
-          <p class="order-ready-title">Pesanan Siap (${escapeHtml(state.generatedOrderCode)})</p>
-          <p class="order-ready-desc">
-            Struk belanja otomatis (${state.receiptSizeKb} KB) siap diunduh sambil langsung membuka WhatsApp Admin 085122936027.
-          </p>
-        </div>
-      </div>
-
-      <div class="receipt-preview-wrap">
-        <img
-          src="${escapeHtml(state.receiptUrl)}"
-          alt="Preview struk belanja Manifestudio ${escapeHtml(state.generatedOrderCode)}"
-          class="receipt-preview-img"
-        />
-      </div>
-
-      <div class="order-ready-actions">
-        <a
-          href="${escapeHtml(state.generatedOrderUrl)}"
-          target="_blank"
-          rel="noopener noreferrer"
-          class="btn btn-primary btn-sm"
-          id="open-whatsapp-link"
-        >
-          Kirim Pesanan ke WhatsApp
-        </a>
-        <a
-          href="${escapeHtml(state.receiptUrl)}"
-          download="${escapeHtml(state.receiptFileName)}"
-          class="btn btn-secondary btn-sm"
-          id="download-receipt-btn"
-        >
-          Unduh Struk
-        </a>
-        <button type="button" class="btn btn-secondary btn-sm" id="copy-order-btn">
-          ${state.copiedNotice ? 'Teks Tersalin' : 'Salin Teks'}
-        </button>
-      </div>
-      <p class="order-ready-tip">
-        Tombol di atas langsung menuju WhatsApp Admin (085122936027) dengan rincian teks rapi sambil mengunduh gambar struk otomatis ke perangkat Anda.
-      </p>
-    </div>
-  `;
-}
-
-function bindOrderReadyActions(drawerRoot) {
-  drawerRoot.querySelector('#open-whatsapp-link')?.addEventListener('click', () => {
-    triggerReceiptDownload();
-    copyReceiptPngInBackground();
-    showToast('Struk diunduh otomatis — mengarahkan ke WhatsApp Admin...');
-  });
-
-  drawerRoot.querySelector('#copy-order-btn')?.addEventListener('click', async () => {
-    if (!state.generatedOrderSummary) return;
-    try {
-      await navigator.clipboard.writeText(state.generatedOrderSummary);
-      state.copiedNotice = true;
-      const btn = drawerRoot.querySelector('#copy-order-btn');
-      if (btn) btn.textContent = 'Teks Tersalin';
-    } catch {
-      showToast('Salin teks gagal, gunakan tombol Unduh Struk.');
-    }
-  });
-}
-
 function syncCheckoutDynamicParts(drawerRoot) {
   if (!drawerRoot) return;
   const brand = getBrand();
@@ -717,14 +602,8 @@ function syncCheckoutDynamicParts(drawerRoot) {
 
   const submitBtn = drawerRoot.querySelector('#checkout-submit-btn');
   if (submitBtn) {
-    submitBtn.disabled = state.isGeneratingReceipt;
-    submitBtn.textContent = state.isGeneratingReceipt ? 'Menyiapkan Struk...' : 'Buat Pesanan';
-  }
-
-  const readySlot = drawerRoot.querySelector('#order-ready-slot');
-  if (readySlot) {
-    readySlot.innerHTML = buildOrderReadySlotHtml();
-    bindOrderReadyActions(drawerRoot);
+    submitBtn.disabled = state.isSubmittingOrder;
+    submitBtn.textContent = state.isSubmittingOrder ? 'Memproses Pesanan...' : 'Buat Pesanan';
   }
 }
 
@@ -740,7 +619,6 @@ function renderCartDrawer() {
     return;
   }
 
-  // Preserve drawer and outer window scroll positions across structural re-renders
   const prevDrawerScroll = drawerRoot.querySelector('.drawer-body')?.scrollTop || 0;
   const prevWindowY = window.scrollY;
 
@@ -758,7 +636,7 @@ function renderCartDrawer() {
         <div class="cart-empty">
           <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="8" cy="21" r="1"/><circle cx="19" cy="21" r="1"/><path d="M2.05 2.05h2l2.66 12.42a2 2 0 0 0 2 1.58h9.78a2 2 0 0 0 1.95-1.57l1.65-7.43H5.12"/></svg>
           <p>Keranjang belanja masih kosong.</p>
-          <span>Pilih paket aplikasi favorit Anda dari katalog.</span>
+          <span>Pilih layanan di katalog untuk membuat pesanan baru.</span>
         </div>
       `
       : state.cart
@@ -807,26 +685,28 @@ function renderCartDrawer() {
           )
           .join('');
 
-  const paymentHtml = getPaymentOptions().map((opt) => {
-    const checked = state.paymentOption === opt.id;
-    return `
-      <label class="payment-option ${checked ? 'is-selected' : ''}">
-        <input
-          type="radio"
-          name="paymentOption"
-          value="${escapeHtml(opt.id)}"
-          ${checked ? 'checked' : ''}
-        />
-        <div class="payment-option-body">
-          <div class="payment-title-row">
-            <span class="payment-title">${escapeHtml(opt.label)}</span>
-            <span class="payment-fee-tag ${opt.surchargeRate > 0 ? 'is-surcharge' : ''}">${escapeHtml(opt.badge || '')}</span>
+  const paymentHtml = getPaymentOptions()
+    .map((opt) => {
+      const checked = state.paymentOption === opt.id;
+      return `
+        <label class="payment-option ${checked ? 'is-selected' : ''}">
+          <input
+            type="radio"
+            name="paymentOption"
+            value="${escapeHtml(opt.id)}"
+            ${checked ? 'checked' : ''}
+          />
+          <div class="payment-option-body">
+            <div class="payment-title-row">
+              <span class="payment-title">${escapeHtml(opt.label)}</span>
+              <span class="payment-fee-tag ${opt.surchargeRate > 0 ? 'is-surcharge' : ''}">${escapeHtml(opt.badge || '')}</span>
+            </div>
+            <span class="payment-note">${escapeHtml(opt.note)}</span>
           </div>
-          <span class="payment-note">${escapeHtml(opt.note)}</span>
-        </div>
-      </label>
-    `;
-  }).join('');
+        </label>
+      `;
+    })
+    .join('');
 
   drawerRoot.innerHTML = `
     <div class="drawer-backdrop" id="cart-backdrop"></div>
@@ -928,10 +808,6 @@ function renderCartDrawer() {
             <button type="submit" id="checkout-submit-btn" class="btn btn-primary btn-full">
               Buat Pesanan
             </button>
-
-            <div id="order-ready-slot">
-              ${buildOrderReadySlotHtml()}
-            </div>
           </form>
         `
             : ''
@@ -940,7 +816,6 @@ function renderCartDrawer() {
     </aside>
   `;
 
-  // Restore scroll positions cleanly so nothing ever jumps to top
   const nextDrawerBody = drawerRoot.querySelector('.drawer-body');
   if (nextDrawerBody && prevDrawerScroll > 0) {
     nextDrawerBody.scrollTop = prevDrawerScroll;
@@ -966,7 +841,6 @@ function renderCartDrawer() {
       } else if (action === 'remove') {
         state.cart = removeFromCart(state.cart, productId, variantId);
       }
-      clearGeneratedOrder();
       saveCart();
       renderCartDrawer();
     });
@@ -984,7 +858,6 @@ function renderCartDrawer() {
   const voucherInput = drawerRoot.querySelector('#checkout-voucher');
   voucherInput?.addEventListener('input', (e) => {
     state.voucherCode = e.target.value;
-    clearGeneratedOrder();
     syncCheckoutDynamicParts(drawerRoot);
   });
 
@@ -993,26 +866,22 @@ function renderCartDrawer() {
       state.voucherCode = voucherInput.value.trim().toUpperCase();
       voucherInput.value = state.voucherCode;
     }
-    clearGeneratedOrder();
     syncCheckoutDynamicParts(drawerRoot);
   });
 
   const noteInput = drawerRoot.querySelector('#checkout-note');
   noteInput?.addEventListener('input', (e) => {
     state.whatsappNote = e.target.value;
-    clearGeneratedOrder();
   });
 
-  // Update payment selection IN PLACE without rebuilding drawer DOM -> prevents scroll-to-top bug
   drawerRoot.querySelectorAll('input[name="paymentOption"]').forEach((radio) => {
     radio.addEventListener('change', (e) => {
       state.paymentOption = e.target.value;
-      clearGeneratedOrder();
       syncCheckoutDynamicParts(drawerRoot);
     });
   });
 
-  drawerRoot.querySelector('#checkout-form')?.addEventListener('submit', async (e) => {
+  drawerRoot.querySelector('#checkout-form')?.addEventListener('submit', (e) => {
     e.preventDefault();
     const validation = validateOrderForm({
       customerName: state.customerName,
@@ -1022,19 +891,21 @@ function renderCartDrawer() {
 
     if (!validation.valid) {
       state.checkoutError = validation.error || 'Periksa kembali data pesanan.';
-      clearGeneratedOrder();
       syncCheckoutDynamicParts(drawerRoot);
       return;
     }
 
     state.checkoutError = '';
-    state.isGeneratingReceipt = true;
+    state.isSubmittingOrder = true;
     syncCheckoutDynamicParts(drawerRoot);
 
     const activeTotals = getCartTotals();
     const orderCode = generateOrderCode();
-    const caption = buildWhatsAppOrderCaption({
+    const brand = getBrand();
+
+    const snapshot = createOrderSnapshot({
       orderCode,
+      whatsappNumber: brand.whatsappNumber,
       customerName: state.customerName,
       whatsappNote: state.whatsappNote,
       paymentOption: state.paymentOption,
@@ -1042,65 +913,47 @@ function renderCartDrawer() {
       totals: activeTotals,
     });
 
-    try {
-      const receipt = await generateReceiptImage({
-        orderCode,
-        customerName: state.customerName,
-        whatsappNote: state.whatsappNote,
-        paymentOption: state.paymentOption,
-        cart: state.cart,
-        totals: activeTotals,
-      });
+    persistPendingOrder(snapshot);
 
-      clearGeneratedOrder();
-      const brand = getBrand();
-      state.generatedOrderCode = orderCode;
-      state.generatedOrderSummary = caption;
-      state.generatedOrderUrl = `https://wa.me/${brand.whatsappNumber}?text=${encodeURIComponent(caption)}`;
-      state.receiptUrl = receipt.objectUrl;
-      state.receiptFile = receipt.file;
-      state.receiptFileName = receipt.fileName;
-      state.receiptSizeKb = receipt.sizeKb;
-      state.receiptGetPngBlob = receipt.getPngBlob;
-    } catch {
-      clearGeneratedOrder();
-      state.checkoutError = 'Gagal menyiapkan gambar struk. Silakan coba lagi.';
-    } finally {
-      state.isGeneratingReceipt = false;
-      syncCheckoutDynamicParts(drawerRoot);
-      const readyEl = drawerRoot.querySelector('#order-ready-slot .order-ready-box');
-      if (readyEl) {
-        readyEl.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-      }
-    }
+    // Clear cart immediately so reopening storefront starts fresh for a new order
+    state.cart = [];
+    state.voucherCode = '';
+    state.whatsappNote = '';
+    state.checkoutError = '';
+    state.isSubmittingOrder = false;
+    state.isCartOpen = false;
+    saveCart();
+    updateCartBadges();
+
+    window.location.href = './order.html';
   });
-
-  bindOrderReadyActions(drawerRoot);
 }
 
 function renderFaq() {
   const container = document.getElementById('faq-list');
   if (!container) return;
 
-  container.innerHTML = getFaqItems().map((item, idx) => {
-    const isOpen = state.openFaqIndex === idx;
-    return `
-      <div class="faq-item ${isOpen ? 'is-open' : ''}">
-        <button
-          type="button"
-          class="faq-trigger"
-          data-faq-idx="${idx}"
-          aria-expanded="${isOpen}"
-        >
-          <span>${escapeHtml(item.question)}</span>
-          <svg class="faq-chevron" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
-        </button>
-        <div class="faq-panel" ${isOpen ? '' : 'hidden'}>
-          <p>${escapeHtml(item.answer)}</p>
+  container.innerHTML = getFaqItems()
+    .map((item, idx) => {
+      const isOpen = state.openFaqIndex === idx;
+      return `
+        <div class="faq-item ${isOpen ? 'is-open' : ''}">
+          <button
+            type="button"
+            class="faq-trigger"
+            data-faq-idx="${idx}"
+            aria-expanded="${isOpen}"
+          >
+            <span>${escapeHtml(item.question)}</span>
+            <svg class="faq-chevron" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
+          </button>
+          <div class="faq-panel" ${isOpen ? '' : 'hidden'}>
+            <p>${escapeHtml(item.answer)}</p>
+          </div>
         </div>
-      </div>
-    `;
-  }).join('');
+      `;
+    })
+    .join('');
 
   container.querySelectorAll('.faq-trigger').forEach((btn) => {
     btn.addEventListener('click', () => {
@@ -1167,6 +1020,13 @@ function bindGlobalEvents() {
       if (state.activeProductId) closeProductModal();
       else if (state.isCartOpen) closeCartDrawer();
     }
+  });
+
+  // Sync persisted cart when returning via browser back/bfcache after checkout
+  window.addEventListener('pageshow', () => {
+    state.cart = readPersistedCart();
+    state.isSubmittingOrder = false;
+    renderAllStorefrontViews();
   });
 }
 
