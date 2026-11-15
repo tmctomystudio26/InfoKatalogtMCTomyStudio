@@ -1,6 +1,6 @@
 # Roadmap & Peta Pengembangan Proyek Manifestudio
 
-Dokumen ini adalah panduan resmi arsitektur, pencapaian implementasi, serta arah pengembangan selanjutnya bagi pengembang (**manusia, tim IT, maupun AI assistant**) pada repositori statis **Manifestudio** (`https://tmctomystudio26.github.io/InfoKatalogtMCTomyStudio/`). Lihat `BLUEPRINT.md` untuk detail kontrak API, struktur file, dan aturan koding teknis.
+Dokumen ini adalah panduan resmi arsitektur, pencapaian implementasi, serta arah pengembangan selanjutnya bagi pengembang (**manusia, tim IT, maupun AI assistant**) pada repositori statis **Manifestudio** (`https://manifestudio.my.id/`). Lihat `BLUEPRINT.md` untuk detail kontrak API, struktur file, dan aturan koding teknis.
 
 ---
 
@@ -40,7 +40,8 @@ Dokumen ini adalah panduan resmi arsitektur, pencapaian implementasi, serta arah
 - [x] **Pemutar Musik Pintar Bebas Iklan Full Version**:
   - Ikon musik dapat digeser bebas (*draggable*) ke posisi mana pun dan posisinya tersimpan persisten.
   - Memutar lagu **Full Version (`>= 75 detik`)** tanpa terpotong 30 detik (prioritas Viral Indonesia Gen-Z, DJ remix, cover via Audius + pilihan embed **SoundCloud Player** & **Spotify Embed Player**).
-- [x] **OpenGraph WhatsApp/Sosmed Ready**: Thumbnail `1200×630` baseline JPEG `< 110 KB` dengan URL absolut HTTPS agar muncul penuh di pratinjau WhatsApp & Telegram.
+- [x] **OpenGraph WhatsApp/Sosmed Ready**: Thumbnail `1200×630` baseline JPEG `< 110 KB` dengan URL absolut HTTPS (`https://manifestudio.my.id/`) agar muncul penuh di pratinjau WhatsApp & Telegram.
+- [x] **Custom Domain & HTTPS Aktif**: Domain `manifestudio.my.id` terhubung melalui Cloudflare DNS ke GitHub Pages (`CNAME` + Enforce HTTPS).
 
 ---
 
@@ -58,7 +59,7 @@ Dokumen ini adalah panduan resmi arsitektur, pencapaian implementasi, serta arah
 2. **Riwayat Speedtest & Ekspor Laporan**:
    - Menyimpan 5 hasil pengujian Speedtest terakhir untuk perbandingan kecepatan ISP pagi/malam.
 3. **Subdomain Terpisah Opsional (Future Scaling)**:
-   - Jika kelak repositori dipindahkan ke domain kustom (`manifestudio.id`), arahkan route `tools.manifestudio.id` ke `tools.html` sebagai micro-app terpisah sesuai saran fase lanjut.
+   - Untuk memisahkan `tools.html` ke subdomain **`tools.manifestudio.my.id`**, dapat dilakukan via Cloudflare Redirect Rules atau repositori GitHub Pages pendamping.
 
 ---
 

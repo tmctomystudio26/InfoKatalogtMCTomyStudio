@@ -6,8 +6,8 @@ Dokumen teknis terpadu bagi **Tim IT, Human Developer, maupun AI Coding Agent** 
 
 ## 1. Tujuan & Filosofi Sistem
 
-1. **Zero-Backend Public Hosting (100% GitHub Pages Ready)**:
-   Seluruh aplikasi berjalan murni di browser (*Static HTML/CSS + Native ES Modules*) agar bisa langsung rilis di `https://tmctomystudio26.github.io/InfoKatalogtMCTomyStudio/` tanpa menyewa server VPS/database.
+1. **Zero-Backend Public Hosting (100% GitHub Pages + Custom Domain Ready)**:
+   Seluruh aplikasi berjalan murni di browser (*Static HTML/CSS + Native ES Modules*) dan tayang di **`https://manifestudio.my.id/`** (melalui GitHub Pages + file `CNAME` + Cloudflare DNS) tanpa menyewa server VPS/database.
 2. **Pemisahan Halaman Clean & Modular**:
    - **Storefront (`index.html`)**: Fokus penuh pada pencarian, filter, banner geser Gen-Z, dan belanja cepat ala top-up store.
    - **Order Konfirmasi (`order.html`)**: Halaman invoice terpisah + HTML5 Canvas struk JPEG `< 60 KB` + WhatsApp handoff.
@@ -33,7 +33,8 @@ Dokumen teknis terpadu bagi **Tim IT, Human Developer, maupun AI Coding Agent** 
 | `js/downloader.js` | Adapter TikTok No-Watermark, YouTube MP4/MP3, Facebook HD/SD, & Instagram Reels/Post | `tools-logic.js` |
 | `js/music.js` + `js/music-logic.js` | Widget musik draggable, algoritma preferensi pencarian & play, **Full Audio** (Audius), **SoundCloud Widget**, **Spotify Embed** | Audius / SoundCloud Widget / Spotify |
 | `data/catalog.json` | Sumber kebenaran (*Single Source of Truth*) katalog produk, urutan posisi, logo, voucher, dan FAQ | Service Worker Network-First |
-| `sw.js` + `manifest.webmanifest` | Offline cache asset (`manifestudio-cache-v10`) & instalasi PWA | — |
+| `sw.js` + `manifest.webmanifest` | Offline cache asset (`manifestudio-cache-v11`) & instalasi PWA | — |
+| `CNAME` | Konfigurasi domain kustom resmi GitHub Pages (`manifestudio.my.id`) — jangan dihapus | Cloudflare DNS |
 
 ---
 
@@ -90,7 +91,8 @@ Semua integrasi pihak ketiga berjalan murni *client-side* tanpa API key rahasia:
 
 1. **Path Relatif vs OpenGraph Absolut**:
    - Seluruh aset di HTML/JS/CSS (`img`, `script`, `fetch`) **wajib** memakai path relatif `./`.
-   - Tag **OpenGraph & Canonical (`og:url`, `og:image`, `og:image:secure_url`, `twitter:image`, Schema.org)** **wajib** memakai URL absolut HTTPS lengkap menuju `https://tmctomystudio26.github.io/InfoKatalogtMCTomyStudio/assets/og-manifestudio.jpg?v=2` (JPEG baseline non-interlaced `1200×630` `< 300 KB`) agar WhatsApp & Telegram menampilkan gambar pratinjau.
+   - Tag **OpenGraph & Canonical (`og:url`, `og:image`, `og:image:secure_url`, `twitter:image`, Schema.org)** **wajib** memakai URL absolut HTTPS lengkap menuju `https://manifestudio.my.id/assets/og-manifestudio.jpg?v=3` (JPEG baseline non-interlaced `1200×630` `< 300 KB`) agar WhatsApp & Telegram menampilkan gambar pratinjau.
+   - Jangan pernah menghapus file `CNAME` (`manifestudio.my.id`) agar domain kustom GitHub Pages tetap terpasang setiap kali deploy.
 2. **Responsif Tombol Admin Mobile**:
    - Jangan memakai `white-space: nowrap` pada tombol multi-kata di grid mobile `< 640px`. Gunakan `white-space: normal; word-break: break-word; min-width: 0; height: auto;` agar teks panjang seperti `"Ganti Token / Reset Brankas"` tidak pernah offside.
 3. **Verifikasi Wajib Sebelum Push**:
