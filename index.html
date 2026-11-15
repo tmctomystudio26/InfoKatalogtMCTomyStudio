@@ -45,6 +45,14 @@
       Mode offline aktif — Anda tetap dapat melihat katalog dan menyusun pesanan, lalu kirim saat terhubung kembali.
     </div>
 
+    <div id="admin-preview-banner" class="admin-preview-bar" role="status" hidden>
+      <span>Mode Pratinjau Admin aktif (perubahan lokal belum dipublikasikan ke GitHub).</span>
+      <div class="admin-preview-actions">
+        <a href="./admin.html" class="preview-link-btn">Kembali ke Panel Admin</a>
+        <button type="button" id="exit-preview-btn" class="preview-link-btn">Tutup Pratinjau</button>
+      </div>
+    </div>
+
     <header class="site-header">
       <div class="container header-inner">
         <a href="#top" class="brand-link" aria-label="Beranda Manifestudio">
@@ -264,6 +272,9 @@
           <button type="button" id="footer-install-link" class="footer-link-btn">
             Install Aplikasi PWA
           </button>
+          <a href="./admin.html" class="footer-link-btn">
+            Panel Admin
+          </a>
         </div>
       </div>
     </footer>

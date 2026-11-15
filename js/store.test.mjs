@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { PRODUCTS, VOUCHERS } from './data.js';
+import { getDefaultCatalogSnapshot, PRODUCTS, VOUCHERS } from './data.js';
 import {
   addToCart,
   buildWhatsAppOrderCaption,
@@ -11,7 +11,9 @@ import {
   formatRupiah,
   getStartingPrice,
   removeFromCart,
+  toggleProductStockInCatalog,
   updateCartQty,
+  upsertProductInCatalog,
   validateOrderForm,
 } from './store.js';
 
@@ -101,7 +103,6 @@ test('evaluateVoucher and Pay Later 10% surcharge compute accurately', () => {
       quantity: 1,
     },
   ];
-  // Subtotal 30.000 - voucher HEMAT2K (2.000) = 28.000; +10% Pay Later = +2.800 -> 30.800
   const payLaterTotals = calculateCartTotals(cart, {
     voucherCode: 'HEMAT2K',
     vouchers: VOUCHERS,
@@ -114,7 +115,7 @@ test('evaluateVoucher and Pay Later 10% surcharge compute accurately', () => {
   assert.equal(payLaterTotals.total, 30800);
 });
 
-test('validateOrderForm and buildWhatsAppOrderMessage include voucher and 10% fee', () => {
+test('validateOrderForm and clean WhatsApp order template encode properly', () => {
   const emptyCheck = validateOrderForm({
     customerName: 'Tomi',
     paymentOption: 'Bayar Sekarang',
@@ -160,10 +161,12 @@ test('validateOrderForm and buildWhatsAppOrderMessage include voucher and 10% fe
     cart,
     totals,
   });
+  assert.equal(caption.includes('*PESANAN BARU — MANIFESTUDIO*'), true);
   assert.equal(caption.includes('MS-261115-120000'), true);
+  assert.equal(caption.includes('1. Canva Pro — 6 Bulan'), true);
   assert.equal(caption.includes('HEMAT2K'), true);
   assert.equal(caption.includes('Biaya Bayar Nanti (+10%)'), true);
-  assert.equal(caption.includes('Struk gambar terlampir'), true);
+  assert.equal(caption.includes('Diskon Belanja: -Rp0'), false);
 
   const encoded = buildWhatsAppOrderMessage({
     orderCode: 'MS-261115-120000',
@@ -175,4 +178,22 @@ test('validateOrderForm and buildWhatsAppOrderMessage include voucher and 10% fe
   });
   const decoded = decodeURIComponent(encoded);
   assert.equal(decoded.includes('Rp19.800'), true);
+});
+
+test('admin catalog helpers toggle stock and add or update products', () => {
+  const base = getDefaultCatalogSnapshot();
+  const toggled = toggleProductStockInCatalog(base, 'netflix-premium', true, 'Stok habis');
+  const nf = toggled.products.find((p) => p.id === 'netflix-premium');
+  assert.equal(nf.outOfStock, true);
+  assert.equal(nf.variants.every((v) => v.outOfStock), true);
+
+  const added = upsertProductInCatalog(toggled, {
+    name: 'CapCut Pro',
+    category: 'creative',
+    summary: 'Editing video tanpa watermark',
+    variants: [{ name: '1 Bulan Privat', price: 18000, outOfStock: false }],
+  });
+  const capcut = added.products.find((p) => p.id === 'capcut-pro');
+  assert.ok(capcut);
+  assert.equal(capcut.variants[0].price, 18000);
 });

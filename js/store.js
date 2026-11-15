@@ -1,6 +1,6 @@
 /**
  * Pure storefront state, filtering, pricing, voucher, 10% pay-later fee,
- * and WhatsApp order formatting utilities.
+ * clean WhatsApp message template formatting, and admin catalog helpers.
  * Zero DOM dependencies so all business logic can be unit tested directly.
  */
 
@@ -218,48 +218,135 @@ export function buildWhatsAppOrderCaption({
   cart,
   totals,
 }) {
-  const lines = [`Halo Admin Manifestudio, saya *${customerName.trim()}* ingin memesan:`];
-  if (orderCode) {
-    lines.push(`No. Pesanan: *${orderCode}*`);
-  }
-  lines.push('');
+  const lines = [
+    '*PESANAN BARU — MANIFESTUDIO*',
+    ...(orderCode ? [`No. Pesanan: *${orderCode}*`] : []),
+    `Pemesan: *${customerName.trim()}*`,
+    '',
+    '*Rincian Paket:*',
+  ];
 
-  for (const item of cart) {
+  cart.forEach((item, index) => {
     const lineTotal = item.price * item.quantity;
     const priceText = item.price === 0 ? 'Custom / Tanya Admin' : formatRupiah(lineTotal);
-    lines.push(`- ${item.productName} (${item.variantName}) x${item.quantity} = ${priceText}`);
-  }
+    lines.push(`${index + 1}. ${item.productName} — ${item.variantName}`);
+    lines.push(`   Jumlah: ${item.quantity}x · Harga: ${priceText}`);
+  });
 
   lines.push('');
-  lines.push(`Subtotal: ${formatRupiah(totals.subtotal)}`);
+  lines.push('*Ringkasan Tagihan:*');
+  lines.push(`• Subtotal: ${formatRupiah(totals.subtotal)}`);
   if (totals.discount > 0) {
-    lines.push(`Diskon Belanja: -${formatRupiah(totals.discount)}`);
+    lines.push(`• Diskon Belanja: -${formatRupiah(totals.discount)}`);
   }
   if (totals.voucherCode) {
     if (totals.voucherDiscount > 0) {
-      lines.push(`Voucher (${totals.voucherCode}): -${formatRupiah(totals.voucherDiscount)}`);
+      lines.push(`• Voucher (${totals.voucherCode}): -${formatRupiah(totals.voucherDiscount)}`);
     } else {
-      lines.push(`Kode Voucher: ${totals.voucherCode} (Cek Admin)`);
+      lines.push(`• Kode Voucher: ${totals.voucherCode} (Menunggu Cek Admin)`);
     }
   }
   if (totals.isPayLater) {
     if (totals.payLaterFee > 0) {
-      lines.push(`Biaya Bayar Nanti (+10%): +${formatRupiah(totals.payLaterFee)}`);
+      lines.push(`• Biaya Bayar Nanti (+10%): +${formatRupiah(totals.payLaterFee)}`);
     } else {
-      lines.push('Biaya Bayar Nanti: +10% dari harga final');
+      lines.push('• Biaya Bayar Nanti: +10% dari harga final');
     }
   }
-  lines.push(`Total Bayar: *${formatRupiah(totals.total)}*`);
-  lines.push(`Metode Pembayaran: ${paymentOption}`);
-  if (whatsappNote.trim()) {
-    lines.push(`Catatan: ${whatsappNote.trim()}`);
-  }
+  lines.push(`• *Total Bayar: ${formatRupiah(totals.total)}*`);
+
   lines.push('');
-  lines.push('Struk gambar terlampir. Mohon diproses ya Kak. Terima kasih.');
+  lines.push('*Informasi Pembayaran:*');
+  lines.push(`• Metode: ${paymentOption}`);
+  if (whatsappNote.trim()) {
+    lines.push(`• Catatan / Email: ${whatsappNote.trim()}`);
+  }
+
+  lines.push('');
+  lines.push(
+    '_Struk belanja otomatis sudah diunduh di perangkat saya (siap dilampirkan jika diperlukan). Mohon diproses ya Admin, terima kasih._'
+  );
 
   return lines.join('\n');
 }
 
 export function buildWhatsAppOrderMessage(params) {
   return encodeURIComponent(buildWhatsAppOrderCaption(params));
+}
+
+export function slugifyId(text) {
+  return String(text || '')
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '') || `item-${Date.now()}`;
+}
+
+export function toggleProductStockInCatalog(catalog, productId, outOfStock, restockMessage = 'Akan segera restock') {
+  const nextProducts = (catalog.products || []).map((product) => {
+    if (product.id !== productId) return product;
+    return {
+      ...product,
+      outOfStock: Boolean(outOfStock),
+      tag: outOfStock ? 'Segera Restock' : product.tag === 'Segera Restock' ? 'Tersedia' : product.tag || 'Tersedia',
+      restockMessage: outOfStock ? restockMessage : undefined,
+      variants: (product.variants || []).map((v) => ({
+        ...v,
+        outOfStock: Boolean(outOfStock),
+      })),
+    };
+  });
+  return { ...catalog, products: nextProducts };
+}
+
+export function upsertProductInCatalog(catalog, productInput) {
+  const cleanName = String(productInput.name || '').trim();
+  if (!cleanName) {
+    throw new Error('Nama produk wajib diisi.');
+  }
+
+  const variants = Array.isArray(productInput.variants)
+    ? productInput.variants
+        .filter((v) => String(v.name || '').trim())
+        .map((v, idx) => ({
+          id: v.id ? String(v.id).trim() : `${slugifyId(cleanName)}-v${idx + 1}`,
+          name: String(v.name).trim(),
+          price: Math.max(0, Math.round(Number(v.price) || 0)),
+          ...(Number(v.oldPrice) > 0 ? { oldPrice: Math.round(Number(v.oldPrice)) } : {}),
+          outOfStock: Boolean(v.outOfStock),
+          ...(v.description ? { description: String(v.description).trim() } : {}),
+          ...(v.outOfStock && v.restockMessage ? { restockMessage: String(v.restockMessage).trim() } : {}),
+        }))
+    : [];
+
+  if (variants.length === 0) {
+    throw new Error('Produk harus memiliki minimal satu varian paket.');
+  }
+
+  const allOutOfStock = variants.every((v) => v.outOfStock);
+  const normalizedProduct = {
+    id: productInput.id ? String(productInput.id).trim() : slugifyId(cleanName),
+    name: cleanName,
+    category: productInput.category || 'streaming',
+    logo: String(productInput.logo || './assets/logos/custom-request.svg').trim(),
+    isBestSeller: Boolean(productInput.isBestSeller),
+    outOfStock: productInput.outOfStock !== undefined ? Boolean(productInput.outOfStock) : allOutOfStock,
+    tag: String(productInput.tag || (allOutOfStock ? 'Segera Restock' : 'Tersedia')).trim(),
+    summary: String(productInput.summary || '').trim(),
+    ...(productInput.notice ? { notice: String(productInput.notice).trim() } : {}),
+    ...(allOutOfStock || productInput.outOfStock
+      ? { restockMessage: String(productInput.restockMessage || 'Akan segera restock').trim() }
+      : {}),
+    variants,
+  };
+
+  const products = [...(catalog.products || [])];
+  const existingIdx = products.findIndex((p) => p.id === normalizedProduct.id);
+  if (existingIdx >= 0) {
+    products[existingIdx] = normalizedProduct;
+  } else {
+    products.push(normalizedProduct);
+  }
+
+  return { ...catalog, products };
 }

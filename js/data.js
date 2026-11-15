@@ -260,3 +260,66 @@ export const FAQ_ITEMS = [
       'Ya. Untuk opsi Bayar Nanti (Setelah Akun Diterima) dikenakan biaya layanan tambahan sebesar 10% dari total tagihan yang ditampilkan transparan sebelum checkout. Jika memilih Bayar Sekarang, tidak ada biaya tambahan (0%).',
   },
 ];
+
+export const CATALOG_PREVIEW_STORAGE_KEY = 'manifestudio_catalog_preview_v1';
+
+export function getDefaultCatalogSnapshot() {
+  return {
+    brand: { ...BRAND, payLaterSurchargeRate: PAY_LATER_SURCHARGE_RATE },
+    categories: CATEGORIES.map((c) => ({ ...c })),
+    paymentOptions: PAYMENT_OPTIONS.map((p) => ({ ...p })),
+    vouchers: VOUCHERS.map((v) => ({ ...v })),
+    products: PRODUCTS.map((p) => ({
+      ...p,
+      variants: (p.variants || []).map((v) => ({ ...v })),
+    })),
+    faqItems: FAQ_ITEMS.map((f) => ({ ...f })),
+  };
+}
+
+export async function loadCatalogData({ allowLocalPreview = true } = {}) {
+  const fallback = getDefaultCatalogSnapshot();
+
+  if (allowLocalPreview && typeof window !== 'undefined') {
+    try {
+      const previewRaw = window.localStorage.getItem(CATALOG_PREVIEW_STORAGE_KEY);
+      if (previewRaw) {
+        const parsedPreview = JSON.parse(previewRaw);
+        if (parsedPreview && Array.isArray(parsedPreview.products)) {
+          return {
+            source: 'preview',
+            data: {
+              ...fallback,
+              ...parsedPreview,
+              brand: { ...fallback.brand, ...(parsedPreview.brand || {}) },
+            },
+          };
+        }
+      }
+    } catch {
+      // Ignore storage restrictions
+    }
+  }
+
+  try {
+    const res = await fetch(`./data/catalog.json?t=${Date.now()}`, { cache: 'no-store' });
+    if (res.ok) {
+      const json = await res.json();
+      if (json && Array.isArray(json.products)) {
+        return {
+          source: 'remote',
+          data: {
+            ...fallback,
+            ...json,
+            brand: { ...fallback.brand, ...(json.brand || {}) },
+          },
+        };
+      }
+    }
+  } catch {
+    // Offline or file fallback
+  }
+
+  return { source: 'fallback', data: fallback };
+}
+

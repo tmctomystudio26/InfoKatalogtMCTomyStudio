@@ -1,11 +1,9 @@
 import {
-  BRAND,
-  CATEGORIES,
-  FAQ_ITEMS,
+  BRAND as DEFAULT_BRAND,
+  CATALOG_PREVIEW_STORAGE_KEY,
   PAY_LATER_SURCHARGE_RATE,
-  PAYMENT_OPTIONS,
-  PRODUCTS,
-  VOUCHERS,
+  getDefaultCatalogSnapshot,
+  loadCatalogData,
 } from './data.js';
 import {
   addToCart,
@@ -26,15 +24,19 @@ const THEME_STORAGE_KEY = 'manifestudio_theme_v1';
 const CART_STORAGE_KEY = 'manifestudio_cart_v1';
 const NAME_STORAGE_KEY = 'manifestudio_customer_name_v1';
 
+const initialCatalog = getDefaultCatalogSnapshot();
+
 const state = {
   theme: 'dark',
+  catalog: initialCatalog,
+  catalogSource: 'fallback',
   category: 'all',
   query: '',
   inStockOnly: false,
   cart: [],
   customerName: '',
   voucherCode: '',
-  paymentOption: PAYMENT_OPTIONS[0].id,
+  paymentOption: initialCatalog.paymentOptions[0]?.id || 'Bayar Sekarang',
   whatsappNote: '',
   checkoutError: '',
   isGeneratingReceipt: false,
@@ -51,6 +53,30 @@ const state = {
   isCartOpen: false,
   openFaqIndex: 0,
 };
+
+function getBrand() {
+  return state.catalog.brand || DEFAULT_BRAND;
+}
+
+function getCategories() {
+  return state.catalog.categories || [];
+}
+
+function getPaymentOptions() {
+  return state.catalog.paymentOptions || [];
+}
+
+function getVouchers() {
+  return state.catalog.vouchers || [];
+}
+
+function getProducts() {
+  return state.catalog.products || [];
+}
+
+function getFaqItems() {
+  return state.catalog.faqItems || [];
+}
 
 function loadPersistedState() {
   try {
@@ -136,7 +162,7 @@ function renderCategories() {
   const container = document.getElementById('category-tabs');
   if (!container) return;
 
-  container.innerHTML = CATEGORIES.map((cat) => {
+  container.innerHTML = getCategories().map((cat) => {
     const active = state.category === cat.id;
     return `
       <button
@@ -164,7 +190,7 @@ function renderCatalog() {
   const countLabel = document.getElementById('catalog-count');
   if (!grid) return;
 
-  const filtered = filterProducts(PRODUCTS, {
+  const filtered = filterProducts(getProducts(), {
     category: state.category,
     query: state.query,
     inStockOnly: state.inStockOnly,
@@ -285,7 +311,7 @@ function renderProductModal() {
   const overlay = document.getElementById('product-modal-overlay');
   if (!overlay) return;
 
-  const product = PRODUCTS.find((p) => p.id === state.activeProductId);
+  const product = getProducts().find((p) => p.id === state.activeProductId);
   if (!product) {
     overlay.hidden = true;
     overlay.innerHTML = '';
@@ -427,13 +453,14 @@ function closeCartDrawer() {
 }
 
 function getCartTotals() {
+  const brand = getBrand();
   return calculateCartTotals(state.cart, {
-    discountThreshold: BRAND.discountThreshold,
-    discountAmount: BRAND.discountAmount,
+    discountThreshold: brand.discountThreshold,
+    discountAmount: brand.discountAmount,
     voucherCode: state.voucherCode,
-    vouchers: VOUCHERS,
+    vouchers: getVouchers(),
     paymentOption: state.paymentOption,
-    payLaterRate: PAY_LATER_SURCHARGE_RATE,
+    payLaterRate: brand.payLaterSurchargeRate ?? PAY_LATER_SURCHARGE_RATE,
   });
 }
 
@@ -532,20 +559,6 @@ function buildPayLaterNoticeHtml(totals) {
   `;
 }
 
-function canUseNativeFileShare() {
-  try {
-    return (
-      typeof navigator !== 'undefined' &&
-      typeof navigator.share === 'function' &&
-      typeof navigator.canShare === 'function' &&
-      Boolean(state.receiptFile) &&
-      navigator.canShare({ files: [state.receiptFile] })
-    );
-  } catch {
-    return false;
-  }
-}
-
 function triggerReceiptDownload() {
   if (!state.receiptUrl || !state.receiptFileName) return;
   const a = document.createElement('a');
@@ -556,17 +569,37 @@ function triggerReceiptDownload() {
   a.remove();
 }
 
+function copyReceiptPngInBackground() {
+  if (
+    !state.receiptGetPngBlob ||
+    typeof ClipboardItem === 'undefined' ||
+    !navigator.clipboard?.write
+  ) {
+    return;
+  }
+  state
+    .receiptGetPngBlob()
+    .then((pngBlob) => {
+      if (pngBlob) {
+        return navigator.clipboard.write([new ClipboardItem({ 'image/png': pngBlob })]);
+      }
+      return undefined;
+    })
+    .catch(() => {
+      // Optional enhancement: file download already succeeded
+    });
+}
+
 function buildOrderReadySlotHtml() {
   if (!state.generatedOrderUrl || !state.receiptUrl) return '';
-  const nativeShareSupported = canUseNativeFileShare();
 
   return `
     <div class="order-ready-box" role="status">
       <div class="order-ready-head">
         <div>
-          <p class="order-ready-title">Struk Pesanan Siap (${escapeHtml(state.generatedOrderCode)})</p>
+          <p class="order-ready-title">Pesanan Siap (${escapeHtml(state.generatedOrderCode)})</p>
           <p class="order-ready-desc">
-            Gambar struk otomatis (${state.receiptSizeKb} KB · ringan &amp; lengkap) siap dikirim beserta rincian ke WhatsApp Admin.
+            Struk belanja otomatis (${state.receiptSizeKb} KB) siap diunduh sambil langsung membuka WhatsApp Admin 085122936027.
           </p>
         </div>
       </div>
@@ -580,19 +613,15 @@ function buildOrderReadySlotHtml() {
       </div>
 
       <div class="order-ready-actions">
-        ${
-          nativeShareSupported
-            ? `
-          <button type="button" class="btn btn-primary btn-sm" id="share-whatsapp-receipt-btn">
-            Kirim Struk ke WhatsApp
-          </button>
-        `
-            : `
-          <button type="button" class="btn btn-primary btn-sm" id="download-and-wa-btn">
-            Kirim ke WhatsApp &amp; Unduh Struk
-          </button>
-        `
-        }
+        <a
+          href="${escapeHtml(state.generatedOrderUrl)}"
+          target="_blank"
+          rel="noopener noreferrer"
+          class="btn btn-primary btn-sm"
+          id="open-whatsapp-link"
+        >
+          Kirim Pesanan ke WhatsApp
+        </a>
         <a
           href="${escapeHtml(state.receiptUrl)}"
           download="${escapeHtml(state.receiptFileName)}"
@@ -602,54 +631,21 @@ function buildOrderReadySlotHtml() {
           Unduh Struk
         </a>
         <button type="button" class="btn btn-secondary btn-sm" id="copy-order-btn">
-          ${state.copiedNotice ? 'Keterangan Tersalin' : 'Salin Keterangan'}
+          ${state.copiedNotice ? 'Teks Tersalin' : 'Salin Teks'}
         </button>
       </div>
       <p class="order-ready-tip">
-        ${
-          nativeShareSupported
-            ? 'Pilih aplikasi WhatsApp pada menu berbagi untuk langsung mengirim gambar struk + keterangan.'
-            : 'Saat Anda klik Kirim ke WhatsApp, file struk otomatis terunduh (dan disalin bila didukung) untuk langsung dilampirkan di chat Admin.'
-        }
+        Tombol di atas langsung menuju WhatsApp Admin (085122936027) dengan rincian teks rapi sambil mengunduh gambar struk otomatis ke perangkat Anda.
       </p>
     </div>
   `;
 }
 
 function bindOrderReadyActions(drawerRoot) {
-  drawerRoot.querySelector('#share-whatsapp-receipt-btn')?.addEventListener('click', async () => {
-    if (!state.receiptFile) return;
-    try {
-      await navigator.share({
-        files: [state.receiptFile],
-        title: `Struk Manifestudio ${state.generatedOrderCode}`,
-        text: state.generatedOrderSummary,
-      });
-    } catch (err) {
-      if (err && err.name === 'AbortError') return;
-      triggerReceiptDownload();
-      window.open(state.generatedOrderUrl, '_blank', 'noopener,noreferrer');
-    }
-  });
-
-  drawerRoot.querySelector('#download-and-wa-btn')?.addEventListener('click', async () => {
+  drawerRoot.querySelector('#open-whatsapp-link')?.addEventListener('click', () => {
     triggerReceiptDownload();
-    if (
-      state.receiptGetPngBlob &&
-      typeof ClipboardItem !== 'undefined' &&
-      navigator.clipboard?.write
-    ) {
-      try {
-        const pngBlob = await state.receiptGetPngBlob();
-        if (pngBlob) {
-          await navigator.clipboard.write([new ClipboardItem({ 'image/png': pngBlob })]);
-          showToast('Struk diunduh & disalin — tempel di chat WhatsApp Admin.');
-        }
-      } catch {
-        // Fallback smoothly: image already downloaded
-      }
-    }
-    window.open(state.generatedOrderUrl, '_blank', 'noopener,noreferrer');
+    copyReceiptPngInBackground();
+    showToast('Struk diunduh otomatis — mengarahkan ke WhatsApp Admin...');
   });
 
   drawerRoot.querySelector('#copy-order-btn')?.addEventListener('click', async () => {
@@ -658,7 +654,7 @@ function bindOrderReadyActions(drawerRoot) {
       await navigator.clipboard.writeText(state.generatedOrderSummary);
       state.copiedNotice = true;
       const btn = drawerRoot.querySelector('#copy-order-btn');
-      if (btn) btn.textContent = 'Keterangan Tersalin';
+      if (btn) btn.textContent = 'Teks Tersalin';
     } catch {
       showToast('Salin teks gagal, gunakan tombol Unduh Struk.');
     }
@@ -667,14 +663,15 @@ function bindOrderReadyActions(drawerRoot) {
 
 function syncCheckoutDynamicParts(drawerRoot) {
   if (!drawerRoot) return;
+  const brand = getBrand();
   const totals = getCartTotals();
   updateCartBadges();
 
   const discountTextEl = drawerRoot.querySelector('.discount-progress-text');
   if (discountTextEl) {
     discountTextEl.textContent = totals.qualifiesDiscount
-      ? `Selamat! Diskon ${formatRupiah(BRAND.discountAmount)} otomatis aktif.`
-      : `Tambah ${formatRupiah(totals.remainingForDiscount)} lagi untuk diskon ${formatRupiah(BRAND.discountAmount)}.`;
+      ? `Selamat! Diskon ${formatRupiah(brand.discountAmount)} otomatis aktif.`
+      : `Tambah ${formatRupiah(totals.remainingForDiscount)} lagi untuk diskon ${formatRupiah(brand.discountAmount)}.`;
   }
   const discountFillEl = drawerRoot.querySelector('.discount-fill');
   if (discountFillEl) {
@@ -748,11 +745,12 @@ function renderCartDrawer() {
   const prevWindowY = window.scrollY;
 
   drawerRoot.hidden = false;
+  const brand = getBrand();
   const totals = getCartTotals();
 
   const progressText = totals.qualifiesDiscount
-    ? `Selamat! Diskon ${formatRupiah(BRAND.discountAmount)} otomatis aktif.`
-    : `Tambah ${formatRupiah(totals.remainingForDiscount)} lagi untuk diskon ${formatRupiah(BRAND.discountAmount)}.`;
+    ? `Selamat! Diskon ${formatRupiah(brand.discountAmount)} otomatis aktif.`
+    : `Tambah ${formatRupiah(totals.remainingForDiscount)} lagi untuk diskon ${formatRupiah(brand.discountAmount)}.`;
 
   const itemsHtml =
     state.cart.length === 0
@@ -809,7 +807,7 @@ function renderCartDrawer() {
           )
           .join('');
 
-  const paymentHtml = PAYMENT_OPTIONS.map((opt) => {
+  const paymentHtml = getPaymentOptions().map((opt) => {
     const checked = state.paymentOption === opt.id;
     return `
       <label class="payment-option ${checked ? 'is-selected' : ''}">
@@ -1055,9 +1053,10 @@ function renderCartDrawer() {
       });
 
       clearGeneratedOrder();
+      const brand = getBrand();
       state.generatedOrderCode = orderCode;
       state.generatedOrderSummary = caption;
-      state.generatedOrderUrl = `https://wa.me/${BRAND.whatsappNumber}?text=${encodeURIComponent(caption)}`;
+      state.generatedOrderUrl = `https://wa.me/${brand.whatsappNumber}?text=${encodeURIComponent(caption)}`;
       state.receiptUrl = receipt.objectUrl;
       state.receiptFile = receipt.file;
       state.receiptFileName = receipt.fileName;
@@ -1083,7 +1082,7 @@ function renderFaq() {
   const container = document.getElementById('faq-list');
   if (!container) return;
 
-  container.innerHTML = FAQ_ITEMS.map((item, idx) => {
+  container.innerHTML = getFaqItems().map((item, idx) => {
     const isOpen = state.openFaqIndex === idx;
     return `
       <div class="faq-item ${isOpen ? 'is-open' : ''}">
@@ -1171,15 +1170,53 @@ function bindGlobalEvents() {
   });
 }
 
-function bootstrap() {
-  loadPersistedState();
-  applyTheme();
+function renderPreviewNotice() {
+  const banner = document.getElementById('admin-preview-banner');
+  if (!banner) return;
+  banner.hidden = state.catalogSource !== 'preview';
+}
+
+function renderAllStorefrontViews() {
+  renderPreviewNotice();
   renderCategories();
   renderCatalog();
   renderFaq();
   updateCartBadges();
+  if (state.activeProductId) {
+    renderProductModal();
+  }
+  if (state.isCartOpen) {
+    renderCartDrawer();
+  }
+}
+
+async function bootstrap() {
+  loadPersistedState();
+  applyTheme();
+  renderAllStorefrontViews();
   bindGlobalEvents();
   initPwaManager();
+
+  document.getElementById('exit-preview-btn')?.addEventListener('click', async () => {
+    try {
+      localStorage.removeItem(CATALOG_PREVIEW_STORAGE_KEY);
+    } catch {
+      // Ignore
+    }
+    const fresh = await loadCatalogData({ allowLocalPreview: false });
+    state.catalog = fresh.data;
+    state.catalogSource = fresh.source;
+    renderAllStorefrontViews();
+    showToast('Pratinjau lokal dihapus — kembali ke katalog publik.');
+  });
+
+  const loaded = await loadCatalogData({ allowLocalPreview: true });
+  state.catalog = loaded.data;
+  state.catalogSource = loaded.source;
+  if (!getPaymentOptions().some((opt) => opt.id === state.paymentOption)) {
+    state.paymentOption = getPaymentOptions()[0]?.id || 'Bayar Sekarang';
+  }
+  renderAllStorefrontViews();
 }
 
 bootstrap();

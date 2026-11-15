@@ -1,8 +1,10 @@
-const CACHE_NAME = 'manifestudio-cache-v2';
+const CACHE_NAME = 'manifestudio-cache-v3';
 
 const PRECACHE_ASSETS = [
   './',
   './index.html',
+  './admin.html',
+  './data/catalog.json',
   './manifest.webmanifest',
   './css/tokens.css',
   './css/styles.css',
@@ -11,6 +13,7 @@ const PRECACHE_ASSETS = [
   './js/receipt.js',
   './js/pwa.js',
   './js/app.js',
+  './js/admin.js',
   './assets/hero-banner.jpg',
   './assets/icons/brand-icon.svg',
   './assets/icons/icon-192.png',
@@ -63,7 +66,23 @@ self.addEventListener('fetch', (event) => {
           caches.open(CACHE_NAME).then((cache) => cache.put(event.request, clone));
           return response;
         })
-        .catch(() => caches.match('./index.html'))
+        .catch(() => caches.match(event.request).then((m) => m || caches.match('./index.html')))
+    );
+    return;
+  }
+
+  // Always prefer fresh catalog.json from network so Admin Panel updates show immediately
+  if (url.pathname.endsWith('/data/catalog.json')) {
+    event.respondWith(
+      fetch(event.request)
+        .then((response) => {
+          if (response && response.status === 200) {
+            const clone = response.clone();
+            caches.open(CACHE_NAME).then((cache) => cache.put('./data/catalog.json', clone));
+          }
+          return response;
+        })
+        .catch(() => caches.match('./data/catalog.json'))
     );
     return;
   }
