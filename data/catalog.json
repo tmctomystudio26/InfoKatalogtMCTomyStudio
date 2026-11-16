@@ -61,6 +61,10 @@
     {
       "id": "custom",
       "label": "Request & Custom"
+    },
+    {
+      "id": "pendidikan",
+      "label": "Pendidikan"
     }
   ],
   "paymentOptions": [
@@ -400,7 +404,7 @@
     {
       "id": "cek-turnitin",
       "name": "Cek Turnitin",
-      "category": "custom",
+      "category": "pendidikan",
       "logo": "https://img.icons8.com/fluent/1200/turnitin.jpg",
       "isBestSeller": false,
       "outOfStock": false,
