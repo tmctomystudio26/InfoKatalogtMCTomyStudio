@@ -14,6 +14,14 @@
     "payLaterSurchargeRate": 0.1,
     "serviceFeeFlat": 0,
     "serviceFeeLabel": "Biaya Layanan",
+    "openGraph": {
+      "title": "Manifestudio by Tomy —  Akun Premium Murah Berkualitas dan Utilitas",
+      "description": "Platform Akun Premium Murah Berkualitas.\nDilengkapi Jadwal Sholat, Prakiraan Cuaca, Jam Dunia, Speedtest, Social Media Downloader & Kompres Media HD.",
+      "tagline": "by Tomy · Katalog Layanan Digital & Utilitas Terpadu",
+      "image": "./assets/og-manifestudio.jpg",
+      "imageAlt": "Banner Katalog Layanan Digital & Utilitas Manifestudio",
+      "siteName": "Manifestudio"
+    },
     "socials": [
       {
         "id": "social-whatsapp",
@@ -39,15 +47,7 @@
         "url": "https://www.instagram.com/tmctomystudio",
         "logo": "./assets/icons/social-instagram.svg"
       }
-    ],
-    "openGraph": {
-      "title": "Manifestudio — Katalog Layanan Digital & Utilitas",
-      "tagline": "by Tomy · Katalog Layanan Digital & Utilitas Terpadu",
-      "caption": "Katalog layanan digital resmi Manifestudio (Netflix, Spotify, YouTube, Canva, CapCut, ChatGPT, Vidio, Viu) dengan kalkulator harga otomatis, jadwal sholat, cuaca real-time, jam dunia, speedtest, downloader sosmed, & kompresor media HD.",
-      "image": "./assets/og-manifestudio.jpg",
-      "imageAlt": "Banner Katalog Layanan Digital & Utilitas Manifestudio",
-      "siteName": "Manifestudio"
-    }
+    ]
   },
   "banners": [
     {
@@ -58,7 +58,7 @@
       "ctaLabel": "Jelajahi Katalog →",
       "href": "#katalog",
       "image": "./assets/hero-banner.jpg",
-      "scrim": ""
+      "scrim": "default"
     },
     {
       "id": "banner-prayer",
@@ -68,7 +68,7 @@
       "ctaLabel": "Buka Jadwal Sholat →",
       "href": "./tools.html?tab=prayer",
       "image": "./assets/banner-prayer.jpg",
-      "scrim": "is-emerald"
+      "scrim": "default"
     },
     {
       "id": "banner-weather",
@@ -78,7 +78,7 @@
       "ctaLabel": "Cek Cuaca Sekarang →",
       "href": "./tools.html?tab=weather",
       "image": "./assets/banner-weather.jpg",
-      "scrim": "is-sky"
+      "scrim": "default"
     },
     {
       "id": "banner-worldclock",
@@ -88,7 +88,7 @@
       "ctaLabel": "Buka Jam Dunia →",
       "href": "./tools.html?tab=worldclock",
       "image": "./assets/banner-worldclock.jpg",
-      "scrim": "is-indigo"
+      "scrim": "default"
     },
     {
       "id": "banner-speedtest",
@@ -98,7 +98,7 @@
       "ctaLabel": "Mulai Speedtest →",
       "href": "./tools.html?tab=speedtest",
       "image": "./assets/banner-speedtest.jpg",
-      "scrim": "is-cyan"
+      "scrim": "default"
     },
     {
       "id": "banner-downloader",
@@ -108,7 +108,7 @@
       "ctaLabel": "Buka Downloader →",
       "href": "./tools.html?tab=downloader",
       "image": "./assets/banner-speedtest.jpg",
-      "scrim": "is-violet"
+      "scrim": "default"
     },
     {
       "id": "banner-compressor",
@@ -118,7 +118,7 @@
       "ctaLabel": "Kompres Media HD →",
       "href": "./tools.html?tab=compressor",
       "image": "./assets/hero-banner.jpg",
-      "scrim": "is-emerald"
+      "scrim": "default"
     }
   ],
   "categories": [
