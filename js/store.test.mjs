@@ -10,6 +10,10 @@ import {
   calculateCartTotals,
   collectOrphanedUploadLogos,
   createOrderSnapshot,
+  deleteCategoryFromCatalog,
+  deleteFaqFromCatalog,
+  deleteSocialFromCatalog,
+  describeCatalogChanges,
   evaluateVoucher,
   extractManagedUploadLogoPath,
   filterProducts,
@@ -23,7 +27,10 @@ import {
   summarizeCatalogDiff,
   toggleProductStockInCatalog,
   updateCartQty,
+  upsertCategoryInCatalog,
+  upsertFaqInCatalog,
   upsertProductInCatalog,
+  upsertSocialInCatalog,
   validateOrderForm,
 } from './store.js';
 import {
@@ -480,7 +487,7 @@ test('catalog history records snapshots, summarizes diffs, and auto-prunes old l
   modified.products[0].name = 'Netflix UHD Pro';
 
   const summary = summarizeCatalogDiff(base, modified);
-  assert.equal(summary.includes('1 produk diubah'), true);
+  assert.equal(summary.includes('Mengubah nama produk Netflix Premium menjadi Netflix UHD Pro'), true);
 
   let logs = [];
   for (let i = 0; i < MAX_HISTORY_LOGS + 5; i += 1) {
@@ -493,6 +500,7 @@ test('catalog history records snapshots, summarizes diffs, and auto-prunes old l
         createdAt: new Date(2026, 10, 15, 10, i, 0).toISOString(),
         action: 'publish',
         summary: `Update ${i + 1}`,
+        details: [`Mengubah versi ke ${i + 1}`],
         snapshot: snap,
       },
       MAX_HISTORY_LOGS
@@ -501,6 +509,7 @@ test('catalog history records snapshots, summarizes diffs, and auto-prunes old l
 
   assert.equal(logs.length, MAX_HISTORY_LOGS);
   assert.equal(logs[0].id, `log-${MAX_HISTORY_LOGS + 5}`);
+  assert.equal(Array.isArray(logs[0].details), true);
   assert.equal(logs.some((l) => l.id === 'log-1'), false);
 
   const customPruned = pruneCatalogHistory(logs, 3);
@@ -914,6 +923,127 @@ test('music search relevance ranking puts genuine title/artist matches first and
   const exactScore = scoreSearchRelevance(catalog[2], 'Bernadya Satu Bulan');
   const coverScore = scoreSearchRelevance(catalog[3], 'Bernadya Satu Bulan');
   assert.ok(exactScore > 40 && exactScore > coverScore);
+});
+
+test('describeCatalogChanges records itemized sub-product, price, logo, fee, category, social, and FAQ actions', () => {
+  const prev = getDefaultCatalogSnapshot();
+  const next = structuredClone(prev);
+
+  // 1. Delete a sub-product on Spotify
+  const spotify = next.products.find((p) => p.id === 'spotify-premium');
+  spotify.variants = spotify.variants.filter((v) => v.id !== 'sp-3m-ng');
+
+  // 2. Change price of Canva Pro 1 Bulan from 3000 to 7000
+  const canva = next.products.find((p) => p.id === 'canva-pro');
+  canva.variants[0].price = 7000;
+
+  // 3. Change logo of Netflix Premium
+  const netflix = next.products.find((p) => p.id === 'netflix-premium');
+  netflix.logo = './assets/logos/uploads/netflix-custom.png';
+
+  // 4. Add a sub-product to Netflix Premium
+  netflix.variants.push({
+    id: 'nf-3m',
+    name: '3 Bulan - Private',
+    price: 350000,
+    outOfStock: false,
+  });
+
+  // 5. Change service fee
+  next.brand.payLaterSurchargeRate = 0.05;
+  next.brand.serviceFeeFlat = 1500;
+
+  const details = describeCatalogChanges(prev, next);
+  assert.equal(
+    details.some((d) => d.includes('Menghapus sub produk Spotify Premium')),
+    true
+  );
+  assert.equal(
+    details.some((d) =>
+      d.includes('Mengubah harga Canva Pro (1 Bulan) dari Rp3.000 menjadi Rp7.000')
+    ),
+    true
+  );
+  assert.equal(details.includes('Mengubah logo Netflix Premium'), true);
+  assert.equal(
+    details.some((d) =>
+      d.includes('Menambah sub produk Netflix Premium — 3 Bulan - Private (Rp350.000)')
+    ),
+    true
+  );
+  assert.equal(
+    details.includes('Mengubah biaya layanan Bayar Nanti dari 10% menjadi 5%'),
+    true
+  );
+  assert.equal(
+    details.some((d) => d.toLowerCase().includes('tetap dari rp0 menjadi rp1.500')),
+    true
+  );
+});
+
+test('custom service fee, custom categories, social media logos, and FAQ helpers work end-to-end', () => {
+  const cart = [
+    {
+      productId: 'canva-pro',
+      productName: 'Canva Pro',
+      variantId: 'canva-1m',
+      variantName: '1 Bulan',
+      price: 10000,
+      quantity: 1,
+    },
+  ];
+  const totals = calculateCartTotals(cart, {
+    paymentOption: 'Bayar Belakangan (+5%)',
+    payLaterRate: 0.05,
+    serviceFeeFlat: 1500,
+    serviceFeeLabel: 'Biaya Admin',
+  });
+  assert.equal(totals.serviceFeeFlat, 1500);
+  assert.equal(totals.serviceFeeLabel, 'Biaya Admin');
+  assert.equal(totals.payLaterPercent, 5);
+  assert.equal(totals.payLaterFee, 500);
+  assert.equal(totals.total, 12000);
+
+  const caption = buildWhatsAppOrderCaption({
+    orderCode: 'MS-261116-010000',
+    customerName: 'Tomy',
+    paymentOption: 'Bayar Belakangan (+5%)',
+    cart,
+    totals,
+  });
+  assert.equal(caption.includes('Biaya Admin: +Rp1.500'), true);
+  assert.equal(caption.includes('Biaya Bayar Nanti (+5%): +Rp500'), true);
+
+  let catalog = getDefaultCatalogSnapshot();
+  catalog = upsertCategoryInCatalog(catalog, { label: 'AI & Produktivitas' });
+  assert.equal(
+    catalog.categories.some((c) => c.id === 'ai-produktivitas' && c.label === 'AI & Produktivitas'),
+    true
+  );
+  catalog = deleteCategoryFromCatalog(catalog, 'ai-produktivitas');
+  assert.equal(catalog.categories.some((c) => c.id === 'ai-produktivitas'), false);
+
+  catalog = upsertFaqInCatalog(catalog, {
+    question: 'Apakah ada garansi penuh?',
+    answer: 'Ya, garansi penuh sesuai durasi paket.',
+  });
+  const addedFaqIdx = catalog.faqItems.findIndex((f) => f.question === 'Apakah ada garansi penuh?');
+  assert.ok(addedFaqIdx >= 0);
+  catalog = deleteFaqFromCatalog(catalog, addedFaqIdx);
+  assert.equal(catalog.faqItems.some((f) => f.question === 'Apakah ada garansi penuh?'), false);
+
+  catalog = upsertSocialInCatalog(catalog, {
+    platform: 'telegram',
+    label: 'Telegram Official',
+    handle: '@manifestudio',
+    url: 'https://t.me/manifestudio',
+    logo: './assets/icons/social-telegram.svg',
+  });
+  const addedSoc = catalog.brand.socials.find((s) => s.label === 'Telegram Official');
+  assert.ok(addedSoc);
+  assert.equal(addedSoc.logo, './assets/icons/social-telegram.svg');
+  catalog = deleteSocialFromCatalog(catalog, addedSoc.id);
+  assert.equal(catalog.brand.socials.some((s) => s.id === addedSoc.id), false);
 });
 
 

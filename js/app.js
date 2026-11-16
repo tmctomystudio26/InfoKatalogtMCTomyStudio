@@ -14,7 +14,9 @@ import {
   formatRupiah,
   generateOrderCode,
   getStartingPrice,
+  normalizeBrandConfig,
   removeFromCart,
+  syncPaymentOptionsWithBrand,
   updateCartQty,
   validateOrderForm,
 } from './store.js';
@@ -48,7 +50,7 @@ const state = {
 };
 
 function getBrand() {
-  return state.catalog.brand || DEFAULT_BRAND;
+  return normalizeBrandConfig(state.catalog.brand || DEFAULT_BRAND);
 }
 
 function getCategories() {
@@ -56,7 +58,7 @@ function getCategories() {
 }
 
 function getPaymentOptions() {
-  return state.catalog.paymentOptions || [];
+  return syncPaymentOptionsWithBrand(state.catalog.paymentOptions, getBrand());
 }
 
 function getVouchers() {
@@ -214,6 +216,36 @@ function renderCategories() {
   });
 }
 
+function getFallbackLogoForProduct(productId = '') {
+  const id = String(productId || '').toLowerCase();
+  if (id.includes('netflix')) return './assets/logos/netflix.svg';
+  if (id.includes('youtube')) return './assets/logos/youtube.svg';
+  if (id.includes('spotify')) return './assets/logos/spotify.svg';
+  if (id.includes('canva')) return './assets/logos/canva.svg';
+  if (id.includes('viu')) return './assets/logos/viu.svg';
+  if (id.includes('vidio')) return './assets/logos/vidio.svg';
+  if (id.includes('alight')) return './assets/logos/alight-motion.svg';
+  if (id.includes('wetv')) return './assets/logos/wetv.svg';
+  if (id.includes('prime')) return './assets/logos/prime-video.svg';
+  return './assets/logos/custom-request.svg';
+}
+
+function attachLogoFallbacks(rootEl) {
+  if (!rootEl) return;
+  rootEl.querySelectorAll('img[data-fallback-logo]').forEach((img) => {
+    img.addEventListener(
+      'error',
+      () => {
+        const fb = img.getAttribute('data-fallback-logo') || './assets/logos/custom-request.svg';
+        if (img.getAttribute('src') !== fb) {
+          img.src = fb;
+        }
+      },
+      { once: true }
+    );
+  });
+}
+
 function renderCatalog() {
   const grid = document.getElementById('product-grid');
   const countLabel = document.getElementById('catalog-count');
@@ -266,6 +298,8 @@ function renderCatalog() {
         ? 'Terlaris'
         : `${product.variants.length} paket`;
 
+      const fallbackLogo = getFallbackLogoForProduct(product.id);
+
       return `
         <button
           type="button"
@@ -275,7 +309,9 @@ function renderCatalog() {
         >
           <div class="tile-stage">
             <img
-              src="${escapeHtml(product.logo)}"
+              src="${escapeHtml(product.logo || fallbackLogo)}"
+              data-fallback-logo="${escapeHtml(fallbackLogo)}"
+              referrerpolicy="no-referrer"
               alt="${escapeHtml(product.name)}"
               width="58"
               height="58"
@@ -294,6 +330,8 @@ function renderCatalog() {
       `;
     })
     .join('');
+
+  attachLogoFallbacks(grid);
 
   grid.querySelectorAll('.product-tile').forEach((tile) => {
     tile.addEventListener('click', () => {
@@ -701,6 +739,8 @@ function getCartTotals() {
     usedVouchers: getUsedVouchers(),
     paymentOption: state.paymentOption,
     payLaterRate: brand.payLaterSurchargeRate ?? PAY_LATER_SURCHARGE_RATE,
+    serviceFeeFlat: brand.serviceFeeFlat ?? 0,
+    serviceFeeLabel: brand.serviceFeeLabel || 'Biaya Layanan',
   });
 }
 
@@ -724,6 +764,11 @@ function updateCartBadges() {
 }
 
 function buildSummaryBreakdownHtml(totals) {
+  const payLaterPct =
+    totals.payLaterPercent !== undefined
+      ? totals.payLaterPercent
+      : Math.round(Number(totals.payLaterRate ?? 0.1) * 1000) / 10;
+
   const voucherRow = totals.voucherCode
     ? `
       <div class="summary-row ${totals.voucherDiscount > 0 ? 'is-discount' : ''}">
@@ -737,12 +782,24 @@ function buildSummaryBreakdownHtml(totals) {
     `
     : '';
 
+  const serviceFeeRow =
+    totals.serviceFee > 0
+      ? `
+      <div class="summary-row">
+        <span>${escapeHtml(totals.serviceFeeLabel || 'Biaya Layanan')}</span>
+        <span class="mono-num">+${escapeHtml(formatRupiah(totals.serviceFee))}</span>
+      </div>
+    `
+      : '';
+
   const payLaterRow = totals.isPayLater
     ? `
       <div class="summary-row is-fee">
-        <span>Biaya Bayar Nanti (+10%)</span>
+        <span>Biaya Bayar Nanti (+${payLaterPct}%)</span>
         <span class="mono-num">${
-          totals.payLaterFee > 0 ? `+${escapeHtml(formatRupiah(totals.payLaterFee))}` : '+10% Final'
+          totals.payLaterFee > 0
+            ? `+${escapeHtml(formatRupiah(totals.payLaterFee))}`
+            : `+${payLaterPct}% Final`
         }</span>
       </div>
     `
@@ -758,6 +815,7 @@ function buildSummaryBreakdownHtml(totals) {
       <span class="mono-num">-${escapeHtml(formatRupiah(totals.discount))}</span>
     </div>
     ${voucherRow}
+    ${serviceFeeRow}
     ${payLaterRow}
     <div class="summary-row is-total">
       <span>Total Bayar</span>
@@ -768,14 +826,18 @@ function buildSummaryBreakdownHtml(totals) {
 
 function buildPayLaterNoticeHtml(totals) {
   if (!totals.isPayLater) return '';
+  const payLaterPct =
+    totals.payLaterPercent !== undefined
+      ? totals.payLaterPercent
+      : Math.round(Number(totals.payLaterRate ?? 0.1) * 1000) / 10;
   const feeDetail =
     totals.payLaterFee > 0
       ? `sebesar <strong>+${escapeHtml(formatRupiah(totals.payLaterFee))}</strong>`
-      : '<strong>+10% dari harga final</strong>';
+      : `<strong>+${payLaterPct}% dari harga final</strong>`;
   return `
     <div class="pay-later-notice" role="note">
-      <strong>Transparansi Biaya Bayar Nanti (+10%):</strong>
-      <span>Pembayaran setelah akun diterima dikenakan biaya tambahan 10% (${feeDetail}). Pilih <strong>Bayar Sekarang</strong> untuk bebas biaya tambahan (0%).</span>
+      <strong>Transparansi Biaya Bayar Nanti (+${payLaterPct}%):</strong>
+      <span>Pembayaran setelah akun diterima dikenakan biaya tambahan ${payLaterPct}% (${feeDetail}). Pilih <strong>Bayar Sekarang</strong> untuk bebas biaya bayar nanti.</span>
     </div>
   `;
 }
@@ -1282,8 +1344,65 @@ function renderPreviewNotice() {
   banner.hidden = state.catalogSource !== 'preview';
 }
 
+function renderBrandAndFooter() {
+  const brand = getBrand();
+  const logoEl = document.getElementById('header-brand-logo');
+  if (logoEl && brand.logo) {
+    logoEl.src = brand.logo;
+  }
+  const nameEl = document.getElementById('header-brand-name');
+  if (nameEl && brand.name) {
+    nameEl.textContent = brand.name;
+  }
+  const taglineEl = document.getElementById('header-brand-tagline');
+  if (taglineEl && brand.tagline) {
+    taglineEl.textContent = brand.tagline;
+  }
+  const footerNameEl = document.getElementById('footer-brand-name');
+  if (footerNameEl && brand.name) {
+    footerNameEl.textContent = brand.name;
+  }
+  const footerCopyEl = document.getElementById('footer-copy-text');
+  if (footerCopyEl && brand.footerText) {
+    footerCopyEl.textContent = brand.footerText;
+  }
+
+  const socialContainer = document.getElementById('footer-social-links');
+  if (socialContainer) {
+    const installBtn = socialContainer.querySelector('#footer-install-link');
+    const socialsHtml = (brand.socials || [])
+      .map(
+        (soc) => `
+        <a
+          href="${escapeHtml(soc.url || '#')}"
+          target="_blank"
+          rel="noopener noreferrer"
+          class="footer-link-btn"
+        >
+          ${
+            soc.logo
+              ? `<img src="${escapeHtml(soc.logo)}" alt="" width="18" height="18" class="footer-social-icon" />`
+              : ''
+          }
+          <span>${escapeHtml(soc.label || soc.platform || 'Sosmed')}</span>
+        </a>
+      `
+      )
+      .join('');
+
+    socialContainer.innerHTML = `
+      <a href="./tools.html" class="footer-link-btn">Menu Lainnya</a>
+      ${socialsHtml}
+    `;
+    if (installBtn) {
+      socialContainer.appendChild(installBtn);
+    }
+  }
+}
+
 function renderAllStorefrontViews() {
   renderPreviewNotice();
+  renderBrandAndFooter();
   renderCategories();
   renderCatalog();
   renderFaq();

@@ -93,6 +93,7 @@ export async function generateReceiptImage({
   let breakdownRows = 2; // Subtotal + Total
   if (totals.discount > 0) breakdownRows += 1;
   if (totals.voucherCode) breakdownRows += 1;
+  if (totals.serviceFee > 0) breakdownRows += 1;
   if (totals.isPayLater) breakdownRows += 1;
   const summaryH = 32 + breakdownRows * 24 + (totals.isPayLater ? 42 : 0) + 16;
   const footerH = 68;
@@ -125,7 +126,7 @@ export async function generateReceiptImage({
 
   ctx.fillStyle = '#94A3B8';
   ctx.font = `500 11px ${sans}`;
-  ctx.fillText('FAKTUR PEMBAYARAN DIGITAL RESMI · STANDAR NASIONAL', padX, 64);
+  ctx.fillText('FAKTUR PEMBAYARAN DIGITAL RESMI · PREMIUM ACCOUNT BY TOMY', padX, 64);
 
   // Invoice Code & Timestamp
   ctx.fillStyle = '#E2E8F0';
@@ -236,9 +237,14 @@ export async function generateReceiptImage({
     sy += bold ? 26 : 22;
   };
 
+  const payLaterPct =
+    totals.payLaterPercent !== undefined
+      ? totals.payLaterPercent
+      : Math.round(Number(totals.payLaterRate ?? 0.1) * 1000) / 10;
+
   drawSummaryRow('Subtotal', formatRupiah(totals.subtotal));
   if (totals.discount > 0) {
-    drawSummaryRow('Diskon Belanja (>= Rp50.000)', `-${formatRupiah(totals.discount)}`, '#047857');
+    drawSummaryRow('Diskon Belanja Otomatis', `-${formatRupiah(totals.discount)}`, '#047857');
   }
   if (totals.voucherCode) {
     const vText =
@@ -247,10 +253,17 @@ export async function generateReceiptImage({
         : 'Verifikasi Admin';
     drawSummaryRow(`Voucher (${totals.voucherCode})`, vText, '#047857');
   }
+  if (totals.serviceFee > 0) {
+    drawSummaryRow(
+      totals.serviceFeeLabel || 'Biaya Layanan',
+      `+${formatRupiah(totals.serviceFee)}`,
+      '#334155'
+    );
+  }
   if (totals.isPayLater) {
     const feeText =
-      totals.payLaterFee > 0 ? `+${formatRupiah(totals.payLaterFee)}` : '+10% Final';
-    drawSummaryRow('Biaya Bayar Nanti (+10%)', feeText, '#B45309');
+      totals.payLaterFee > 0 ? `+${formatRupiah(totals.payLaterFee)}` : `+${payLaterPct}% Final`;
+    drawSummaryRow(`Biaya Bayar Nanti (+${payLaterPct}%)`, feeText, '#B45309');
   }
 
   // Separator inside summary
@@ -267,7 +280,7 @@ export async function generateReceiptImage({
     ctx.fillStyle = '#92400E';
     ctx.font = `500 11px ${sans}`;
     ctx.fillText(
-      '* Sudah termasuk biaya layanan 10% untuk metode Bayar Setelah Akun Diterima.',
+      `* Sudah termasuk biaya layanan ${payLaterPct}% untuk metode Bayar Setelah Akun Diterima.`,
       padX + 14,
       sy + 2
     );
@@ -277,10 +290,10 @@ export async function generateReceiptImage({
   const fy = totalH - 36;
   ctx.fillStyle = '#64748B';
   ctx.font = `500 11px ${sans}`;
-  ctx.fillText('Kirim bukti faktur ini ke WhatsApp Admin: +62 851-2293-6027', padX, fy);
+  ctx.fillText('Kirim bukti faktur ini ke WhatsApp Admin Manifestudio', padX, fy);
   ctx.fillStyle = '#94A3B8';
   ctx.font = `400 10px ${sans}`;
-  ctx.fillText('Faktur digital resmi divalidasi otomatis oleh Manifestudio (tMC Tomy Studio)', padX, fy + 16);
+  ctx.fillText('Faktur digital resmi divalidasi otomatis · Dikelola oleh Manifestudio by Tomy © 2026', padX, fy + 16);
 
   // Encode as lightweight JPEG (~35-50 KB)
   let blob = await canvasToBlob(canvas, 'image/jpeg', 0.85);

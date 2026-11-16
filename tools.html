@@ -67,6 +67,7 @@
       <div class="container header-inner">
         <a href="./index.html" class="brand-link" aria-label="Kembali ke beranda Manifestudio">
           <img
+            id="header-brand-logo"
             src="./assets/icons/brand-icon.svg"
             alt="Logo Manifestudio"
             width="36"
@@ -74,8 +75,8 @@
             class="brand-mark"
           />
           <div class="brand-text">
-            <span class="brand-name">Manifestudio</span>
-            <span class="brand-tagline">Kembali ke Menu Utama</span>
+            <span id="header-brand-name" class="brand-name">Manifestudio</span>
+            <span id="header-brand-tagline" class="brand-tagline">Premium Account by Tomy</span>
           </div>
         </a>
 
@@ -120,18 +121,28 @@
     <footer class="site-footer">
       <div class="container footer-inner">
         <div class="footer-brand">
-          <a href="./index.html" class="brand-name" style="text-decoration: none;">Manifestudio</a>
-          <p>Dikelola oleh tMC Tomy Studio. © 2026 Manifestudio.</p>
+          <a href="./index.html" id="footer-brand-name" class="brand-name" style="text-decoration: none;">Manifestudio</a>
+          <p id="footer-copy-text">Dikelola oleh Manifestudio by Tomy © 2026</p>
         </div>
-        <div class="footer-links">
+        <div id="footer-social-links" class="footer-links">
           <a href="./index.html" class="footer-link-btn">Katalog Utama</a>
+          <a
+            href="https://wa.me/6285122936027"
+            target="_blank"
+            rel="noopener noreferrer"
+            class="footer-link-btn"
+          >
+            <img src="./assets/icons/social-whatsapp.svg" alt="" width="18" height="18" class="footer-social-icon" />
+            <span>WhatsApp Admin</span>
+          </a>
           <a
             href="https://www.tiktok.com/@tmctomystudio"
             target="_blank"
             rel="noopener noreferrer"
             class="footer-link-btn"
           >
-            TikTok @tmctomystudio
+            <img src="./assets/icons/social-tiktok.svg" alt="" width="18" height="18" class="footer-social-icon" />
+            <span>TikTok @tmctomystudio</span>
           </a>
           <a
             href="https://www.instagram.com/tmctomystudio"
@@ -139,7 +150,8 @@
             rel="noopener noreferrer"
             class="footer-link-btn"
           >
-            Instagram @tmctomystudio
+            <img src="./assets/icons/social-instagram.svg" alt="" width="18" height="18" class="footer-social-icon" />
+            <span>Instagram @tmctomystudio</span>
           </a>
         </div>
       </div>

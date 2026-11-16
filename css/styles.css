@@ -4406,5 +4406,129 @@ a {
   display: block;
 }
 
+/* Footer Social Media Icons */
+.footer-link-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.48rem;
+}
+
+.footer-social-icon {
+  width: 18px;
+  height: 18px;
+  border-radius: 4px;
+  object-fit: contain;
+  flex-shrink: 0;
+}
+
+/* Admin Categories, Brand, Socials, FAQ & Itemized History Logs */
+.admin-textarea {
+  width: 100%;
+  min-height: 76px;
+  padding: 0.65rem 0.85rem;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-strong);
+  background-color: var(--bg);
+  color: var(--ink);
+  font-family: inherit;
+  font-size: 0.88rem;
+  line-height: 1.5;
+  resize: vertical;
+}
+
+.admin-category-list,
+.admin-social-list,
+.admin-faq-list {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.admin-category-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.85rem 1rem;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border);
+  background-color: var(--surface-elevated);
+}
+
+.admin-category-fields {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 0.75rem;
+  flex: 1 1 260px;
+  min-width: 0;
+}
+
+.admin-category-fields .form-field {
+  flex: 1 1 200px;
+  min-width: 0;
+}
+
+.admin-category-meta {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  height: 42px;
+}
+
+.admin-category-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.admin-social-card,
+.admin-faq-card {
+  display: grid;
+  gap: 0.75rem;
+  padding: 1rem;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-strong);
+  background-color: var(--surface-elevated);
+}
+
+.admin-social-top,
+.admin-faq-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.65rem;
+}
+
+.admin-social-brand {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  min-width: 0;
+}
+
+.admin-social-title {
+  font-size: 0.94rem;
+  font-weight: 700;
+}
+
+.admin-history-details-list {
+  margin: 0.25rem 0 0.35rem;
+  padding: 0.6rem 0.85rem 0.6rem 1.65rem;
+  border-radius: var(--radius-sm);
+  background-color: var(--surface);
+  border: 1px solid var(--border);
+  display: grid;
+  gap: 0.28rem;
+  font-size: 0.82rem;
+  color: var(--ink-secondary);
+}
+
+.admin-history-detail-item {
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
 
 

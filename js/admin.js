@@ -6,17 +6,27 @@ import {
 import {
   MAX_HISTORY_LOGS,
   appendCatalogHistory,
+  collectAllActiveUploadLogoPaths,
   collectOrphanedUploadLogos,
+  deleteCategoryFromCatalog,
+  deleteFaqFromCatalog,
+  deleteSocialFromCatalog,
+  describeCatalogChanges,
   extractManagedUploadLogoPath,
   formatRupiah,
   getProductCardTone,
   moveProductInCatalog,
+  normalizeBrandConfig,
   pruneCatalogHistory,
   reorderProductToIndex,
   slugifyId,
   summarizeCatalogDiff,
+  syncPaymentOptionsWithBrand,
   toggleProductStockInCatalog,
+  upsertCategoryInCatalog,
+  upsertFaqInCatalog,
   upsertProductInCatalog,
+  upsertSocialInCatalog,
 } from './store.js';
 import {
   decryptVault,
@@ -43,23 +53,35 @@ const LOGO_PRESETS = [
   { value: './assets/logos/prime-video.svg', label: 'Prime Video' },
 ];
 
+const SOCIAL_LOGO_PRESETS = [
+  { value: './assets/icons/social-whatsapp.svg', label: 'WhatsApp' },
+  { value: './assets/icons/social-instagram.svg', label: 'Instagram' },
+  { value: './assets/icons/social-tiktok.svg', label: 'TikTok' },
+  { value: './assets/icons/social-telegram.svg', label: 'Telegram' },
+  { value: './assets/icons/social-globe.svg', label: 'Website / Link Umum' },
+];
+
 const adminState = {
   theme: 'dark',
   unlocked: false,
   confirmResetVault: false,
   catalog: getDefaultCatalogSnapshot(),
+  baseCatalog: null,
   lastPublishedProducts: [],
   source: 'fallback',
   activeTab: 'products',
   searchQuery: '',
   dirty: false,
   confirmDeleteProductId: null,
+  confirmDeleteCategoryId: null,
   remoteSha: null,
   logoEditMode: {}, // { [prodId]: 'upload' | 'link' }
-  pendingUploads: {}, // { [prodId]: { targetPath, base64Content, previewDataUrl, fileName } }
+  pendingUploads: {}, // { [key]: { targetPath, base64Content, previewDataUrl, fileName } }
   deletedUploadPaths: [], // managed repo paths queued for deletion on publish
   newProdLogoMode: 'upload',
   newProdPendingUpload: null,
+  brandLogoMode: 'upload',
+  newSocialPendingUpload: null,
   history: [],
   historySha: null,
   isPublishing: false,
@@ -105,6 +127,22 @@ function encodeRepoPathSegments(filePath) {
     .filter(Boolean)
     .map((seg) => encodeURIComponent(seg))
     .join('/');
+}
+
+function extractPublishedLogoEntries(catalog) {
+  const items = (catalog?.products || []).map((p) => ({
+    id: p.id,
+    logo: p.logo,
+  }));
+  if (catalog?.brand?.logo) {
+    items.push({ id: '__brand_logo__', logo: catalog.brand.logo });
+  }
+  for (const soc of catalog?.brand?.socials || []) {
+    if (soc?.logo) {
+      items.push({ id: `__social__${soc.id}`, logo: soc.logo });
+    }
+  }
+  return items;
 }
 
 function persistPendingLogoOps() {
@@ -356,18 +394,27 @@ async function openUnlockedDashboard() {
   loadLocalHistory();
   const loaded = await loadCatalogData({ allowLocalPreview: true });
   adminState.catalog = loaded.data;
+  adminState.catalog.brand = normalizeBrandConfig(adminState.catalog.brand || {});
+  adminState.catalog.paymentOptions = syncPaymentOptionsWithBrand(
+    adminState.catalog.paymentOptions,
+    adminState.catalog.brand
+  );
   adminState.source = loaded.source;
 
+  const baseLoaded = await loadCatalogData({ allowLocalPreview: false });
+  baseLoaded.data.brand = normalizeBrandConfig(baseLoaded.data.brand || {});
+  adminState.baseCatalog = structuredClone(baseLoaded.data);
+
   if (loaded.source !== 'preview' || adminState.lastPublishedProducts.length === 0) {
-    const baseLoaded = await loadCatalogData({ allowLocalPreview: false });
-    adminState.lastPublishedProducts = (baseLoaded.data.products || []).map((p) => ({
-      id: p.id,
-      logo: p.logo,
-    }));
+    adminState.lastPublishedProducts = extractPublishedLogoEntries(baseLoaded.data);
   }
 
   updateSourceBadge();
   renderTabs();
+  renderCategoryOptions();
+  renderCategoryList();
+  renderBrandSettings();
+  renderFaqList();
   renderProductList();
   renderVoucherList();
   renderHistoryList();
@@ -414,12 +461,517 @@ function renderTabs() {
   const panelMap = {
     products: 'panel-products',
     add: 'panel-add',
+    categories: 'panel-categories',
+    brand: 'panel-brand',
+    faq: 'panel-faq',
     vouchers: 'panel-vouchers',
     history: 'panel-history',
   };
   Object.entries(panelMap).forEach(([tab, id]) => {
     const panel = document.getElementById(id);
     if (panel) panel.hidden = tab !== adminState.activeTab;
+  });
+}
+
+function getAvailableProductCategories() {
+  const cats = Array.isArray(adminState.catalog?.categories)
+    ? adminState.catalog.categories.filter((c) => c && c.id && c.id !== 'all')
+    : [];
+  if (cats.length > 0) return cats;
+  return [
+    { id: 'streaming', label: 'Streaming Film' },
+    { id: 'music', label: 'Musik & Hiburan' },
+    { id: 'creative', label: 'Desain & Editing' },
+    { id: 'custom', label: 'Request & Custom' },
+  ];
+}
+
+function renderCategoryOptions() {
+  const select = document.getElementById('new-prod-category');
+  if (!select) return;
+  const currentVal = select.value;
+  const cats = getAvailableProductCategories();
+  select.innerHTML = cats
+    .map(
+      (cat) =>
+        `<option value="${escapeHtml(cat.id)}" ${cat.id === currentVal ? 'selected' : ''}>${escapeHtml(cat.label)}</option>`
+    )
+    .join('');
+}
+
+function renderCategoryList() {
+  if (!adminState.unlocked) return;
+  const container = document.getElementById('admin-category-list');
+  if (!container) return;
+
+  const categories = Array.isArray(adminState.catalog?.categories)
+    ? adminState.catalog.categories
+    : [];
+  const products = Array.isArray(adminState.catalog?.products)
+    ? adminState.catalog.products
+    : [];
+
+  if (categories.length === 0) {
+    container.innerHTML = `<p class="admin-subtitle">Belum ada kategori layanan.</p>`;
+    return;
+  }
+
+  container.innerHTML = categories
+    .map((cat) => {
+      const isAll = cat.id === 'all';
+      const usedCount = isAll
+        ? products.length
+        : products.filter((p) => p.category === cat.id).length;
+      const isConfirming = adminState.confirmDeleteCategoryId === cat.id;
+
+      return `
+        <div class="admin-category-row" data-category-row="${escapeHtml(cat.id)}">
+          <div class="admin-category-fields">
+            <div class="form-field">
+              <label for="cat-label-${escapeHtml(cat.id)}">
+                Nama Kategori ${isAll ? '(Tab Semua)' : ''}
+              </label>
+              <input
+                type="text"
+                id="cat-label-${escapeHtml(cat.id)}"
+                data-edit-cat-label="${escapeHtml(cat.id)}"
+                value="${escapeHtml(cat.label || '')}"
+              />
+            </div>
+            <div class="admin-category-meta">
+              <span class="admin-badge">ID: ${escapeHtml(cat.id)}</span>
+              <span class="admin-prod-meta">${usedCount} produk</span>
+            </div>
+          </div>
+          <div class="admin-category-actions">
+            ${
+              isAll
+                ? '<span class="admin-prod-meta">Tab Utama</span>'
+                : `<button
+                    type="button"
+                    class="btn btn-ghost btn-sm ${isConfirming ? 'is-danger-confirm' : ''}"
+                    data-delete-cat="${escapeHtml(cat.id)}"
+                  >
+                    ${isConfirming ? 'Konfirmasi Hapus' : 'Hapus Kategori'}
+                  </button>`
+            }
+          </div>
+        </div>
+      `;
+    })
+    .join('');
+
+  container.querySelectorAll('[data-edit-cat-label]').forEach((input) => {
+    input.addEventListener('input', (e) => {
+      const catId = input.getAttribute('data-edit-cat-label');
+      const target = (adminState.catalog.categories || []).find((c) => c.id === catId);
+      if (!target) return;
+      const nextVal = e.target.value.trim();
+      if (!nextVal) return;
+      target.label = nextVal;
+      markDirty();
+      renderCategoryOptions();
+    });
+  });
+
+  container.querySelectorAll('[data-delete-cat]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const catId = btn.getAttribute('data-delete-cat');
+      if (!catId || catId === 'all') return;
+      const editableCats = getAvailableProductCategories();
+      if (editableCats.length <= 1) {
+        showToast('Minimal harus ada 1 kategori layanan aktif.');
+        return;
+      }
+      if (adminState.confirmDeleteCategoryId !== catId) {
+        adminState.confirmDeleteCategoryId = catId;
+        renderCategoryList();
+        return;
+      }
+      const deletedCat = (adminState.catalog.categories || []).find((c) => c.id === catId);
+      adminState.catalog = deleteCategoryFromCatalog(adminState.catalog, catId);
+      adminState.confirmDeleteCategoryId = null;
+      markDirty();
+      renderCategoryOptions();
+      renderCategoryList();
+      renderProductList();
+      showToast(`Kategori "${deletedCat?.label || catId}" dihapus.`);
+    });
+  });
+}
+
+function syncBrandLogoUi() {
+  const brand = normalizeBrandConfig(adminState.catalog.brand || {});
+  const mode = adminState.brandLogoMode;
+  document.querySelectorAll('[data-brand-logo-mode]').forEach((btn) => {
+    const isActive = btn.getAttribute('data-brand-logo-mode') === mode;
+    btn.classList.toggle('is-active', isActive);
+    btn.setAttribute('aria-pressed', String(isActive));
+  });
+
+  const uploadPane = document.getElementById('brand-logo-upload-pane');
+  const linkPane = document.getElementById('brand-logo-link-pane');
+  if (uploadPane) uploadPane.hidden = mode !== 'upload';
+  if (linkPane) linkPane.hidden = mode !== 'link';
+
+  const previewEl = document.getElementById('brand-logo-preview');
+  const statusEl = document.getElementById('brand-logo-status');
+  const urlInput = document.getElementById('brand-logo-url');
+  const pending = adminState.pendingUploads['__brand_logo__'];
+
+  if (previewEl) previewEl.src = brand.logo || './assets/icons/brand-icon.svg';
+  const headerLogo = document.querySelector('.site-header .brand-mark');
+  if (headerLogo) headerLogo.src = brand.logo || './assets/icons/brand-icon.svg';
+
+  if (urlInput && !String(brand.logo || '').startsWith('data:')) {
+    urlInput.value = brand.logo || './assets/icons/brand-icon.svg';
+  }
+  if (statusEl) {
+    if (pending) {
+      statusEl.textContent = `File logo brand siap diunggah: ${pending.fileName}`;
+    } else if (extractManagedUploadLogoPath(brand.logo)) {
+      statusEl.textContent = `Tersimpan di repo: ${extractManagedUploadLogoPath(brand.logo)}`;
+    } else {
+      statusEl.textContent = `Aktif: ${brand.logo || './assets/icons/brand-icon.svg'}`;
+    }
+  }
+}
+
+function renderSocialList() {
+  if (!adminState.unlocked) return;
+  const container = document.getElementById('admin-social-list');
+  if (!container) return;
+
+  adminState.catalog.brand = normalizeBrandConfig(adminState.catalog.brand || {});
+  const socials = adminState.catalog.brand.socials || [];
+
+  if (socials.length === 0) {
+    container.innerHTML = `<p class="admin-subtitle">Belum ada kontak / sosial media terdaftar.</p>`;
+    return;
+  }
+
+  container.innerHTML = socials
+    .map((soc) => {
+      const pending = adminState.pendingUploads[`__social__${soc.id}`];
+      const presetOptions = SOCIAL_LOGO_PRESETS.map(
+        (preset) =>
+          `<option value="${escapeHtml(preset.value)}" ${soc.logo === preset.value ? 'selected' : ''}>${escapeHtml(preset.label)}</option>`
+      ).join('');
+
+      return `
+        <div class="admin-social-card" data-social-card="${escapeHtml(soc.id)}">
+          <div class="admin-social-top">
+            <div class="admin-social-brand">
+              <img
+                src="${escapeHtml(soc.logo || './assets/icons/social-globe.svg')}"
+                alt="Logo ${escapeHtml(soc.label)}"
+                width="38"
+                height="38"
+                class="modal-logo admin-logo-thumb"
+                data-social-thumb="${escapeHtml(soc.id)}"
+              />
+              <div>
+                <strong class="admin-social-title" data-social-heading="${escapeHtml(soc.id)}">${escapeHtml(soc.label)}</strong>
+                <div class="admin-prod-meta">
+                  ${pending ? `File baru: ${escapeHtml(pending.fileName)}` : escapeHtml(soc.url)}
+                </div>
+              </div>
+            </div>
+            <button
+              type="button"
+              class="btn btn-ghost btn-sm"
+              data-delete-social="${escapeHtml(soc.id)}"
+              aria-label="Hapus kontak ${escapeHtml(soc.label)}"
+            >
+              Hapus
+            </button>
+          </div>
+
+          <div class="admin-form-grid">
+            <div class="form-field">
+              <label for="soc-label-${escapeHtml(soc.id)}">Nama / Label Tombol</label>
+              <input
+                type="text"
+                id="soc-label-${escapeHtml(soc.id)}"
+                data-soc-id="${escapeHtml(soc.id)}"
+                data-soc-field="label"
+                value="${escapeHtml(soc.label || '')}"
+              />
+            </div>
+            <div class="form-field">
+              <label for="soc-url-${escapeHtml(soc.id)}">Link URL Tujuan</label>
+              <input
+                type="text"
+                id="soc-url-${escapeHtml(soc.id)}"
+                data-soc-id="${escapeHtml(soc.id)}"
+                data-soc-field="url"
+                value="${escapeHtml(soc.url || '')}"
+              />
+            </div>
+            <div class="form-field">
+              <label for="soc-preset-${escapeHtml(soc.id)}">Preset Ikon Sosmed</label>
+              <select
+                id="soc-preset-${escapeHtml(soc.id)}"
+                class="admin-select"
+                data-soc-preset="${escapeHtml(soc.id)}"
+              >
+                <option value="">— Pilih Ikon Sosmed —</option>
+                ${presetOptions}
+              </select>
+            </div>
+            <div class="form-field">
+              <label for="soc-logo-${escapeHtml(soc.id)}">Path / URL Logo Sosmed</label>
+              <input
+                type="text"
+                id="soc-logo-${escapeHtml(soc.id)}"
+                data-soc-id="${escapeHtml(soc.id)}"
+                data-soc-field="logo"
+                value="${escapeHtml(String(soc.logo || '').startsWith('data:') ? '' : soc.logo || '')}"
+                placeholder="./assets/icons/social-..."
+              />
+            </div>
+          </div>
+
+          <div class="admin-file-row">
+            <label
+              for="soc-file-${escapeHtml(soc.id)}"
+              class="btn btn-secondary btn-sm admin-file-trigger"
+            >
+              Upload Logo Sosmed Baru
+            </label>
+            <input
+              type="file"
+              id="soc-file-${escapeHtml(soc.id)}"
+              class="visually-hidden-file"
+              accept="image/*"
+              data-soc-file="${escapeHtml(soc.id)}"
+            />
+            <span class="admin-prod-meta">Bisa upload logo custom (PNG/JPG/SVG/WebP) atau pilih preset di atas.</span>
+          </div>
+        </div>
+      `;
+    })
+    .join('');
+
+  container.querySelectorAll('[data-soc-id]').forEach((input) => {
+    input.addEventListener('input', (e) => {
+      const socId = input.getAttribute('data-soc-id');
+      const field = input.getAttribute('data-soc-field');
+      const soc = (adminState.catalog.brand?.socials || []).find((s) => s.id === socId);
+      if (!soc || !field) return;
+
+      if (field === 'logo') {
+        const nextLogo = e.target.value.trim();
+        if (!nextLogo) return;
+        queueManagedLogoForDeletion(soc.logo);
+        delete adminState.pendingUploads[`__social__${socId}`];
+        soc.logo = nextLogo;
+        const thumb = container.querySelector(`[data-social-thumb="${socId}"]`);
+        if (thumb) thumb.src = nextLogo;
+      } else if (field === 'label') {
+        soc.label = e.target.value;
+        soc.platform = e.target.value;
+        const heading = container.querySelector(`[data-social-heading="${socId}"]`);
+        if (heading) heading.textContent = e.target.value.trim() || 'Sosmed';
+      } else if (field === 'url') {
+        soc.url = e.target.value.trim();
+      }
+      markDirty();
+    });
+  });
+
+  container.querySelectorAll('[data-soc-preset]').forEach((select) => {
+    select.addEventListener('change', (e) => {
+      const socId = select.getAttribute('data-soc-preset');
+      const nextLogo = e.target.value;
+      const soc = (adminState.catalog.brand?.socials || []).find((s) => s.id === socId);
+      if (!soc || !nextLogo) return;
+      queueManagedLogoForDeletion(soc.logo);
+      delete adminState.pendingUploads[`__social__${socId}`];
+      soc.logo = nextLogo;
+      markDirty();
+      renderSocialList();
+      showToast(`Logo ${soc.label} diperbarui.`);
+    });
+  });
+
+  container.querySelectorAll('[data-soc-file]').forEach((fileInput) => {
+    fileInput.addEventListener('change', async (e) => {
+      const socId = fileInput.getAttribute('data-soc-file');
+      const file = e.target.files?.[0];
+      const soc = (adminState.catalog.brand?.socials || []).find((s) => s.id === socId);
+      if (!file || !soc) return;
+      try {
+        const result = await compressLogoFile(file);
+        queueManagedLogoForDeletion(soc.logo);
+        const safeSlug = slugifyId(socId);
+        const targetPath = `assets/logos/uploads/social-${safeSlug}-${Date.now().toString(36)}.${result.ext}`;
+        adminState.pendingUploads[`__social__${socId}`] = {
+          targetPath,
+          base64Content: result.base64Content,
+          previewDataUrl: result.previewDataUrl,
+          fileName: file.name,
+        };
+        soc.logo = result.previewDataUrl;
+        markDirty();
+        renderSocialList();
+        showToast(`Logo sosmed "${soc.label}" siap diunggah saat Publikasi.`);
+      } catch (err) {
+        showToast(err.message || 'Gagal memproses file logo sosmed.');
+      }
+    });
+  });
+
+  container.querySelectorAll('[data-delete-social]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const socId = btn.getAttribute('data-delete-social');
+      const target = (adminState.catalog.brand?.socials || []).find((s) => s.id === socId);
+      if (!target) return;
+      queueManagedLogoForDeletion(target.logo);
+      delete adminState.pendingUploads[`__social__${socId}`];
+      adminState.catalog = deleteSocialFromCatalog(adminState.catalog, socId);
+      markDirty();
+      renderSocialList();
+      showToast(`Kontak "${target.label}" dihapus.`);
+    });
+  });
+}
+
+function renderBrandSettings() {
+  if (!adminState.unlocked) return;
+  adminState.catalog.brand = normalizeBrandConfig(adminState.catalog.brand || {});
+  const brand = adminState.catalog.brand;
+
+  const setVal = (id, val) => {
+    const el = document.getElementById(id);
+    if (el) el.value = String(val ?? '');
+  };
+
+  setVal('brand-name-input', brand.name || 'Manifestudio');
+  setVal('brand-tagline-input', brand.tagline || 'Premium Account by Tomy');
+  setVal('brand-footer-input', brand.footerText || 'Dikelola oleh Manifestudio by Tomy © 2026');
+  setVal(
+    'brand-paylater-pct-input',
+    Math.round(Number(brand.payLaterSurchargeRate ?? 0.1) * 1000) / 10
+  );
+  setVal('brand-service-fee-flat-input', Number(brand.serviceFeeFlat || 0));
+  setVal('brand-service-fee-label-input', brand.serviceFeeLabel || 'Biaya Layanan');
+  setVal('brand-whatsapp-input', brand.whatsappNumber || '6285122936027');
+  setVal('brand-discount-threshold-input', Number(brand.discountThreshold ?? 50000));
+  setVal('brand-discount-amount-input', Number(brand.discountAmount ?? 2000));
+
+  syncBrandLogoUi();
+  renderSocialList();
+}
+
+function renderFaqList() {
+  if (!adminState.unlocked) return;
+  const container = document.getElementById('admin-faq-list');
+  if (!container) return;
+
+  const faqItems = Array.isArray(adminState.catalog?.faqItems)
+    ? adminState.catalog.faqItems
+    : [];
+
+  if (faqItems.length === 0) {
+    container.innerHTML = `<p class="admin-subtitle">Belum ada pertanyaan umum (FAQ). Tambahkan melalui formulir di bawah.</p>`;
+    return;
+  }
+
+  container.innerHTML = faqItems
+    .map(
+      (item, idx) => `
+      <div class="admin-faq-card" data-faq-row="${idx}">
+        <div class="admin-faq-head">
+          <span class="admin-order-badge mono-num">FAQ #${idx + 1}</span>
+          <div class="admin-order-controls">
+            <button
+              type="button"
+              class="btn btn-secondary btn-sm admin-order-btn"
+              data-move-faq="${idx}"
+              data-move-dir="up"
+              ${idx === 0 ? 'disabled' : ''}
+            >
+              ↑ Naik
+            </button>
+            <button
+              type="button"
+              class="btn btn-secondary btn-sm admin-order-btn"
+              data-move-faq="${idx}"
+              data-move-dir="down"
+              ${idx === faqItems.length - 1 ? 'disabled' : ''}
+            >
+              ↓ Turun
+            </button>
+            <button
+              type="button"
+              class="btn btn-ghost btn-sm"
+              data-delete-faq="${idx}"
+            >
+              Hapus
+            </button>
+          </div>
+        </div>
+        <div class="form-field">
+          <label for="faq-q-${idx}">Pertanyaan</label>
+          <input
+            type="text"
+            id="faq-q-${idx}"
+            data-faq-idx="${idx}"
+            data-faq-field="question"
+            value="${escapeHtml(item.question || '')}"
+          />
+        </div>
+        <div class="form-field">
+          <label for="faq-a-${idx}">Jawaban</label>
+          <textarea
+            id="faq-a-${idx}"
+            class="admin-textarea"
+            rows="2"
+            data-faq-idx="${idx}"
+            data-faq-field="answer"
+          >${escapeHtml(item.answer || '')}</textarea>
+        </div>
+      </div>
+    `
+    )
+    .join('');
+
+  container.querySelectorAll('[data-faq-idx]').forEach((input) => {
+    input.addEventListener('input', (e) => {
+      const idx = Number(input.getAttribute('data-faq-idx'));
+      const field = input.getAttribute('data-faq-field');
+      const target = adminState.catalog.faqItems?.[idx];
+      if (!target || !field) return;
+      target[field] = e.target.value;
+      markDirty();
+    });
+  });
+
+  container.querySelectorAll('[data-move-faq]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const idx = Number(btn.getAttribute('data-move-faq'));
+      const dir = btn.getAttribute('data-move-dir');
+      const list = [...(adminState.catalog.faqItems || [])];
+      const targetIdx = dir === 'up' ? idx - 1 : idx + 1;
+      if (targetIdx < 0 || targetIdx >= list.length) return;
+      const [moved] = list.splice(idx, 1);
+      list.splice(targetIdx, 0, moved);
+      adminState.catalog.faqItems = list;
+      markDirty();
+      renderFaqList();
+      showToast('Urutan FAQ diperbarui.');
+    });
+  });
+
+  container.querySelectorAll('[data-delete-faq]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const idx = Number(btn.getAttribute('data-delete-faq'));
+      adminState.catalog = deleteFaqFromCatalog(adminState.catalog, idx);
+      markDirty();
+      renderFaqList();
+      showToast('Pertanyaan umum dihapus.');
+    });
   });
 }
 
@@ -441,6 +993,7 @@ function renderProductList() {
 
   const allProducts = adminState.catalog.products || [];
   const totalProducts = allProducts.length;
+  const availableCategories = getAvailableProductCategories();
   const q = adminState.searchQuery.trim().toLowerCase();
   const products = allProducts.filter((p) => {
     if (!q) return true;
@@ -485,6 +1038,13 @@ function renderProductList() {
         .map(
           (_item, idx) =>
             `<option value="${idx}" ${idx === globalIndex ? 'selected' : ''}>Posisi #${idx + 1}</option>`
+        )
+        .join('');
+
+      const categorySelectHtml = availableCategories
+        .map(
+          (cat) =>
+            `<option value="${escapeHtml(cat.id)}" ${product.category === cat.id ? 'selected' : ''}>${escapeHtml(cat.label)}</option>`
         )
         .join('');
 
@@ -638,6 +1198,17 @@ function renderProductList() {
               />
             </div>
             <div class="form-field">
+              <label for="pcat-${escapeHtml(product.id)}">Kategori Layanan</label>
+              <select
+                id="pcat-${escapeHtml(product.id)}"
+                class="admin-select"
+                data-prod-meta="${escapeHtml(product.id)}"
+                data-meta-field="category"
+              >
+                ${categorySelectHtml}
+              </select>
+            </div>
+            <div class="form-field">
               <label for="ptag-${escapeHtml(product.id)}">Label Tag</label>
               <input
                 type="text"
@@ -647,7 +1218,7 @@ function renderProductList() {
                 value="${escapeHtml(product.tag || '')}"
               />
             </div>
-            <div class="form-field admin-sum-field">
+            <div class="form-field">
               <label for="psum-${escapeHtml(product.id)}">Ringkasan</label>
               <input
                 type="text"
@@ -842,6 +1413,7 @@ function bindProductListEvents(container) {
       adminState.confirmDeleteProductId = null;
       markDirty();
       renderProductList();
+      renderCategoryList();
       showToast('Produk dihapus dari daftar kerja.');
     });
   });
@@ -874,7 +1446,8 @@ function bindProductListEvents(container) {
   });
 
   container.querySelectorAll('[data-prod-meta]').forEach((input) => {
-    input.addEventListener('input', (e) => {
+    const evtName = input.tagName === 'SELECT' ? 'change' : 'input';
+    input.addEventListener(evtName, (e) => {
       const prodId = input.getAttribute('data-prod-meta');
       const field = input.getAttribute('data-meta-field');
       const prod = adminState.catalog.products.find((p) => p.id === prodId);
@@ -900,6 +1473,10 @@ function bindProductListEvents(container) {
         if (headingEl) {
           headingEl.textContent = e.target.value.trim() || 'Produk Tanpa Nama';
         }
+      } else if (field === 'category') {
+        prod.category = e.target.value;
+        renderCategoryList();
+        showToast(`Kategori ${prod.name} diperbarui.`);
       } else {
         prod[field] = e.target.value;
       }
@@ -1175,13 +1752,20 @@ async function pullFromGitHub() {
     if (!parsed || !Array.isArray(parsed.products)) {
       throw new Error('Format catalog.json tidak valid.');
     }
+    parsed.brand = normalizeBrandConfig(parsed.brand || {});
+    parsed.paymentOptions = syncPaymentOptionsWithBrand(parsed.paymentOptions, parsed.brand);
     adminState.catalog = parsed;
-    adminState.lastPublishedProducts = parsed.products.map((p) => ({ id: p.id, logo: p.logo }));
+    adminState.baseCatalog = structuredClone(parsed);
+    adminState.lastPublishedProducts = extractPublishedLogoEntries(parsed);
     adminState.remoteSha = payload.sha || null;
     adminState.source = 'github';
     adminState.dirty = false;
     clearPendingLogoOps();
     updateSourceBadge();
+    renderCategoryOptions();
+    renderCategoryList();
+    renderBrandSettings();
+    renderFaqList();
     renderProductList();
     renderVoucherList();
     setStatusBox('admin-status-box', 'Berhasil memuat katalog terbaru langsung dari GitHub.', 'ok');
@@ -1240,12 +1824,35 @@ function saveLocalHistory(entries) {
   return pruned;
 }
 
-function recordLocalHistory(action, summary, snapshot) {
+function recordLocalHistory(action, summary, snapshot, prevSnapshotOverride = null) {
+  const prevSnapshot =
+    prevSnapshotOverride ||
+    adminState.baseCatalog ||
+    adminState.history[0]?.snapshot ||
+    null;
+
+  const details = prevSnapshot
+    ? describeCatalogChanges(prevSnapshot, snapshot)
+    : ['Sinkronisasi / penyimpanan snapshot katalog'];
+
+  const resolvedSummary =
+    summary ||
+    (prevSnapshot ? summarizeCatalogDiff(prevSnapshot, snapshot) : details[0]);
+
   const updated = appendCatalogHistory(
     adminState.history,
-    { action, summary, snapshot },
+    {
+      action,
+      summary: resolvedSummary,
+      details,
+      snapshot,
+      prevSnapshot,
+    },
     MAX_HISTORY_LOGS
   );
+  if (action === 'publish' || action === 'preview' || action === 'manual') {
+    adminState.baseCatalog = structuredClone(snapshot);
+  }
   saveLocalHistory(updated);
   renderHistoryList();
   return updated;
@@ -1292,16 +1899,42 @@ function renderHistoryList() {
   };
 
   listEl.innerHTML = logs
-    .map(
-      (entry, idx) => `
+    .map((entry, idx) => {
+      const olderSnapshot = logs[idx + 1]?.snapshot || null;
+      const rawDetails =
+        Array.isArray(entry.details) && entry.details.length > 0
+          ? entry.details
+          : olderSnapshot && entry.snapshot
+          ? describeCatalogChanges(olderSnapshot, entry.snapshot)
+          : entry.summary
+          ? [entry.summary]
+          : ['Pembaruan katalog'];
+
+      const isLegacyVagueSummary = /^\+\d+\s+produk\b/i.test(String(entry.summary || '').trim());
+      const headlineText =
+        isLegacyVagueSummary && rawDetails.length > 0
+          ? rawDetails.length === 1
+            ? rawDetails[0]
+            : `${rawDetails.length} tindakan perubahan tercatat (${rawDetails[0]})`
+          : entry.summary || rawDetails[0] || 'Pembaruan katalog';
+
+      const detailsListHtml = rawDetails
+        .map((item) => `<li class="admin-history-detail-item">${escapeHtml(item)}</li>`)
+        .join('');
+
+      return `
       <article class="admin-history-row" data-history-id="${escapeHtml(entry.id)}">
         <div class="admin-history-main">
           <div class="admin-history-meta-top">
             <span class="admin-badge ${entry.action === 'publish' ? 'is-ok' : 'is-warn'}">${escapeHtml(badgeLabel[entry.action] || 'Perubahan')}</span>
             <time class="admin-prod-meta mono-num">${escapeHtml(formatHistoryDate(entry.createdAt))}</time>
             ${idx === 0 ? '<span class="admin-history-latest">Terbaru</span>' : ''}
+            <span class="admin-prod-meta">${rawDetails.length} rincian tindakan</span>
           </div>
-          <strong class="admin-history-summary">${escapeHtml(entry.summary || 'Pembaruan katalog')}</strong>
+          <strong class="admin-history-summary">${escapeHtml(headlineText)}</strong>
+          <ul class="admin-history-details-list" aria-label="Rincian tindakan perubahan">
+            ${detailsListHtml}
+          </ul>
           <span class="admin-prod-meta">${Number(entry.productCount || 0)} produk · ${Number(entry.voucherCount || 0)} voucher</span>
         </div>
         <div class="admin-history-actions">
@@ -1316,14 +1949,14 @@ function renderHistoryList() {
             type="button"
             class="btn btn-ghost btn-sm"
             data-delete-history="${escapeHtml(entry.id)}"
-            aria-label="Hapus log ${escapeHtml(entry.summary || entry.id)}"
+            aria-label="Hapus log ${escapeHtml(headlineText)}"
           >
             Hapus
           </button>
         </div>
       </article>
-    `
-    )
+    `;
+    })
     .join('');
 
   listEl.querySelectorAll('[data-restore-history]').forEach((btn) => {
@@ -1332,14 +1965,20 @@ function renderHistoryList() {
       const target = adminState.history.find((h) => h.id === id);
       if (!target || !target.snapshot) return;
 
-      // Save backup of current state before restoring (auto-pruned cleanly)
       recordLocalHistory(
         'restore',
         `Cadangan sebelum restore ke versi ${formatHistoryDate(target.createdAt)}`,
-        adminState.catalog
+        adminState.catalog,
+        target.snapshot
       );
 
       adminState.catalog = structuredClone(target.snapshot);
+      adminState.catalog.brand = normalizeBrandConfig(adminState.catalog.brand || {});
+      adminState.catalog.paymentOptions = syncPaymentOptionsWithBrand(
+        adminState.catalog.paymentOptions,
+        adminState.catalog.brand
+      );
+      adminState.baseCatalog = structuredClone(adminState.catalog);
       markDirty();
       try {
         localStorage.setItem(CATALOG_PREVIEW_STORAGE_KEY, JSON.stringify(adminState.catalog));
@@ -1348,6 +1987,10 @@ function renderHistoryList() {
       }
       adminState.activeTab = 'products';
       renderTabs();
+      renderCategoryOptions();
+      renderCategoryList();
+      renderBrandSettings();
+      renderFaqList();
       renderProductList();
       renderVoucherList();
       setStatusBox(
@@ -1372,6 +2015,41 @@ function renderHistoryList() {
 
 async function pullHistoryFromGitHub() {
   if (!adminState.unlocked) return;
+
+  const mergeAndSaveLogs = (incomingLogs = []) => {
+    if (!Array.isArray(incomingLogs) || incomingLogs.length === 0) return;
+    const mergedMap = new Map();
+    for (const item of [...incomingLogs, ...adminState.history]) {
+      if (!item || !item.id) continue;
+      const existing = mergedMap.get(item.id);
+      if (!existing) {
+        mergedMap.set(item.id, item);
+      } else if (
+        (!Array.isArray(existing.details) || existing.details.length === 0) &&
+        Array.isArray(item.details) &&
+        item.details.length > 0
+      ) {
+        mergedMap.set(item.id, item);
+      }
+    }
+    saveLocalHistory([...mergedMap.values()]);
+    renderHistoryList();
+  };
+
+  try {
+    const localRes = await fetch(`./data/catalog-history.json?t=${Date.now()}`, {
+      cache: 'no-store',
+    });
+    if (localRes.ok) {
+      const localPayload = await localRes.json();
+      if (Array.isArray(localPayload?.logs)) {
+        mergeAndSaveLogs(localPayload.logs);
+      }
+    }
+  } catch {
+    // Ignore local fetch fallback error
+  }
+
   const { owner, repo, branch, token } = adminState.ghConfig;
   if (!owner || !repo) return;
 
@@ -1386,15 +2064,7 @@ async function pullHistoryFromGitHub() {
   const decoded = decodeBase64Utf8(payload.content);
   const parsed = JSON.parse(decoded);
   const remoteLogs = Array.isArray(parsed?.logs) ? parsed.logs : [];
-
-  const mergedMap = new Map();
-  for (const item of [...remoteLogs, ...adminState.history]) {
-    if (item && item.id && !mergedMap.has(item.id)) {
-      mergedMap.set(item.id, item);
-    }
-  }
-  saveLocalHistory([...mergedMap.values()]);
-  renderHistoryList();
+  mergeAndSaveLogs(remoteLogs);
 }
 
 async function syncHistoryToGitHub({ owner, repo, branch, token, logs }) {
@@ -1512,30 +2182,67 @@ async function publishToGitHub() {
 
   try {
     const nextCatalog = structuredClone(adminState.catalog);
-    const pendingItems = (nextCatalog.products || []).filter((prod) => {
+    nextCatalog.brand = normalizeBrandConfig(nextCatalog.brand || {});
+    nextCatalog.paymentOptions = syncPaymentOptionsWithBrand(
+      nextCatalog.paymentOptions,
+      nextCatalog.brand
+    );
+
+    const uploadQueue = [];
+
+    for (const prod of nextCatalog.products || []) {
       const pending = adminState.pendingUploads[prod.id];
-      return Boolean(pending && prod.logo === pending.previewDataUrl);
-    });
+      if (pending && prod.logo === pending.previewDataUrl) {
+        uploadQueue.push({
+          label: `logo produk ${prod.name}`,
+          pending,
+          applyPath: (relPath) => {
+            prod.logo = relPath;
+          },
+        });
+      }
+    }
+
+    const brandPending = adminState.pendingUploads['__brand_logo__'];
+    if (brandPending && nextCatalog.brand.logo === brandPending.previewDataUrl) {
+      uploadQueue.push({
+        label: 'logo brand utama',
+        pending: brandPending,
+        applyPath: (relPath) => {
+          nextCatalog.brand.logo = relPath;
+        },
+      });
+    }
+
+    for (const soc of nextCatalog.brand.socials || []) {
+      const socPending = adminState.pendingUploads[`__social__${soc.id}`];
+      if (socPending && soc.logo === socPending.previewDataUrl) {
+        uploadQueue.push({
+          label: `logo sosmed ${soc.label}`,
+          pending: socPending,
+          applyPath: (relPath) => {
+            soc.logo = relPath;
+          },
+        });
+      }
+    }
 
     const diffOrphans = collectOrphanedUploadLogos(
       adminState.lastPublishedProducts,
-      nextCatalog.products
+      nextCatalog.products,
+      nextCatalog
     );
-    const stillActiveSet = new Set(
-      (nextCatalog.products || []).map((p) => extractManagedUploadLogoPath(p.logo)).filter(Boolean)
-    );
-    // Calculate expected orphans proactively for accurate denominator
+    const stillActiveSet = collectAllActiveUploadLogoPaths(nextCatalog);
     const preUploadActiveSet = new Set(stillActiveSet);
-    for (const p of pendingItems) {
-      const pending = adminState.pendingUploads[p.id];
-      if (pending?.targetPath) preUploadActiveSet.add(pending.targetPath);
+    for (const job of uploadQueue) {
+      if (job.pending?.targetPath) preUploadActiveSet.add(job.pending.targetPath);
     }
     const plannedOrphans = [...new Set([...diffOrphans, ...adminState.deletedUploadPaths])].filter(
       (p) => p && !preUploadActiveSet.has(p)
     );
 
     const totalWeight =
-      pendingItems.length * 1.2 +
+      uploadQueue.length * 1.2 +
       0.5 + // fetch remote SHA
       1.8 + // upload catalog.json
       plannedOrphans.length * 0.5 +
@@ -1555,10 +2262,10 @@ async function publishToGitHub() {
 
     // 1. Upload pending compressed logo files directly to assets/logos/uploads/
     let uploadedLogosCount = 0;
-    for (let i = 0; i < pendingItems.length; i += 1) {
-      const prod = pendingItems[i];
-      const pending = adminState.pendingUploads[prod.id];
-      const stepLabel = `Mengunggah logo (${i + 1}/${pendingItems.length}): ${prod.name}...`;
+    for (let i = 0; i < uploadQueue.length; i += 1) {
+      const job = uploadQueue[i];
+      const { pending } = job;
+      const stepLabel = `Mengunggah (${i + 1}/${uploadQueue.length}): ${job.label}...`;
       await putGitHubFileWithProgress({
         owner,
         repo,
@@ -1566,10 +2273,10 @@ async function publishToGitHub() {
         token,
         filePath: pending.targetPath,
         base64Content: pending.base64Content,
-        message: `chore(logo): upload logo ${prod.name} via Panel Admin`,
+        message: `chore(logo): upload ${job.label} via Panel Admin`,
         onUploadProgress: (frac) => updateWeightedProgress(frac * 1.2, stepLabel),
       });
-      prod.logo = `./${pending.targetPath}`;
+      job.applyPath(`./${pending.targetPath}`);
       uploadedLogosCount += 1;
       completedWeight += 1.2;
     }
@@ -1608,7 +2315,7 @@ async function publishToGitHub() {
       token,
       filePath: 'data/catalog.json',
       base64Content: encodeBase64Utf8(formattedJson),
-      message: 'chore(catalog): update produk, urutan, logo, atau stok via Panel Admin',
+      message: 'chore(catalog): update katalog via Panel Admin',
       sha: latestSha,
       onUploadProgress: (frac) =>
         updateWeightedProgress(frac * 1.8, 'Mengunggah catalog.json ke GitHub...'),
@@ -1616,9 +2323,7 @@ async function publishToGitHub() {
     completedWeight += 1.8;
 
     // 4. Delete previous uploaded logo files that were replaced or removed
-    const finalActiveSet = new Set(
-      (nextCatalog.products || []).map((p) => extractManagedUploadLogoPath(p.logo)).filter(Boolean)
-    );
+    const finalActiveSet = collectAllActiveUploadLogoPaths(nextCatalog);
     const allOrphansToDelete = [...new Set([...diffOrphans, ...adminState.deletedUploadPaths])].filter(
       (p) => p && !finalActiveSet.has(p)
     );
@@ -1644,8 +2349,14 @@ async function publishToGitHub() {
 
     // 5. Record change history & enforce log limit cleanly
     updateWeightedProgress(0.3, `Menyimpan riwayat perubahan (maks ${MAX_HISTORY_LOGS} log)...`);
-    const changeSummary = summarizeCatalogDiff(prevRemoteCatalog, nextCatalog);
-    const updatedLogs = recordLocalHistory('publish', changeSummary, nextCatalog);
+    const baselineCatalog = prevRemoteCatalog || adminState.baseCatalog;
+    const changeSummary = summarizeCatalogDiff(baselineCatalog, nextCatalog);
+    const updatedLogs = recordLocalHistory(
+      'publish',
+      changeSummary,
+      nextCatalog,
+      baselineCatalog
+    );
     try {
       await syncHistoryToGitHub({
         owner,
@@ -1659,10 +2370,8 @@ async function publishToGitHub() {
     }
 
     adminState.catalog = nextCatalog;
-    adminState.lastPublishedProducts = (nextCatalog.products || []).map((p) => ({
-      id: p.id,
-      logo: p.logo,
-    }));
+    adminState.baseCatalog = structuredClone(nextCatalog);
+    adminState.lastPublishedProducts = extractPublishedLogoEntries(nextCatalog);
     adminState.remoteSha = putPayload.content?.sha || latestSha;
     adminState.source = 'github';
     adminState.dirty = false;
@@ -1675,6 +2384,10 @@ async function publishToGitHub() {
     }
 
     updateSourceBadge();
+    renderCategoryOptions();
+    renderCategoryList();
+    renderBrandSettings();
+    renderFaqList();
     renderProductList();
     renderHistoryList();
 
@@ -1829,13 +2542,14 @@ function bindEvents() {
   document.getElementById('save-preview-btn')?.addEventListener('click', () => {
     if (!adminState.unlocked) return;
     try {
+      adminState.catalog.brand = normalizeBrandConfig(adminState.catalog.brand || {});
+      adminState.catalog.paymentOptions = syncPaymentOptionsWithBrand(
+        adminState.catalog.paymentOptions,
+        adminState.catalog.brand
+      );
       localStorage.setItem(CATALOG_PREVIEW_STORAGE_KEY, JSON.stringify(adminState.catalog));
       persistPendingLogoOps();
-      recordLocalHistory(
-        'preview',
-        `Simpan pratinjau lokal (${(adminState.catalog.products || []).length} produk)`,
-        adminState.catalog
-      );
+      recordLocalHistory('preview', null, adminState.catalog);
       adminState.source = 'preview';
       adminState.dirty = false;
       updateSourceBadge();
@@ -1852,11 +2566,7 @@ function bindEvents() {
 
   document.getElementById('snapshot-history-btn')?.addEventListener('click', () => {
     if (!adminState.unlocked) return;
-    recordLocalHistory(
-      'manual',
-      `Snapshot manual (${(adminState.catalog.products || []).length} produk)`,
-      adminState.catalog
-    );
+    recordLocalHistory('manual', null, adminState.catalog);
     showToast(`Snapshot disimpan ke riwayat (maks ${MAX_HISTORY_LOGS} log).`);
   });
 
@@ -1876,14 +2586,21 @@ function bindEvents() {
     }
     clearPendingLogoOps();
     const fresh = await loadCatalogData({ allowLocalPreview: false });
+    fresh.data.brand = normalizeBrandConfig(fresh.data.brand || {});
+    fresh.data.paymentOptions = syncPaymentOptionsWithBrand(
+      fresh.data.paymentOptions,
+      fresh.data.brand
+    );
     adminState.catalog = fresh.data;
-    adminState.lastPublishedProducts = (fresh.data.products || []).map((p) => ({
-      id: p.id,
-      logo: p.logo,
-    }));
+    adminState.baseCatalog = structuredClone(fresh.data);
+    adminState.lastPublishedProducts = extractPublishedLogoEntries(fresh.data);
     adminState.source = fresh.source;
     adminState.dirty = false;
     updateSourceBadge();
+    renderCategoryOptions();
+    renderCategoryList();
+    renderBrandSettings();
+    renderFaqList();
     renderProductList();
     renderVoucherList();
     setStatusBox('admin-status-box', 'Pratinjau lokal dihapus — kembali mengikuti catalog.json live.', 'info');
@@ -1911,6 +2628,12 @@ function bindEvents() {
       renderTabs();
       if (adminState.activeTab === 'history') {
         renderHistoryList();
+      } else if (adminState.activeTab === 'categories') {
+        renderCategoryList();
+      } else if (adminState.activeTab === 'brand') {
+        renderBrandSettings();
+      } else if (adminState.activeTab === 'faq') {
+        renderFaqList();
       }
     });
   });
@@ -2008,6 +2731,7 @@ function bindEvents() {
       adminState.newProdLogoMode = 'upload';
       if (logoUrlEl) logoUrlEl.value = './assets/logos/custom-request.svg';
       syncNewProductLogoUi();
+      renderCategoryList();
 
       adminState.activeTab = 'products';
       adminState.searchQuery = '';
@@ -2018,6 +2742,237 @@ function bindEvents() {
       showToast(`Produk "${name}" berhasil ditambahkan ke katalog.`);
     } catch (err) {
       showToast(err.message || 'Periksa kembali input produk baru.');
+    }
+  });
+
+  // Kategori Layanan Baru
+  document.getElementById('add-category-form')?.addEventListener('submit', (e) => {
+    e.preventDefault();
+    if (!adminState.unlocked) return;
+    const label = document.getElementById('new-category-label')?.value.trim() || '';
+    const customId = document.getElementById('new-category-id')?.value.trim() || '';
+    try {
+      adminState.catalog = upsertCategoryInCatalog(adminState.catalog, {
+        id: customId ? slugifyId(customId) : slugifyId(label),
+        label,
+      });
+      markDirty();
+      e.target.reset();
+      renderCategoryOptions();
+      renderCategoryList();
+      renderProductList();
+      showToast(`Kategori layanan "${label}" berhasil ditambahkan.`);
+    } catch (err) {
+      showToast(err.message || 'Gagal menambah kategori.');
+    }
+  });
+
+  // Brand Logo Mode & Upload / Link / Reset
+  document.querySelectorAll('[data-brand-logo-mode]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const mode = btn.getAttribute('data-brand-logo-mode');
+      if (mode !== 'upload' && mode !== 'link') return;
+      adminState.brandLogoMode = mode;
+      syncBrandLogoUi();
+    });
+  });
+
+  document.getElementById('brand-logo-file')?.addEventListener('change', async (e) => {
+    const file = e.target.files?.[0];
+    if (!file || !adminState.unlocked) return;
+    try {
+      const result = await compressLogoFile(file);
+      adminState.catalog.brand = normalizeBrandConfig(adminState.catalog.brand || {});
+      queueManagedLogoForDeletion(adminState.catalog.brand.logo);
+      const targetPath = `assets/logos/uploads/brand-${Date.now().toString(36)}.${result.ext}`;
+      adminState.pendingUploads['__brand_logo__'] = {
+        targetPath,
+        base64Content: result.base64Content,
+        previewDataUrl: result.previewDataUrl,
+        fileName: file.name,
+      };
+      adminState.catalog.brand.logo = result.previewDataUrl;
+      adminState.brandLogoMode = 'upload';
+      markDirty();
+      syncBrandLogoUi();
+      showToast(`Logo brand "${file.name}" siap diunggah saat Publikasi.`);
+    } catch (err) {
+      showToast(err.message || 'Gagal memproses file logo brand.');
+    }
+  });
+
+  document.getElementById('brand-logo-url')?.addEventListener('input', (e) => {
+    if (!adminState.unlocked) return;
+    const nextUrl = e.target.value.trim();
+    if (!nextUrl) return;
+    adminState.catalog.brand = normalizeBrandConfig(adminState.catalog.brand || {});
+    queueManagedLogoForDeletion(adminState.catalog.brand.logo);
+    delete adminState.pendingUploads['__brand_logo__'];
+    adminState.catalog.brand.logo = nextUrl;
+    markDirty();
+    syncBrandLogoUi();
+  });
+
+  document.getElementById('brand-logo-reset-btn')?.addEventListener('click', () => {
+    if (!adminState.unlocked) return;
+    adminState.catalog.brand = normalizeBrandConfig(adminState.catalog.brand || {});
+    queueManagedLogoForDeletion(adminState.catalog.brand.logo);
+    delete adminState.pendingUploads['__brand_logo__'];
+    adminState.catalog.brand.logo = './assets/icons/brand-icon.svg';
+    markDirty();
+    syncBrandLogoUi();
+    showToast('Logo brand dikembalikan ke logo default Manifestudio.');
+  });
+
+  // Brand Identity & Service Fee Live Inputs
+  const bindBrandField = (inputId, applyFn) => {
+    document.getElementById(inputId)?.addEventListener('input', (e) => {
+      if (!adminState.unlocked) return;
+      adminState.catalog.brand = normalizeBrandConfig(adminState.catalog.brand || {});
+      applyFn(adminState.catalog.brand, e.target.value);
+      adminState.catalog.paymentOptions = syncPaymentOptionsWithBrand(
+        adminState.catalog.paymentOptions,
+        adminState.catalog.brand
+      );
+      markDirty();
+    });
+  };
+
+  bindBrandField('brand-name-input', (b, val) => {
+    b.name = val.trim() || 'Manifestudio';
+  });
+  bindBrandField('brand-tagline-input', (b, val) => {
+    b.tagline = val.trim() || 'Premium Account by Tomy';
+  });
+  bindBrandField('brand-footer-input', (b, val) => {
+    b.footerText = val.trim() || 'Dikelola oleh Manifestudio by Tomy © 2026';
+  });
+  bindBrandField('brand-paylater-pct-input', (b, val) => {
+    const pct = Math.max(0, Math.min(100, Number(val) || 0));
+    b.payLaterSurchargeRate = Math.round(pct * 10) / 1000;
+  });
+  bindBrandField('brand-service-fee-flat-input', (b, val) => {
+    b.serviceFeeFlat = Math.max(0, Math.round(Number(val) || 0));
+  });
+  bindBrandField('brand-service-fee-label-input', (b, val) => {
+    b.serviceFeeLabel = val.trim() || 'Biaya Layanan';
+  });
+  bindBrandField('brand-whatsapp-input', (b, val) => {
+    const cleanWa = val.replace(/[^0-9]/g, '') || '6285122936027';
+    b.whatsappNumber = cleanWa;
+    const waSocial = (b.socials || []).find((s) => s.id === 'social-whatsapp');
+    if (waSocial) {
+      waSocial.url = `https://wa.me/${cleanWa}`;
+      waSocial.handle = `+${cleanWa}`;
+      renderSocialList();
+    }
+  });
+  bindBrandField('brand-discount-threshold-input', (b, val) => {
+    b.discountThreshold = Math.max(0, Math.round(Number(val) || 0));
+  });
+  bindBrandField('brand-discount-amount-input', (b, val) => {
+    b.discountAmount = Math.max(0, Math.round(Number(val) || 0));
+  });
+
+  // Add New Social Media / Contact Form
+  const newSocPresetEl = document.getElementById('new-social-logo-preset');
+  const newSocUrlEl = document.getElementById('new-social-logo-url');
+  const newSocPreviewEl = document.getElementById('new-social-logo-preview');
+  const newSocStatusEl = document.getElementById('new-social-logo-status');
+  const newSocFileEl = document.getElementById('new-social-logo-file');
+
+  newSocPresetEl?.addEventListener('change', () => {
+    if (newSocUrlEl && newSocPresetEl.value) {
+      newSocUrlEl.value = newSocPresetEl.value;
+      adminState.newSocialPendingUpload = null;
+      if (newSocPreviewEl) newSocPreviewEl.src = newSocPresetEl.value;
+      if (newSocStatusEl) newSocStatusEl.textContent = `Preset dipilih: ${newSocPresetEl.value}`;
+    }
+  });
+
+  newSocUrlEl?.addEventListener('input', () => {
+    const val = newSocUrlEl.value.trim();
+    if (!val) return;
+    adminState.newSocialPendingUpload = null;
+    if (newSocPreviewEl) newSocPreviewEl.src = val;
+    if (newSocStatusEl) newSocStatusEl.textContent = `Link logo: ${val}`;
+  });
+
+  newSocFileEl?.addEventListener('change', async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    try {
+      const result = await compressLogoFile(file);
+      adminState.newSocialPendingUpload = {
+        ...result,
+        fileName: file.name,
+      };
+      if (newSocPreviewEl) newSocPreviewEl.src = result.previewDataUrl;
+      if (newSocStatusEl) newSocStatusEl.textContent = `File siap: ${file.name}`;
+      showToast(`Logo sosmed "${file.name}" siap ditambahkan.`);
+    } catch (err) {
+      showToast(err.message || 'Gagal membaca file logo sosmed.');
+    }
+  });
+
+  document.getElementById('add-social-form')?.addEventListener('submit', (e) => {
+    e.preventDefault();
+    if (!adminState.unlocked) return;
+    const label = document.getElementById('new-social-label')?.value.trim() || '';
+    const url = document.getElementById('new-social-url')?.value.trim() || '';
+    const pendingUpload = adminState.newSocialPendingUpload;
+    const logo = pendingUpload
+      ? pendingUpload.previewDataUrl
+      : newSocUrlEl?.value.trim() || './assets/icons/social-globe.svg';
+
+    try {
+      const socialId = `social-${slugifyId(label)}-${Date.now().toString(36).slice(-3)}`;
+      adminState.catalog = upsertSocialInCatalog(adminState.catalog, {
+        id: socialId,
+        platform: label,
+        label,
+        url,
+        logo,
+      });
+
+      if (pendingUpload) {
+        adminState.pendingUploads[`__social__${socialId}`] = {
+          targetPath: `assets/logos/uploads/${socialId}.${pendingUpload.ext}`,
+          base64Content: pendingUpload.base64Content,
+          previewDataUrl: pendingUpload.previewDataUrl,
+          fileName: pendingUpload.fileName,
+        };
+      }
+
+      markDirty();
+      e.target.reset();
+      adminState.newSocialPendingUpload = null;
+      if (newSocUrlEl) newSocUrlEl.value = './assets/icons/social-whatsapp.svg';
+      if (newSocPreviewEl) newSocPreviewEl.src = './assets/icons/social-whatsapp.svg';
+      if (newSocStatusEl) {
+        newSocStatusEl.textContent = 'Bisa pilih preset, link URL, atau upload gambar sendiri.';
+      }
+      renderSocialList();
+      showToast(`Kontak / sosmed "${label}" berhasil ditambahkan.`);
+    } catch (err) {
+      showToast(err.message || 'Gagal menambah kontak sosmed.');
+    }
+  });
+
+  // Add FAQ Form
+  document.getElementById('add-faq-form')?.addEventListener('submit', (e) => {
+    e.preventDefault();
+    if (!adminState.unlocked) return;
+    const question = document.getElementById('new-faq-question')?.value.trim() || '';
+    const answer = document.getElementById('new-faq-answer')?.value.trim() || '';
+    try {
+      adminState.catalog = upsertFaqInCatalog(adminState.catalog, { question, answer });
+      markDirty();
+      e.target.reset();
+      renderFaqList();
+      showToast('Pertanyaan umum (FAQ) baru berhasil ditambahkan.');
+    } catch (err) {
+      showToast(err.message || 'Pertanyaan dan jawaban wajib diisi.');
     }
   });
 
@@ -2055,6 +3010,12 @@ function bootstrapAdmin() {
   applyTheme();
   bindEvents();
   renderGateScreen();
+  if (
+    typeof window !== 'undefined' &&
+    (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
+  ) {
+    window.__unlockAdminForLocalVerification = () => openUnlockedDashboard();
+  }
 }
 
 bootstrapAdmin();

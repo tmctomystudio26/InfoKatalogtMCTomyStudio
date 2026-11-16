@@ -6,7 +6,21 @@
       "id": "rev-mwigu0z0-y7nv",
       "createdAt": "2026-11-15T23:28:30.828Z",
       "action": "publish",
-      "summary": "+12 produk · voucher diperbarui",
+      "summary": "Mengubah logo Netflix Premium · Menghapus sub produk Spotify Premium — 3 Bulan - Garansi 1x Replace (+10 perubahan lainnya)",
+      "details": [
+        "Mengubah logo Netflix Premium",
+        "Mengubah logo Canva Pro",
+        "Mengaktifkan kembali stok produk Spotify Premium",
+        "Menghapus sub produk Spotify Premium — 3 Bulan - Garansi 1x Replace",
+        "Menghapus sub produk Spotify Premium — 3 Bulan - Garansi 2x Replace",
+        "Mengubah nama sub produk Spotify Premium dari \"3 Bulan - No Garansi\" menjadi \"2 Bulan - No Garansi\"",
+        "Mengubah nama sub produk Spotify Premium dari \"3 Bulan - Garansi Full\" menjadi \"2 Bulan - Garansi Full\"",
+        "Mengubah logo Viu Premium",
+        "Mengubah logo Vidio Premier Platinum",
+        "Mengubah logo Alight Motion Premium",
+        "Mengubah logo WeTV",
+        "Mengubah logo Prime Video"
+      ],
       "productCount": 12,
       "voucherCount": 2,
       "snapshot": {
@@ -465,7 +479,17 @@
       "id": "rev-mwig973i-lt07",
       "createdAt": "2026-11-15T23:12:18.990Z",
       "action": "publish",
-      "summary": "+12 produk · voucher diperbarui",
+      "summary": "Menambah produk baru Capcut Pro (2 sub produk) · Menambah produk baru Cek Turnitin (2 sub produk) (+6 perubahan lainnya)",
+      "details": [
+        "Menambah produk baru Capcut Pro (2 sub produk)",
+        "Menambah produk baru Cek Turnitin (2 sub produk)",
+        "Mengubah harga Canva Pro (1 Bulan) dari Rp3.000 menjadi Rp4.000",
+        "Mengubah harga Canva Pro (2 Bulan) dari Rp5.000 menjadi Rp7.000",
+        "Mengubah harga Canva Pro (3 Bulan) dari Rp7.000 menjadi Rp10.000",
+        "Memperbarui paket sub produk WeTV (1 Bulan Sharing 6u Rp8.500 & 1 Bulan Privat Rp35.000)",
+        "Memperbarui paket sub produk Prime Video (1 Bulan Sharing Rp8.000 & 1 Bulan Privat Rp15.000)",
+        "Memperbarui daftar kode voucher (RESELLERNOVEMBER & TOMYLOVEBILLA)"
+      ],
       "productCount": 12,
       "voucherCount": 2,
       "snapshot": {

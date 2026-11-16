@@ -168,6 +168,10 @@ function renderOrderDetails(order) {
   const totalsEl = document.getElementById('order-totals-summary');
   if (totalsEl && order.totals) {
     const t = order.totals;
+    const payLaterPct =
+      t.payLaterPercent !== undefined
+        ? t.payLaterPercent
+        : Math.round(Number(t.payLaterRate ?? 0.1) * 1000) / 10;
     totalsEl.innerHTML = `
       <div class="summary-row">
         <span>Subtotal</span>
@@ -190,10 +194,18 @@ function renderOrderDetails(order) {
           : ''
       }
       ${
+        t.serviceFee > 0
+          ? `<div class="summary-row">
+              <span>${escapeHtml(t.serviceFeeLabel || 'Biaya Layanan')}</span>
+              <span class="mono-num">+${escapeHtml(formatRupiah(t.serviceFee))}</span>
+            </div>`
+          : ''
+      }
+      ${
         t.isPayLater
           ? `<div class="summary-row is-fee">
-              <span>Biaya Bayar Nanti (+10%)</span>
-              <span class="mono-num">${t.payLaterFee > 0 ? `+${escapeHtml(formatRupiah(t.payLaterFee))}` : '+10% Final'}</span>
+              <span>Biaya Bayar Nanti (+${payLaterPct}%)</span>
+              <span class="mono-num">${t.payLaterFee > 0 ? `+${escapeHtml(formatRupiah(t.payLaterFee))}` : `+${payLaterPct}% Final`}</span>
             </div>`
           : ''
       }

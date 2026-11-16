@@ -1,6 +1,8 @@
 export const BRAND = {
   name: 'Manifestudio',
-  tagline: 'Akun Premium & Layanan Digital Terpercaya',
+  tagline: 'Premium Account by Tomy',
+  logo: './assets/icons/brand-icon.svg',
+  footerText: 'Dikelola oleh Manifestudio by Tomy © 2026',
   whatsappNumber: '6285122936027',
   tiktokUrl: 'https://www.tiktok.com/@tmctomystudio',
   tiktokHandle: '@tmctomystudio',
@@ -8,6 +10,35 @@ export const BRAND = {
   instagramHandle: '@tmctomystudio',
   discountThreshold: 50000,
   discountAmount: 2000,
+  payLaterSurchargeRate: 0.1,
+  serviceFeeFlat: 0,
+  serviceFeeLabel: 'Biaya Layanan',
+  socials: [
+    {
+      id: 'social-whatsapp',
+      platform: 'WhatsApp',
+      label: 'WhatsApp Admin',
+      handle: '+62 851-2293-6027',
+      url: 'https://wa.me/6285122936027',
+      logo: './assets/icons/social-whatsapp.svg',
+    },
+    {
+      id: 'social-tiktok',
+      platform: 'TikTok',
+      label: 'TikTok @tmctomystudio',
+      handle: '@tmctomystudio',
+      url: 'https://www.tiktok.com/@tmctomystudio',
+      logo: './assets/icons/social-tiktok.svg',
+    },
+    {
+      id: 'social-instagram',
+      platform: 'Instagram',
+      label: 'Instagram @tmctomystudio',
+      handle: '@tmctomystudio',
+      url: 'https://www.instagram.com/tmctomystudio',
+      logo: './assets/icons/social-instagram.svg',
+    },
+  ],
 };
 
 export const CATEGORIES = [
@@ -278,9 +309,50 @@ export const FAQ_ITEMS = [
 
 export const CATALOG_PREVIEW_STORAGE_KEY = 'manifestudio_catalog_preview_v1';
 
+function normalizeLoadedCatalog(fallback, rawCatalog = {}) {
+  const mergedBrand = {
+    ...fallback.brand,
+    ...(rawCatalog.brand || {}),
+  };
+  if (
+    !mergedBrand.tagline ||
+    mergedBrand.tagline === 'Katalog & Utilitas' ||
+    mergedBrand.tagline === 'Akun Premium & Layanan Digital Terpercaya'
+  ) {
+    mergedBrand.tagline = 'Premium Account by Tomy';
+  }
+  if (!mergedBrand.footerText || String(mergedBrand.footerText).includes('tMC Tomy Studio')) {
+    mergedBrand.footerText = 'Dikelola oleh Manifestudio by Tomy © 2026';
+  }
+  if (!mergedBrand.logo) {
+    mergedBrand.logo = './assets/icons/brand-icon.svg';
+  }
+  if (!Array.isArray(mergedBrand.socials) || mergedBrand.socials.length === 0) {
+    mergedBrand.socials = (fallback.brand.socials || []).map((s) => ({ ...s }));
+  }
+
+  return {
+    ...fallback,
+    ...rawCatalog,
+    brand: mergedBrand,
+    categories:
+      Array.isArray(rawCatalog.categories) && rawCatalog.categories.length > 0
+        ? rawCatalog.categories
+        : fallback.categories,
+    faqItems:
+      Array.isArray(rawCatalog.faqItems) && rawCatalog.faqItems.length > 0
+        ? rawCatalog.faqItems
+        : fallback.faqItems,
+  };
+}
+
 export function getDefaultCatalogSnapshot() {
   return {
-    brand: { ...BRAND, payLaterSurchargeRate: PAY_LATER_SURCHARGE_RATE },
+    brand: {
+      ...BRAND,
+      payLaterSurchargeRate: PAY_LATER_SURCHARGE_RATE,
+      socials: (BRAND.socials || []).map((s) => ({ ...s })),
+    },
     categories: CATEGORIES.map((c) => ({ ...c })),
     paymentOptions: PAYMENT_OPTIONS.map((p) => ({ ...p })),
     vouchers: VOUCHERS.map((v) => ({ ...v })),
@@ -303,11 +375,7 @@ export async function loadCatalogData({ allowLocalPreview = true } = {}) {
         if (parsedPreview && Array.isArray(parsedPreview.products)) {
           return {
             source: 'preview',
-            data: {
-              ...fallback,
-              ...parsedPreview,
-              brand: { ...fallback.brand, ...(parsedPreview.brand || {}) },
-            },
+            data: normalizeLoadedCatalog(fallback, parsedPreview),
           };
         }
       }
@@ -323,11 +391,7 @@ export async function loadCatalogData({ allowLocalPreview = true } = {}) {
       if (json && Array.isArray(json.products)) {
         return {
           source: 'remote',
-          data: {
-            ...fallback,
-            ...json,
-            brand: { ...fallback.brand, ...(json.brand || {}) },
-          },
+          data: normalizeLoadedCatalog(fallback, json),
         };
       }
     }
@@ -337,4 +401,5 @@ export async function loadCatalogData({ allowLocalPreview = true } = {}) {
 
   return { source: 'fallback', data: fallback };
 }
+
 

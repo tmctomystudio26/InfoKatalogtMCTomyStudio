@@ -1,7 +1,9 @@
 {
   "brand": {
     "name": "Manifestudio",
-    "tagline": "Akun Premium & Layanan Digital Terpercaya",
+    "tagline": "Premium Account by Tomy",
+    "logo": "./assets/icons/brand-icon.svg",
+    "footerText": "Dikelola oleh Manifestudio by Tomy © 2026",
     "whatsappNumber": "6285122936027",
     "tiktokUrl": "https://www.tiktok.com/@tmctomystudio",
     "tiktokHandle": "@tmctomystudio",
@@ -9,7 +11,35 @@
     "instagramHandle": "@tmctomystudio",
     "discountThreshold": 50000,
     "discountAmount": 2000,
-    "payLaterSurchargeRate": 0.1
+    "payLaterSurchargeRate": 0.1,
+    "serviceFeeFlat": 0,
+    "serviceFeeLabel": "Biaya Layanan",
+    "socials": [
+      {
+        "id": "social-whatsapp",
+        "platform": "WhatsApp",
+        "label": "WhatsApp Admin",
+        "handle": "+62 851-2293-6027",
+        "url": "https://wa.me/6285122936027",
+        "logo": "./assets/icons/social-whatsapp.svg"
+      },
+      {
+        "id": "social-tiktok",
+        "platform": "TikTok",
+        "label": "TikTok @tmctomystudio",
+        "handle": "@tmctomystudio",
+        "url": "https://www.tiktok.com/@tmctomystudio",
+        "logo": "./assets/icons/social-tiktok.svg"
+      },
+      {
+        "id": "social-instagram",
+        "platform": "Instagram",
+        "label": "Instagram @tmctomystudio",
+        "handle": "@tmctomystudio",
+        "url": "https://www.instagram.com/tmctomystudio",
+        "logo": "./assets/icons/social-instagram.svg"
+      }
+    ]
   },
   "categories": [
     {

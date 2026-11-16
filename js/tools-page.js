@@ -1,5 +1,7 @@
 import { createToolsHubController } from './tools-ui.js';
 import { initMusicPlayer } from './music.js';
+import { loadCatalogData } from './data.js';
+import { normalizeBrandConfig } from './store.js';
 
 const THEME_STORAGE_KEY = 'manifestudio_theme_v1';
 const VALID_TABS = new Set(['prayer', 'weather', 'worldclock', 'speedtest', 'downloader']);
@@ -30,6 +32,15 @@ const TAB_META = {
 let currentTheme = 'dark';
 let toolsHub = null;
 let toastTimer = null;
+
+function escapeHtml(str) {
+  return String(str || '')
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#39;');
+}
 
 function readInitialTab() {
   const params = new URLSearchParams(window.location.search);
@@ -102,7 +113,48 @@ function syncActiveTabChrome(tab) {
   window.history.replaceState({}, '', url.toString());
 }
 
-function bootstrap() {
+function applyBrandToToolsPage(brandRaw) {
+  const brand = normalizeBrandConfig(brandRaw || {});
+  const logoEl = document.getElementById('header-brand-logo');
+  if (logoEl && brand.logo) logoEl.src = brand.logo;
+  const nameEl = document.getElementById('header-brand-name');
+  if (nameEl && brand.name) nameEl.textContent = brand.name;
+  const taglineEl = document.getElementById('header-brand-tagline');
+  if (taglineEl && brand.tagline) taglineEl.textContent = brand.tagline;
+  const footerNameEl = document.getElementById('footer-brand-name');
+  if (footerNameEl && brand.name) footerNameEl.textContent = brand.name;
+  const footerCopyEl = document.getElementById('footer-copy-text');
+  if (footerCopyEl && brand.footerText) footerCopyEl.textContent = brand.footerText;
+
+  const socialContainer = document.getElementById('footer-social-links');
+  if (socialContainer) {
+    const socialsHtml = (brand.socials || [])
+      .map(
+        (soc) => `
+        <a
+          href="${escapeHtml(soc.url || '#')}"
+          target="_blank"
+          rel="noopener noreferrer"
+          class="footer-link-btn"
+        >
+          ${
+            soc.logo
+              ? `<img src="${escapeHtml(soc.logo)}" alt="" width="18" height="18" class="footer-social-icon" />`
+              : ''
+          }
+          <span>${escapeHtml(soc.label || soc.platform || 'Sosmed')}</span>
+        </a>
+      `
+      )
+      .join('');
+    socialContainer.innerHTML = `
+      <a href="./index.html" class="footer-link-btn">Katalog Utama</a>
+      ${socialsHtml}
+    `;
+  }
+}
+
+async function bootstrap() {
   loadTheme();
   applyTheme();
 
@@ -141,6 +193,16 @@ function bootstrap() {
   });
 
   initMusicPlayer();
+
+  try {
+    const loaded = await loadCatalogData({ allowLocalPreview: true });
+    if (loaded?.data?.brand) {
+      applyBrandToToolsPage(loaded.data.brand);
+    }
+  } catch {
+    // Ignore
+  }
 }
 
 bootstrap();
+
