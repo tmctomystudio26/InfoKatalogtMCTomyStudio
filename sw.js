@@ -1,4 +1,4 @@
-const CACHE_NAME = 'manifestudio-cache-v11';
+const CACHE_NAME = 'manifestudio-cache-v12';
 
 const PRECACHE_ASSETS = [
   './',
@@ -90,7 +90,7 @@ self.addEventListener('fetch', (event) => {
           caches.open(CACHE_NAME).then((cache) => cache.put(event.request, clone));
           return response;
         })
-        .catch(() => caches.match(event.request).then((m) => m || caches.match('./index.html')))
+        .catch(() => caches.match(event.request, { ignoreSearch: true }).then((m) => m || caches.match('./index.html')))
     );
     return;
   }

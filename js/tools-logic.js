@@ -142,6 +142,146 @@ export function matchIndonesianCityQuery(cities = [], query = '') {
   return null;
 }
 
+function cleanGeoToken(value) {
+  return String(value || '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function isRtRwLabel(value) {
+  return /^(rt|rw)\s*\d+/i.test(cleanGeoToken(value));
+}
+
+export function isIndonesiaLocation(loc = {}) {
+  const country = String(loc?.country || '').toLowerCase();
+  if (country.includes('indonesia')) return true;
+  const lat = Number(loc?.lat);
+  const lon = Number(loc?.lon);
+  return (
+    Number.isFinite(lat) &&
+    Number.isFinite(lon) &&
+    lat >= -11.5 &&
+    lat <= 6.5 &&
+    lon >= 94.5 &&
+    lon <= 141.5
+  );
+}
+
+export function parseIndonesianAddressHierarchy(sources = {}) {
+  const nom = sources.nominatim?.address || sources.nominatim || null;
+  const bdc = sources.bigdatacloud || null;
+  const pho = sources.photon?.properties || sources.photon || null;
+
+  let kelurahan = '';
+  let kecamatan = '';
+  let city = '';
+  let region = '';
+  let country = '';
+
+  if (nom && typeof nom === 'object') {
+    const rawKel = nom.village || nom.suburb || nom.quarter || nom.neighbourhood || '';
+    if (rawKel && !isRtRwLabel(rawKel)) kelurahan = cleanGeoToken(rawKel);
+
+    const rawKec =
+      nom.district ||
+      nom.municipality ||
+      nom.subdistrict ||
+      nom.city_district ||
+      '';
+    if (rawKec && !isRtRwLabel(rawKec)) kecamatan = cleanGeoToken(rawKec);
+
+    city = cleanGeoToken(
+      nom.city ||
+        nom.town ||
+        nom.county ||
+        nom.regency ||
+        nom.state_district ||
+        nom.city_district ||
+        ''
+    );
+    region = cleanGeoToken(nom.state || nom.province || '');
+    country = cleanGeoToken(nom.country || '');
+  }
+
+  if (bdc && typeof bdc === 'object') {
+    const admins = Array.isArray(bdc.localityInfo?.administrative)
+      ? bdc.localityInfo.administrative
+      : [];
+    const byDesc = (pattern) =>
+      admins.find((a) => pattern.test(String(a?.description || '')));
+    const bdcKel =
+      byDesc(/kelurahan|desa|sub-district|village/i)?.name || '';
+    const bdcKec =
+      byDesc(/kecamatan|district of/i)?.name || bdc.locality || '';
+    const bdcCity =
+      byDesc(/kota\b|kabupaten|city|regency/i)?.name || bdc.city || '';
+    const bdcRegion =
+      byDesc(/provinsi|province/i)?.name || bdc.principalSubdivision || '';
+
+    if (!kelurahan && bdcKel && !isRtRwLabel(bdcKel) && bdcKel !== bdcKec) {
+      kelurahan = cleanGeoToken(bdcKel);
+    }
+    if (!kecamatan && bdcKec && !isRtRwLabel(bdcKec)) {
+      kecamatan = cleanGeoToken(bdcKec);
+    }
+    if (!city && bdcCity) city = cleanGeoToken(bdcCity);
+    if (!region && bdcRegion) region = cleanGeoToken(bdcRegion);
+    if (!country && bdc.countryName) country = cleanGeoToken(bdc.countryName);
+  }
+
+  if (pho && typeof pho === 'object') {
+    const phoDistrict = cleanGeoToken(pho.district || '');
+    const phoCity = cleanGeoToken(pho.city || pho.county || '');
+    const phoState = cleanGeoToken(pho.state || '');
+    if (!kelurahan && phoDistrict && !isRtRwLabel(phoDistrict) && phoDistrict !== kecamatan) {
+      kelurahan = phoDistrict;
+    }
+    if (!city && phoCity) city = phoCity;
+    if (!region && phoState) region = phoState;
+    if (!country && pho.country) country = cleanGeoToken(pho.country);
+  }
+
+  // Avoid duplicating same label across levels (e.g. Gambir = Gambir or Jakarta = DKI Jakarta)
+  if (kelurahan && kecamatan && kelurahan.toLowerCase() === kecamatan.toLowerCase()) {
+    kelurahan = '';
+  }
+  if (kecamatan && city && kecamatan.toLowerCase() === city.toLowerCase()) {
+    kecamatan = '';
+  }
+
+  return {
+    kelurahan,
+    kecamatan,
+    city: city || kecamatan || region || '',
+    region,
+    country: country || 'Indonesia',
+  };
+}
+
+export function formatDetailedLocationLabel(loc = {}) {
+  const parts = [];
+  const seen = new Set();
+  const pushUnique = (prefix, rawVal) => {
+    const clean = cleanGeoToken(rawVal);
+    if (!clean) return;
+    const key = clean
+      .toLowerCase()
+      .replace(/^(kel\.?|desa|kec\.?|kota|kab\.?)\s+/i, '');
+    if (seen.has(key)) return;
+    seen.add(key);
+    const hasPrefix = /^(kel\.?|desa|kec\.?|kota|kab\.?)\s+/i.test(clean);
+    parts.push(prefix && !hasPrefix ? `${prefix} ${clean}` : clean);
+  };
+
+  pushUnique('Kel.', loc.kelurahan);
+  pushUnique('Kec.', loc.kecamatan);
+  pushUnique('', loc.city);
+  if (parts.length < 2) {
+    pushUnique('', loc.region);
+  }
+  return parts.join(', ') || cleanGeoToken(loc.city) || 'Lokasi Anda';
+}
+
 export function describeWeatherCode(code, isDay = 1) {
   const numeric = Number(code);
   const day = Boolean(Number(isDay));
@@ -481,6 +621,37 @@ export function computeMbps(bytesTransferred, durationMs) {
   return Number(mbps.toFixed(2));
 }
 
+export function computeSustainedAverageMbps({ stages = [], samples = [] } = {}) {
+  const validStages = (Array.isArray(stages) ? stages : []).filter(
+    (s) => s && Number(s.bytes) > 0 && Number(s.durationMs) > 0
+  );
+  if (validStages.length > 0) {
+    // Discard tiny warmup stage (index 0) when sustained larger stages ran
+    const measured = validStages.length >= 2 ? validStages.slice(1) : validStages;
+    const totalBytes = measured.reduce((sum, s) => sum + Number(s.bytes), 0);
+    const totalMs = measured.reduce((sum, s) => sum + Number(s.durationMs), 0);
+    if (totalBytes > 0 && totalMs > 0) {
+      return computeMbps(totalBytes, totalMs);
+    }
+  }
+
+  const validSamples = (Array.isArray(samples) ? samples : [])
+    .map(Number)
+    .filter((n) => Number.isFinite(n) && n > 0);
+  if (validSamples.length === 0) return 0;
+
+  if (validSamples.length >= 5) {
+    const sorted = [...validSamples].sort((a, b) => a - b);
+    const trim = Math.max(1, Math.floor(sorted.length * 0.1));
+    const core = sorted.slice(trim, sorted.length - trim);
+    const avg = core.reduce((a, b) => a + b, 0) / core.length;
+    return Number(avg.toFixed(2));
+  }
+
+  const avg = validSamples.reduce((a, b) => a + b, 0) / validSamples.length;
+  return Number(avg.toFixed(2));
+}
+
 export function calculatePingStats(samplesMs = []) {
   const valid = (Array.isArray(samplesMs) ? samplesMs : [])
     .map(Number)
@@ -650,24 +821,103 @@ export function detectDownloaderPlatform(rawUrl) {
   return null;
 }
 
+export function isBlockedRedirectDownloadUrl(rawUrl) {
+  const s = String(rawUrl || '').trim();
+  if (!/^https?:\/\//i.test(s)) return true;
+  let parsed;
+  try {
+    parsed = new URL(s);
+  } catch {
+    return true;
+  }
+  const host = parsed.hostname.toLowerCase();
+  const blockedHosts = [
+    'ytshortdown.com',
+    'savetube.vip',
+    'cdn401.savetube.vip',
+    'cdn402.savetube.vip',
+    'cdn403.savetube.vip',
+    'cdn404.savetube.vip',
+    'cdn405.savetube.vip',
+    'y2mate.com',
+    'ssyoutube.com',
+  ];
+  if (blockedHosts.some((b) => host === b || host.endsWith(`.${b}`))) {
+    return true;
+  }
+  if (/\.html?(\?|$)/i.test(parsed.pathname)) {
+    return true;
+  }
+  return false;
+}
+
+function inferAudioExtFromUrl(url, fallback = 'mp3') {
+  const raw = String(url || '');
+  if (/mime=audio(?:%2F|\/)webm|\.webm(\?|$)/i.test(raw)) return 'webm';
+  if (/mime=audio(?:%2F|\/)mp4|\.m4a(\?|$)/i.test(raw)) return 'm4a';
+  if (/\.ogg(\?|$)/i.test(raw)) return 'ogg';
+  return fallback;
+}
+
+function normalizeCobaltEntry(entry, { isAudio = false, quality = '' } = {}) {
+  if (!entry || typeof entry !== 'object') return null;
+  if (entry.status === 'error') return null;
+
+  if (entry.status === 'picker' && Array.isArray(entry.picker)) {
+    return entry.picker
+      .map((p) => {
+        const u = String(p?.url || '').trim();
+        if (!u || isBlockedRedirectDownloadUrl(u)) return null;
+        const isImg = p.type === 'photo' || /\.(jpg|jpeg|png|webp)(\?|$)/i.test(u);
+        return {
+          label: isImg ? 'Foto Media' : isAudio ? 'Audio Media' : 'Video Media',
+          quality: isImg ? 'JPG' : quality || 'HD MP4',
+          ext: isImg ? 'jpg' : isAudio ? inferAudioExtFromUrl(u, 'mp3') : 'mp4',
+          url: u,
+          isAudio: !isImg && isAudio,
+          thumb: p.thumb || '',
+        };
+      })
+      .filter(Boolean);
+  }
+
+  const u = String(entry.url || '').trim();
+  if (!u || isBlockedRedirectDownloadUrl(u)) return null;
+  const filename = String(entry.filename || '');
+  const ext = isAudio
+    ? filename.match(/\.(mp3|m4a|ogg|webm|opus)$/i)?.[1]?.toLowerCase() || inferAudioExtFromUrl(u, 'mp3')
+    : filename.match(/\.(mp4|webm|jpg|jpeg|png)$/i)?.[1]?.toLowerCase() || 'mp4';
+
+  return [
+    {
+      label: isAudio ? `Audio ${ext.toUpperCase()} Langsung` : `Video ${quality || 'HD'} MP4`,
+      quality: quality || ext.toUpperCase(),
+      ext,
+      url: u,
+      isAudio,
+      filename,
+    },
+  ];
+}
+
 export function normalizeDownloaderResult(raw, platform) {
   const safePlatform = String(platform || '').toLowerCase();
   if (!raw || typeof raw !== 'object') return null;
 
   if (safePlatform === 'tiktok') {
-    // Format A: tikwm.com/api -> { code: 0, data: { hdplay, play, music, cover, title, duration, author: { nickname } } }
     const d = raw.data || null;
     if (d && (d.hdplay || d.play || d.music)) {
       const links = [];
-      if (d.hdplay) {
+      if (d.hdplay && !isBlockedRedirectDownloadUrl(d.hdplay)) {
         links.push({ label: 'Video HD Tanpa Watermark', quality: 'HD MP4', ext: 'mp4', url: String(d.hdplay), isAudio: false });
       }
-      if (d.play && d.play !== d.hdplay) {
+      if (d.play && d.play !== d.hdplay && !isBlockedRedirectDownloadUrl(d.play)) {
         links.push({ label: 'Video MP4 Tanpa Watermark', quality: 'SD MP4', ext: 'mp4', url: String(d.play), isAudio: false });
       }
-      if (d.music) {
+      if (d.music && !isBlockedRedirectDownloadUrl(d.music)) {
         links.push({ label: 'Audio / Sound TikTok', quality: 'MP3', ext: 'mp3', url: String(d.music), isAudio: true });
       }
+      if (links.length === 0) return null;
       return {
         platform: 'tiktok',
         title: String(d.title || 'Video TikTok'),
@@ -678,16 +928,29 @@ export function normalizeDownloaderResult(raw, platform) {
       };
     }
 
-    // Format B: davidcyriltech/download/tiktok -> { success, result: { desc, author: { nickname }, video, music } }
+    // Cobalt fallback for TikTok
+    const cobaltTt = normalizeCobaltEntry(raw, { isAudio: false, quality: 'HD MP4' });
+    if (cobaltTt && cobaltTt.length > 0) {
+      return {
+        platform: 'tiktok',
+        title: String(raw.filename || 'Video TikTok').replace(/\.[a-z0-9]{2,4}$/i, ''),
+        author: 'TikTok',
+        thumbnail: '',
+        durationSec: 0,
+        links: cobaltTt,
+      };
+    }
+
     const r = raw.result || null;
     if (r && (r.video || r.music)) {
       const links = [];
-      if (r.video) {
+      if (r.video && !isBlockedRedirectDownloadUrl(r.video)) {
         links.push({ label: 'Video Tanpa Watermark', quality: 'MP4', ext: 'mp4', url: String(r.video), isAudio: false });
       }
-      if (r.music) {
+      if (r.music && !isBlockedRedirectDownloadUrl(r.music)) {
         links.push({ label: 'Audio / Sound TikTok', quality: 'MP3', ext: 'mp3', url: String(r.music), isAudio: true });
       }
+      if (links.length === 0) return null;
       return {
         platform: 'tiktok',
         title: String(r.desc || r.title || 'Video TikTok'),
@@ -700,13 +963,23 @@ export function normalizeDownloaderResult(raw, platform) {
   }
 
   if (safePlatform === 'youtube') {
-    const mp4 = raw.mp4?.result || (raw.result?.type === 'video' ? raw.result : null);
-    const mp3 = raw.mp3?.result || (raw.result?.type === 'audio' ? raw.result : null);
-    const primary = mp4 || mp3 || raw.result || null;
-    if (!primary) return null;
-
     const links = [];
-    if (mp4?.download_url) {
+    let title = String(raw.oembed?.title || raw.tioo?.title || '');
+    let author = String(raw.oembed?.author_name || raw.tioo?.author || 'YouTube');
+    let thumbnail = String(raw.oembed?.thumbnail_url || raw.tioo?.thumbnail || '');
+    let durationSec = 0;
+
+    // 1. Video candidates: Cobalt video -> Tioo MP4 -> DavidCyril MP4
+    const cobaltVideo = normalizeCobaltEntry(raw.cobaltVideo, { isAudio: false, quality: '720p MP4' });
+    if (cobaltVideo?.[0]) {
+      links.push({ ...cobaltVideo[0], label: 'Video YouTube (HD MP4)', quality: '720p MP4' });
+      if (!title && cobaltVideo[0].filename) {
+        title = cobaltVideo[0].filename.replace(/\s*\([^)]*\)\.[a-z0-9]+$/i, '');
+      }
+    } else if (raw.tioo?.mp4 && !isBlockedRedirectDownloadUrl(raw.tioo.mp4)) {
+      links.push({ label: 'Video YouTube (MP4)', quality: 'MP4', ext: 'mp4', url: String(raw.tioo.mp4), isAudio: false });
+    } else if (raw.mp4?.result?.download_url && !isBlockedRedirectDownloadUrl(raw.mp4.result.download_url)) {
+      const mp4 = raw.mp4.result;
       links.push({
         label: `Video YouTube (${mp4.quality || 'HD'})`,
         quality: String(mp4.quality || 'MP4'),
@@ -714,53 +987,87 @@ export function normalizeDownloaderResult(raw, platform) {
         url: String(mp4.download_url),
         isAudio: false,
       });
+      if (!title) title = String(mp4.title || '');
+      if (!thumbnail) thumbnail = String(mp4.thumbnail || '');
+      durationSec = Number(mp4.duration || 0);
     }
-    if (mp3?.download_url) {
+
+    // 2. Direct Audio candidates: Cobalt MP3 tunnel (never savetube/ytshortdown redirect) -> Tioo audio
+    const cobaltAudio = normalizeCobaltEntry(raw.cobaltAudio, { isAudio: true, quality: 'MP3' });
+    if (cobaltAudio?.[0]) {
       links.push({
-        label: `Audio YouTube (${mp3.quality || '128kbps'})`,
-        quality: String(mp3.quality || 'MP3'),
-        ext: 'mp3',
+        ...cobaltAudio[0],
+        label: 'Musik / Audio YouTube (MP3)',
+        quality: cobaltAudio[0].ext.toUpperCase(),
+      });
+      if (!title && cobaltAudio[0].filename) {
+        title = cobaltAudio[0].filename.replace(/\.[a-z0-9]+$/i, '');
+      }
+    } else if (raw.tioo?.mp3 && !isBlockedRedirectDownloadUrl(raw.tioo.mp3)) {
+      const ext = inferAudioExtFromUrl(raw.tioo.mp3, 'mp3');
+      links.push({
+        label: `Musik / Audio YouTube (${ext.toUpperCase()})`,
+        quality: ext.toUpperCase(),
+        ext,
+        url: String(raw.tioo.mp3),
+        isAudio: true,
+      });
+    } else if (raw.mp3?.result?.download_url && !isBlockedRedirectDownloadUrl(raw.mp3.result.download_url)) {
+      const mp3 = raw.mp3.result;
+      const ext = inferAudioExtFromUrl(mp3.download_url, 'mp3');
+      links.push({
+        label: `Audio YouTube (${mp3.quality || ext.toUpperCase()})`,
+        quality: String(mp3.quality || ext.toUpperCase()),
+        ext,
         url: String(mp3.download_url),
         isAudio: true,
       });
     }
-    if (links.length === 0 && primary.download_url) {
-      const isAudio = primary.type === 'audio' || /mp3/i.test(String(primary.quality || ''));
-      links.push({
-        label: isAudio ? 'Audio YouTube MP3' : 'Video YouTube MP4',
-        quality: String(primary.quality || (isAudio ? 'MP3' : 'MP4')),
-        ext: isAudio ? 'mp3' : 'mp4',
-        url: String(primary.download_url),
-        isAudio,
-      });
-    }
-    if (links.length === 0) return null;
 
+    if (links.length === 0) return null;
     return {
       platform: 'youtube',
-      title: String(primary.title || 'Video YouTube'),
-      author: 'YouTube',
-      thumbnail: String(primary.thumbnail || ''),
-      durationSec: Number(primary.duration || 0),
+      title: title || 'Video & Audio YouTube',
+      author,
+      thumbnail,
+      durationSec,
       links,
     };
   }
 
   if (safePlatform === 'facebook') {
+    const cobaltFb = normalizeCobaltEntry(raw, { isAudio: false, quality: 'HD MP4' });
+    if (cobaltFb && cobaltFb.length > 0) {
+      return {
+        platform: 'facebook',
+        title: String(raw.filename || 'Video Facebook').replace(/\.[a-z0-9]{2,4}$/i, ''),
+        author: 'Facebook',
+        thumbnail: '',
+        durationSec: 0,
+        links: cobaltFb,
+      };
+    }
+
     const r = raw.result || raw;
     const dl = r?.downloads || null;
     const links = [];
-    if (dl?.hd?.url) {
+    if (dl?.hd?.url && !isBlockedRedirectDownloadUrl(dl.hd.url)) {
       links.push({ label: 'Video Facebook HD', quality: 'HD MP4', ext: 'mp4', url: String(dl.hd.url), isAudio: false });
     }
-    if (dl?.sd?.url) {
+    if (dl?.sd?.url && !isBlockedRedirectDownloadUrl(dl.sd.url)) {
       links.push({ label: 'Video Facebook SD', quality: 'SD MP4', ext: 'mp4', url: String(dl.sd.url), isAudio: false });
     }
-    if (typeof r?.hd === 'string' && r.hd) {
+    if (typeof r?.hd === 'string' && r.hd && !isBlockedRedirectDownloadUrl(r.hd)) {
       links.push({ label: 'Video Facebook HD', quality: 'HD MP4', ext: 'mp4', url: r.hd, isAudio: false });
     }
-    if (typeof r?.sd === 'string' && r.sd) {
+    if (typeof r?.sd === 'string' && r.sd && !isBlockedRedirectDownloadUrl(r.sd)) {
       links.push({ label: 'Video Facebook SD', quality: 'SD MP4', ext: 'mp4', url: r.sd, isAudio: false });
+    }
+    if (typeof r?.HD === 'string' && r.HD && !isBlockedRedirectDownloadUrl(r.HD)) {
+      links.push({ label: 'Video Facebook HD', quality: 'HD MP4', ext: 'mp4', url: r.HD, isAudio: false });
+    }
+    if (typeof r?.Normal_video === 'string' && r.Normal_video && !isBlockedRedirectDownloadUrl(r.Normal_video)) {
+      links.push({ label: 'Video Facebook SD', quality: 'SD MP4', ext: 'mp4', url: r.Normal_video, isAudio: false });
     }
     if (links.length === 0) return null;
     return {
@@ -774,7 +1081,21 @@ export function normalizeDownloaderResult(raw, platform) {
   }
 
   if (safePlatform === 'instagram') {
-    const list = Array.isArray(raw.result)
+    const cobaltIg = normalizeCobaltEntry(raw, { isAudio: false, quality: 'HD MP4' });
+    if (cobaltIg && cobaltIg.length > 0) {
+      return {
+        platform: 'instagram',
+        title: String(raw.filename || 'Reels / Post Instagram').replace(/\.[a-z0-9]{2,4}$/i, ''),
+        author: 'Instagram',
+        thumbnail: cobaltIg[0]?.thumb || '',
+        durationSec: 0,
+        links: cobaltIg,
+      };
+    }
+
+    const list = Array.isArray(raw)
+      ? raw
+      : Array.isArray(raw.result)
       ? raw.result
       : Array.isArray(raw.data)
       ? raw.data
@@ -782,17 +1103,24 @@ export function normalizeDownloaderResult(raw, platform) {
       ? [raw.result]
       : [];
     const links = [];
+    const seenUrls = new Set();
     let thumb = '';
-    list.forEach((item, idx) => {
+    list.forEach((item) => {
       const mediaUrl = item?.downloadUrl || item?.url || item?.download_url || item?.video || item?.image;
-      if (!mediaUrl) return;
+      if (!mediaUrl || isBlockedRedirectDownloadUrl(mediaUrl)) return;
+      const cleanMediaUrl = String(mediaUrl).trim();
+      if (seenUrls.has(cleanMediaUrl)) return;
+      seenUrls.add(cleanMediaUrl);
       if (!thumb && item?.thumbnail) thumb = String(item.thumbnail);
-      const isImg = item?.type === 'image' || /\.(jpg|jpeg|png|webp)(\?|$)/i.test(String(mediaUrl));
+      const isImg =
+        item?.type === 'image' ||
+        (/\.(jpg|jpeg|png|webp)(\?|$)/i.test(cleanMediaUrl) && !/\.mp4|video/i.test(cleanMediaUrl));
+      const idx = links.length;
       links.push({
         label: isImg ? `Foto Instagram #${idx + 1}` : `Video Reels Instagram #${idx + 1}`,
         quality: isImg ? 'JPG' : 'HD MP4',
         ext: isImg ? 'jpg' : 'mp4',
-        url: String(mediaUrl),
+        url: cleanMediaUrl,
         isAudio: false,
       });
     });

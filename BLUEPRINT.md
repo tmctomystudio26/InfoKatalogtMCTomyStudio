@@ -33,7 +33,7 @@ Dokumen teknis terpadu bagi **Tim IT, Human Developer, maupun AI Coding Agent** 
 | `js/downloader.js` | Adapter TikTok No-Watermark, YouTube MP4/MP3, Facebook HD/SD, & Instagram Reels/Post | `tools-logic.js` |
 | `js/music.js` + `js/music-logic.js` | Widget musik draggable, algoritma preferensi pencarian & play, **Full Audio** (Audius), **SoundCloud Widget**, **Spotify Embed** | Audius / SoundCloud Widget / Spotify |
 | `data/catalog.json` | Sumber kebenaran (*Single Source of Truth*) katalog produk, urutan posisi, logo, voucher, dan FAQ | Service Worker Network-First |
-| `sw.js` + `manifest.webmanifest` | Offline cache asset (`manifestudio-cache-v11`) & instalasi PWA | — |
+| `sw.js` + `manifest.webmanifest` | Offline cache asset (`manifestudio-cache-v12`) & instalasi PWA | — |
 | `CNAME` | Konfigurasi domain kustom resmi GitHub Pages (`manifestudio.my.id`) — jangan dihapus | Cloudflare DNS |
 
 ---
@@ -43,26 +43,26 @@ Dokumen teknis terpadu bagi **Tim IT, Human Developer, maupun AI Coding Agent** 
 Semua integrasi pihak ketiga berjalan murni *client-side* tanpa API key rahasia:
 
 1. **Jadwal Sholat Indonesia**:
-   - **Primary**: `https://api.myquran.com/v2/sholat/kota/semua` & `/jadwal/{cityId}/{YYYY}/{MM}/{DD}` (Bimas Islam Kemenag RI).
-   - **Fallback**: `https://api.aladhan.com/v1/timings/{DD}-{MM}-{YYYY}?latitude=...&longitude=...&method=20` (Metode Kemenag RI).
+   - **Primary (Presisi Koordinat Kecamatan/Kelurahan)**: `https://api.aladhan.com/v1/timings/{DD}-{MM}-{YYYY}?latitude=...&longitude=...&method=20` (Metode Kemenag RI).
+   - **Fallback (Kota/Kabupaten)**: `https://api.myquran.com/v2/sholat/kota/semua` & `/jadwal/{cityId}/{YYYY}/{MM}/{DD}` (Bimas Islam Kemenag RI).
 2. **Prakiraan Cuaca & Geocoding**:
    - **Cuaca**: `https://api.open-meteo.com/v1/forecast` (current, hourly, 7-day daily).
-   - **Cari Kota**: `https://geocoding-api.open-meteo.com/v1/search`.
-3. **Deteksi Lokasi IP Fallback**:
-   - **Primary**: `https://api.bigdatacloud.net/data/reverse-geocode-client`.
-   - **Fallback**: `https://ipwho.is/`.
+   - **Cari Wilayah/Kecamatan**: `https://nominatim.openstreetmap.org/search`, `https://photon.komoot.io/api/`, & `https://geocoding-api.open-meteo.com/v1/search`.
+3. **Deteksi Lokasi GPS + Reverse Geocode & Fallback IP**:
+   - **Reverse Geocode Detail**: `https://nominatim.openstreetmap.org/reverse`, `https://api-bdc.io/data/reverse-geocode-client`, & `https://photon.komoot.io/reverse`.
+   - **IP Fallback**: `https://ipwho.is/`.
 4. **Speedtest Internet**:
    - **CDN Info**: `https://speed.cloudflare.com/cdn-cgi/trace` & `https://speed.cloudflare.com/meta`.
-   - **Bandwidth & Latency**: `https://speed.cloudflare.com/__down?bytes=...` & `https://speed.cloudflare.com/__up`.
+   - **Bandwidth & Latency**: `https://speed.cloudflare.com/__down?bytes=...` & `https://speed.cloudflare.com/__up` (rata-rata berkelanjutan berbobot byte).
 5. **Pemutar Musik Full Version (Bebas Iklan)**:
    - **Full Audio Direct Stream**: `https://api.audius.co/v1/tracks/search` + `/tracks/{id}/stream` (filter ketat `duration >= 75s`, bebas cuplikan 30 detik).
    - **SoundCloud Player**: `https://w.soundcloud.com/player/` + `https://w.soundcloud.com/player/api.js`.
    - **Spotify Embed Player**: `https://open.spotify.com/embed/playlist/...`.
 6. **Sosmed Video Downloader No Watermark**:
-   - **TikTok (HD/SD/MP3)**: `https://www.tikwm.com/api/?url=...&hd=1` (fallback `https://apis.davidcyriltech.my.id/download/tiktok?url=...`).
-   - **YouTube (MP4/MP3)**: `https://apis.davidcyriltech.my.id/download/ytmp4?url=...` & `/download/ytmp3?url=...`.
-   - **Facebook (HD/SD)**: `https://apis.davidcyriltech.my.id/facebook?url=...`.
-   - **Instagram (Reels/Post)**: `https://apis.davidcyriltech.my.id/instagram?url=...`.
+   - **TikTok (HD/SD/MP3)**: `https://www.tikwm.com/api/?url=...&hd=1` (fallback `https://cobaltapi.cjs.nz/` & `davidcyriltech`).
+   - **YouTube (MP4/MP3 Direct Stream)**: `https://cobaltapi.cjs.nz/` (tunnel langsung tanpa redirect HTML) & `https://backend1.tioo.eu.org/youtube`.
+   - **Facebook (HD/SD)**: `https://cobaltapi.cjs.nz/` & `https://backend1.tioo.eu.org/fbdown`.
+   - **Instagram (Reels/Post)**: `https://backend1.tioo.eu.org/igdl` & `https://cobaltapi.cjs.nz/`.
 
 ---
 

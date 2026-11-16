@@ -335,6 +335,10 @@ a {
   min-height: 172px;
 }
 
+.banner-slide[data-banner-href] {
+  cursor: pointer;
+}
+
 .promo-banner-frame {
   position: relative;
   overflow: hidden;
@@ -2583,14 +2587,25 @@ a {
 
 .tool-city-option {
   min-height: 38px;
-  padding: 0.4rem 0.8rem;
+  padding: 0.42rem 0.8rem;
   border-radius: var(--radius-sm);
   border: 1px solid var(--border);
   background-color: var(--surface-elevated);
   color: var(--ink);
   font-size: 0.82rem;
   font-weight: 600;
+  text-align: left;
+  display: inline-flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.08rem;
   cursor: pointer;
+}
+
+.tool-city-sub {
+  font-size: 0.72rem;
+  font-weight: 500;
+  color: var(--ink-muted);
 }
 
 .tool-city-option:hover {
@@ -3464,6 +3479,26 @@ a {
   color: var(--ink-muted);
 }
 
+.dl-audio-wrap {
+  display: grid;
+  gap: 0.35rem;
+  padding: 0.55rem 0.7rem;
+  border-radius: var(--radius-sm);
+  background-color: var(--surface-elevated);
+  border: 1px solid var(--border);
+}
+
+.dl-audio-label {
+  font-size: 0.74rem;
+  font-weight: 600;
+  color: var(--ink-secondary);
+}
+
+.dl-audio-preview {
+  width: 100%;
+  height: 36px;
+}
+
 .dl-links-grid {
   display: grid;
   gap: 0.5rem;
@@ -4246,6 +4281,55 @@ a {
   background-color: var(--bg);
   color: var(--ink);
   font-size: 0.8rem;
+}
+
+.music-search-note {
+  font-size: 0.74rem;
+  color: var(--warning);
+  padding: 0.35rem 0.55rem;
+  border-radius: 6px;
+  background-color: var(--warning-soft);
+}
+
+.music-search-results {
+  display: grid;
+  gap: 0.32rem;
+  max-height: 150px;
+  overflow-y: auto;
+}
+
+.music-search-hit {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  width: 100%;
+  padding: 0.38rem 0.58rem;
+  border-radius: 7px;
+  border: 1px solid var(--border);
+  background-color: var(--surface-elevated);
+  color: var(--ink);
+  font-size: 0.75rem;
+  text-align: left;
+  cursor: pointer;
+}
+
+.music-search-hit.is-active {
+  border-color: var(--accent);
+  background-color: var(--accent-soft);
+}
+
+.music-search-hit-title {
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.music-search-hit-dur {
+  color: var(--ink-muted);
+  font-size: 0.7rem;
+  flex-shrink: 0;
 }
 
 .music-mode-tabs {

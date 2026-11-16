@@ -316,9 +316,13 @@ function initBannerCarousel() {
   if (totalSlides <= 1) return;
 
   let autoTimer = null;
-  let isDragging = false;
+  let isPointerDown = false;
+  let hasMoved = false;
   let dragStartX = 0;
+  let dragStartY = 0;
   let dragDeltaX = 0;
+  let dragDeltaY = 0;
+  let dragSourceSlide = null;
 
   const prefersReducedMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
 
@@ -344,7 +348,7 @@ function initBannerCarousel() {
     if (prefersReducedMotion) return;
     stopAutoSlide();
     autoTimer = setInterval(() => {
-      if (!document.hidden && !isDragging) {
+      if (!document.hidden && !isPointerDown) {
         applySlide(state.activeBannerSlide + 1);
       }
     }, 6500);
@@ -355,6 +359,18 @@ function initBannerCarousel() {
       clearInterval(autoTimer);
       autoTimer = null;
     }
+  }
+
+  function navigateToBannerTarget(href) {
+    if (!href) return;
+    if (href.startsWith('#')) {
+      const target = document.querySelector(href);
+      if (target) {
+        target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }
+      return;
+    }
+    window.location.href = href;
   }
 
   prevBtn?.addEventListener('click', () => {
@@ -384,6 +400,12 @@ function initBannerCarousel() {
       e.preventDefault();
       applySlide(state.activeBannerSlide + 1);
       startAutoSlide();
+    } else if (e.key === 'Enter' && document.activeElement === carousel) {
+      const href = slides[state.activeBannerSlide]?.getAttribute('data-banner-href');
+      if (href) {
+        e.preventDefault();
+        navigateToBannerTarget(href);
+      }
     }
   });
 
@@ -395,26 +417,60 @@ function initBannerCarousel() {
   carousel.addEventListener('pointerdown', (e) => {
     if (e.button !== 0 && e.pointerType === 'mouse') return;
     if (e.target.closest('button, a')) return;
-    isDragging = true;
+    isPointerDown = true;
+    hasMoved = false;
     dragStartX = e.clientX;
+    dragStartY = e.clientY;
     dragDeltaX = 0;
-    stopAutoSlide();
-    track.style.transition = 'none';
-    carousel.classList.add('is-dragging');
+    dragDeltaY = 0;
+    dragSourceSlide = e.target.closest('.banner-slide') || slides[state.activeBannerSlide] || null;
   });
 
   carousel.addEventListener('pointermove', (e) => {
-    if (!isDragging) return;
+    if (!isPointerDown) return;
     dragDeltaX = e.clientX - dragStartX;
+    dragDeltaY = e.clientY - dragStartY;
+
+    if (!hasMoved) {
+      if (Math.hypot(dragDeltaX, dragDeltaY) <= 6) return;
+      if (Math.abs(dragDeltaY) > Math.abs(dragDeltaX) + 4) {
+        isPointerDown = false;
+        dragSourceSlide = null;
+        return;
+      }
+      hasMoved = true;
+      stopAutoSlide();
+      track.style.transition = 'none';
+      carousel.classList.add('is-dragging');
+    }
+
     const width = Math.max(1, carousel.clientWidth);
     const offsetPercent = -(state.activeBannerSlide * 100) + (dragDeltaX / width) * 100;
     track.style.transform = `translate3d(${offsetPercent}%, 0, 0)`;
   });
 
-  const finishDrag = () => {
-    if (!isDragging) return;
-    isDragging = false;
+  const finishDrag = (e) => {
+    if (!isPointerDown) return;
+    const wasTap = !hasMoved && Math.hypot(dragDeltaX, dragDeltaY) < 8;
+    const sourceSlide = dragSourceSlide;
+
+    isPointerDown = false;
+    hasMoved = false;
+    dragSourceSlide = null;
     carousel.classList.remove('is-dragging');
+
+    if (wasTap && e?.type === 'pointerup' && !e.target.closest('button, a')) {
+      const href = sourceSlide?.getAttribute('data-banner-href') || '';
+      dragDeltaX = 0;
+      dragDeltaY = 0;
+      if (href) {
+        navigateToBannerTarget(href);
+        return;
+      }
+      startAutoSlide();
+      return;
+    }
+
     const threshold = Math.min(72, Math.max(36, carousel.clientWidth * 0.14));
     if (dragDeltaX <= -threshold) {
       applySlide(state.activeBannerSlide + 1);
@@ -424,13 +480,14 @@ function initBannerCarousel() {
       applySlide(state.activeBannerSlide);
     }
     dragDeltaX = 0;
+    dragDeltaY = 0;
     startAutoSlide();
   };
 
   carousel.addEventListener('pointerup', finishDrag);
   carousel.addEventListener('pointercancel', finishDrag);
   carousel.addEventListener('pointerleave', () => {
-    if (isDragging) finishDrag();
+    if (isPointerDown) finishDrag({ type: 'pointerleave', target: carousel });
   });
 
   applySlide(0, { immediate: true });

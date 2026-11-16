@@ -37,7 +37,9 @@ import {
   getTopSearchKeywords,
   normalizeMusicMode,
   pickWeightedRandomTrack,
+  rankSearchResults,
   recordMusicPreference,
+  scoreSearchRelevance,
   scoreTrackForUser,
 } from './music-logic.js';
 import {
@@ -49,17 +51,22 @@ import {
   WORLD_LOCATIONS,
   calculatePingStats,
   computeMbps,
+  computeSustainedAverageMbps,
   convertWorldTime,
   describeCloudflareColo,
   describeWeatherCode,
   detectDownloaderPlatform,
   evaluateConnectionQuality,
   findNearestLocationOnGlobe,
+  formatDetailedLocationLabel,
   getNextPrayerInfo,
   inverseOrthographic,
+  isBlockedRedirectDownloadUrl,
+  isIndonesiaLocation,
   matchIndonesianCityQuery,
   normalizeDownloaderResult,
   parseDeviceTelemetry,
+  parseIndonesianAddressHierarchy,
   projectOrthographic,
   speedToGaugeRatio,
 } from './tools-logic.js';
@@ -727,6 +734,188 @@ test('social video downloader detects TikTok/YouTube/Instagram/Facebook URLs and
   assert.equal(igNormalized.links.length, 1);
   assert.equal(igNormalized.links[0].ext, 'mp4');
 });
+
+test('Indonesian sub-district parser extracts Kelurahan, Kecamatan, Kota, and formats labels cleanly', () => {
+  const parsed = parseIndonesianAddressHierarchy({
+    nominatim: {
+      address: {
+        village: 'Braga',
+        district: 'Sumur Bandung',
+        city: 'Kota Bandung',
+        state: 'Jawa Barat',
+        country: 'Indonesia',
+      },
+    },
+    bigdatacloud: {
+      locality: 'Sumur Bandung',
+      city: 'Kota Bandung',
+      principalSubdivision: 'Jawa Barat',
+      countryName: 'Indonesia',
+    },
+  });
+
+  assert.equal(parsed.kelurahan, 'Braga');
+  assert.equal(parsed.kecamatan, 'Sumur Bandung');
+  assert.equal(parsed.city, 'Kota Bandung');
+  assert.equal(parsed.region, 'Jawa Barat');
+  assert.equal(
+    formatDetailedLocationLabel(parsed),
+    'Kel. Braga, Kec. Sumur Bandung, Kota Bandung'
+  );
+
+  // Deduplicates when kelurahan === kecamatan and skips RT/RW noise
+  const deduped = parseIndonesianAddressHierarchy({
+    nominatim: {
+      address: {
+        neighbourhood: 'RW 04',
+        suburb: 'Gambir',
+        district: 'Gambir',
+        city: 'Jakarta Pusat',
+        state: 'DKI Jakarta',
+      },
+    },
+  });
+  assert.equal(deduped.kelurahan, '');
+  assert.equal(deduped.kecamatan, 'Gambir');
+  assert.equal(formatDetailedLocationLabel(deduped), 'Kec. Gambir, Jakarta Pusat');
+
+  assert.equal(isIndonesiaLocation({ country: 'Indonesia' }), true);
+  assert.equal(isIndonesiaLocation({ lat: -6.9175, lon: 107.6191 }), true);
+  assert.equal(isIndonesiaLocation({ country: 'Japan', lat: 35.68, lon: 139.69 }), false);
+});
+
+test('computeSustainedAverageMbps discards warmup burst and returns byte-weighted sustained average rather than peak', () => {
+  // Stage 0 warmup burst: 100 Mbps tiny payload; Stage 1 & 2 steady sustained: 20 Mbps total
+  const avg = computeSustainedAverageMbps({
+    stages: [
+      { bytes: 250_000, durationMs: 20, mbps: 100 }, // tiny warmup burst = 100 Mbps
+      { bytes: 2_500_000, durationMs: 1000, mbps: 20 },
+      { bytes: 5_000_000, durationMs: 2000, mbps: 20 },
+    ],
+  });
+  // Must reflect sustained average (20 Mbps), NOT peak burst (100 Mbps)
+  assert.equal(avg, 20);
+
+  // Sample-based trimmed mean when stages unavailable
+  const sampleAvg = computeSustainedAverageMbps({
+    samples: [5, 22, 24, 25, 23, 21, 95],
+  });
+  assert.ok(sampleAvg > 20 && sampleAvg < 26);
+});
+
+test('downloader blocks redirect landing pages and normalizes Cobalt & Tioo direct streams', () => {
+  assert.equal(isBlockedRedirectDownloadUrl('https://ytshortdown.com/download?v=123'), true);
+  assert.equal(isBlockedRedirectDownloadUrl('https://cdn402.savetube.vip/dl'), true);
+  assert.equal(isBlockedRedirectDownloadUrl('https://example.com/landing.html'), true);
+  assert.equal(isBlockedRedirectDownloadUrl('https://cobaltapi.cjs.nz/tunnel?id=abc'), false);
+
+  const ytWithBlockedMp3 = normalizeDownloaderResult(
+    {
+      oembed: {
+        title: 'Hindia - Evaluasi',
+        author_name: 'Hindia',
+        thumbnail_url: 'https://i.ytimg.com/vi/abc/hq.jpg',
+      },
+      cobaltVideo: {
+        status: 'tunnel',
+        url: 'https://cobaltapi.cjs.nz/tunnel?id=vid1',
+        filename: 'Hindia - Evaluasi (720p).mp4',
+      },
+      cobaltAudio: {
+        status: 'tunnel',
+        url: 'https://cobaltapi.cjs.nz/tunnel?id=aud1',
+        filename: 'Hindia - Evaluasi.mp3',
+      },
+      mp3: {
+        result: {
+          download_url: 'https://cdn401.savetube.vip/media/fake-redirect',
+        },
+      },
+    },
+    'youtube'
+  );
+  assert.equal(ytWithBlockedMp3.links.length, 2);
+  assert.equal(ytWithBlockedMp3.links[0].url, 'https://cobaltapi.cjs.nz/tunnel?id=vid1');
+  assert.equal(ytWithBlockedMp3.links[1].url, 'https://cobaltapi.cjs.nz/tunnel?id=aud1');
+  assert.equal(ytWithBlockedMp3.links[1].isAudio, true);
+  assert.equal(ytWithBlockedMp3.links[1].ext, 'mp3');
+
+  // When only blocked redirect URL exists, should filter it out completely
+  const ytOnlyBlocked = normalizeDownloaderResult(
+    {
+      mp3: { result: { download_url: 'https://ytshortdown.com/abc' } },
+    },
+    'youtube'
+  );
+  assert.equal(ytOnlyBlocked, null);
+
+  // Cobalt IG picker carousel & Tioo IG payload
+  const igCobalt = normalizeDownloaderResult(
+    {
+      status: 'picker',
+      picker: [
+        { type: 'video', url: 'https://cobaltapi.cjs.nz/tunnel?id=ig1', thumb: 'https://t.jpg' },
+        { type: 'photo', url: 'https://cobaltapi.cjs.nz/tunnel?id=ig2' },
+      ],
+    },
+    'instagram'
+  );
+  assert.equal(igCobalt.links.length, 2);
+  assert.equal(igCobalt.links[0].ext, 'mp4');
+  assert.equal(igCobalt.links[1].ext, 'jpg');
+});
+
+test('music search relevance ranking puts genuine title/artist matches first and rejects unrelated random songs', () => {
+  const catalog = [
+    {
+      id: 'unrelated-viral',
+      title: 'DJ Jedag Jedug Viral 2026',
+      artist: 'DJ Remix Indo',
+      genre: 'Indo Viral',
+      isIndonesianViral: true,
+      duration: 210,
+      streamUrl: 'https://cdn.example/viral.mp3',
+    },
+    {
+      id: 'bernadya-short',
+      title: 'Satu Bulan Parody Shorts',
+      artist: 'Someone',
+      duration: 35,
+      streamUrl: 'https://cdn.example/short.mp3',
+    },
+    {
+      id: 'bernadya-exact',
+      title: 'Satu Bulan',
+      artist: 'Bernadya',
+      genre: 'Pop Indo',
+      duration: 204,
+      streamUrl: 'https://cdn.example/satubulan.mp3',
+    },
+    {
+      id: 'bernadya-cover',
+      title: 'Satu Bulan (Acoustic Cover)',
+      artist: 'Acoustic ID',
+      genre: 'Acoustic',
+      duration: 195,
+      streamUrl: 'https://cdn.example/cover.mp3',
+    },
+  ];
+
+  const ranked = rankSearchResults(catalog, 'Bernadya Satu Bulan');
+  assert.equal(ranked.length, 2);
+  assert.equal(ranked[0].id, 'bernadya-exact');
+  assert.equal(ranked.some((t) => t.id === 'unrelated-viral'), false);
+
+  // Completely unmatched query must return empty instead of hallucinating a viral track
+  const noMatch = rankSearchResults(catalog, 'xyznonexistentsong999');
+  assert.deepEqual(noMatch, []);
+
+  assert.equal(scoreSearchRelevance(catalog[0], 'Bernadya Satu Bulan'), 0);
+  const exactScore = scoreSearchRelevance(catalog[2], 'Bernadya Satu Bulan');
+  const coverScore = scoreSearchRelevance(catalog[3], 'Bernadya Satu Bulan');
+  assert.ok(exactScore > 40 && exactScore > coverScore);
+});
+
 
 
 

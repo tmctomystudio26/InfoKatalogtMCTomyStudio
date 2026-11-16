@@ -248,6 +248,87 @@ export function pickWeightedRandomTrack(
   return weighted[weighted.length - 1].track;
 }
 
+export function scoreSearchRelevance(track, query) {
+  if (!track || !track.streamUrl) return 0;
+  const cleanQuery = String(query || '')
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  if (!cleanQuery) return 0;
+
+  const title = String(track.title || '').toLowerCase();
+  const artist = String(track.artist || '').toLowerCase();
+  const tags = String(track.tags || '').toLowerCase();
+  const combined = `${title} ${artist}`.trim();
+  const tokens = tokenizeText(cleanQuery);
+  if (tokens.length === 0) return 0;
+
+  let score = 0;
+  let titleOrArtistTokenHits = 0;
+
+  if (title === cleanQuery) score += 80;
+  else if (title.includes(cleanQuery)) score += 50;
+
+  if (artist === cleanQuery) score += 55;
+  else if (artist.includes(cleanQuery)) score += 35;
+
+  if (combined.includes(cleanQuery)) score += 25;
+
+  for (const token of tokens) {
+    const inTitle = title.includes(token);
+    const inArtist = artist.includes(token);
+    if (inTitle) score += 16;
+    if (inArtist) score += 12;
+    if (inTitle || inArtist) {
+      titleOrArtistTokenHits += 1;
+    } else if (tags.includes(token)) {
+      score += 3;
+    }
+  }
+
+  // Require strong overlap on title/artist so unrelated DJ/ambient tracks don't match loosely
+  const minRequiredHits = tokens.length === 1 ? 1 : Math.ceil(tokens.length * 0.5);
+  if (titleOrArtistTokenHits < minRequiredHits && !combined.includes(cleanQuery)) {
+    return 0;
+  }
+
+  // Deprioritize short meme clips / parodies when user searches a real song
+  const dur = Number(track.duration || 0);
+  if (dur > 0 && dur < MIN_FULL_TRACK_SECONDS) {
+    score = Math.max(0, score - 22);
+  }
+  if (/\b(parody|parodi|lucu|shorts|#shorts|prank|sound effect)\b/i.test(combined)) {
+    score = Math.max(0, score - 25);
+  }
+
+  if (score <= 0) return 0;
+  if (track.isIndonesianViral) score += 2;
+  return Number(score.toFixed(2));
+}
+
+export function rankSearchResults(tracks = [], query = '', minSeconds = MIN_FULL_TRACK_SECONDS) {
+  if (!Array.isArray(tracks) || tracks.length === 0) return [];
+  const fullOnly = filterFullLengthTracks(tracks, minSeconds);
+  const candidates =
+    fullOnly.length > 0
+      ? fullOnly
+      : tracks.filter((t) => t && t.id && t.streamUrl && Number(t.duration || 0) >= 45);
+
+  return candidates
+    .map((track) => ({ track, relevance: scoreSearchRelevance(track, query) }))
+    .filter((entry) => entry.relevance > 0)
+    .sort((a, b) => {
+      if (b.relevance !== a.relevance) return b.relevance - a.relevance;
+      // Prefer standard song length (90s..420s) over mega 1-hour mixes on tie
+      const aNorm = a.track.duration <= 420 ? 1 : 0;
+      const bNorm = b.track.duration <= 420 ? 1 : 0;
+      if (bNorm !== aNorm) return bNorm - aNorm;
+      return (b.track.duration || 0) - (a.track.duration || 0);
+    })
+    .map((entry) => entry.track);
+}
+
 export function formatAudioTime(seconds) {
   const s = Math.max(0, Math.floor(Number(seconds) || 0));
   const mins = Math.floor(s / 60);

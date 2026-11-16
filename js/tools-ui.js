@@ -9,8 +9,10 @@ import {
   convertWorldTime,
   describeWeatherCode,
   detectDownloaderPlatform,
+  formatDetailedLocationLabel,
   getNextPrayerInfo,
   getZoneTimeParts,
+  isIndonesiaLocation,
   matchIndonesianCityQuery,
 } from './tools-logic.js';
 import {
@@ -99,102 +101,123 @@ async function fetchMyQuranCities() {
 
 async function fetchPrayerSchedule(loc, explicitCityId = null) {
   const { yyyy, mm, dd, iso } = getTodayParts();
+  const detailedLabel = formatDetailedLocationLabel(loc);
+  const inIndonesia = isIndonesiaLocation(loc);
+  const hasSubDistrictPrecision =
+    !explicitCityId &&
+    inIndonesia &&
+    Boolean(loc.kelurahan || loc.kecamatan || loc.source === 'gps' || loc.hasExactCoords);
 
-  // 1. Primary Best & Most Accurate Free Indonesian API: MyQuran v2 (Bimas Islam Kemenag RI)
-  try {
+  const fetchAlAdhanPrecision = async () => {
+    const url = `https://api.aladhan.com/v1/timings/${dd}-${mm}-${yyyy}?latitude=${encodeURIComponent(loc.lat)}&longitude=${encodeURIComponent(loc.lon)}&method=20`;
+    const res = await fetch(url, { cache: 'no-store' });
+    if (!res.ok) return null;
+    const json = await res.json();
+    const t = json?.data?.timings;
+    const d = json?.data?.date;
+    if (!t) return null;
+    const clean = (val) => String(val || '').replace(/\s*\(.*\)/, '').trim();
+    const payload = {
+      isoDate: iso,
+      provider: inIndonesia ? 'Kemenag RI (Presisi Wilayah)' : 'Metode Kemenag RI (Koordinat)',
+      cityLabel: detailedLabel,
+      daerahLabel: loc.region || loc.country,
+      dateReadable: d?.readable || iso,
+      hijriDate: d?.hijri
+        ? `${d.hijri.day} ${d.hijri.month?.en || ''} ${d.hijri.year} H`
+        : '',
+      timings: {
+        imsak: clean(t.Imsak),
+        subuh: clean(t.Fajr),
+        terbit: clean(t.Sunrise),
+        dhuha: clean(t.Sunrise),
+        dzuhur: clean(t.Dhuhr),
+        ashar: clean(t.Asr),
+        maghrib: clean(t.Maghrib),
+        isya: clean(t.Isha),
+      },
+    };
+    try {
+      localStorage.setItem(PRAYER_CACHE_KEY, JSON.stringify(payload));
+    } catch {
+      // Ignore
+    }
+    return payload;
+  };
+
+  const fetchMyQuranCitySchedule = async () => {
     const cities = await fetchMyQuranCities();
     let matchedCity = explicitCityId
       ? cities.find((c) => c.id === explicitCityId)
       : matchIndonesianCityQuery(cities, loc.city) || matchIndonesianCityQuery(cities, loc.region);
 
-    const isIndonesia = String(loc.country || '').toLowerCase().includes('indonesia') ||
-      (loc.lat >= -11.5 && loc.lat <= 6.5 && loc.lon >= 94.5 && loc.lon <= 141.5);
-
-    if (!matchedCity && isIndonesia && loc.source === 'default') {
+    if (!matchedCity && inIndonesia && loc.source === 'default') {
       matchedCity = cities.find((c) => c.id === '1301') || cities[0];
     }
+    if (!matchedCity) return null;
 
-    if (matchedCity) {
-      const url = `https://api.myquran.com/v2/sholat/jadwal/${encodeURIComponent(matchedCity.id)}/${yyyy}/${mm}/${dd}`;
-      const res = await fetch(url, { cache: 'no-store' });
-      if (res.ok) {
-        const json = await res.json();
-        const j = json?.data?.jadwal;
-        if (json?.status && j) {
-          const payload = {
-            isoDate: iso,
-            provider: 'Kemenag RI (MyQuran v2)',
-            cityLabel: json.data.lokasi || matchedCity.lokasi,
-            daerahLabel: json.data.daerah || loc.region || 'Indonesia',
-            dateReadable: j.tanggal || iso,
-            hijriDate: '',
-            timings: {
-              imsak: j.imsak,
-              subuh: j.subuh,
-              terbit: j.terbit,
-              dhuha: j.dhuha,
-              dzuhur: j.dzuhur,
-              ashar: j.ashar,
-              maghrib: j.maghrib,
-              isya: j.isya,
-            },
-          };
-          try {
-            localStorage.setItem(PRAYER_CACHE_KEY, JSON.stringify(payload));
-          } catch {
-            // Ignore
-          }
-          return payload;
-        }
-      }
-    }
-  } catch {
-    // Fall through to coordinate-exact Kemenag method=20 API
-  }
-
-  // 2. Coordinate-Exact Fallback: AlAdhan API with method=20 (Kementerian Agama RI)
-  try {
-    const url = `https://api.aladhan.com/v1/timings/${dd}-${mm}-${yyyy}?latitude=${encodeURIComponent(loc.lat)}&longitude=${encodeURIComponent(loc.lon)}&method=20`;
+    const url = `https://api.myquran.com/v2/sholat/jadwal/${encodeURIComponent(matchedCity.id)}/${yyyy}/${mm}/${dd}`;
     const res = await fetch(url, { cache: 'no-store' });
-    if (res.ok) {
-      const json = await res.json();
-      const t = json?.data?.timings;
-      const d = json?.data?.date;
-      if (t) {
-        const clean = (val) => String(val || '').replace(/\s*\(.*\)/, '').trim();
-        const payload = {
-          isoDate: iso,
-          provider: 'Kemenag RI (Koordinat Presisi)',
-          cityLabel: loc.city,
-          daerahLabel: loc.region || loc.country,
-          dateReadable: d?.readable || iso,
-          hijriDate: d?.hijri
-            ? `${d.hijri.day} ${d.hijri.month?.en || ''} ${d.hijri.year} H`
-            : '',
-          timings: {
-            imsak: clean(t.Imsak),
-            subuh: clean(t.Fajr),
-            terbit: clean(t.Sunrise),
-            dhuha: clean(t.Sunrise),
-            dzuhur: clean(t.Dhuhr),
-            ashar: clean(t.Asr),
-            maghrib: clean(t.Maghrib),
-            isya: clean(t.Isha),
-          },
-        };
-        try {
-          localStorage.setItem(PRAYER_CACHE_KEY, JSON.stringify(payload));
-        } catch {
-          // Ignore
-        }
-        return payload;
-      }
+    if (!res.ok) return null;
+    const json = await res.json();
+    const j = json?.data?.jadwal;
+    if (!json?.status || !j) return null;
+
+    const payload = {
+      isoDate: iso,
+      provider: 'Kemenag RI (MyQuran v2)',
+      cityLabel: detailedLabel && !explicitCityId ? detailedLabel : json.data.lokasi || matchedCity.lokasi,
+      daerahLabel: json.data.daerah || loc.region || 'Indonesia',
+      dateReadable: j.tanggal || iso,
+      hijriDate: '',
+      timings: {
+        imsak: j.imsak,
+        subuh: j.subuh,
+        terbit: j.terbit,
+        dhuha: j.dhuha,
+        dzuhur: j.dzuhur,
+        ashar: j.ashar,
+        maghrib: j.maghrib,
+        isya: j.isya,
+      },
+    };
+    try {
+      localStorage.setItem(PRAYER_CACHE_KEY, JSON.stringify(payload));
+    } catch {
+      // Ignore
     }
-  } catch {
-    // Offline fallback check below
+    return payload;
+  };
+
+  // 1. Prioritize coordinate-exact Kemenag method=20 when user has sub-district (Kelurahan/Kecamatan) or GPS precision
+  if (hasSubDistrictPrecision) {
+    try {
+      const exact = await fetchAlAdhanPrecision();
+      if (exact) return exact;
+    } catch {
+      // Fall through to MyQuran Kab/Kota
+    }
   }
 
-  // 3. Offline localStorage cache
+  // 2. MyQuran v2 (Bimas Islam Kemenag RI Kab/Kota markaz)
+  try {
+    const citySched = await fetchMyQuranCitySchedule();
+    if (citySched) return citySched;
+  } catch {
+    // Fall through
+  }
+
+  // 3. Coordinate fallback if MyQuran didn't match
+  if (!hasSubDistrictPrecision) {
+    try {
+      const exact = await fetchAlAdhanPrecision();
+      if (exact) return exact;
+    } catch {
+      // Offline fallback below
+    }
+  }
+
+  // 4. Offline localStorage cache
   try {
     const cachedRaw = localStorage.getItem(PRAYER_CACHE_KEY);
     if (cachedRaw) {
@@ -277,6 +300,7 @@ export function createToolsHubController({
     prayerError: '',
     prayerCities: [],
     prayerSearchQuery: '',
+    prayerSubSuggestions: [],
     weatherData: null,
     weatherLoading: false,
     weatherError: '',
@@ -310,6 +334,7 @@ export function createToolsHubController({
   let globeInstance = null;
   let gaugeInstance = null;
   let speedAbort = null;
+  let prayerSearchTimer = null;
   let mounted = false;
 
   function stopLiveTimers() {
@@ -390,10 +415,11 @@ export function createToolsHubController({
       const loc = await resolveUserLocation({ forceRefresh });
       toolState.location = loc;
       if (forceRefresh) {
+        const detailed = formatDetailedLocationLabel(loc);
         onToast(
           loc.source === 'gps'
-            ? `Lokasi GPS diperbarui: ${loc.city}`
-            : `Lokasi terdeteksi: ${loc.city}`
+            ? `Lokasi GPS diperbarui: ${detailed}`
+            : `Lokasi terdeteksi: ${detailed}`
         );
       }
     } finally {
@@ -459,7 +485,11 @@ export function createToolsHubController({
   function renderLocationBar(mode) {
     const loc = toolState.location;
     const sourceText = loc ? describeLocationSource(loc.source) : 'Mendeteksi lokasi...';
-    const cityText = loc ? `${loc.city}${loc.region ? `, ${loc.region}` : ''}` : 'Meminta izin lokasi...';
+    const cityText = loc ? formatDetailedLocationLabel(loc) : 'Meminta izin lokasi...';
+    const coordMeta =
+      loc && Number.isFinite(Number(loc.lat)) && Number.isFinite(Number(loc.lon))
+        ? ` · ${Number(loc.lat).toFixed(4)}, ${Number(loc.lon).toFixed(4)}`
+        : '';
 
     return `
       <div class="tool-location-bar">
@@ -468,7 +498,7 @@ export function createToolsHubController({
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/></svg>
             <strong>${escapeHtml(cityText)}</strong>
           </div>
-          <span class="tool-loc-meta">${escapeHtml(sourceText)}</span>
+          <span class="tool-loc-meta">${escapeHtml(sourceText)}${escapeHtml(coordMeta)}</span>
         </div>
         <div class="tool-loc-actions">
           <button
@@ -505,8 +535,12 @@ export function createToolsHubController({
     const filteredCities = toolState.prayerSearchQuery.trim()
       ? toolState.prayerCities
           .filter((c) => c.lokasi.toLowerCase().includes(toolState.prayerSearchQuery.trim().toLowerCase()))
-          .slice(0, 8)
+          .slice(0, 5)
       : [];
+    const subDistrictResults = toolState.prayerSearchQuery.trim().length >= 2
+      ? toolState.prayerSubSuggestions.slice(0, 6)
+      : [];
+    const prayerResultsHtml = renderPrayerSearchResultsHtml(subDistrictResults, filteredCities);
 
     return `
       <div class="tool-panel" data-testid="prayer-panel">
@@ -519,28 +553,14 @@ export function createToolsHubController({
               type="search"
               id="prayer-city-search"
               class="search-input"
-              placeholder="Cari Kab/Kota (contoh: Bandung, Sleman, Surabaya)..."
+              placeholder="Cari Kelurahan, Kecamatan, atau Kab/Kota (cth: Sumur Bandung, Coblong)..."
               value="${escapeHtml(toolState.prayerSearchQuery)}"
-              aria-label="Cari kota jadwal sholat Indonesia"
+              aria-label="Cari kelurahan, kecamatan, atau kota jadwal sholat Indonesia"
             />
           </div>
         </div>
 
-        ${
-          filteredCities.length > 0
-            ? `<div class="tool-city-results" role="listbox" aria-label="Pilih kota jadwal sholat">
-                ${filteredCities
-                  .map(
-                    (c) => `
-                  <button type="button" class="tool-city-option" data-prayer-city-id="${escapeHtml(c.id)}" data-prayer-city-name="${escapeHtml(c.lokasi)}">
-                    ${escapeHtml(c.lokasi)}
-                  </button>
-                `
-                  )
-                  .join('')}
-              </div>`
-            : ''
-        }
+        <div id="prayer-search-results-slot">${prayerResultsHtml}</div>
 
         ${
           toolState.prayerLoading && !data
@@ -653,7 +673,8 @@ export function createToolsHubController({
                   .map(
                     (c, idx) => `
                   <button type="button" class="tool-city-option" data-weather-city-idx="${idx}">
-                    ${escapeHtml(c.city)}${c.region ? ` · ${escapeHtml(c.region)}` : ''} (${escapeHtml(c.country)})
+                    <span>${escapeHtml(c.displayLabel || c.city)}</span>
+                    <span class="tool-city-sub">${escapeHtml(c.region || c.country || 'Indonesia')}</span>
                   </button>
                 `
                   )
@@ -675,7 +696,7 @@ export function createToolsHubController({
                     ${getWeatherSvg(curDesc.iconKey)}
                   </div>
                   <div>
-                    <span class="tool-kicker">${escapeHtml(w.cityLabel)} · ${escapeHtml(w.timezone)}${w.offline ? ' · Cache Offline' : ''}</span>
+                    <span class="tool-kicker">${escapeHtml(formatDetailedLocationLabel(toolState.location || { city: w.cityLabel, region: w.regionLabel }))} · ${escapeHtml(w.timezone)}${w.offline ? ' · Cache Offline' : ''}</span>
                     <div class="weather-temp-row">
                       <strong class="weather-temp-big mono-num">${Math.round(current.temperature_2m)}°C</strong>
                       <span class="weather-condition">${escapeHtml(curDesc.label)}</span>
@@ -1009,7 +1030,7 @@ export function createToolsHubController({
     const ulDisplay = res?.uploadMbps ?? null;
 
     const locText = loc
-      ? `${loc.city}${loc.region ? `, ${loc.region}` : ''}`
+      ? formatDetailedLocationLabel(loc)
       : env?.networkCity || 'Mendeteksi lokasi...';
     const locSub = loc
       ? describeLocationSource(loc.source)
@@ -1081,10 +1102,12 @@ export function createToolsHubController({
               <div class="speed-kpi-card">
                 <span class="speed-kpi-label">Download</span>
                 <strong id="speed-kpi-dl" class="speed-kpi-val mono-num">${dlDisplay != null ? dlDisplay.toFixed(1) : '--'} <small>Mbps</small></strong>
+                <span class="speed-kpi-sub">Rata-rata berkelanjutan</span>
               </div>
               <div class="speed-kpi-card">
                 <span class="speed-kpi-label">Upload</span>
                 <strong id="speed-kpi-ul" class="speed-kpi-val mono-num">${ulDisplay != null ? ulDisplay.toFixed(1) : '--'} <small>Mbps</small></strong>
+                <span class="speed-kpi-sub">Rata-rata berkelanjutan</span>
               </div>
               <div class="speed-kpi-card">
                 <span class="speed-kpi-label">Ping / Latensi</span>
@@ -1172,6 +1195,7 @@ export function createToolsHubController({
       facebook: 'Facebook · HD & SD',
     };
     const previewVideo = res?.links?.find((l) => !l.isAudio && l.ext === 'mp4') || null;
+    const previewAudio = res?.links?.find((l) => l.isAudio) || null;
 
     return `
       <div class="tool-panel" data-testid="downloader-panel">
@@ -1252,6 +1276,15 @@ export function createToolsHubController({
                   <h4 class="dl-result-title">${escapeHtml(res.title)}</h4>
                   <p class="dl-result-author">${escapeHtml(res.author)}</p>
 
+                  ${
+                    previewAudio
+                      ? `<div class="dl-audio-wrap">
+                          <span class="dl-audio-label">Putar Audio Langsung (${escapeHtml(previewAudio.quality)})</span>
+                          <audio class="dl-audio-preview" controls preload="none" src="${escapeHtml(previewAudio.url)}"></audio>
+                        </div>`
+                      : ''
+                  }
+
                   <div class="dl-links-grid">
                     ${res.links
                       .map(
@@ -1260,6 +1293,8 @@ export function createToolsHubController({
                         type="button"
                         class="btn ${idx === 0 ? 'btn-primary' : 'btn-secondary'} btn-sm dl-save-btn"
                         data-dl-save-idx="${idx}"
+                        data-dl-url="${escapeHtml(item.url)}"
+                        data-dl-ext="${escapeHtml(item.ext)}"
                         ${toolState.dlSavingIdx === idx ? 'disabled' : ''}
                       >
                         ${toolState.dlSavingIdx === idx ? 'Mengunduh...' : escapeHtml(item.label)}
@@ -1410,35 +1445,78 @@ export function createToolsHubController({
       });
     });
 
-    // Prayer search
+    // Prayer search (supports Kelurahan/Kecamatan & Kab/Kota)
+    const refreshPrayerSearchDom = () => {
+      const slot = rootEl.querySelector('#prayer-search-results-slot');
+      if (!slot) return;
+      const q = toolState.prayerSearchQuery.trim().toLowerCase();
+      const cities = q
+        ? toolState.prayerCities
+            .filter((c) => c.lokasi.toLowerCase().includes(q))
+            .slice(0, 5)
+        : [];
+      const subs = q.length >= 2 ? toolState.prayerSubSuggestions.slice(0, 6) : [];
+      slot.innerHTML = renderPrayerSearchResultsHtml(subs, cities);
+      bindPrayerSearchOptionHandlers();
+    };
+
+    const bindPrayerSearchOptionHandlers = () => {
+      rootEl.querySelectorAll('[data-prayer-sub-idx]').forEach((btn) => {
+        btn.addEventListener('click', () => {
+          const idx = Number(btn.getAttribute('data-prayer-sub-idx'));
+          const chosen = toolState.prayerSubSuggestions[idx];
+          if (!chosen) return;
+          toolState.location = setManualLocation({ ...chosen, hasExactCoords: true });
+          toolState.prayerSearchQuery = '';
+          toolState.prayerSubSuggestions = [];
+          loadPrayerForCurrentLocation(null);
+          loadWeatherForCurrentLocation();
+        });
+      });
+
+      rootEl.querySelectorAll('[data-prayer-city-id]').forEach((btn) => {
+        btn.addEventListener('click', () => {
+          const id = btn.getAttribute('data-prayer-city-id');
+          const name = btn.getAttribute('data-prayer-city-name');
+          toolState.prayerSearchQuery = '';
+          toolState.prayerSubSuggestions = [];
+          if (name) {
+            toolState.location = setManualLocation({
+              ...(toolState.location || { lat: -6.2088, lon: 106.8456 }),
+              kelurahan: '',
+              kecamatan: '',
+              city: name,
+              region: 'Indonesia',
+              country: 'Indonesia',
+              hasExactCoords: false,
+            });
+          }
+          loadPrayerForCurrentLocation(id);
+        });
+      });
+    };
+
     const prayerSearch = rootEl.querySelector('#prayer-city-search');
     prayerSearch?.addEventListener('input', (e) => {
       toolState.prayerSearchQuery = e.target.value;
-      render();
-      const restored = rootEl.querySelector('#prayer-city-search');
-      if (restored) {
-        restored.focus();
-        restored.setSelectionRange(restored.value.length, restored.value.length);
+      clearTimeout(prayerSearchTimer);
+      refreshPrayerSearchDom();
+      const clean = toolState.prayerSearchQuery.trim();
+      if (clean.length >= 2) {
+        prayerSearchTimer = setTimeout(async () => {
+          const hits = await searchCitiesOnline(clean, { indonesiaOnly: true });
+          if (toolState.prayerSearchQuery.trim() === clean && mounted && toolState.activeSubTab === 'prayer') {
+            toolState.prayerSubSuggestions = hits;
+            refreshPrayerSearchDom();
+          }
+        }, 280);
+      } else {
+        toolState.prayerSubSuggestions = [];
+        refreshPrayerSearchDom();
       }
     });
 
-    rootEl.querySelectorAll('[data-prayer-city-id]').forEach((btn) => {
-      btn.addEventListener('click', () => {
-        const id = btn.getAttribute('data-prayer-city-id');
-        const name = btn.getAttribute('data-prayer-city-name');
-        toolState.prayerSearchQuery = '';
-        if (name) {
-          toolState.location = {
-            ...(toolState.location || { lat: -6.2088, lon: 106.8456 }),
-            city: name,
-            region: 'Indonesia',
-            country: 'Indonesia',
-            source: 'manual',
-          };
-        }
-        loadPrayerForCurrentLocation(id);
-      });
-    });
+    bindPrayerSearchOptionHandlers();
 
     // Weather search
     const weatherSearch = rootEl.querySelector('#weather-city-search');
@@ -1658,12 +1736,25 @@ export function createToolsHubController({
         }
       });
 
+      rootEl.querySelectorAll('.dl-video-preview, .dl-audio-preview').forEach((mediaEl) => {
+        mediaEl.addEventListener('play', () => {
+          window.dispatchEvent(new CustomEvent('manifestudio:external-media-play'));
+          rootEl.querySelectorAll('.dl-video-preview, .dl-audio-preview').forEach((other) => {
+            if (other !== mediaEl && !other.paused) {
+              other.pause();
+            }
+          });
+        });
+      });
+
       rootEl.querySelectorAll('[data-dl-save-idx]').forEach((btn) => {
         btn.addEventListener('click', async () => {
           const idx = Number(btn.getAttribute('data-dl-save-idx'));
           const item = toolState.dlResult?.links?.[idx];
           if (!item || toolState.dlSavingIdx >= 0) return;
+          window.dispatchEvent(new CustomEvent('manifestudio:external-media-play'));
           toolState.dlSavingIdx = idx;
+          toolState.dlError = '';
           render();
           try {
             await triggerDirectMediaSave(
@@ -1672,6 +1763,8 @@ export function createToolsHubController({
               item.ext
             );
             onToast('Mengunduh file media...');
+          } catch (err) {
+            toolState.dlError = err?.message || 'Gagal mengunduh file media langsung.';
           } finally {
             toolState.dlSavingIdx = -1;
             render();
@@ -1679,6 +1772,34 @@ export function createToolsHubController({
         });
       });
     }
+  }
+
+  function renderPrayerSearchResultsHtml(subDistrictResults = [], filteredCities = []) {
+    if (subDistrictResults.length === 0 && filteredCities.length === 0) return '';
+    return `
+      <div class="tool-city-results" role="listbox" aria-label="Pilih kecamatan atau kota jadwal sholat">
+        ${subDistrictResults
+          .map(
+            (c, idx) => `
+          <button type="button" class="tool-city-option" data-prayer-sub-idx="${idx}">
+            <span>${escapeHtml(c.displayLabel || c.city)}</span>
+            <span class="tool-city-sub">Presisi Wilayah (${c.lat.toFixed(3)}, ${c.lon.toFixed(3)})</span>
+          </button>
+        `
+          )
+          .join('')}
+        ${filteredCities
+          .map(
+            (c) => `
+          <button type="button" class="tool-city-option" data-prayer-city-id="${escapeHtml(c.id)}" data-prayer-city-name="${escapeHtml(c.lokasi)}">
+            <span>${escapeHtml(c.lokasi)}</span>
+            <span class="tool-city-sub">Markaz Kab/Kota (Kemenag RI)</span>
+          </button>
+        `
+          )
+          .join('')}
+      </div>
+    `;
   }
 
   function render() {

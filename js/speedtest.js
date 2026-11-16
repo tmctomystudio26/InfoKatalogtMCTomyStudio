@@ -7,6 +7,7 @@
 import {
   calculatePingStats,
   computeMbps,
+  computeSustainedAverageMbps,
   describeCloudflareColo,
   evaluateConnectionQuality,
   parseDeviceTelemetry,
@@ -246,7 +247,11 @@ async function runDownloadPhase(signal, onProgress) {
 
     totalBytes += result.bytes;
     totalMs += result.durationMs;
-    stageResults.push(result.mbps);
+    stageResults.push({
+      bytes: result.bytes,
+      durationMs: result.durationMs,
+      mbps: result.mbps,
+    });
     waveSamples.push(result.mbps);
     if (waveSamples.length > 36) waveSamples.shift();
 
@@ -262,19 +267,8 @@ async function runDownloadPhase(signal, onProgress) {
     }
   }
 
-  // Use weighted steady-state stages (excluding smallest warmup) when available
-  const steadyMbps =
-    stageResults.length >= 2
-      ? Number(
-          (
-            stageResults.slice(1).reduce((a, b) => a + b, 0) /
-            (stageResults.length - 1)
-          ).toFixed(2)
-        )
-      : computeMbps(totalBytes, totalMs);
-
   return {
-    mbps: Math.max(steadyMbps, computeMbps(totalBytes, totalMs)),
+    mbps: computeSustainedAverageMbps({ stages: stageResults, samples: waveSamples }),
     samples: waveSamples,
   };
 }
@@ -397,7 +391,11 @@ async function runUploadPhase(signal, onProgress) {
 
     totalBytes += result.bytes;
     totalMs += result.durationMs;
-    stageResults.push(result.mbps);
+    stageResults.push({
+      bytes: result.bytes,
+      durationMs: result.durationMs,
+      mbps: result.mbps,
+    });
     waveSamples.push(result.mbps);
     if (waveSamples.length > 36) waveSamples.shift();
 
@@ -412,18 +410,8 @@ async function runUploadPhase(signal, onProgress) {
     }
   }
 
-  const steadyMbps =
-    stageResults.length >= 2
-      ? Number(
-          (
-            stageResults.slice(1).reduce((a, b) => a + b, 0) /
-            (stageResults.length - 1)
-          ).toFixed(2)
-        )
-      : computeMbps(totalBytes, totalMs);
-
   return {
-    mbps: Math.max(steadyMbps, computeMbps(totalBytes, totalMs)),
+    mbps: computeSustainedAverageMbps({ stages: stageResults, samples: waveSamples }),
     samples: waveSamples,
   };
 }

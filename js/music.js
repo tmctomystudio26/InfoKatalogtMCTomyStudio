@@ -18,6 +18,7 @@ import {
   getTopSearchKeywords,
   normalizeMusicMode,
   pickWeightedRandomTrack,
+  rankSearchResults,
   recordMusicPreference,
   scoreTrackForUser,
 } from './music-logic.js';
@@ -275,8 +276,11 @@ export function initMusicPlayer() {
   document.body.appendChild(root);
 
   const audio = new Audio();
+  audio.id = 'music-audio-el';
   audio.preload = 'none';
   audio.volume = 0.65;
+  audio.hidden = true;
+  document.body.appendChild(audio);
 
   let prefs = readPrefs();
   let session = readSessionState();
@@ -290,11 +294,14 @@ export function initMusicPlayer() {
   let isLoading = false;
   let isOpen = false;
   let searchQuery = '';
+  let searchResults = [];
+  let searchFeedback = '';
   let isSeeking = false;
   let searchDebounce = null;
   let playedLoggedForId = null;
   let suppressNextFabClick = false;
   let scWidget = null;
+  let manualSelectionVersion = 0;
 
   function applyRootPosition() {
     const fabSize = window.innerWidth <= 640 ? 40 : 44;
@@ -382,7 +389,11 @@ export function initMusicPlayer() {
         }
         const fullTracks = filterFullLengthTracks([...mergedMap.values()], MIN_FULL_TRACK_SECONDS);
         if (fullTracks.length > 0) {
-          tracks = fullTracks;
+          const combined = new Map(fullTracks.map((t) => [t.id, t]));
+          for (const sr of searchResults) {
+            if (sr && sr.id) combined.set(sr.id, sr);
+          }
+          tracks = [...combined.values()];
         }
         poolLoaded = true;
       } catch {
@@ -467,6 +478,33 @@ export function initMusicPlayer() {
         />
         <button type="submit" class="btn btn-secondary btn-sm" aria-label="Cari dan putar lagu">Cari</button>
       </form>
+
+      ${
+        searchFeedback
+          ? `<div class="music-search-note" role="status">${escapeHtml(searchFeedback)}</div>`
+          : ''
+      }
+
+      ${
+        searchResults.length > 0
+          ? `<div class="music-search-results" role="listbox" aria-label="Hasil pencarian lagu">
+              ${searchResults
+                .map(
+                  (t) => `
+                <button
+                  type="button"
+                  class="music-search-hit ${currentTrack?.id === t.id ? 'is-active' : ''}"
+                  data-music-pick-id="${escapeHtml(t.id)}"
+                >
+                  <span class="music-search-hit-title">${escapeHtml(t.title)} — ${escapeHtml(t.artist)}</span>
+                  <span class="music-search-hit-dur mono-num">${formatAudioTime(t.duration)}</span>
+                </button>
+              `
+                )
+                .join('')}
+            </div>`
+          : ''
+      }
     `;
   }
 
@@ -701,12 +739,16 @@ export function initMusicPlayer() {
 
   async function playNextSmartTrack({ wasSkip = false } = {}) {
     if (musicMode !== 'full-audio') return;
+    const versionAtStart = manualSelectionVersion;
     if (wasSkip && currentTrack) {
       prefs = recordMusicPreference(prefs, { type: 'skip', track: currentTrack });
       savePrefs(prefs);
     }
     if (!poolLoaded) {
       await ensureTrackPool();
+    }
+    if (!wasSkip && manualSelectionVersion !== versionAtStart) {
+      return;
     }
     const next = pickWeightedRandomTrack(tracks, prefs, currentTrack?.id || null);
     if (next) {
@@ -717,28 +759,70 @@ export function initMusicPlayer() {
   async function handleMusicSearch(term) {
     const q = String(term || '').trim();
     searchQuery = q;
-    if (!q) return;
+    if (!q) {
+      searchResults = [];
+      searchFeedback = '';
+      renderWidget();
+      return;
+    }
+    manualSelectionVersion += 1;
+    const searchVersion = manualSelectionVersion;
     prefs = recordMusicPreference(prefs, { type: 'search', term: q });
     savePrefs(prefs);
 
     isLoading = true;
+    searchFeedback = '';
     renderWidget();
     try {
-      const results = await fetchAudiusSearch(q, 8, true);
-      if (results.length > 0) {
+      const rawResults = await fetchAudiusSearch(q, 15, true);
+      if (manualSelectionVersion !== searchVersion) return;
+      const ranked = rankSearchResults(rawResults, q, MIN_FULL_TRACK_SECONDS);
+      if (ranked.length > 0) {
         const merged = new Map(tracks.map((t) => [t.id, t]));
-        for (const r of results) merged.set(r.id, r);
+        for (const r of ranked) merged.set(r.id, r);
         tracks = [...merged.values()];
-        const picked = pickWeightedRandomTrack(results, prefs, currentTrack?.id || null);
-        if (picked) {
-          await playTrack(picked, { recordPlay: true });
-          return;
-        }
+        searchResults = ranked.slice(0, 6);
+        searchFeedback = '';
+        await playTrack(ranked[0], { recordPlay: true });
+        return;
       }
+      searchResults = [];
+      searchFeedback = `Tidak ditemukan lagu full yang cocok untuk "${q}". Coba judul atau artis lain.`;
     } catch {
-      // Fallback to weighted full-track pool
+      searchResults = [];
+      searchFeedback = 'Gagal mencari lagu saat ini. Periksa koneksi lalu coba lagi.';
     }
-    await playNextSmartTrack();
+    isLoading = false;
+    renderWidget();
+  }
+
+  function pauseAllSiteMusic({ userPaused = true } = {}) {
+    if (!audio.paused) {
+      audio.pause();
+    }
+    try {
+      scWidget?.pause?.();
+    } catch {
+      // Ignore SoundCloud pause error
+    }
+    // Reload active SoundCloud/Spotify iframe src to guarantee third-party embed audio stops cleanly
+    const embedIframe = root.querySelector('#music-sc-iframe, #music-sp-iframe');
+    if (embedIframe && embedIframe.getAttribute('src')) {
+      const currentSrc = embedIframe.getAttribute('src');
+      embedIframe.setAttribute('src', currentSrc);
+    }
+    isPlaying = false;
+    isLoading = false;
+    if (userPaused) {
+      session.userPaused = true;
+      saveSessionState(session);
+    }
+    root.querySelector('#music-fab-btn')?.classList.remove('is-playing');
+    const playBtn = root.querySelector('#music-playpause-btn');
+    if (playBtn && musicMode === 'full-audio') {
+      playBtn.textContent = '▶ Putar Full';
+      playBtn.setAttribute('aria-label', 'Putar musik');
+    }
   }
 
   function togglePlayPause() {
@@ -969,6 +1053,19 @@ export function initMusicPlayer() {
       handleMusicSearch(searchInput?.value || '');
     });
 
+    root.querySelectorAll('[data-music-pick-id]').forEach((btn) => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const pickId = btn.getAttribute('data-music-pick-id');
+        const picked =
+          searchResults.find((t) => t.id === pickId) || tracks.find((t) => t.id === pickId);
+        if (picked) {
+          manualSelectionVersion += 1;
+          playTrack(picked, { recordPlay: true });
+        }
+      });
+    });
+
     if (isOpen && musicMode === 'soundcloud') {
       setupSoundCloudWidgetBindings();
     }
@@ -993,7 +1090,20 @@ export function initMusicPlayer() {
   audio.addEventListener('error', () => {
     if (musicMode === 'full-audio' && !session.userPaused && currentTrack) {
       const prevId = currentTrack.id;
+      const wasInSearchResults = searchResults.some((t) => t.id === prevId);
       tracks = tracks.filter((t) => t.id !== prevId);
+      if (wasInSearchResults) {
+        const nextSearchHit = searchResults.find((t) => t.id !== prevId && tracks.some((tr) => tr.id === t.id));
+        if (nextSearchHit) {
+          playTrack(nextSearchHit, { recordPlay: true });
+          return;
+        }
+        // Keep the searched song selected instead of jumping to an unrelated random track
+        isPlaying = false;
+        isLoading = false;
+        renderWidget();
+        return;
+      }
       if (tracks.length === 0) tracks = [...FALLBACK_TRACKS];
       const next = pickWeightedRandomTrack(tracks, prefs, prevId);
       if (next && next.id !== prevId) {
@@ -1027,16 +1137,40 @@ export function initMusicPlayer() {
     }
   });
 
-  // Auto-start smart full-version music when any interactive button/tile is clicked
+  // Pause all site music whenever external <video>/<audio> (e.g. Downloader preview) plays
+  document.addEventListener(
+    'play',
+    (e) => {
+      const target = e.target;
+      if (target === audio) return;
+      if (target instanceof HTMLMediaElement && !root.contains(target)) {
+        pauseAllSiteMusic({ userPaused: true });
+      }
+    },
+    true
+  );
+
+  window.addEventListener('manifestudio:external-media-play', () => {
+    pauseAllSiteMusic({ userPaused: true });
+  });
+
+  // Auto-start smart full-version music when interactive UI buttons are clicked (skipping downloader media)
   document.addEventListener('click', (e) => {
     const target = e.target;
     if (!(target instanceof Element)) return;
     if (root.contains(target)) return;
+    if (target.closest('[data-testid="downloader-panel"], video, audio, [data-dl-save-idx]')) {
+      return;
+    }
     const clickable = target.closest(
       'button, a, [role="button"], [role="tab"], .product-tile'
     );
     if (!clickable) return;
     if (musicMode !== 'full-audio' || session.userPaused) return;
+    const externalMediaPlaying = Array.from(document.querySelectorAll('video, audio')).some(
+      (el) => el !== audio && !el.paused && !el.ended
+    );
+    if (externalMediaPlaying) return;
     if (!isPlaying && !isLoading) {
       playNextSmartTrack({ wasSkip: false });
     }
