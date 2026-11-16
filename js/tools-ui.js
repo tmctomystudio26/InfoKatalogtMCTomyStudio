@@ -22,26 +22,26 @@ import {
   matchIndonesianCityQuery,
   planMediaCompression,
   resolveAccurateWeatherCondition,
-} from './tools-logic.js?v=20';
+} from './tools-logic.js?v=21';
 import {
   describeLocationSource,
   resolveUserLocation,
   searchCitiesOnline,
   setManualLocation,
-} from './location.js?v=20';
-import { createInteractiveGlobe } from './globe.js?v=20';
+} from './location.js?v=21';
+import { createInteractiveGlobe } from './globe.js?v=21';
 import {
   createSpeedometerGauge,
   fetchSpeedtestEnvironment,
   readClientDeviceTelemetry,
   runInternetSpeedtest,
-} from './speedtest.js?v=20';
+} from './speedtest.js?v=21';
 import {
   fetchMediaDownload,
   triggerBatchPhotoDownload,
   triggerDirectMediaSave,
-} from './downloader.js?v=20';
-import { compressMediaFile, inspectMediaFile } from './compressor.js?v=20';
+} from './downloader.js?v=21';
+import { compressMediaFile, inspectMediaFile } from './compressor.js?v=21';
 
 const PRAYER_CACHE_KEY = 'manifestudio_prayer_cache_v1';
 const MYQURAN_CITIES_KEY = 'manifestudio_myquran_cities_v1';
@@ -396,7 +396,14 @@ export function createToolsHubController({
     speedDevice: readClientDeviceTelemetry(),
     dlUrl: '',
     dlLoading: false,
+    dlConvPercent: 0,
+    dlConvLabel: '',
+    dlConvStage: '',
     dlSavingIdx: -1,
+    dlSaveActive: false,
+    dlSavePercent: 0,
+    dlSaveLabel: '',
+    dlSaveStage: '',
     dlBatchSaving: false,
     dlBatchProgressText: '',
     dlError: '',
@@ -1420,9 +1427,49 @@ export function createToolsHubController({
 
         ${
           toolState.dlLoading
-            ? `<div class="tool-loading-box">Mengambil foto, slide carousel, story, caption, atau video HD tanpa watermark...</div>`
+            ? `
+              <div class="dl-progress-card" id="dl-conv-progress-card" data-testid="dl-conv-progress" role="status" aria-live="polite">
+                <div class="dl-progress-head">
+                  <span id="dl-conv-progress-label">${escapeHtml(toolState.dlConvLabel || 'Menganalisis tautan & mengonversi media...')}</span>
+                  <strong class="mono-num" id="dl-conv-progress-pct">${Math.round(toolState.dlConvPercent || 10)}%</strong>
+                </div>
+                <div
+                  class="dl-progress-track"
+                  id="dl-conv-progress-bar"
+                  role="progressbar"
+                  aria-valuemin="0"
+                  aria-valuemax="100"
+                  aria-valuenow="${Math.round(toolState.dlConvPercent || 10)}"
+                >
+                  <div class="dl-progress-fill" id="dl-conv-progress-fill" style="width: ${Math.max(6, Math.round(toolState.dlConvPercent || 10))}%"></div>
+                </div>
+                <span class="dl-progress-sub">Sedang mengambil &amp; menyiapkan format Video MP4 + Audio MP3 agar siap diunduh...</span>
+              </div>
+            `
             : res
             ? `
+              ${
+                toolState.dlSaveActive
+                  ? `
+                    <div class="dl-progress-card is-download" id="dl-save-progress-card" data-testid="dl-save-progress" role="status" aria-live="polite">
+                      <div class="dl-progress-head">
+                        <span id="dl-save-progress-label">${escapeHtml(toolState.dlSaveLabel || 'Menyiapkan unduhan file...')}</span>
+                        <strong class="mono-num" id="dl-save-progress-pct">${Math.round(toolState.dlSavePercent || 0)}%</strong>
+                      </div>
+                      <div
+                        class="dl-progress-track"
+                        id="dl-save-progress-bar"
+                        role="progressbar"
+                        aria-valuemin="0"
+                        aria-valuemax="100"
+                        aria-valuenow="${Math.round(toolState.dlSavePercent || 0)}"
+                      >
+                        <div class="dl-progress-fill is-download" id="dl-save-progress-fill" style="width: ${Math.max(4, Math.round(toolState.dlSavePercent || 0))}%"></div>
+                      </div>
+                    </div>
+                  `
+                  : ''
+              }
               <div class="dl-result-card" data-testid="dl-result-card">
                 <div class="dl-result-media">
                   ${
@@ -2207,11 +2254,45 @@ export function createToolsHubController({
         }
       });
 
+      const updateConvProgressDom = ({ percent, label, stage }) => {
+        toolState.dlConvPercent = percent;
+        toolState.dlConvLabel = label;
+        toolState.dlConvStage = stage || 'processing';
+        const labelEl = rootEl.querySelector('#dl-conv-progress-label');
+        const pctEl = rootEl.querySelector('#dl-conv-progress-pct');
+        const barEl = rootEl.querySelector('#dl-conv-progress-bar');
+        const fillEl = rootEl.querySelector('#dl-conv-progress-fill');
+        if (labelEl) labelEl.textContent = label;
+        if (pctEl) pctEl.textContent = `${percent}%`;
+        if (barEl) barEl.setAttribute('aria-valuenow', String(percent));
+        if (fillEl) fillEl.style.width = `${Math.max(6, percent)}%`;
+      };
+
+      const updateSaveProgressDom = ({ percent, label, stage }) => {
+        toolState.dlSaveActive = true;
+        toolState.dlSavePercent = percent;
+        toolState.dlSaveLabel = label;
+        toolState.dlSaveStage = stage || 'downloading';
+        const labelEl = rootEl.querySelector('#dl-save-progress-label');
+        const pctEl = rootEl.querySelector('#dl-save-progress-pct');
+        const barEl = rootEl.querySelector('#dl-save-progress-bar');
+        const fillEl = rootEl.querySelector('#dl-save-progress-fill');
+        if (labelEl) labelEl.textContent = label;
+        if (pctEl) pctEl.textContent = `${percent}%`;
+        if (barEl) barEl.setAttribute('aria-valuenow', String(percent));
+        if (fillEl) fillEl.style.width = `${Math.max(4, percent)}%`;
+      };
+
       rootEl.querySelector('#dl-clear-btn')?.addEventListener('click', () => {
         toolState.dlUrl = '';
         toolState.dlError = '';
         toolState.dlResult = null;
+        toolState.dlConvPercent = 0;
+        toolState.dlConvLabel = '';
         toolState.dlSavingIdx = -1;
+        toolState.dlSaveActive = false;
+        toolState.dlSavePercent = 0;
+        toolState.dlSaveLabel = '';
         toolState.dlBatchSaving = false;
         render();
       });
@@ -2222,11 +2303,15 @@ export function createToolsHubController({
         toolState.dlUrl = url;
         if (!url || toolState.dlLoading) return;
         toolState.dlLoading = true;
+        toolState.dlConvPercent = 10;
+        toolState.dlConvLabel = 'Memulai analisis tautan...';
         toolState.dlError = '';
         toolState.dlResult = null;
+        toolState.dlSaveActive = false;
         render();
+        rootEl.querySelector('#dl-conv-progress-card')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
         try {
-          const result = await fetchMediaDownload(url);
+          const result = await fetchMediaDownload(url, updateConvProgressDom);
           toolState.dlResult = result;
           const photoCount = result.photos?.length || 0;
           onToast(
@@ -2238,6 +2323,7 @@ export function createToolsHubController({
           toolState.dlError = err?.message || 'Gagal mengambil tautan unduhan.';
         } finally {
           toolState.dlLoading = false;
+          toolState.dlConvPercent = 0;
           render();
         }
       });
@@ -2263,16 +2349,25 @@ export function createToolsHubController({
         const photos = toolState.dlResult?.photos || [];
         if (photos.length === 0 || toolState.dlBatchSaving) return;
         toolState.dlBatchSaving = true;
+        toolState.dlSaveActive = true;
+        toolState.dlSavePercent = 5;
+        toolState.dlSaveLabel = `Menyiapkan unduhan ${photos.length} foto HD...`;
         toolState.dlBatchProgressText = `Mengunduh 1/${photos.length}...`;
         render();
+        rootEl.querySelector('#dl-save-progress-card')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
         try {
           await triggerBatchPhotoDownload(
             photos,
             `${toolState.dlResult.platform}-${toolState.dlResult.title}`,
-            ({ current, total }) => {
-              toolState.dlBatchProgressText = `Mengunduh ${current}/${total}...`;
+            ({ current, total, percent, label }) => {
+              toolState.dlBatchProgressText = `Mengunduh ${current}/${total} (${percent}%)`;
               const btn = rootEl.querySelector('#dl-batch-photos-btn');
               if (btn) btn.textContent = toolState.dlBatchProgressText;
+              updateSaveProgressDom({
+                percent,
+                label: label || toolState.dlBatchProgressText,
+                stage: 'downloading',
+              });
             }
           );
           onToast(`Berhasil mengunduh ${photos.length} foto HD!`);
@@ -2291,14 +2386,21 @@ export function createToolsHubController({
           const ext = btn.getAttribute('data-dl-photo-ext') || 'jpg';
           const idx = Number(btn.getAttribute('data-dl-photo-idx')) || 0;
           if (!url) return;
+          toolState.dlSaveActive = true;
+          toolState.dlSavePercent = 10;
+          toolState.dlSaveLabel = `Mengunduh Foto #${idx + 1}...`;
+          render();
+          rootEl.querySelector('#dl-save-progress-card')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
           try {
             await triggerDirectMediaSave(
               url,
               `${toolState.dlResult?.platform || 'sosmed'}-foto-${idx + 1}`,
-              ext
+              ext,
+              updateSaveProgressDom
             );
-            onToast(`Mengunduh Foto #${idx + 1}...`);
+            onToast(`Foto #${idx + 1} berhasil diunduh!`);
           } catch (err) {
+            toolState.dlSaveActive = false;
             toolState.dlError = err?.message || 'Gagal mengunduh foto.';
             render();
           }
@@ -2323,16 +2425,22 @@ export function createToolsHubController({
           if (!item || toolState.dlSavingIdx >= 0) return;
           window.dispatchEvent(new CustomEvent('manifestudio:external-media-play'));
           toolState.dlSavingIdx = idx;
+          toolState.dlSaveActive = true;
+          toolState.dlSavePercent = 10;
+          toolState.dlSaveLabel = `Menyiapkan & mengonversi ${item.label}...`;
           toolState.dlError = '';
           render();
+          rootEl.querySelector('#dl-save-progress-card')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
           try {
             await triggerDirectMediaSave(
               item.url,
               `${toolState.dlResult.platform}-${toolState.dlResult.title}`,
-              item.ext
+              item.ext,
+              updateSaveProgressDom
             );
-            onToast('Mengunduh file media...');
+            onToast(`${item.label} berhasil diproses!`);
           } catch (err) {
+            toolState.dlSaveActive = false;
             toolState.dlError = err?.message || 'Gagal mengunduh file media langsung.';
           } finally {
             toolState.dlSavingIdx = -1;

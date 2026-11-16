@@ -1,6 +1,15 @@
 # Roadmap & Peta Pengembangan Proyek Manifestudio
 
-Dokumen ini adalah panduan resmi arsitektur, pencapaian implementasi, serta arah pengembangan selanjutnya bagi pengembang (**manusia, tim IT, maupun AI assistant**) pada repositori statis **Manifestudio** (`https://manifestudio.my.id/`). Lihat `BLUEPRINT.md` untuk detail kontrak API, struktur file, dan aturan koding teknis.
+Dokumen ini adalah panduan resmi tujuan proyek, arsitektur, pencapaian implementasi, serta arah pengembangan selanjutnya bagi pengembang (**manusia, tim IT, maupun AI assistant**) pada repositori statis **Manifestudio** (`https://manifestudio.my.id/`). Lihat `BLUEPRINT.md` untuk detail kontrak API, struktur file, dan aturan koding teknis.
+
+---
+
+## 🎯 Tujuan Proyek (Project Goals)
+
+1. **Storefront Digital Zero-Backend Cepat & Kredibel**: Menyajikan katalog layanan digital *Premium Account by Tomy* secara ringan (100% Static HTML/CSS + Native ES Modules di GitHub Pages + Custom Domain Cloudflare HTTPS), siap pakai tanpa server database eksternal.
+2. **Checkout Transparan & Terotomasi**: Menghitung total biaya (diskon otomatis, voucher tervalidasi dengan batas pakai terukur, biaya layanan fleksibel, serta skema Bayar Sekarang 0% vs Bayar Belakangan), lengkap dengan generator struk JPEG Canvas 2D dan pesan order WhatsApp terstruktur.
+3. **Kemandirian Penuh Admin Tanpa Edit Kode**: Memberikan kendali total kepada pemilik toko via Panel Admin terenkripsi AES-256-GCM (produk, sub-varian, kategori dinamis, banner carousel, meta OpenGraph, logo brand & sosmed, biaya layanan, voucher berbatas, FAQ, serta riwayat perubahan terperinci + restore).
+4. **Hub Utilitas Harian Gratis & Berkualitas Tinggi (`tools.html`)**: Menghadirkan utilitas penting harian bebas iklan (Jadwal Sholat Kemenag RI presisi GPS, Cuaca akurat pendeteksi hujan lebat, Jam Dunia & Globe 3D, Speedtest Cloudflare CDN, Downloader Sosmed Video MP4 + Audio MP3 + Foto + Carousel + Story + Caption berbar progres, dan Kompresor Media HD anti-pecah sosmed).
 
 ---
 
@@ -9,68 +18,80 @@ Dokumen ini adalah panduan resmi arsitektur, pencapaian implementasi, serta arah
 ### ✅ Fase 1 — Fondasi Katalog & Arsitektur Statis (Selesai)
 - [x] Struktur modular Native ES Modules tanpa bundler rumit.
 - [x] Mode Gelap/Terang persisten dengan sinkronisasi `meta[name="theme-color"]`.
-- [x] PWA Lengkap (`manifest.webmanifest`, `sw.js` dengan cache versioning).
-- [x] Unit Test suite menggunakan standard library `node:test` (`js/store.test.mjs`).
+- [x] PWA Lengkap (`manifest.webmanifest`, `sw.js` dengan cache versioning network-first).
+- [x] Unit Test suite menggunakan `node:test` (`js/store.test.mjs`).
 
-### ✅ Fase 2 — Drawer Checkout, Bayar Nanti +10%, & Struk HTML5 Canvas (Selesai)
+### ✅ Fase 2 — Drawer Checkout, Bayar Nanti, & Struk HTML5 Canvas (Selesai)
 - [x] Drawer pemesanan interaktif dengan perhitungan diskon belanja & voucher otomatis.
-- [x] Opsi `Bayar Sekarang` (0%) dan `Bayar Belakangan (+10%)`.
+- [x] Opsi `Bayar Sekarang` (0%) dan `Bayar Belakangan (+10% default, dapat diubah di Admin)`.
 - [x] Generator struk JPEG `< 60 KB` berbasis HTML5 Canvas 2D (`MS-YYMMDD-HHMMSS`).
 
 ### ✅ Fase 3 — Panel Admin Brankas Terenkripsi & Sinkronisasi GitHub (Selesai)
-- [x] Pemisahan basis data katalog ke `data/catalog.json`.
+- [x] Pemisahan basis data katalog ke `data/catalog.json` & riwayat ke `data/catalog-history.json`.
 - [x] Perlindungan Brankas Admin **AES-256-GCM + PBKDF2-SHA256 (100.000 iterasi)**.
-- [x] Edit nama produk utama, sub-varian, harga, kategori, stok, voucher, serta urutan posisi produk (naik/turun/pindah indeks).
-- [x] Ganti logo lewat Upload File (kompresi WebP/PNG 256×256 + hapus otomatis file upload lama di GitHub) maupun Link URL.
-- [x] Bar progres real-time & persentase publikasi ke GitHub, serta **Riwayat Perubahan (maks 12 log, auto-prune) dengan fitur Restore 1-klik**.
-- [x] Kartu produk berkode warna berbeda di Admin & perbaikan wrapping tombol mobile tanpa teks offside.
+- [x] Edit nama produk utama, sub-varian, harga, kategori, stok, urutan posisi produk (naik/turun/pindah indeks).
+- [x] Upload & ganti logo (kompresi WebP/PNG 256×256 + auto-hapus file upload lama di GitHub) maupun Link URL.
+- [x] **Log Riwayat Perubahan Terperinci (Itemized Actions, maks 12 log + Restore 1-klik)**: mencatat aksi spesifik (*menambah/menghapus sub-produk, ubah harga lama -> baru, ganti logo, ubah kategori, banner, OpenGraph, biaya layanan, & batas voucher*).
 
 ### ✅ Fase 4 — Storefront Top-Up, Multi-Banner Carousel & Halaman Konfirmasi (Selesai)
-- [x] Banner carousel 6-slide responsif (dapat digeser swipe/panah) untuk Katalog, Jadwal Sholat, Cuaca, Jam Dunia, Speedtest, dan Downloader.
-- [x] Halaman konfirmasi dedikasi `order.html` & kode voucher sekali pakai.
-- [x] Bagian *Pertanyaan Umum (FAQ)* ringkas & mutakhir tanpa kalimat berlebih dan rapi di layar mobile.
+- [x] Banner carousel 6+ slide responsif (swipe/panah) untuk Katalog & Hub Utilitas.
+- [x] Halaman konfirmasi dedikasi `order.html`.
+- [x] Bagian *Pertanyaan Umum (FAQ)* ringkas & mutakhir.
 
 ### ✅ Fase 5 — Menu Lainnya Terpisah & Pemutar Musik Full Version Bebas Iklan (Selesai)
-- [x] Halaman terpisah `tools.html` dengan navigasi 5 utilitas + tombol kembali ke toko utama:
-  1. **Jadwal Sholat Indonesia**: Kemenag RI (`api.myquran.com` v2 + fallback AlAdhan method=20), prioritas GPS -> fallback IP -> riwayat/cari kota.
-  2. **Prakiraan Cuaca**: Open-Meteo (real-time, per jam 12 jam, 7 hari ke depan).
-  3. **Jam Dunia & Bola Dunia Interaktif**: Standar UTC, konversi WIB/WITA/WIT & zona global, globe 3D canvas dapat diputar & diklik per negara target.
-  4. **Speedtest Internet**: Cloudflare Speed Edge (`ping`, `jitter`, `loaded latency`, `download`, `upload`), speedometer 60fps, lokasi, server node, ISP, serta info OS/browser/perangkat.
-  5. **Downloader Video Tanpa Watermark**: Mendukung tautan **TikTok (HD/SD/MP3 No Watermark), YouTube (MP4/MP3), Facebook (HD/SD), dan Instagram (Reels/Post)**.
-- [x] **Pemutar Musik Pintar Bebas Iklan Full Version**:
-  - Ikon musik dapat digeser bebas (*draggable*) ke posisi mana pun dan posisinya tersimpan persisten.
-  - Memutar lagu **Full Version (`>= 75 detik`)** tanpa terpotong 30 detik (prioritas Viral Indonesia Gen-Z, DJ remix, cover via Audius + pilihan embed **SoundCloud Player** & **Spotify Embed Player**).
-- [x] **OpenGraph WhatsApp/Sosmed Ready**: Thumbnail `1200×630` baseline JPEG `< 110 KB` dengan URL absolut HTTPS (`https://manifestudio.my.id/`) agar muncul penuh di pratinjau WhatsApp & Telegram.
-- [x] **Custom Domain & HTTPS Aktif**: Domain `manifestudio.my.id` terhubung melalui Cloudflare DNS ke GitHub Pages (`CNAME` + Enforce HTTPS).
+- [x] Halaman terpisah `tools.html` + pemutar musik melayang bebas iklan (`Full Audio >= 75 detik` via Audius, `SoundCloud Widget`, `Spotify Embed`) dengan posisi *draggable* persisten.
+- [x] **OpenGraph WhatsApp/Sosmed Ready**: Thumbnail `1200×630` baseline JPEG `< 110 KB` URL absolut HTTPS `https://manifestudio.my.id/`.
+- [x] **Custom Domain & HTTPS Aktif**: Domain `manifestudio.my.id` melalui Cloudflare DNS ke GitHub Pages (`CNAME`), serta bersih sepenuhnya dari keterikatan Replit.
+
+### ✅ Fase 6 — Kendali Penuh Admin, Cuaca Presisi Tinggi & Kompresor Media HD (Selesai)
+- [x] **Kustomisasi Total dari Panel Admin (`admin.html`)**:
+  - Ubah **Logo Brand**, **Nama Toko**, **Tagline Header** (*"by Tomy"*), & **Teks Footer** (*"Dikelola oleh Manifestudio by Tomy © 2026"*).
+  - Edit besaran **Biaya Layanan** (`% Bayar Nanti` maupun `Biaya Admin Flat (Rp)` + labelnya).
+  - Kelola **Kategori Layanan Dinamis** (tambah/edit/hapus kategori di luar kategori bawaan).
+  - Kelola **Kontak / Sosial Media** lengkap dengan preset/upload logo sosmed custom & manajemen **FAQ** langsung dari Admin.
+  - **OpenGraph Manager & Live Card Preview**: Ubah gambar OpenGraph, judul, tagline, caption/deskripsi, site name + sinkron otomatis meta tag `index.html` saat publikasi ke GitHub.
+  - **Banner Carousel Manager**: Tambah, edit teks/CTA/link/scrim, upload gambar, atur urutan slide banner, dan hapus slide langsung dari Admin.
+- [x] **Prakiraan Cuaca Presisi Tinggi**: Penilaian kondisi multi-faktor (curah hujan konvektif, jam puncak, angin kencang, & data stasiun lokal terdekat) untuk mendeteksi **Hujan Lebat / Sangat Lebat / Badai** secara akurat + tombol kalibrasi kondisi lokal pengguna.
+- [x] **Kompresor Foto & Video HD Anti-Pecah Sosmed (`tools.html?tab=compressor`)**:
+  - 4 metode optimasi (*Zero-Loss Metadata Stripper*, *Social Shield Guard*, *Lossless Palette/Huffman*, *High-Bitrate Stream*) dengan preset **TikTok HD**, **Instagram HD/Reels**, **WhatsApp HD**, dan **Original 1:1** agar platform tidak menurunkan ketajaman saat unggah.
+
+### ✅ Fase 7 — Validasi Voucher Ketat & Peningkatan Reliabilitas Downloader + Progress Bar (Selesai)
+- [x] **Validasi Voucher Ketat & Pengaturan Batas Penggunaan di Admin**:
+  - Kode voucher tidak terdaftar ditolak dengan status `invalid` (`"Kode voucher ... tidak valid atau tidak terdaftar."`) — menghapus pesan `"dicatat & Cek Admin"`.
+  - Admin dapat mengatur kuota pemakaian tiap voucher: **1 Kali Pakai (`once`)**, **Maksimal N Kali (`limited`)**, atau **Tak Terbatas (`unlimited`)** lengkap dengan pelacakan penggunaan per pelanggan.
+- [x] **Perbaikan Downloader Sosmed + Kelengkapan Dual MP4 & MP3**:
+  - Deteksi dini tautan YouTube terpotong (`parseYouTubeVideoId`), normalisasi penuh payload **Tioo `/ttdl` (`video[]` & `audio[]`)**, serta penggabungan paralel multi-provider agar **Video MP4 & Audio MP3 muncul lengkap bersamaan** (bukan hanya salah satu) + dukungan Foto HD, Carousel Multi-Slide, Story IG/TikTok/FB, dan Salin Caption 1-klik.
+- [x] **Bar Progres Konversi & Download Real-Time di Downloader**:
+  - Menampilkan **Progres Pengambilan/Konversi** (`#dl-conv-progress-card`: menganalisis -> mengambil -> mengonversi -> siap) serta **Progres Streaming Download** (`#dl-save-progress-card`: MB terunduh / total MB & persentase `%` baik single file maupun batch multi-foto).
 
 ---
 
 ## 🚀 Rencana Pengembangan Selanjutnya (Next Milestones)
 
-### 🔹 Fase 6 — Riwayat Transaksi Pelanggan & QRIS Dinamis
+### 🔹 Fase 8 — Riwayat Transaksi Pelanggan & Pembayaran QRIS Dinamis
 1. **Riwayat Pesanan Lokal Pelanggan**:
    - Simpan hingga 10 riwayat pesanan terakhir dari `order.html` ke `localStorage` agar pelanggan dapat mengunduh ulang struk atau menanyakan status ke CS kapan saja.
-2. **Modal QRIS & Rekening Bank Resmi**:
-   - Modal QRIS statis/rekening saat memilih metode *Bayar Sekarang* dengan tombol salin nomor rekening 1-klik.
+2. **Modal QRIS & Rekening Bank Resmi (Dapat Diedit dari Admin)**:
+   - Tampilan QRIS statis/rekening saat memilih metode *Bayar Sekarang* dengan tombol salin nomor rekening 1-klik dan pengelolaan gambar QRIS di Admin.
 
-### 🔹 Fase 7 — Ekosistem Admin & Utilitas Lanjutan
-1. **Manajemen Banner Carousel Dinamis di Admin**:
-   - Mengizinkan admin mengedit teks/gambar slide banner langsung dari `admin.html` dan menyimpannya ke `data/catalog.json`.
-2. **Riwayat Speedtest & Ekspor Laporan**:
-   - Menyimpan 5 hasil pengujian Speedtest terakhir untuk perbandingan kecepatan ISP pagi/malam.
-3. **Subdomain Terpisah Opsional (Future Scaling)**:
-   - Untuk memisahkan `tools.html` ke subdomain **`tools.manifestudio.my.id`**, dapat dilakukan via Cloudflare Redirect Rules atau repositori GitHub Pages pendamping.
+### 🔹 Fase 9 — Analitik Lokal & Ekosistem Utilitas Lanjutan
+1. **Riwayat Speedtest & Perbandingan ISP**:
+   - Menyimpan 5 hasil pengujian Speedtest terakhir untuk membandingkan kestabilan jaringan pelanggan.
+2. **Subdomain Terpisah Opsional**:
+   - Dukungan pemisahan `tools.html` ke subdomain **`tools.manifestudio.my.id`** melalui Cloudflare Redirect Rules.
 
 ---
 
-## 🛠️ SOP Pemeliharaan Harian
+## 🛠️ SOP Pemeliharaan & Dokumentasi Wajib
+
+> **Komitmen Wajib Pengembangan:** Setiap pembaruan fitur **harus** disertai pembaruan `ROADMAP.md`, `README.md`, dan `BLUEPRINT.md`, lolos seluruh unit test + browser check, dan langsung di-push ke `origin/main` GitHub Pages.
 
 ```bash
 # 1. Jalankan dev server lokal (port 3000)
 npm run dev
 
-# 2. Jalankan seluruh unit test sebelum commit/push
-node --test InfoKatalogtMCTomyStudio/js/store.test.mjs
+# 2. Jalankan seluruh unit test logika bisnis, voucher, downloader & kompresor
+npx --yes tsx --test InfoKatalogtMCTomyStudio/js/store.test.mjs
 
 # 3. Verifikasi kompilasi & linter
 npm run build && npm run lint

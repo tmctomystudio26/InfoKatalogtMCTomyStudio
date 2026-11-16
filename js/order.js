@@ -1,7 +1,7 @@
-import { PENDING_ORDER_STORAGE_KEY, formatRupiah, normalizeBrandConfig } from './store.js';
-import { loadCatalogData } from './data.js';
-import { generateReceiptImage } from './receipt.js';
-import { initMusicPlayer } from './music.js';
+import { PENDING_ORDER_STORAGE_KEY, formatRupiah, normalizeBrandConfig } from './store.js?v=21';
+import { loadCatalogData } from './data.js?v=21';
+import { generateReceiptImage } from './receipt.js?v=21';
+import { initMusicPlayer } from './music.js?v=21';
 
 const THEME_STORAGE_KEY = 'manifestudio_theme_v1';
 
@@ -187,10 +187,10 @@ function renderOrderDetails(order) {
           : ''
       }
       ${
-        t.voucherCode
-          ? `<div class="summary-row ${t.voucherDiscount > 0 ? 'is-discount' : ''}">
+        t.voucherCode && t.voucherDiscount > 0
+          ? `<div class="summary-row is-discount">
               <span>Kode Voucher (${escapeHtml(t.voucherCode)})</span>
-              <span class="mono-num">${t.voucherDiscount > 0 ? `-${escapeHtml(formatRupiah(t.voucherDiscount))}` : 'Cek Admin'}</span>
+              <span class="mono-num">-${escapeHtml(formatRupiah(t.voucherDiscount))}</span>
             </div>`
           : ''
       }

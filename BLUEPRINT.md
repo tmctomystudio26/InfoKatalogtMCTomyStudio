@@ -1,21 +1,21 @@
 # Architectural Blueprint & Developer Onboarding — Manifestudio
 
-Dokumen teknis terpadu bagi **Tim IT, Human Developer, maupun AI Coding Agent** untuk memahami, mengelola, memelihara, menguji, dan mengembangkan ekosistem **Manifestudio** (*Static Storefront + Admin Brankas Terenkripsi + Utility Hub + Full-Length Smart Music*).
+Dokumen teknis terpadu bagi **Tim IT, Human Developer, maupun AI Coding Agent** untuk memahami, mengelola, memelihara, menguji, dan mengembangkan ekosistem **Manifestudio** (*Static Storefront + Admin Brankas Terenkripsi + Utility Hub + Full-Length Smart Music + Media Compressor HD*).
 
 ---
 
 ## 1. Tujuan & Filosofi Sistem
 
 1. **Zero-Backend Public Hosting (100% GitHub Pages + Custom Domain Ready)**:
-   Seluruh aplikasi berjalan murni di browser (*Static HTML/CSS + Native ES Modules*) dan tayang di **`https://manifestudio.my.id/`** (melalui GitHub Pages + file `CNAME` + Cloudflare DNS) tanpa menyewa server VPS/database.
+   Seluruh aplikasi berjalan murni di browser (*Static HTML/CSS + Native ES Modules*) dan tayang di **`https://manifestudio.my.id/`** (melalui GitHub Pages + file `CNAME` + Cloudflare DNS HTTPS) tanpa menyewa server VPS/database, dan bebas dari dependensi Replit.
 2. **Pemisahan Halaman Clean & Modular**:
-   - **Storefront (`index.html`)**: Fokus penuh pada pencarian, filter, banner geser Gen-Z, dan belanja cepat ala top-up store.
-   - **Order Konfirmasi (`order.html`)**: Halaman invoice terpisah + HTML5 Canvas struk JPEG `< 60 KB` + WhatsApp handoff.
-   - **Menu Lainnya (`tools.html`)**: Halaman terpisah untuk utilitas harian (`?tab=prayer | weather | worldclock | speedtest | downloader`) dengan tombol kembali ke katalog.
-   - **Panel Admin (`admin.html`)**: Halaman *unlisted* (`noindex`) terenkripsi AES-256-GCM yang mempublikasikan perubahan katalog langsung ke `data/catalog.json` via GitHub REST API.
-3. **Kualitas Pengalaman Mobile-First & Ad-Free**:
-   - Semua kontrol grid responsif di layar HP (`360px–430px`) maupun desktop (`1440px`).
-   - Pemutar musik bebas iklan dapat digeser bebas dan memutar lagu versi penuh (*Full Version*).
+   - **Storefront (`index.html`)**: Fokus pada pencarian, filter kategori dinamis, banner carousel yang dapat diatur Admin, belanja cepat, & validasi voucher ketat berkuota.
+   - **Order Konfirmasi (`order.html`)**: Halaman invoice terpisah + HTML5 Canvas struk JPEG `< 60 KB` + WhatsApp handoff bebas catatan palsu.
+   - **Menu Lainnya (`tools.html`)**: Halaman terpisah untuk utilitas harian (`?tab=prayer | weather | worldclock | speedtest | downloader | compressor`) dengan tombol kembali ke katalog.
+   - **Panel Admin (`admin.html`)**: Halaman *unlisted* (`noindex`) terenkripsi AES-256-GCM yang mempublikasikan perubahan katalog, aset upload, OpenGraph `index.html`, dan riwayat perubahan terperinci langsung via GitHub REST API.
+3. **Kualitas Pengalaman Mobile-First, Presisi Tinggi, & Ad-Free**:
+   - Semua kontrol responsif di layar HP (`360px–430px`) maupun desktop (`1440px`), menggunakan *Network-First Service Worker* (`manifestudio-cache-v21`) + query cache-busting `?v=21` agar pembaruan langsung muncul di perangkat mobile pengguna.
+   - Pemutar musik bebas iklan dapat digeser bebas dan memutar lagu versi penuh (*Full Version >= 75s*).
 
 ---
 
@@ -23,17 +23,18 @@ Dokumen teknis terpadu bagi **Tim IT, Human Developer, maupun AI Coding Agent** 
 
 | Modul / Berkas | Tanggung Jawab Utama | Ketergantungan |
 |---|---|---|
-| `index.html` + `js/app.js` | Storefront katalog, 6-slide carousel, kategori, modal varian, drawer checkout | `data.js`, `store.js`, `pwa.js`, `music.js` |
-| `order.html` + `js/order.js` + `js/receipt.js` | Invoice bersih + HTML5 Canvas Struk JPEG `< 60 KB` + format WA Order | `store.js`, `music.js` |
-| `admin.html` + `js/admin.js` + `js/vault.js` | Gate AES-256-GCM + PBKDF2, edit nama/harga/urutan/logo, riwayat + restore 12 log, progress bar publikasi GitHub | `data.js`, `store.js`, `vault.js` |
-| `tools.html` + `js/tools-page.js` + `js/tools-ui.js` + `js/tools-logic.js` | Router sub-tab `Menu Lainnya`, pure math & domain logic | `location.js`, `globe.js`, `speedtest.js`, `downloader.js`, `music.js` |
-| `js/location.js` | Geolocation GPS prioritas utama + fallback IP geolocation + cache + autocomplete kota | `tools-logic.js` |
+| `index.html` + `js/app.js` | Storefront katalog, carousel banner dinamis, kategori dinamis, modal varian, drawer checkout, voucher tracking | `data.js`, `store.js`, `pwa.js`, `music.js` |
+| `order.html` + `js/order.js` + `js/receipt.js` | Invoice bersih + HTML5 Canvas Struk JPEG `< 60 KB` + format WA Order (tanpa voucher invalid) | `data.js`, `store.js`, `music.js` |
+| `admin.html` + `js/admin.js` + `js/vault.js` | Gate AES-256-GCM + PBKDF2, edit produk/varian/urutan/logo/brand/tagline/biaya layanan/sosmed/FAQ/voucher limits/OpenGraph/banner, riwayat itemized + restore 12 log | `data.js`, `store.js`, `vault.js` |
+| `tools.html` + `js/tools-page.js` + `js/tools-ui.js` + `js/tools-logic.js` | Router sub-tab `Menu Lainnya`, pure math & domain logic, UI bar progres konversi & download | `location.js`, `globe.js`, `speedtest.js`, `downloader.js`, `compressor.js`, `music.js` |
+| `js/location.js` | Geolocation GPS prioritas utama + reverse geocode Kelurahan/Kecamatan + fallback IP + autocomplete kota | `tools-logic.js` |
 | `js/globe.js` | Canvas 2D orthographic rotatable 3D globe + klik target negara + auto-rotate | `tools-logic.js` |
-| `js/speedtest.js` | Speedometer 60fps + ukur Ping/Jitter/DL/UL Cloudflare CDN + telemetri perangkat | `tools-logic.js` |
-| `js/downloader.js` | Adapter TikTok No-Watermark, YouTube MP4/MP3, Facebook HD/SD, & Instagram Reels/Post | `tools-logic.js` |
-| `js/music.js` + `js/music-logic.js` | Widget musik draggable, algoritma preferensi pencarian & play, **Full Audio** (Audius), **SoundCloud Widget**, **Spotify Embed** | Audius / SoundCloud Widget / Spotify |
-| `data/catalog.json` | Sumber kebenaran (*Single Source of Truth*) katalog produk, urutan posisi, logo, voucher, dan FAQ | Service Worker Network-First |
-| `sw.js` + `manifest.webmanifest` | Offline cache asset (`manifestudio-cache-v12`) & instalasi PWA | — |
+| `js/speedtest.js` | Speedometer 60fps + ukur Ping/Jitter/DL/UL Cloudflare CDN (berbobot berkelanjutan) + telemetri perangkat | `tools-logic.js` |
+| `js/downloader.js` | Adapter paralel TikTok (Tioo/TikWM/Cobalt/DavidCyril), YouTube (Cobalt + Tioo + dual MP4/MP3 DavidCyril + cek ID terpotong), IG/FB (Video/Foto/Carousel/Story/Caption) + streaming download progress | `tools-logic.js` |
+| `js/compressor.js` | Kompresor Foto & Video HD Zero-Loss (binary EXIF/PNG/MP4 atom stripper & Social Shield encoder) | `tools-logic.js` |
+| `js/music.js` + `js/music-logic.js` | Widget musik draggable, algoritma preferensi, **Full Audio** (Audius), **SoundCloud Widget**, **Spotify Embed** | Audius / SoundCloud / Spotify |
+| `data/catalog.json` & `data/catalog-history.json` | Single Source of Truth produk, brand, OpenGraph, banners, kategori, voucher usage limits, FAQ & 12 snapshot riwayat | Service Worker Network-First |
+| `sw.js` + `manifest.webmanifest` | Network-First code/data cache (`manifestudio-cache-v21`) & instalasi PWA | — |
 | `CNAME` | Konfigurasi domain kustom resmi GitHub Pages (`manifestudio.my.id`) — jangan dihapus | Cloudflare DNS |
 
 ---
@@ -45,24 +46,23 @@ Semua integrasi pihak ketiga berjalan murni *client-side* tanpa API key rahasia:
 1. **Jadwal Sholat Indonesia**:
    - **Primary (Presisi Koordinat Kecamatan/Kelurahan)**: `https://api.aladhan.com/v1/timings/{DD}-{MM}-{YYYY}?latitude=...&longitude=...&method=20` (Metode Kemenag RI).
    - **Fallback (Kota/Kabupaten)**: `https://api.myquran.com/v2/sholat/kota/semua` & `/jadwal/{cityId}/{YYYY}/{MM}/{DD}` (Bimas Islam Kemenag RI).
-2. **Prakiraan Cuaca & Geocoding**:
-   - **Cuaca**: `https://api.open-meteo.com/v1/forecast` (current, hourly, 7-day daily).
+2. **Prakiraan Cuaca Presisi Tinggi & Geocoding**:
+   - **Cuaca**: `https://api.open-meteo.com/v1/forecast` (`current` termasuk `rain`/`showers`/`wind_gusts_10m`, `hourly`, 7-day `daily`) + pengamatan stasiun lokal (`wttr.in`).
    - **Cari Wilayah/Kecamatan**: `https://nominatim.openstreetmap.org/search`, `https://photon.komoot.io/api/`, & `https://geocoding-api.open-meteo.com/v1/search`.
 3. **Deteksi Lokasi GPS + Reverse Geocode & Fallback IP**:
    - **Reverse Geocode Detail**: `https://nominatim.openstreetmap.org/reverse`, `https://api-bdc.io/data/reverse-geocode-client`, & `https://photon.komoot.io/reverse`.
    - **IP Fallback**: `https://ipwho.is/`.
 4. **Speedtest Internet**:
    - **CDN Info**: `https://speed.cloudflare.com/cdn-cgi/trace` & `https://speed.cloudflare.com/meta`.
-   - **Bandwidth & Latency**: `https://speed.cloudflare.com/__down?bytes=...` & `https://speed.cloudflare.com/__up` (rata-rata berkelanjutan berbobot byte).
+   - **Bandwidth & Latency**: `https://speed.cloudflare.com/__down?bytes=...` & `https://speed.cloudflare.com/__up`.
 5. **Pemutar Musik Full Version (Bebas Iklan)**:
-   - **Full Audio Direct Stream**: `https://api.audius.co/v1/tracks/search` + `/tracks/{id}/stream` (filter ketat `duration >= 75s`, bebas cuplikan 30 detik).
-   - **SoundCloud Player**: `https://w.soundcloud.com/player/` + `https://w.soundcloud.com/player/api.js`.
-   - **Spotify Embed Player**: `https://open.spotify.com/embed/playlist/...`.
-6. **Sosmed Video Downloader No Watermark**:
-   - **TikTok (HD/SD/MP3)**: `https://www.tikwm.com/api/?url=...&hd=1` (fallback `https://cobaltapi.cjs.nz/` & `davidcyriltech`).
-   - **YouTube (MP4/MP3 Direct Stream)**: `https://cobaltapi.cjs.nz/` (tunnel langsung tanpa redirect HTML) & `https://backend1.tioo.eu.org/youtube`.
-   - **Facebook (HD/SD)**: `https://cobaltapi.cjs.nz/` & `https://backend1.tioo.eu.org/fbdown`.
-   - **Instagram (Reels/Post)**: `https://backend1.tioo.eu.org/igdl` & `https://cobaltapi.cjs.nz/`.
+   - **Full Audio Direct Stream**: `https://api.audius.co/v1/tracks/search` + `/tracks/{id}/stream` (`duration >= 75s`).
+   - **SoundCloud & Spotify Embed**: `https://w.soundcloud.com/player/` & `https://open.spotify.com/embed/playlist/...`.
+6. **Sosmed Media Downloader All-in-One**:
+   - **TikTok (Video No-WM/MP3/Photo Carousel)**: `https://backend1.tioo.eu.org/ttdl`, `https://www.tikwm.com/api/?url=...&hd=1`, `https://cobaltapi.cjs.nz/`, fallback `https://apis.davidcyriltech.my.id/download/tiktok`.
+   - **YouTube (Dual Video MP4 & Audio MP3)**: Paralel `https://www.youtube.com/oembed`, `https://cobaltapi.cjs.nz/` (video + audio MP3 terpisah), `https://backend1.tioo.eu.org/youtube`, & fallback ganda `https://apis.davidcyriltech.my.id/download/ytmp4` + `/ytmp3`.
+   - **Facebook (HD/SD/MP3/Photo/Story)**: `https://cobaltapi.cjs.nz/`, `https://apis.davidcyriltech.my.id/facebook`, & `https://backend1.tioo.eu.org/fbdown`.
+   - **Instagram (Reels/Photo/Carousel/Story/Caption)**: `https://backend1.tioo.eu.org/igdl`, `https://cobaltapi.cjs.nz/`, `https://api.ryzendesu.vip/api/downloader/igdl`, fallback `davidcyriltech/instagram`.
 
 ---
 
@@ -72,14 +72,15 @@ Semua integrasi pihak ketiga berjalan murni *client-side* tanpa API key rahasia:
 |---|---|---|
 | `manifestudio_cart_v1` | `localStorage` | Item keranjang aktif |
 | `manifestudio_theme_v1` | `localStorage` | `'dark'` atau `'light'` |
-| `manifestudio_used_vouchers_v1` | `localStorage` | Daftar voucher yang sudah dipakai checkout |
+| `manifestudio_used_vouchers_v1` | `localStorage` | Map jumlah pemakaian per kode voucher `{ CODE: count }` (migrasi otomatis dari array lama) |
 | `manifestudio_pending_order_v1` | `sessionStorage` + `localStorage` | Snapshot handoff menuju `order.html` |
 | `manifestudio_admin_vault_v1` | `localStorage` | Kredensial GitHub terenkripsi AES-256-GCM |
 | `manifestudio_catalog_preview_v1` | `localStorage` | Draft lokal admin sebelum publish ke GitHub |
-| `manifestudio_catalog_history_v1` | `localStorage` | Riwayat perubahan katalog (maks 12 log, auto-prune) |
+| `manifestudio_catalog_history_v1` | `localStorage` | Riwayat perubahan katalog terperinci (maks 12 log, auto-prune) |
 | `manifestudio_pwa_installed_v1` | `localStorage` | Flag status instalasi PWA |
 | `manifestudio_pwa_dismissed_v1` | `localStorage` | Timestamp penolakan banner PWA |
 | `manifestudio_user_location_v1` | `localStorage` | Lokasi terakhir (GPS / IP / manual) untuk Sholat & Cuaca |
+| `manifestudio_weather_cal_v1` | `localStorage` | Kalibrasi cuaca aktual lokal pengguna (auto-expire 3 jam) |
 | `manifestudio_music_prefs_v1` | `localStorage` | Riwayat pencarian, artist/genre weights, play count, & skip |
 | `manifestudio_music_session_v1` | `localStorage` | Status pause, `lastTrackId`, stasiun SoundCloud & Spotify |
 | `manifestudio_music_pos_v1` | `localStorage` | Koordinat `(x, y)` ikon musik hasil geser pengguna |
@@ -91,11 +92,10 @@ Semua integrasi pihak ketiga berjalan murni *client-side* tanpa API key rahasia:
 
 1. **Path Relatif vs OpenGraph Absolut**:
    - Seluruh aset di HTML/JS/CSS (`img`, `script`, `fetch`) **wajib** memakai path relatif `./`.
-   - Tag **OpenGraph & Canonical (`og:url`, `og:image`, `og:image:secure_url`, `twitter:image`, Schema.org)** **wajib** memakai URL absolut HTTPS lengkap menuju `https://manifestudio.my.id/assets/og-manifestudio.jpg?v=3` (JPEG baseline non-interlaced `1200×630` `< 300 KB`) agar WhatsApp & Telegram menampilkan gambar pratinjau.
-   - Jangan pernah menghapus file `CNAME` (`manifestudio.my.id`) agar domain kustom GitHub Pages tetap terpasang setiap kali deploy.
-2. **Responsif Tombol Admin Mobile**:
-   - Jangan memakai `white-space: nowrap` pada tombol multi-kata di grid mobile `< 640px`. Gunakan `white-space: normal; word-break: break-word; min-width: 0; height: auto;` agar teks panjang seperti `"Ganti Token / Reset Brankas"` tidak pernah offside.
-3. **Verifikasi Wajib Sebelum Push**:
-   - Jalankan `node --test InfoKatalogtMCTomyStudio/js/store.test.mjs` dan pastikan semua pengujian PASS.
-   - Uji tampilan desktop & mobile (`360px` / `390px`) bebas overflow horizontal (`scrollWidth <= innerWidth`).
-   - Pastikan tidak ada aset yang ter-cache usang dengan menaikkan `CACHE_NAME` di `sw.js` saat menambah file statis baru.
+   - Tag **OpenGraph & Canonical (`og:url`, `og:image`, `og:image:secure_url`, `twitter:image`, Schema.org)** **wajib** memakai URL absolut HTTPS lengkap menuju `https://manifestudio.my.id/...` agar pratinjau WhatsApp/Telegram tampil penuh.
+   - Jangan pernah menghapus file `CNAME` (`manifestudio.my.id`).
+2. **Cache-Busting Konsisten (`sw.js` & `?v=N`)**:
+   - Setiap kali mengubah JS/CSS/HTML, naikkan `CACHE_NAME` di `sw.js` **dan** `CURRENT_CACHE` + query `?v=N` pada seluruh HTML (`index.html`, `tools.html`, `order.html`, `admin.html`) dan import ES module terkait agar browser mobile tidak menahan cache usang.
+3. **Dokumentasi & Verifikasi Wajib Sebelum Push**:
+   - Setiap pembaruan fitur wajib memperbarui `ROADMAP.md`, `README.md`, dan `BLUEPRINT.md`.
+   - Jalankan `npx --yes tsx --test InfoKatalogtMCTomyStudio/js/store.test.mjs`, `npm run build && npm run lint`, serta uji UI desktop + mobile (`playwright-cli`) bebas error dan overflow (`scrollWidth <= innerWidth`), lalu langsung push ke `origin/main`.

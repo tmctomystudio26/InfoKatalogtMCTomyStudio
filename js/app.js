@@ -4,7 +4,7 @@ import {
   PAY_LATER_SURCHARGE_RATE,
   getDefaultCatalogSnapshot,
   loadCatalogData,
-} from './data.js?v=20';
+} from './data.js?v=21';
 import {
   PENDING_ORDER_STORAGE_KEY,
   addToCart,
@@ -21,9 +21,9 @@ import {
   syncPaymentOptionsWithBrand,
   updateCartQty,
   validateOrderForm,
-} from './store.js?v=20';
-import { initPwaManager } from './pwa.js?v=20';
-import { initMusicPlayer } from './music.js?v=20';
+} from './store.js?v=21';
+import { initPwaManager } from './pwa.js?v=21';
+import { initMusicPlayer } from './music.js?v=21';
 
 const THEME_STORAGE_KEY = 'manifestudio_theme_v1';
 const CART_STORAGE_KEY = 'manifestudio_cart_v1';
@@ -805,23 +805,31 @@ function getUsedVouchers() {
     const raw = localStorage.getItem(USED_VOUCHERS_STORAGE_KEY);
     if (raw) {
       const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed)) return parsed;
+      if (Array.isArray(parsed)) {
+        const counts = {};
+        for (const item of parsed) {
+          const clean = String(item || '').trim().toUpperCase();
+          if (clean) counts[clean] = (counts[clean] || 0) + 1;
+        }
+        return counts;
+      }
+      if (parsed && typeof parsed === 'object') {
+        return parsed;
+      }
     }
   } catch {
     // Ignore
   }
-  return [];
+  return {};
 }
 
 function markVoucherAsUsed(code) {
   const clean = String(code || '').trim().toUpperCase();
   if (!clean) return;
   try {
-    const list = getUsedVouchers();
-    if (!list.includes(clean)) {
-      list.push(clean);
-      localStorage.setItem(USED_VOUCHERS_STORAGE_KEY, JSON.stringify(list));
-    }
+    const counts = getUsedVouchers();
+    counts[clean] = (Math.floor(Number(counts[clean]) || 0)) + 1;
+    localStorage.setItem(USED_VOUCHERS_STORAGE_KEY, JSON.stringify(counts));
   } catch {
     // Ignore
   }
@@ -874,7 +882,11 @@ function buildSummaryBreakdownHtml(totals) {
         <span class="mono-num">${
           totals.voucherDiscount > 0
             ? `-${escapeHtml(formatRupiah(totals.voucherDiscount))}`
-            : 'Cek Admin'
+            : totals.voucherStatus === 'used'
+            ? 'Batas Habis'
+            : totals.voucherStatus === 'ineligible'
+            ? 'Belum Memenuhi'
+            : 'Tidak Valid'
         }</span>
       </div>
     `

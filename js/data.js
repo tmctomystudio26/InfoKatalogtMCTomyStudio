@@ -156,6 +156,8 @@ export const VOUCHERS = [
     type: 'fixed',
     value: 2000,
     minSubtotal: 15000,
+    usageMode: 'once',
+    maxUses: 1,
     label: 'Potongan Rp2.000 (min. Rp15.000)',
   },
   {
@@ -163,6 +165,8 @@ export const VOUCHERS = [
     type: 'fixed',
     value: 5000,
     minSubtotal: 40000,
+    usageMode: 'once',
+    maxUses: 1,
     label: 'Potongan Rp5.000 (min. Rp40.000)',
   },
   {
@@ -171,6 +175,8 @@ export const VOUCHERS = [
     value: 10,
     maxDiscount: 10000,
     minSubtotal: 25000,
+    usageMode: 'once',
+    maxUses: 1,
     label: 'Diskon 10% maks. Rp10.000 (min. Rp25.000)',
   },
 ];

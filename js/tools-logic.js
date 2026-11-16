@@ -1227,6 +1227,37 @@ function buildPhotosArrayFromLinksAndRaw(links = [], rawImages = []) {
   return photos;
 }
 
+export function parseYouTubeVideoId(rawUrl = '') {
+  const s = String(rawUrl || '').trim();
+  if (!s) return { valid: false, videoId: '', truncated: false };
+  let parsed;
+  try {
+    parsed = new URL(/^https?:\/\//i.test(s) ? s : `https://${s}`);
+  } catch {
+    return { valid: false, videoId: '', truncated: false };
+  }
+  const host = parsed.hostname.toLowerCase();
+  let id = '';
+  if (host === 'youtu.be' || host.endsWith('.youtu.be')) {
+    id = parsed.pathname.replace(/^\/+/, '').split('/')[0] || '';
+  } else if (host.includes('youtube.com')) {
+    const vParam = parsed.searchParams.get('v');
+    if (vParam) {
+      id = vParam;
+    } else {
+      const m = parsed.pathname.match(/\/(?:shorts|embed|live|v)\/([A-Za-z0-9_-]+)/i);
+      if (m) id = m[1];
+    }
+  }
+  if (!id) return { valid: false, videoId: '', truncated: false };
+  const truncated = id.length > 0 && id.length < 11;
+  return {
+    valid: id.length === 11,
+    videoId: id,
+    truncated,
+  };
+}
+
 export function normalizeDownloaderResult(raw, platform, sourceUrl = '') {
   const safePlatform = String(platform || '').toLowerCase();
   if (!raw || typeof raw !== 'object') return null;
@@ -1282,7 +1313,7 @@ export function normalizeDownloaderResult(raw, platform, sourceUrl = '') {
       const audioUrl = d.music || (isPhotoPost && d.play && /\.mp3|music|audio/i.test(String(d.play)) ? d.play : '');
       if (audioUrl && !isBlockedRedirectDownloadUrl(audioUrl)) {
         links.push({
-          label: 'Audio / Sound TikTok',
+          label: 'Audio / Sound TikTok (MP3)',
           quality: 'MP3',
           ext: 'mp3',
           url: String(audioUrl),
@@ -1311,12 +1342,89 @@ export function normalizeDownloaderResult(raw, platform, sourceUrl = '') {
       };
     }
 
+    // Tioo /ttdl response shape: { status: true, title, thumbnail, video: [...], audio: [...], images?: [...] }
+    if (
+      Array.isArray(raw.video) ||
+      Array.isArray(raw.audio) ||
+      (typeof raw.video === 'string' && raw.video) ||
+      (Array.isArray(raw.images) && raw.images.length > 0 && raw.status)
+    ) {
+      const links = [];
+      const seen = new Set();
+      const rawVideos = Array.isArray(raw.video) ? raw.video : raw.video ? [raw.video] : [];
+      const rawAudios = Array.isArray(raw.audio) ? raw.audio : raw.audio ? [raw.audio] : [];
+      const rawImages = Array.isArray(raw.images) ? raw.images.filter(Boolean) : [];
+
+      rawImages.forEach((imgUrl, idx) => {
+        const cleanImg = String(imgUrl || '').trim();
+        if (!cleanImg || isBlockedRedirectDownloadUrl(cleanImg) || seen.has(cleanImg)) return;
+        seen.add(cleanImg);
+        const ext = inferImageExtFromUrl(cleanImg, 'jpg');
+        links.push({
+          label: rawImages.length > 1 ? `Foto Slide #${idx + 1}` : 'Foto TikTok HD',
+          quality: `HD ${ext.toUpperCase()}`,
+          ext,
+          url: cleanImg,
+          isAudio: false,
+          isImage: true,
+          thumb: cleanImg,
+        });
+      });
+
+      rawVideos.forEach((vidUrl, idx) => {
+        const cleanVid = String(vidUrl || '').trim();
+        if (!cleanVid || isBlockedRedirectDownloadUrl(cleanVid) || seen.has(cleanVid)) return;
+        seen.add(cleanVid);
+        links.push({
+          label: idx === 0 ? 'Video HD Tanpa Watermark' : `Video MP4 Alternatif #${idx + 1}`,
+          quality: idx === 0 ? 'HD MP4' : 'MP4',
+          ext: 'mp4',
+          url: cleanVid,
+          isAudio: false,
+          isImage: false,
+        });
+      });
+
+      rawAudios.forEach((audUrl) => {
+        const cleanAud = String(audUrl || '').trim();
+        if (!cleanAud || isBlockedRedirectDownloadUrl(cleanAud) || seen.has(cleanAud)) return;
+        seen.add(cleanAud);
+        links.push({
+          label: 'Audio / Sound TikTok (MP3)',
+          quality: 'MP3',
+          ext: inferAudioExtFromUrl(cleanAud, 'mp3'),
+          url: cleanAud,
+          isAudio: true,
+          isImage: false,
+        });
+      });
+
+      if (links.length > 0) {
+        const photos = buildPhotosArrayFromLinksAndRaw(links, rawImages);
+        const caption = String(raw.title || raw.caption || '').trim();
+        const mediaType =
+          photos.length > 1 ? 'carousel' : photos.length === 1 ? 'photo' : isStory ? 'story' : 'video';
+        return {
+          platform: 'tiktok',
+          title: caption || 'Video & Audio TikTok',
+          caption,
+          author: String(raw.creator || raw.author || 'Kreator TikTok'),
+          thumbnail: String(photos[0]?.thumb || raw.thumbnail || ''),
+          durationSec: 0,
+          isStory,
+          mediaType,
+          photos,
+          links,
+        };
+      }
+    }
+
     // Cobalt fallback for TikTok (including picker for photo slides & stories)
     const cobaltTt = normalizeCobaltEntry(raw, { isAudio: false, quality: 'HD MP4' });
     if (cobaltTt && cobaltTt.length > 0) {
       if (raw.audioUrl && !isBlockedRedirectDownloadUrl(raw.audioUrl)) {
         cobaltTt.push({
-          label: 'Audio / Sound TikTok',
+          label: 'Audio / Sound TikTok (MP3)',
           quality: 'MP3',
           ext: 'mp3',
           url: String(raw.audioUrl),
@@ -1364,7 +1472,7 @@ export function normalizeDownloaderResult(raw, platform, sourceUrl = '') {
         links.push({ label: 'Video Tanpa Watermark', quality: 'MP4', ext: 'mp4', url: String(r.video), isAudio: false, isImage: false });
       }
       if (r.music && !isBlockedRedirectDownloadUrl(r.music)) {
-        links.push({ label: 'Audio / Sound TikTok', quality: 'MP3', ext: 'mp3', url: String(r.music), isAudio: true, isImage: false });
+        links.push({ label: 'Audio / Sound TikTok (MP3)', quality: 'MP3', ext: 'mp3', url: String(r.music), isAudio: true, isImage: false });
       }
       if (links.length === 0) return null;
       const photos = buildPhotosArrayFromLinksAndRaw(links, rImages);
@@ -1386,60 +1494,75 @@ export function normalizeDownloaderResult(raw, platform, sourceUrl = '') {
 
   if (safePlatform === 'youtube') {
     const links = [];
-    let title = String(raw.oembed?.title || raw.tioo?.title || '');
+    const seenUrls = new Set();
+    let title = String(raw.oembed?.title || raw.tioo?.title || raw.mp4?.result?.title || raw.mp3?.result?.title || '');
     let author = String(raw.oembed?.author_name || raw.tioo?.author || 'YouTube');
-    let thumbnail = String(raw.oembed?.thumbnail_url || raw.tioo?.thumbnail || '');
-    let durationSec = 0;
+    let thumbnail = String(raw.oembed?.thumbnail_url || raw.tioo?.thumbnail || raw.mp4?.result?.thumbnail || raw.mp3?.result?.thumbnail || '');
+    let durationSec = Number(raw.mp4?.result?.duration || raw.mp3?.result?.duration || 0);
+
+    const pushUniqueLink = (item) => {
+      if (!item?.url || seenUrls.has(item.url) || isBlockedRedirectDownloadUrl(item.url)) return;
+      seenUrls.add(item.url);
+      links.push(item);
+    };
 
     const cobaltVideo = normalizeCobaltEntry(raw.cobaltVideo, { isAudio: false, quality: '720p MP4' });
     if (cobaltVideo?.[0]) {
-      links.push({ ...cobaltVideo[0], label: 'Video YouTube (HD MP4)', quality: '720p MP4' });
+      pushUniqueLink({ ...cobaltVideo[0], label: 'Video YouTube (HD MP4)', quality: '720p MP4', ext: 'mp4', isAudio: false });
       if (!title && cobaltVideo[0].filename) {
         title = cobaltVideo[0].filename.replace(/\s*\([^)]*\)\.[a-z0-9]+$/i, '');
       }
-    } else if (raw.tioo?.mp4 && !isBlockedRedirectDownloadUrl(raw.tioo.mp4)) {
-      links.push({ label: 'Video YouTube (MP4)', quality: 'MP4', ext: 'mp4', url: String(raw.tioo.mp4), isAudio: false });
-    } else if (raw.mp4?.result?.download_url && !isBlockedRedirectDownloadUrl(raw.mp4.result.download_url)) {
+    }
+    if (raw.mp4?.result?.download_url && !isBlockedRedirectDownloadUrl(raw.mp4.result.download_url)) {
       const mp4 = raw.mp4.result;
-      links.push({
-        label: `Video YouTube (${mp4.quality || 'HD'})`,
+      pushUniqueLink({
+        label: links.some((l) => !l.isAudio) ? `Video YouTube Cadangan (${mp4.quality || 'MP4'})` : `Video YouTube (${mp4.quality || 'HD'})`,
         quality: String(mp4.quality || 'MP4'),
         ext: 'mp4',
         url: String(mp4.download_url),
         isAudio: false,
       });
-      if (!title) title = String(mp4.title || '');
-      if (!thumbnail) thumbnail = String(mp4.thumbnail || '');
-      durationSec = Number(mp4.duration || 0);
+    }
+    if (raw.tioo?.mp4 && !isBlockedRedirectDownloadUrl(raw.tioo.mp4)) {
+      pushUniqueLink({
+        label: links.some((l) => !l.isAudio) ? 'Video YouTube Alternatif (MP4)' : 'Video YouTube (MP4)',
+        quality: 'MP4',
+        ext: 'mp4',
+        url: String(raw.tioo.mp4),
+        isAudio: false,
+      });
     }
 
     const cobaltAudio = normalizeCobaltEntry(raw.cobaltAudio, { isAudio: true, quality: 'MP3' });
     if (cobaltAudio?.[0]) {
-      links.push({
+      pushUniqueLink({
         ...cobaltAudio[0],
         label: 'Musik / Audio YouTube (MP3)',
         quality: cobaltAudio[0].ext.toUpperCase(),
+        isAudio: true,
       });
       if (!title && cobaltAudio[0].filename) {
         title = cobaltAudio[0].filename.replace(/\.[a-z0-9]+$/i, '');
       }
-    } else if (raw.tioo?.mp3 && !isBlockedRedirectDownloadUrl(raw.tioo.mp3)) {
-      const ext = inferAudioExtFromUrl(raw.tioo.mp3, 'mp3');
-      links.push({
-        label: `Musik / Audio YouTube (${ext.toUpperCase()})`,
-        quality: ext.toUpperCase(),
-        ext,
-        url: String(raw.tioo.mp3),
-        isAudio: true,
-      });
-    } else if (raw.mp3?.result?.download_url && !isBlockedRedirectDownloadUrl(raw.mp3.result.download_url)) {
+    }
+    if (raw.mp3?.result?.download_url && !isBlockedRedirectDownloadUrl(raw.mp3.result.download_url)) {
       const mp3 = raw.mp3.result;
       const ext = inferAudioExtFromUrl(mp3.download_url, 'mp3');
-      links.push({
-        label: `Audio YouTube (${mp3.quality || ext.toUpperCase()})`,
+      pushUniqueLink({
+        label: links.some((l) => l.isAudio) ? `Musik / Audio Cadangan (${ext.toUpperCase()})` : `Musik / Audio YouTube (${ext.toUpperCase()})`,
         quality: String(mp3.quality || ext.toUpperCase()),
         ext,
         url: String(mp3.download_url),
+        isAudio: true,
+      });
+    }
+    if (raw.tioo?.mp3 && !isBlockedRedirectDownloadUrl(raw.tioo.mp3)) {
+      const ext = inferAudioExtFromUrl(raw.tioo.mp3, 'mp3');
+      pushUniqueLink({
+        label: links.some((l) => l.isAudio) ? `Audio YouTube Alternatif (${ext.toUpperCase()})` : `Musik / Audio YouTube (${ext.toUpperCase()})`,
+        quality: ext.toUpperCase(),
+        ext,
+        url: String(raw.tioo.mp3),
         isAudio: true,
       });
     }

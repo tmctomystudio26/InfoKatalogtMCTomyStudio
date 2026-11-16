@@ -1,17 +1,20 @@
 /**
  * Client-side API adapters for No-Watermark Media Downloader
  * Supports TikTok (HD/SD/MP3 No Watermark + Photo Carousel + Story),
- * YouTube (Direct MP4/MP3 without 3P redirects),
+ * YouTube (Direct MP4 + MP3 dual parallel fetch without 3P redirects),
  * Facebook (HD/SD Video + Photo Post + Story),
  * & Instagram (Reels, Single Photo, Multi-Photo Carousel, Story, & Copy Caption).
+ * Includes real-time conversion/fetch progress and streaming download progress callbacks.
  */
 
 import {
   detectDownloaderContentType,
   detectDownloaderPlatform,
+  formatBytes,
   isBlockedRedirectDownloadUrl,
   normalizeDownloaderResult,
-} from './tools-logic.js';
+  parseYouTubeVideoId,
+} from './tools-logic.js?v=21';
 
 const COBALT_ENDPOINT = 'https://cobaltapi.cjs.nz/';
 
@@ -53,7 +56,53 @@ async function fetchCobaltMedia(mediaUrl, options = {}, timeoutMs = 13000) {
   });
 }
 
-export async function fetchMediaDownload(rawUrl) {
+function mergeCandidateResults(candidates = []) {
+  const valid = candidates.filter((c) => c && (c.links?.length > 0 || c.photos?.length > 0));
+  if (valid.length === 0) return null;
+
+  const primary = { ...valid[0], links: [...(valid[0].links || [])], photos: [...(valid[0].photos || [])] };
+  const seenUrls = new Set(primary.links.map((l) => l.url));
+
+  for (let i = 1; i < valid.length; i += 1) {
+    const other = valid[i];
+    if (!primary.title && other.title) primary.title = other.title;
+    if (!primary.caption && other.caption) primary.caption = other.caption;
+    if (!primary.thumbnail && other.thumbnail) primary.thumbnail = other.thumbnail;
+    if ((!primary.author || primary.author === 'TikTok' || primary.author === 'Instagram') && other.author) {
+      primary.author = other.author;
+    }
+    if (!primary.durationSec && other.durationSec) primary.durationSec = other.durationSec;
+
+    for (const l of other.links || []) {
+      if (!l?.url || seenUrls.has(l.url)) continue;
+      const alreadyHasAudio = primary.links.some((x) => x.isAudio);
+      const alreadyHasVideo = primary.links.some((x) => !x.isAudio && !x.isImage);
+      // Prioritize filling missing MP3 or missing MP4, plus any unique items
+      if ((l.isAudio && !alreadyHasAudio) || (!l.isAudio && !l.isImage && !alreadyHasVideo) || (!l.isImage && primary.links.length < 6)) {
+        seenUrls.add(l.url);
+        primary.links.push(l);
+      }
+    }
+
+    if ((other.photos?.length || 0) > (primary.photos?.length || 0)) {
+      primary.photos = [...other.photos];
+    }
+  }
+
+  return primary;
+}
+
+export async function fetchMediaDownload(rawUrl, onProgress = () => {}) {
+  const emitProgress = (percent, label, stage = 'processing') => {
+    try {
+      onProgress({ percent: Math.max(0, Math.min(100, Math.round(percent))), label, stage });
+    } catch {
+      // Ignore UI callback error
+    }
+  };
+
+  emitProgress(12, 'Menganalisis tautan & mendeteksi platform...', 'analyzing');
+
   const cleanUrl = sanitizeInputUrl(rawUrl);
   const platform = detectDownloaderPlatform(cleanUrl);
   if (!platform) {
@@ -64,40 +113,61 @@ export async function fetchMediaDownload(rawUrl) {
   const encoded = encodeURIComponent(cleanUrl);
 
   if (platform === 'tiktok') {
-    // 1. Primary: TikWM HD No Watermark API (supports Video, Story, and Photo Mode Carousels via d.images)
-    try {
-      const json = await fetchJsonWithTimeout(`https://www.tikwm.com/api/?url=${encoded}&hd=1`, 9500);
-      const normalized = normalizeDownloaderResult(json, 'tiktok', cleanUrl);
-      if (normalized && (normalized.links.length > 0 || normalized.photos?.length > 0)) {
-        return normalized;
-      }
-    } catch {
-      // Fall through
+    emitProgress(35, 'Menghubungi server TikTok untuk Video HD, Foto & Audio MP3...', 'fetching');
+
+    const [tiooSettled, tikwmSettled, cobaltVidSettled, cobaltAudSettled] = await Promise.allSettled([
+      fetchJsonWithTimeout(`https://backend1.tioo.eu.org/ttdl?url=${encoded}`, 10000),
+      fetchJsonWithTimeout(`https://www.tikwm.com/api/?url=${encoded}&hd=1`, 9500),
+      fetchCobaltMedia(cleanUrl, { videoQuality: '1080' }, 10500),
+      fetchCobaltMedia(cleanUrl, { downloadMode: 'audio', audioFormat: 'mp3', audioBitrate: '128' }, 10500),
+    ]);
+
+    emitProgress(68, 'Mengonversi & menggabungkan aliran Video MP4 dan Audio MP3...', 'converting');
+
+    const candidates = [];
+    if (tikwmSettled.status === 'fulfilled' && tikwmSettled.value) {
+      const n = normalizeDownloaderResult(tikwmSettled.value, 'tiktok', cleanUrl);
+      if (n) candidates.push(n);
+    }
+    if (tiooSettled.status === 'fulfilled' && tiooSettled.value) {
+      const n = normalizeDownloaderResult(tiooSettled.value, 'tiktok', cleanUrl);
+      if (n) candidates.push(n);
+    }
+    if (cobaltVidSettled.status === 'fulfilled' && cobaltVidSettled.value) {
+      const rawCo = {
+        ...cobaltVidSettled.value,
+        ...(cobaltAudSettled.status === 'fulfilled' && cobaltAudSettled.value?.url
+          ? { audioUrl: cobaltAudSettled.value.url }
+          : {}),
+      };
+      const n = normalizeDownloaderResult(rawCo, 'tiktok', cleanUrl);
+      if (n) candidates.push(n);
     }
 
-    // 2. Secondary: Cobalt direct stream / picker (supports TikTok photo slideshows & stories)
-    try {
-      const json = await fetchCobaltMedia(cleanUrl, { videoQuality: '1080' }, 11000);
-      const normalized = normalizeDownloaderResult(json, 'tiktok', cleanUrl);
-      if (normalized && (normalized.links.length > 0 || normalized.photos?.length > 0)) {
-        return normalized;
+    let merged = mergeCandidateResults(candidates);
+
+    // Fallback to DavidCyril only if no valid links or missing audio on video post
+    const missingLinks = !merged || (merged.links.length === 0 && (merged.photos?.length || 0) === 0);
+    const missingAudio = merged && !merged.links.some((l) => l.isAudio) && (merged.photos?.length || 0) === 0;
+    if (missingLinks || missingAudio) {
+      emitProgress(84, 'Mengambil opsi cadangan MP4/MP3 TikTok...', 'converting');
+      try {
+        const dcJson = await fetchJsonWithTimeout(
+          `https://apis.davidcyriltech.my.id/download/tiktok?url=${encoded}`,
+          10000
+        );
+        const dcNorm = normalizeDownloaderResult(dcJson, 'tiktok', cleanUrl);
+        if (dcNorm) {
+          merged = mergeCandidateResults(merged ? [merged, dcNorm] : [dcNorm]);
+        }
+      } catch {
+        // Optional fallback failed
       }
-    } catch {
-      // Fall through
     }
 
-    // 3. Last fallback: DavidCyril TikTok
-    try {
-      const json = await fetchJsonWithTimeout(
-        `https://apis.davidcyriltech.my.id/download/tiktok?url=${encoded}`,
-        11000
-      );
-      const normalized = normalizeDownloaderResult(json, 'tiktok', cleanUrl);
-      if (normalized && (normalized.links.length > 0 || normalized.photos?.length > 0)) {
-        return normalized;
-      }
-    } catch {
-      // Handled below
+    if (merged && (merged.links.length > 0 || (merged.photos?.length || 0) > 0)) {
+      emitProgress(100, 'Media TikTok siap diunduh!', 'ready');
+      return merged;
     }
 
     throw new Error(
@@ -106,6 +176,15 @@ export async function fetchMediaDownload(rawUrl) {
   }
 
   if (platform === 'youtube') {
+    const ytParsed = parseYouTubeVideoId(cleanUrl);
+    if (ytParsed.truncated) {
+      throw new Error(
+        `Tautan YouTube terlihat terpotong (ID "${ytParsed.videoId}" hanya ${ytParsed.videoId.length} karakter). Salin ulang link lengkap YouTube/Shorts lalu coba lagi.`
+      );
+    }
+
+    emitProgress(35, 'Mengambil stream Video MP4 & mengonversi Audio MP3 YouTube...', 'fetching');
+
     const [oembedRes, cobaltVideoRes, cobaltAudioRes, tiooRes] = await Promise.allSettled([
       fetchJsonWithTimeout(`https://www.youtube.com/oembed?url=${encoded}&format=json`, 6000),
       fetchCobaltMedia(cleanUrl, { videoQuality: '720' }, 13500),
@@ -117,20 +196,34 @@ export async function fetchMediaDownload(rawUrl) {
       fetchJsonWithTimeout(`https://backend1.tioo.eu.org/youtube?url=${encoded}`, 13000),
     ]);
 
-    let mp4Fallback = null;
-    const hasVideoFromPrimary =
-      (cobaltVideoRes.status === 'fulfilled' && cobaltVideoRes.value?.url) ||
-      (tiooRes.status === 'fulfilled' && tiooRes.value?.mp4);
+    emitProgress(70, 'Memeriksa kelengkapan format MP4 & MP3...', 'converting');
 
-    if (!hasVideoFromPrimary) {
-      try {
-        mp4Fallback = await fetchJsonWithTimeout(
-          `https://apis.davidcyriltech.my.id/download/ytmp4?url=${encoded}`,
-          10000
-        );
-      } catch {
-        // Optional fallback failed
-      }
+    const hasVideoFromPrimary = Boolean(
+      (cobaltVideoRes.status === 'fulfilled' && cobaltVideoRes.value?.url) ||
+        (tiooRes.status === 'fulfilled' && tiooRes.value?.mp4)
+    );
+    const hasTrueMp3FromPrimary = Boolean(
+      cobaltAudioRes.status === 'fulfilled' && cobaltAudioRes.value?.url
+    );
+    const hasAnyAudioFromPrimary = Boolean(
+      hasTrueMp3FromPrimary || (tiooRes.status === 'fulfilled' && tiooRes.value?.mp3)
+    );
+
+    let mp4Fallback = null;
+    let mp3Fallback = null;
+
+    if (!hasVideoFromPrimary || !hasAnyAudioFromPrimary || !hasTrueMp3FromPrimary) {
+      emitProgress(84, 'Melengkapi tautan Video MP4 & Musik MP3 cadangan...', 'converting');
+      const [dcMp4, dcMp3] = await Promise.allSettled([
+        !hasVideoFromPrimary
+          ? fetchJsonWithTimeout(`https://apis.davidcyriltech.my.id/download/ytmp4?url=${encoded}`, 11000)
+          : Promise.resolve(null),
+        !hasAnyAudioFromPrimary || !hasTrueMp3FromPrimary
+          ? fetchJsonWithTimeout(`https://apis.davidcyriltech.my.id/download/ytmp3?url=${encoded}`, 11000)
+          : Promise.resolve(null),
+      ]);
+      if (dcMp4.status === 'fulfilled') mp4Fallback = dcMp4.value;
+      if (dcMp3.status === 'fulfilled') mp3Fallback = dcMp3.value;
     }
 
     const normalized = normalizeDownloaderResult(
@@ -140,107 +233,129 @@ export async function fetchMediaDownload(rawUrl) {
         cobaltAudio: cobaltAudioRes.status === 'fulfilled' ? cobaltAudioRes.value : null,
         tioo: tiooRes.status === 'fulfilled' ? tiooRes.value : null,
         mp4: mp4Fallback,
+        mp3: mp3Fallback,
       },
       'youtube',
       cleanUrl
     );
 
     if (normalized && normalized.links.length > 0) {
+      emitProgress(100, 'Video MP4 & Audio MP3 YouTube siap!', 'ready');
       return normalized;
     }
     throw new Error('Gagal memproses tautan YouTube. Coba salin ulang link video/Shorts yang publik.');
   }
 
   if (platform === 'facebook') {
-    // 1. Primary: Cobalt direct Facebook tunnel (supports video, photo posts, & stories)
-    try {
-      const json = await fetchCobaltMedia(cleanUrl, { videoQuality: '1080' }, 12000);
-      const normalized = normalizeDownloaderResult(json, 'facebook', cleanUrl);
-      if (normalized && (normalized.links.length > 0 || normalized.photos?.length > 0)) {
-        return normalized;
-      }
-    } catch {
-      // Fall through
+    emitProgress(38, 'Menghubungi server Facebook untuk Video HD, Foto & Audio...', 'fetching');
+
+    const [cobaltVidRes, cobaltAudRes, tiooFbRes, dcFbRes] = await Promise.allSettled([
+      fetchCobaltMedia(cleanUrl, { videoQuality: '1080' }, 12000),
+      fetchCobaltMedia(cleanUrl, { downloadMode: 'audio', audioFormat: 'mp3', audioBitrate: '128' }, 12000),
+      fetchJsonWithTimeout(`https://backend1.tioo.eu.org/fbdown?url=${encoded}`, 11000),
+      fetchJsonWithTimeout(`https://apis.davidcyriltech.my.id/facebook?url=${encoded}`, 11000),
+    ]);
+
+    emitProgress(78, 'Mengonversi & menyusun opsi kualitas HD/SD Facebook...', 'converting');
+
+    const candidates = [];
+    if (cobaltVidRes.status === 'fulfilled' && cobaltVidRes.value) {
+      const n = normalizeDownloaderResult(cobaltVidRes.value, 'facebook', cleanUrl);
+      if (n) candidates.push(n);
+    }
+    if (dcFbRes.status === 'fulfilled' && dcFbRes.value) {
+      const n = normalizeDownloaderResult(dcFbRes.value, 'facebook', cleanUrl);
+      if (n) candidates.push(n);
+    }
+    if (tiooFbRes.status === 'fulfilled' && tiooFbRes.value) {
+      const n = normalizeDownloaderResult(tiooFbRes.value, 'facebook', cleanUrl);
+      if (n) candidates.push(n);
     }
 
-    // 2. Secondary: Tioo Facebook API
-    try {
-      const json = await fetchJsonWithTimeout(`https://backend1.tioo.eu.org/fbdown?url=${encoded}`, 11000);
-      const normalized = normalizeDownloaderResult(json, 'facebook', cleanUrl);
-      if (normalized && (normalized.links.length > 0 || normalized.photos?.length > 0)) {
-        return normalized;
+    const merged = mergeCandidateResults(candidates);
+    if (merged && (merged.links.length > 0 || (merged.photos?.length || 0) > 0)) {
+      if (cobaltAudRes.status === 'fulfilled' && cobaltAudRes.value?.url && !merged.links.some((l) => l.isAudio)) {
+        merged.links.push({
+          label: 'Audio / Suara Facebook (MP3)',
+          quality: 'MP3',
+          ext: 'mp3',
+          url: String(cobaltAudRes.value.url),
+          isAudio: true,
+          isImage: false,
+        });
       }
-    } catch {
-      // Fall through
-    }
-
-    // 3. Fallback: DavidCyril Facebook
-    try {
-      const json = await fetchJsonWithTimeout(
-        `https://apis.davidcyriltech.my.id/facebook?url=${encoded}`,
-        11000
-      );
-      const normalized = normalizeDownloaderResult(json, 'facebook', cleanUrl);
-      if (normalized && (normalized.links.length > 0 || normalized.photos?.length > 0)) {
-        return normalized;
-      }
-    } catch {
-      // Handled below
+      emitProgress(100, 'Media Facebook siap diunduh!', 'ready');
+      return merged;
     }
 
     throw new Error('Postingan/Story Facebook tidak ditemukan atau bersifat privat.');
   }
 
   if (platform === 'instagram') {
-    // Run Tioo IG (supports single photo, carousel array, reels, & stories) and Cobalt in parallel for speed & resilience
-    const [tiooSettled, cobaltSettled, ryzenSettled] = await Promise.allSettled([
-      fetchJsonWithTimeout(`https://backend1.tioo.eu.org/igdl?url=${encoded}`, 16000),
+    emitProgress(35, 'Mengambil Foto, Slide Carousel, Reels, Story & Caption IG...', 'fetching');
+
+    const [tiooSettled, cobaltSettled, cobaltAudSettled, ryzenSettled] = await Promise.allSettled([
+      fetchJsonWithTimeout(`https://backend1.tioo.eu.org/igdl?url=${encoded}`, 15000),
       fetchCobaltMedia(cleanUrl, { videoQuality: '1080' }, 12500),
-      fetchJsonWithTimeout(`https://api.ryzendesu.vip/api/downloader/igdl?url=${encoded}`, 12500),
+      fetchCobaltMedia(cleanUrl, { downloadMode: 'audio', audioFormat: 'mp3', audioBitrate: '128' }, 12500),
+      fetchJsonWithTimeout(`https://api.ryzendesu.vip/api/downloader/igdl?url=${encoded}`, 12000),
     ]);
+
+    emitProgress(75, 'Mengonversi hasil media & merapikan caption...', 'converting');
 
     const candidates = [];
     if (tiooSettled.status === 'fulfilled' && tiooSettled.value) {
       const norm = normalizeDownloaderResult(tiooSettled.value, 'instagram', cleanUrl);
-      if (norm && (norm.links.length > 0 || norm.photos?.length > 0)) candidates.push(norm);
+      if (norm) candidates.push(norm);
     }
     if (cobaltSettled.status === 'fulfilled' && cobaltSettled.value) {
       const norm = normalizeDownloaderResult(cobaltSettled.value, 'instagram', cleanUrl);
-      if (norm && (norm.links.length > 0 || norm.photos?.length > 0)) candidates.push(norm);
+      if (norm) candidates.push(norm);
     }
     if (ryzenSettled.status === 'fulfilled' && ryzenSettled.value) {
       const norm = normalizeDownloaderResult(ryzenSettled.value, 'instagram', cleanUrl);
-      if (norm && (norm.links.length > 0 || norm.photos?.length > 0)) candidates.push(norm);
+      if (norm) candidates.push(norm);
     }
 
+    let best = null;
     if (candidates.length > 0) {
-      // Pick the candidate with the richest photo/link set + caption
       candidates.sort((a, b) => {
         const scoreA = (a.photos?.length || 0) * 3 + (a.links?.length || 0) * 2 + (a.caption ? 2 : 0);
         const scoreB = (b.photos?.length || 0) * 3 + (b.links?.length || 0) * 2 + (b.caption ? 2 : 0);
         return scoreB - scoreA;
       });
-      const best = candidates[0];
-      // Merge caption if another candidate extracted a caption while best didn't
-      if (!best.caption) {
-        const withCaption = candidates.find((c) => Boolean(c.caption));
-        if (withCaption) best.caption = withCaption.caption;
+      best = mergeCandidateResults(candidates);
+    } else {
+      emitProgress(86, 'Mencoba server cadangan Instagram...', 'fetching');
+      try {
+        const json = await fetchJsonWithTimeout(
+          `https://apis.davidcyriltech.my.id/instagram?url=${encoded}`,
+          11000
+        );
+        best = normalizeDownloaderResult(json, 'instagram', cleanUrl);
+      } catch {
+        // Fallback failed
       }
-      return best;
     }
 
-    // 4. Last fallback: DavidCyril IG
-    try {
-      const json = await fetchJsonWithTimeout(
-        `https://apis.davidcyriltech.my.id/instagram?url=${encoded}`,
-        11000
-      );
-      const normalized = normalizeDownloaderResult(json, 'instagram', cleanUrl);
-      if (normalized && (normalized.links.length > 0 || normalized.photos?.length > 0)) {
-        return normalized;
+    if (best && (best.links.length > 0 || (best.photos?.length || 0) > 0)) {
+      if (
+        cobaltAudSettled.status === 'fulfilled' &&
+        cobaltAudSettled.value?.url &&
+        !best.links.some((l) => l.isAudio) &&
+        best.links.some((l) => !l.isAudio && !l.isImage)
+      ) {
+        best.links.push({
+          label: 'Audio Reels / Instagram (MP3)',
+          quality: 'MP3',
+          ext: 'mp3',
+          url: String(cobaltAudSettled.value.url),
+          isAudio: true,
+          isImage: false,
+        });
       }
-    } catch {
-      // Never leak raw HTTP 500 error codes to user
+      emitProgress(100, 'Media Instagram siap diunduh!', 'ready');
+      return best;
     }
 
     throw new Error(
@@ -253,10 +368,29 @@ export async function fetchMediaDownload(rawUrl) {
   throw new Error('Platform belum didukung.');
 }
 
-export async function triggerDirectMediaSave(fileUrl, baseName = 'manifestudio-media', ext = 'mp4') {
+export async function triggerDirectMediaSave(
+  fileUrl,
+  baseName = 'manifestudio-media',
+  ext = 'mp4',
+  onProgress = () => {}
+) {
   if (isBlockedRedirectDownloadUrl(fileUrl)) {
     throw new Error('Tautan dialihkan ke halaman pihak ketiga dan diblokir.');
   }
+
+  const emit = (stage, percent, label, loadedBytes = 0, totalBytes = 0) => {
+    try {
+      onProgress({
+        stage,
+        percent: Math.max(0, Math.min(100, Math.round(percent))),
+        label,
+        loadedBytes,
+        totalBytes,
+      });
+    } catch {
+      // Ignore callback error
+    }
+  };
 
   const safeName =
     String(baseName || 'manifestudio-media')
@@ -267,6 +401,8 @@ export async function triggerDirectMediaSave(fileUrl, baseName = 'manifestudio-m
   const filename = `${safeName}.${ext || 'mp4'}`;
 
   let htmlDetected = false;
+  emit('connecting', 10, `Menghubungkan & menyiapkan file ${filename}...`);
+
   try {
     const res = await fetch(fileUrl);
     if (res.ok) {
@@ -274,7 +410,39 @@ export async function triggerDirectMediaSave(fileUrl, baseName = 'manifestudio-m
       if (contentType.includes('text/html')) {
         htmlDetected = true;
       } else {
-        const blob = await res.blob();
+        const totalBytes = Number(res.headers.get('content-length')) || 0;
+        let blob;
+
+        if (res.body && typeof res.body.getReader === 'function') {
+          emit('converting', 18, `Sedang dikonversi & diunduh (${filename})...`, 0, totalBytes);
+          const reader = res.body.getReader();
+          const chunks = [];
+          let loadedBytes = 0;
+
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            if (value) {
+              chunks.push(value);
+              loadedBytes += value.byteLength;
+              const pct =
+                totalBytes > 0
+                  ? Math.min(96, 18 + Math.round((loadedBytes / totalBytes) * 78))
+                  : Math.min(92, 22 + Math.round(loadedBytes / 120000));
+              const statusTxt =
+                totalBytes > 0
+                  ? `Sedang didownload: ${formatBytes(loadedBytes)} / ${formatBytes(totalBytes)} (${pct}%)`
+                  : `Sedang didownload: ${formatBytes(loadedBytes)}...`;
+              emit('downloading', pct, statusTxt, loadedBytes, totalBytes);
+            }
+          }
+          blob = new Blob(chunks, { type: contentType || undefined });
+        } else {
+          emit('downloading', 55, `Sedang didownload (${filename})...`);
+          blob = await res.blob();
+        }
+
+        emit('done', 100, `Selesai! Menyimpan ${filename} (${formatBytes(blob.size)})`, blob.size, blob.size);
         const blobUrl = URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = blobUrl;
@@ -282,7 +450,7 @@ export async function triggerDirectMediaSave(fileUrl, baseName = 'manifestudio-m
         document.body.appendChild(a);
         a.click();
         a.remove();
-        setTimeout(() => URL.revokeObjectURL(blobUrl), 4000);
+        setTimeout(() => URL.revokeObjectURL(blobUrl), 5000);
         return true;
       }
     }
@@ -294,6 +462,7 @@ export async function triggerDirectMediaSave(fileUrl, baseName = 'manifestudio-m
     throw new Error('Tautan tidak menyediakan berkas media langsung (halaman HTML terdeteksi).');
   }
 
+  emit('redirect', 100, `Mengunduh langsung via browser (${filename})...`);
   const a = document.createElement('a');
   a.href = fileUrl;
   a.download = filename;
@@ -312,16 +481,38 @@ export async function triggerBatchPhotoDownload(photos = [], baseTitle = 'manife
   let completed = 0;
   for (let i = 0; i < list.length; i += 1) {
     const item = list[i];
-    onProgress({ current: i + 1, total: list.length });
+    const basePct = Math.round((i / list.length) * 100);
+    onProgress({
+      current: i + 1,
+      total: list.length,
+      percent: Math.max(5, basePct),
+      label: `Mengunduh foto ${i + 1} dari ${list.length}...`,
+    });
     await triggerDirectMediaSave(
       item.url,
       `${baseTitle}-foto-${i + 1}`,
-      item.ext || 'jpg'
+      item.ext || 'jpg',
+      (dlProg) => {
+        const slideSpan = 100 / list.length;
+        const combinedPct = Math.min(100, Math.round(basePct + (dlProg.percent / 100) * slideSpan));
+        onProgress({
+          current: i + 1,
+          total: list.length,
+          percent: combinedPct,
+          label: `Foto ${i + 1}/${list.length}: ${dlProg.label}`,
+        });
+      }
     );
     completed += 1;
     if (i < list.length - 1) {
-      await new Promise((r) => setTimeout(r, 380));
+      await new Promise((r) => setTimeout(r, 350));
     }
   }
+  onProgress({
+    current: list.length,
+    total: list.length,
+    percent: 100,
+    label: `Selesai mengunduh seluruh ${list.length} foto HD!`,
+  });
   return completed;
 }

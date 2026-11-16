@@ -19,11 +19,11 @@
       rel="stylesheet"
     />
 
-    <link rel="stylesheet" href="./css/tokens.css?v=20" />
-    <link rel="stylesheet" href="./css/styles.css?v=20" />
+    <link rel="stylesheet" href="./css/tokens.css?v=21" />
+    <link rel="stylesheet" href="./css/styles.css?v=21" />
     <script>
       (function () {
-        var CURRENT_CACHE = 'manifestudio-cache-v20';
+        var CURRENT_CACHE = 'manifestudio-cache-v21';
         if ('caches' in window) {
           caches.keys().then(function (keys) {
             keys.forEach(function (k) {
@@ -32,7 +32,7 @@
           });
         }
         if ('serviceWorker' in navigator) {
-          navigator.serviceWorker.register('./sw.js?v=20').then(function (reg) {
+          navigator.serviceWorker.register('./sw.js?v=21').then(function (reg) {
             reg.update();
           }).catch(function () {});
         }
@@ -1103,6 +1103,18 @@
                   <label for="new-voucher-min">Minimal Belanja (Rp)</label>
                   <input type="number" id="new-voucher-min" min="0" step="1000" value="15000" />
                 </div>
+                <div class="form-field">
+                  <label for="new-voucher-usage-mode">Batas Penggunaan Voucher</label>
+                  <select id="new-voucher-usage-mode" class="admin-select">
+                    <option value="once">1 Kali Pakai Per Pelanggan</option>
+                    <option value="limited">Batasi Jumlah Pakai (N Kali)</option>
+                    <option value="unlimited">Tak Terbatas (Berkali-kali)</option>
+                  </select>
+                </div>
+                <div class="form-field" id="new-voucher-max-uses-field" hidden>
+                  <label for="new-voucher-max-uses">Maksimal Penggunaan (Kali)</label>
+                  <input type="number" id="new-voucher-max-uses" min="2" step="1" value="5" />
+                </div>
               </div>
               <div class="admin-action-bar">
                 <button type="submit" class="btn btn-primary btn-sm">Tambah Voucher</button>
@@ -1138,6 +1150,6 @@
 
     <div id="toast-notification" class="toast-notification" role="status" aria-live="polite" hidden></div>
 
-    <script type="module" src="./js/admin.js?v=20"></script>
+    <script type="module" src="./js/admin.js?v=21"></script>
   </body>
 </html>

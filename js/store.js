@@ -82,6 +82,34 @@ export function removeFromCart(cart, productId, variantId) {
   );
 }
 
+export function normalizeVoucherUsageConfig(voucher = {}) {
+  const rawMode = String(voucher?.usageMode || '').trim().toLowerCase();
+  const rawMax = Number(voucher?.maxUses);
+
+  if (rawMode === 'unlimited' || (rawMax === 0 && rawMode !== 'once' && rawMode !== 'limited')) {
+    return { usageMode: 'unlimited', maxUses: 0, usageLabel: 'Tak Terbatas' };
+  }
+  if (rawMode === 'limited' || (Number.isFinite(rawMax) && rawMax > 1)) {
+    const count = Math.max(2, Math.round(Number.isFinite(rawMax) && rawMax > 1 ? rawMax : 2));
+    return { usageMode: 'limited', maxUses: count, usageLabel: `Maks. ${count}x Pakai` };
+  }
+  return { usageMode: 'once', maxUses: 1, usageLabel: '1x Pakai (Sekali)' };
+}
+
+function getVoucherUsedCount(cleanCode, usedVouchers) {
+  if (!cleanCode || !usedVouchers) return 0;
+  if (Array.isArray(usedVouchers)) {
+    return usedVouchers.filter(
+      (v) => String(v || '').trim().toUpperCase() === cleanCode
+    ).length;
+  }
+  if (typeof usedVouchers === 'object') {
+    const val = usedVouchers[cleanCode] ?? usedVouchers[cleanCode.toLowerCase()];
+    return Math.max(0, Math.floor(Number(val) || 0));
+  }
+  return 0;
+}
+
 export function evaluateVoucher(codeInput = '', subtotal = 0, vouchers = [], usedVouchers = []) {
   const cleanCode = String(codeInput || '').trim().toUpperCase();
   if (!cleanCode) {
@@ -93,28 +121,43 @@ export function evaluateVoucher(codeInput = '', subtotal = 0, vouchers = [], use
     };
   }
 
-  if (
-    Array.isArray(usedVouchers) &&
-    usedVouchers.map((v) => String(v || '').trim().toUpperCase()).includes(cleanCode)
-  ) {
-    return {
-      status: 'used',
-      code: cleanCode,
-      discount: 0,
-      message: `Kode voucher "${cleanCode}" sudah pernah digunakan (sekali pakai).`,
-    };
-  }
-
   const matched = Array.isArray(vouchers)
-    ? vouchers.find((v) => String(v.code || '').toUpperCase() === cleanCode)
+    ? vouchers.find((v) => String(v.code || '').trim().toUpperCase() === cleanCode)
     : null;
 
   if (!matched) {
     return {
-      status: 'pending_admin',
+      status: 'invalid',
       code: cleanCode,
       discount: 0,
-      message: `Kode "${cleanCode}" dicatat dan akan diverifikasi Admin saat konfirmasi.`,
+      message: `Kode voucher "${cleanCode}" tidak valid atau tidak terdaftar.`,
+    };
+  }
+
+  const usageCfg = normalizeVoucherUsageConfig(matched);
+  const usedCount = getVoucherUsedCount(cleanCode, usedVouchers);
+
+  if (usageCfg.usageMode === 'once' && usedCount >= 1) {
+    return {
+      status: 'used',
+      code: cleanCode,
+      discount: 0,
+      usageMode: usageCfg.usageMode,
+      maxUses: 1,
+      usedCount,
+      message: `Kode voucher "${cleanCode}" sudah pernah digunakan (batas 1x pakai).`,
+    };
+  }
+
+  if (usageCfg.usageMode === 'limited' && usedCount >= usageCfg.maxUses) {
+    return {
+      status: 'used',
+      code: cleanCode,
+      discount: 0,
+      usageMode: usageCfg.usageMode,
+      maxUses: usageCfg.maxUses,
+      usedCount,
+      message: `Kode voucher "${cleanCode}" telah mencapai batas pemakaian (${usageCfg.maxUses}x pakai).`,
     };
   }
 
@@ -123,6 +166,9 @@ export function evaluateVoucher(codeInput = '', subtotal = 0, vouchers = [], use
       status: 'ineligible',
       code: cleanCode,
       discount: 0,
+      usageMode: usageCfg.usageMode,
+      maxUses: usageCfg.maxUses,
+      usedCount,
       message: `Kode ${cleanCode} aktif untuk minimal belanja ${formatRupiah(matched.minSubtotal)}.`,
     };
   }
@@ -138,11 +184,21 @@ export function evaluateVoucher(codeInput = '', subtotal = 0, vouchers = [], use
   }
 
   const discount = Math.max(0, Math.min(subtotal, rawDiscount));
+  const remainingText =
+    usageCfg.usageMode === 'unlimited'
+      ? 'Tak terbatas'
+      : usageCfg.usageMode === 'limited'
+      ? `Sisa ${Math.max(0, usageCfg.maxUses - usedCount)}x pakai`
+      : 'Sekali pakai';
+
   return {
     status: 'applied',
     code: cleanCode,
     discount,
-    message: `Voucher ${cleanCode} aktif (-${formatRupiah(discount)}).`,
+    usageMode: usageCfg.usageMode,
+    maxUses: usageCfg.maxUses,
+    usedCount,
+    message: `Voucher ${cleanCode} aktif (-${formatRupiah(discount)}) · ${remainingText}.`,
   };
 }
 
@@ -275,12 +331,8 @@ export function buildWhatsAppOrderCaption({
   if (totals.discount > 0) {
     lines.push(`• Diskon Belanja: -${formatRupiah(totals.discount)}`);
   }
-  if (totals.voucherCode) {
-    if (totals.voucherDiscount > 0) {
-      lines.push(`• Voucher (${totals.voucherCode}): -${formatRupiah(totals.voucherDiscount)}`);
-    } else {
-      lines.push(`• Kode Voucher: ${totals.voucherCode} (Menunggu Cek Admin)`);
-    }
+  if (totals.voucherCode && totals.voucherDiscount > 0) {
+    lines.push(`• Voucher (${totals.voucherCode}): -${formatRupiah(totals.voucherDiscount)}`);
   }
   if (totals.serviceFee > 0) {
     lines.push(
@@ -1317,15 +1369,23 @@ export function describeCatalogChanges(prevCatalog, nextCatalog) {
   for (const [code, nv] of nextVMap.entries()) {
     const pv = prevVMap.get(code);
     if (!pv) {
+      const uCfg = normalizeVoucherUsageConfig(nv);
       details.push(
-        `Menambah voucher ${code} (${nv.label || formatRupiah(nv.value || 0)})`
+        `Menambah voucher ${code} (${nv.label || formatRupiah(nv.value || 0)} · ${uCfg.usageLabel})`
       );
-    } else if (
-      pv.type !== nv.type ||
-      Number(pv.value || 0) !== Number(nv.value || 0) ||
-      Number(pv.minSubtotal || 0) !== Number(nv.minSubtotal || 0)
-    ) {
-      details.push(`Mengubah ketentuan voucher ${code} (${nv.label || formatRupiah(nv.value || 0)})`);
+    } else {
+      const pCfg = normalizeVoucherUsageConfig(pv);
+      const nCfg = normalizeVoucherUsageConfig(nv);
+      if (
+        pv.type !== nv.type ||
+        Number(pv.value || 0) !== Number(nv.value || 0) ||
+        Number(pv.minSubtotal || 0) !== Number(nv.minSubtotal || 0)
+      ) {
+        details.push(`Mengubah ketentuan voucher ${code} (${nv.label || formatRupiah(nv.value || 0)})`);
+      }
+      if (pCfg.usageMode !== nCfg.usageMode || pCfg.maxUses !== nCfg.maxUses) {
+        details.push(`Mengubah batas pemakaian voucher ${code} menjadi ${nCfg.usageLabel}`);
+      }
     }
   }
 

@@ -2,7 +2,7 @@ import {
   CATALOG_PREVIEW_STORAGE_KEY,
   getDefaultCatalogSnapshot,
   loadCatalogData,
-} from './data.js?v=20';
+} from './data.js?v=21';
 import {
   MAX_HISTORY_LOGS,
   appendCatalogHistory,
@@ -22,6 +22,7 @@ import {
   normalizeBanners,
   normalizeBrandConfig,
   normalizeOpenGraphConfig,
+  normalizeVoucherUsageConfig,
   pruneCatalogHistory,
   reorderProductToIndex,
   slugifyId,
@@ -33,12 +34,12 @@ import {
   upsertFaqInCatalog,
   upsertProductInCatalog,
   upsertSocialInCatalog,
-} from './store.js?v=20';
+} from './store.js?v=21';
 import {
   decryptVault,
   encryptVault,
   verifyGitHubTokenAccess,
-} from './vault.js?v=20';
+} from './vault.js?v=21';
 
 const THEME_STORAGE_KEY = 'manifestudio_theme_v1';
 const ADMIN_VAULT_STORAGE_KEY = 'manifestudio_admin_vault_v1';
@@ -2060,28 +2061,97 @@ function renderVoucherList() {
   }
 
   container.innerHTML = vouchers
-    .map(
-      (v, idx) => `
-      <div class="admin-voucher-row">
-        <div>
-          <strong class="mono-num">${escapeHtml(v.code)}</strong>
+    .map((v, idx) => {
+      const cfg = normalizeVoucherUsageConfig(v);
+      const usageSummary =
+        cfg.usageMode === 'unlimited'
+          ? 'Tak Terbatas (Berkali-kali)'
+          : cfg.usageMode === 'limited'
+          ? `Maksimal ${cfg.maxUses}x pakai`
+          : '1x pakai per pelanggan';
+
+      return `
+      <div class="admin-voucher-row" data-voucher-row="${idx}">
+        <div class="admin-voucher-info">
+          <div class="admin-voucher-title-line">
+            <strong class="mono-num">${escapeHtml(v.code)}</strong>
+            <span class="admin-badge">${escapeHtml(usageSummary)}</span>
+          </div>
           <div class="admin-prod-meta">
             ${escapeHtml(v.label || (v.type === 'percent' ? `Diskon ${v.value}%` : `Potongan ${formatRupiah(v.value)}`))}
             · Min. ${escapeHtml(formatRupiah(v.minSubtotal || 0))}
           </div>
         </div>
-        <button
-          type="button"
-          class="btn btn-ghost btn-sm"
-          data-remove-voucher="${idx}"
-          aria-label="Hapus voucher ${escapeHtml(v.code)}"
-        >
-          Hapus
-        </button>
+        <div class="admin-voucher-controls">
+          <select
+            class="admin-select admin-voucher-mode-select"
+            data-voucher-usage-mode="${idx}"
+            aria-label="Batas pemakaian voucher ${escapeHtml(v.code)}"
+          >
+            <option value="once" ${cfg.usageMode === 'once' ? 'selected' : ''}>1x Pakai</option>
+            <option value="limited" ${cfg.usageMode === 'limited' ? 'selected' : ''}>Maks N Kali</option>
+            <option value="unlimited" ${cfg.usageMode === 'unlimited' ? 'selected' : ''}>Tak Terbatas</option>
+          </select>
+          <input
+            type="number"
+            min="2"
+            step="1"
+            class="admin-voucher-max-input"
+            data-voucher-max-uses="${idx}"
+            aria-label="Jumlah maksimal penggunaan ${escapeHtml(v.code)}"
+            value="${escapeHtml(cfg.usageMode === 'limited' ? cfg.maxUses : 5)}"
+            ${cfg.usageMode !== 'limited' ? 'hidden' : ''}
+          />
+          <button
+            type="button"
+            class="btn btn-ghost btn-sm"
+            data-remove-voucher="${idx}"
+            aria-label="Hapus voucher ${escapeHtml(v.code)}"
+          >
+            Hapus
+          </button>
+        </div>
       </div>
-    `
-    )
+    `;
+    })
     .join('');
+
+  container.querySelectorAll('[data-voucher-usage-mode]').forEach((select) => {
+    select.addEventListener('change', (e) => {
+      const idx = Number(select.getAttribute('data-voucher-usage-mode'));
+      const voucher = adminState.catalog.vouchers?.[idx];
+      if (!voucher) return;
+      const mode = e.target.value;
+      if (mode === 'unlimited') {
+        voucher.usageMode = 'unlimited';
+        voucher.maxUses = 0;
+      } else if (mode === 'limited') {
+        voucher.usageMode = 'limited';
+        voucher.maxUses = Math.max(2, Math.round(Number(voucher.maxUses) || 5));
+      } else {
+        voucher.usageMode = 'once';
+        voucher.maxUses = 1;
+      }
+      markDirty();
+      renderVoucherList();
+      showToast(`Batas penggunaan voucher ${voucher.code} diperbarui.`);
+    });
+  });
+
+  container.querySelectorAll('[data-voucher-max-uses]').forEach((input) => {
+    input.addEventListener('input', (e) => {
+      const idx = Number(input.getAttribute('data-voucher-max-uses'));
+      const voucher = adminState.catalog.vouchers?.[idx];
+      if (!voucher) return;
+      const maxUses = Math.max(2, Math.round(Number(e.target.value) || 2));
+      voucher.usageMode = 'limited';
+      voucher.maxUses = maxUses;
+      markDirty();
+      const row = container.querySelector(`[data-voucher-row="${idx}"]`);
+      const badge = row?.querySelector('.admin-badge');
+      if (badge) badge.textContent = `Maksimal ${maxUses}x pakai`;
+    });
+  });
 
   container.querySelectorAll('[data-remove-voucher]').forEach((btn) => {
     btn.addEventListener('click', () => {
@@ -3689,6 +3759,15 @@ function bindEvents() {
     }
   });
 
+  const newVoucherUsageSelect = document.getElementById('new-voucher-usage-mode');
+  const newVoucherMaxField = document.getElementById('new-voucher-max-uses-field');
+  const syncNewVoucherUsageField = () => {
+    if (!newVoucherUsageSelect || !newVoucherMaxField) return;
+    newVoucherMaxField.hidden = newVoucherUsageSelect.value !== 'limited';
+  };
+  newVoucherUsageSelect?.addEventListener('change', syncNewVoucherUsageField);
+  syncNewVoucherUsageField();
+
   document.getElementById('add-voucher-form')?.addEventListener('submit', (e) => {
     e.preventDefault();
     if (!adminState.unlocked) return;
@@ -3696,6 +3775,13 @@ function bindEvents() {
     const type = document.getElementById('new-voucher-type')?.value || 'fixed';
     const value = Math.max(1, Math.round(Number(document.getElementById('new-voucher-value')?.value) || 0));
     const minSubtotal = Math.max(0, Math.round(Number(document.getElementById('new-voucher-min')?.value) || 0));
+    const rawUsageMode = document.getElementById('new-voucher-usage-mode')?.value || 'once';
+    const rawMaxUses = Math.max(2, Math.round(Number(document.getElementById('new-voucher-max-uses')?.value) || 5));
+
+    const usageCfg = normalizeVoucherUsageConfig({
+      usageMode: rawUsageMode,
+      maxUses: rawUsageMode === 'unlimited' ? 0 : rawUsageMode === 'limited' ? rawMaxUses : 1,
+    });
 
     if (!code) {
       showToast('Kode voucher tidak boleh kosong.');
@@ -3709,10 +3795,19 @@ function bindEvents() {
 
     adminState.catalog.vouchers = [
       ...(adminState.catalog.vouchers || []).filter((v) => v.code !== code),
-      { code, type, value, minSubtotal, label },
+      {
+        code,
+        type,
+        value,
+        minSubtotal,
+        usageMode: usageCfg.usageMode,
+        maxUses: usageCfg.maxUses,
+        label,
+      },
     ];
     markDirty();
     e.target.reset();
+    syncNewVoucherUsageField();
     renderVoucherList();
     showToast(`Voucher ${code} ditambahkan.`);
   });

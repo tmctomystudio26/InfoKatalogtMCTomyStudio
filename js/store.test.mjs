@@ -85,6 +85,7 @@ import {
   normalizeDownloaderResult,
   parseDeviceTelemetry,
   parseIndonesianAddressHierarchy,
+  parseYouTubeVideoId,
   planMediaCompression,
   projectOrthographic,
   resolveAccurateWeatherCondition,
@@ -173,8 +174,22 @@ test('evaluateVoucher and Pay Later 10% surcharge compute accurately', () => {
   assert.equal(ineligible.discount, 0);
 
   const unknown = evaluateVoucher('VIPADMIN', 30000, VOUCHERS);
-  assert.equal(unknown.status, 'pending_admin');
+  assert.equal(unknown.status, 'invalid');
   assert.equal(unknown.discount, 0);
+  assert.equal(unknown.message.includes('tidak valid'), true);
+
+  // Configurable voucher usage limits: once, limited (N times), and unlimited
+  const limitVouchers = [
+    { code: 'SATUKALI', type: 'fixed', value: 2000, minSubtotal: 10000, usageMode: 'once', maxUses: 1 },
+    { code: 'TIGAKALI', type: 'fixed', value: 2500, minSubtotal: 10000, usageMode: 'limited', maxUses: 3 },
+    { code: 'UNLIMITED', type: 'percent', value: 10, minSubtotal: 10000, usageMode: 'unlimited', maxUses: 0 },
+  ];
+  assert.equal(evaluateVoucher('SATUKALI', 25000, limitVouchers, { SATUKALI: 1 }).status, 'used');
+  const limit2of3 = evaluateVoucher('TIGAKALI', 25000, limitVouchers, { TIGAKALI: 2 });
+  assert.equal(limit2of3.status, 'applied');
+  assert.equal(limit2of3.message.includes('Sisa 1x pakai'), true);
+  assert.equal(evaluateVoucher('TIGAKALI', 25000, limitVouchers, { TIGAKALI: 3 }).status, 'used');
+  assert.equal(evaluateVoucher('UNLIMITED', 25000, limitVouchers, { UNLIMITED: 99 }).status, 'applied');
 
   const cart = [
     {
@@ -196,6 +211,24 @@ test('evaluateVoucher and Pay Later 10% surcharge compute accurately', () => {
   assert.equal(payLaterTotals.isPayLater, true);
   assert.equal(payLaterTotals.payLaterFee, 2800);
   assert.equal(payLaterTotals.total, 30800);
+
+  // Invalid voucher must NOT appear as "Menunggu Cek Admin" in WhatsApp caption
+  const invalidTotals = calculateCartTotals(cart, {
+    voucherCode: 'ASALASALAN99',
+    vouchers: VOUCHERS,
+    paymentOption: 'Bayar Sekarang',
+  });
+  assert.equal(invalidTotals.voucherStatus, 'invalid');
+  assert.equal(invalidTotals.voucherDiscount, 0);
+  const cleanWa = buildWhatsAppOrderCaption({
+    orderCode: 'MS-261116-100000',
+    customerName: 'Budi',
+    paymentOption: 'Bayar Sekarang',
+    cart,
+    totals: invalidTotals,
+  });
+  assert.equal(cleanWa.includes('ASALASALAN99'), false);
+  assert.equal(cleanWa.includes('Cek Admin'), false);
 });
 
 test('validateOrderForm and clean WhatsApp order template encode properly', () => {
@@ -1294,6 +1327,51 @@ test('HD media compression planner & binary lossless strippers preserve bitstrea
   ]);
   const strippedPng = new Uint8Array(stripPngChunksLossless(fakePng.buffer));
   assert.equal(strippedPng.byteLength, fakePng.byteLength - 12);
+});
+
+test('downloader detects truncated YouTube URLs, normalizes TikTok Tioo response, and merges dual MP4+MP3 streams', () => {
+  const truncatedYt = parseYouTubeVideoId('https://youtu.be/tOUxfW_E');
+  assert.equal(truncatedYt.truncated, true);
+  assert.equal(truncatedYt.valid, false);
+  assert.equal(truncatedYt.videoId, 'tOUxfW_E');
+
+  const validYt = parseYouTubeVideoId('https://youtu.be/dQw4w9WgXcQ');
+  assert.equal(validYt.truncated, false);
+  assert.equal(validYt.valid, true);
+  assert.equal(validYt.videoId, 'dQw4w9WgXcQ');
+
+  // TikTok Tioo /ttdl shape with video[] and audio[]
+  const tiooTiktok = normalizeDownloaderResult(
+    {
+      status: true,
+      title: 'Video Viral Tanpa Watermark',
+      thumbnail: 'https://cdn.tioo.example/thumb.jpg',
+      video: ['https://cdn.tioo.example/video-nowm.mp4'],
+      audio: ['https://cdn.tioo.example/sound.mp3'],
+      creator: 'BotcahX',
+    },
+    'tiktok',
+    'https://vt.tiktok.com/ZSppk1234/'
+  );
+  assert.ok(tiooTiktok);
+  assert.equal(tiooTiktok.links.some((l) => !l.isAudio && l.ext === 'mp4'), true);
+  assert.equal(tiooTiktok.links.some((l) => l.isAudio && l.ext === 'mp3'), true);
+
+  // YouTube dual MP4 (cobaltVideo) + MP3 (davidcyril mp3) + Tioo merged cleanly without missing either format
+  const ytDual = normalizeDownloaderResult(
+    {
+      oembed: { title: 'Manifestudio Track', author_name: 'Tomy', thumbnail_url: 'https://i.ytimg.com/vi/abc/hq.jpg' },
+      cobaltVideo: { status: 'tunnel', url: 'https://cobaltapi.cjs.nz/tunnel?id=v1' },
+      tioo: { status: true, mp4: 'https://cdn.tioo.example/yt.mp4', mp3: 'https://cdn.tioo.example/yt.webm' },
+      mp3: { result: { download_url: 'https://cdn.davidcyril.example/yt.mp3' } },
+    },
+    'youtube'
+  );
+  assert.ok(ytDual);
+  const mp4Links = ytDual.links.filter((l) => !l.isAudio && l.ext === 'mp4');
+  const mp3Links = ytDual.links.filter((l) => l.isAudio && l.ext === 'mp3');
+  assert.ok(mp4Links.length >= 1);
+  assert.ok(mp3Links.length >= 1);
 });
 
 

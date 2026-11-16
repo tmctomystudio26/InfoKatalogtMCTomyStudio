@@ -1,46 +1,57 @@
 # Manifestudio — Storefront Katalog Digital, Utility Hub & Panel Admin Statis
 
-Platform web statis resmi **Manifestudio** (tMC Tomy Studio) berbasis **100% Static HTML/CSS + Native ES Modules (GitHub Pages & PWA Ready)** yang memadukan katalog akun premium, konfirmasi pesanan WhatsApp + struk Canvas 2D, Panel Admin terenkripsi AES-256-GCM, pemutar musik *full version* bebas iklan, serta halaman utilitas terpisah **Menu Lainnya**.
+Platform web statis resmi **Manifestudio** (*by Tomy*) berbasis **100% Static HTML/CSS + Native ES Modules (GitHub Pages & PWA Ready)** yang memadukan katalog akun premium, konfirmasi pesanan WhatsApp + struk Canvas 2D, Panel Admin terenkripsi AES-256-GCM penuh fitur, pemutar musik *full version* bebas iklan, serta halaman utilitas terpisah **Menu Lainnya** (`tools.html`).
+
+---
+
+## 🎯 Tujuan Proyek
+
+- Menyediakan toko produk digital statis zero-backend (`https://manifestudio.my.id/`) yang cepat, ringan, dan siap instal sebagai PWA di desktop maupun seluler.
+- Memberikan kendali operasional penuh kepada Admin langsung lewat peramban terenkripsi tanpa menyentuh kode sumber.
+- Menghadirkan utilitas produktivitas harian bebas iklan bagi pengunjung (Jadwal Sholat, Cuaca Presisi, Jam Dunia 3D, Speedtest, Downloader All-in-One berbar progres, dan Kompresor Media HD).
 
 ---
 
 ## 🌟 Fitur Utama
 
-1. **Katalog Top-Up Modern & Multi-Banner Geser**:
-   - 6 slide banner interaktif (promo katalog, Jadwal Sholat, Cuaca, Jam Dunia, Speedtest, & Downloader).
-   - Grid produk responsif (5 kolom desktop → 2 kolom mobile), pencarian instan, filter kategori & stok, serta *FAQ* ringkas.
-2. **Checkout Bersih, Bayar Nanti (+10%), & Struk JPEG Ringan (`order.html`)**:
-   - Skema *Bayar Sekarang (0%)* dan *Bayar Nanti (+10%)* transparan + voucher sekali pakai.
+1. **Katalog Top-Up Modern & Multi-Banner Carousel Dinamis**:
+   - Slide banner interaktif yang sepenuhnya dapat ditambah, diubah teks/gambarnya, atau diatur urutannya lewat Panel Admin.
+   - Grid produk responsif (5 kolom desktop → 2 kolom mobile), pencarian instan, filter kategori dinamis, status stok, serta *FAQ* yang dapat diedit Admin.
+2. **Checkout Bersih, Voucher Berkuota Ketat, Biaya Layanan Fleksibel & Struk JPEG (`order.html`)**:
+   - Validasi voucher ketat: kode yang tidak terdaftar langsung ditolak sebagai **Tidak Valid** (bukan dicatat menunggu Admin). Mendukung kuota **1x Pakai**, **Maksimal N Kali**, atau **Tak Terbatas**.
+   - Skema *Bayar Sekarang (0%)*, *Bayar Belakangan (+% dapat diatur Admin)*, dan *Biaya Layanan Flat* transparan.
    - Generator struk belanja HTML5 Canvas 2D (`MS-YYMMDD-HHMMSS`) `< 60 KB` + kirim WhatsApp 1-klik.
 3. **Menu Lainnya — Halaman Utilitas Terpisah (`tools.html`)**:
-   - **Jadwal Sholat Indonesia**: Resmi Kemenag RI (MyQuran v2 + AlAdhan method=20), prioritas GPS → fallback IP → cari kota.
-   - **Prakiraan Cuaca**: Suhu, angin, hujan per jam & 7 hari (Open-Meteo).
+   - **Jadwal Sholat Indonesia**: Resmi Kemenag RI (MyQuran v2 + AlAdhan method=20), prioritas GPS presisi Kelurahan/Kecamatan → fallback IP → cari kota.
+   - **Prakiraan Cuaca Presisi**: Deteksi hujan lebat/badai berbasis curah hujan konvektif, stasiun lokal & kalibrasi real-time, per jam & 7 hari (Open-Meteo).
    - **Jam Dunia & Globe 3D Interaktif**: Waktu UTC internasional, konversi WIB/WITA/WIT, dan globe yang dapat diputar serta diklik per negara target.
-   - **Speedtest Internet**: Meter kecepatan real-time 60fps, ping, jitter, loaded latency, download/upload (Cloudflare Speed Edge), info server, ISP, dan perangkat.
-   - **Downloader Video Tanpa Watermark**: TikTok HD/SD/MP3 No Watermark, YouTube MP4/MP3, Facebook HD/SD, dan Instagram Reels/Post.
+   - **Speedtest Internet**: Meter kecepatan real-time 60fps, ping, jitter, loaded latency, download/upload berbobot berkelanjutan (Cloudflare Speed Edge), server node, ISP, dan info perangkat.
+   - **Downloader Sosmed All-in-One + Bar Progres Live**: Unduh **Video MP4 & Audio MP3 lengkap bersamaan** tanpa watermark, Postingan Foto HD, Slide Carousel Multi-Foto (unduh semua/satuan), Story IG/TikTok/FB, Salin Caption 1-klik, deteksi link YT terpotong, serta **Bar Progres Konversi & Streaming Download Real-Time**.
+   - **Kompresor Foto & Video HD (Anti-Pecah Sosmed)**: 4 metode kompresi *zero-loss* dengan preset TikTok HD, Instagram HD, WhatsApp HD, dan Original 1:1 untuk mencegah penurunan kualitas saat unggah.
 4. **Pemutar Musik Pintar Full Version (Bebas Iklan & Draggable)**:
-   - Ikon musik melayang dapat digeser ke posisi mana pun dan posisinya tersimpan.
-   - Mendukung mode **Full Audio** (lagu versi penuh `>= 75 detik` Viral Indonesia/DJ/Cover via Audius), **SoundCloud Player**, dan **Spotify Embed Player**.
-   - Auto-play cerdas mengikuti kata kunci pencarian dan lagu favorit pengguna.
+   - Ikon musik melayang dapat digeser bebas ke posisi mana pun dan posisinya tersimpan.
+   - Mendukung mode **Full Audio** (lagu versi penuh `>= 75 detik` via Audius), **SoundCloud Player**, dan **Spotify Embed Player**.
 5. **Panel Admin Terenkripsi AES-256-GCM (`admin.html`)**:
    - Dilindungi PBKDF2-SHA256 + verifikasi token GitHub PAT.
-   - Kelola nama layanan, sub-varian, harga, stok, voucher, urutan produk, upload/link logo (hapus file upload lama otomatis), progress bar real-time, dan **Riwayat Perubahan (maks 12 log) + Restore**.
+   - Kelola produk, sub-varian, harga, stok, kategori layanan custom, **kuota pemakaian voucher**, **logo brand**, **tagline/footer**, **biaya layanan**, **kontak & logo sosmed**, **FAQ**, **OpenGraph & Meta Tag Live** (otomatis menyinkronkan `index.html`), **Slide Banner**, bar progres publikasi GitHub, serta **Riwayat Perubahan Terperinci per Aksi (maks 12 log + Restore 1-klik)**.
 
 ---
 
 ## 📂 Struktur Berkas Utama
 
 ```text
-├── index.html            # Beranda katalog toko, 6-slide banner, drawer checkout & FAQ
-├── order.html            # Halaman konfirmasi invoice dedikasi & unduh struk
-├── tools.html            # Halaman Menu Lainnya (Sholat, Cuaca, Jam Dunia, Speedtest, Downloader)
-├── admin.html            # Panel Admin terenkripsi AES-256-GCM
-├── BLUEPRINT.md          # Arsitektur teknis lengkap, daftar API, & storage keys untuk developer/AI
-├── ROADMAP.md            # Pencapaian milestone (Fase 1-5) & rencana fase berikutnya
-├── data/catalog.json     # Database katalog produk, varian, voucher & FAQ
+├── index.html            # Beranda katalog toko, multi-banner carousel, drawer checkout & FAQ
+├── order.html            # Halaman konfirmasi invoice dedikasi & unduh struk Canvas 2D
+├── tools.html            # Halaman Menu Lainnya (Sholat, Cuaca, Jam Dunia, Speedtest, Downloader, Kompresor HD)
+├── admin.html            # Panel Admin terenkripsi AES-256-GCM (Kendali penuh toko & CMS)
+├── BLUEPRINT.md          # Arsitektur teknis lengkap, tujuan proyek, daftar API & storage keys
+├── ROADMAP.md            # Pencapaian milestone (Fase 1-7) & rencana fase berikutnya
+├── data/
+│   ├── catalog.json      # Single Source of Truth katalog, brand, OpenGraph, banners, kategori, voucher & FAQ
+│   └── catalog-history.json # Log riwayat perubahan katalog (maks 12 snapshot + rincian aksi)
 ├── css/                  # Design tokens & responsive styles
-├── js/                   # Native ES Modules (store, tools, music, downloader, speedtest, vault, admin)
-└── assets/               # Ikon SVG, gambar banner, logo produk & og-manifestudio.jpg (1200×630)
+├── js/                   # Native ES Modules (store, tools-logic, downloader, compressor, speedtest, music, vault, admin)
+└── assets/               # Ikon SVG, gambar banner, logo produk, uploads & og-manifestudio.jpg (1200×630)
 ```
 
 ---
@@ -48,8 +59,11 @@ Platform web statis resmi **Manifestudio** (tMC Tomy Studio) berbasis **100% Sta
 ## 🧪 Pengujian & Verifikasi Developer
 
 ```bash
-# Jalankan seluruh unit test logika bisnis, kriptografi, jam dunia, globe, musik & downloader
-node --test InfoKatalogtMCTomyStudio/js/store.test.mjs
+# Jalankan seluruh unit test (voucher limits, downloader dual MP4/MP3, weather, compressor, admin history)
+npx --yes tsx --test InfoKatalogtMCTomyStudio/js/store.test.mjs
+
+# Build dan Lint proyek
+npm run build && npm run lint
 ```
 
 Detail lengkap mengenai arsitektur, kontrak API gratis, dan pedoman pengembangan lanjutan tersedia pada **`BLUEPRINT.md`** dan **`ROADMAP.md`**.
