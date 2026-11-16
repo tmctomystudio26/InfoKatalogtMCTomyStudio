@@ -1372,7 +1372,33 @@ test('downloader detects truncated YouTube URLs, normalizes TikTok Tioo response
   const mp3Links = ytDual.links.filter((l) => l.isAudio && l.ext === 'mp3');
   assert.ok(mp4Links.length >= 1);
   assert.ok(mp3Links.length >= 1);
+
+  // Double-encoded proxy audio URL (tioo.mp3 via vidsnap) when Cobalt returns error.api.youtube.login and Savetube redirects are blocked
+  const ytDoubleEncodedProxy = normalizeDownloaderResult(
+    {
+      cobaltVideo: { status: 'error', error: { code: 'error.api.youtube.login' } },
+      cobaltAudio: { status: 'error', error: { code: 'error.api.youtube.login' } },
+      tioo: {
+        status: true,
+        title: 'DJ BERSAMAMU AKU BAHAGIA AKU',
+        author: 'Dj vizi Fvnky',
+        mp4: 'https://api.vidsnap.app/proxy?u=https%3A%2F%2Frr3.googlevideo.com%2Fvideoplayback%3Fmime%3Dvideo%252Fmp4',
+        mp3: 'https://api.vidsnap.app/proxy?u=https%3A%2F%2Frr3.googlevideo.com%2Fvideoplayback%3Fmime%3Daudio%252Fmp4',
+      },
+      mp3: { result: { download_url: 'https://cdn401.savetube.vip/file/blocked-redirect.mp3' } },
+    },
+    'youtube'
+  );
+  assert.ok(ytDoubleEncodedProxy);
+  const videoRes = ytDoubleEncodedProxy.links.filter((l) => !l.isAudio && !l.isImage && l.ext === 'mp4');
+  const audioRes = ytDoubleEncodedProxy.links.filter((l) => l.isAudio);
+  assert.equal(videoRes.length, 1);
+  assert.equal(audioRes.length, 1);
+  assert.equal(audioRes[0].ext, 'm4a');
+  assert.equal(audioRes[0].isAudio, true);
+  assert.equal(audioRes[0].label.includes('Musik / Audio YouTube'), true);
 });
+
 
 
 

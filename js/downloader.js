@@ -14,9 +14,15 @@ import {
   isBlockedRedirectDownloadUrl,
   normalizeDownloaderResult,
   parseYouTubeVideoId,
-} from './tools-logic.js?v=21';
+} from './tools-logic.js?v=22';
 
 const COBALT_ENDPOINT = 'https://cobaltapi.cjs.nz/';
+const TIOO_BACKENDS = [
+  'https://backend1.tioo.eu.org',
+  'https://backend2.tioo.eu.org',
+  'https://backend3.tioo.eu.org',
+  'https://backend4.tioo.eu.org',
+];
 
 function sanitizeInputUrl(rawUrl) {
   const trimmed = String(rawUrl || '').trim();
@@ -54,6 +60,81 @@ async function fetchCobaltMedia(mediaUrl, options = {}, timeoutMs = 13000) {
       ...options,
     }),
   });
+}
+
+function hasTiooMediaContent(data, routePath) {
+  if (!data || typeof data !== 'object') return false;
+  if (routePath === 'youtube') {
+    return Boolean(data.mp4 || data.mp3 || data.url);
+  }
+  if (routePath === 'ttdl') {
+    return Boolean(
+      (Array.isArray(data.video) && data.video.length > 0) ||
+        (Array.isArray(data.audio) && data.audio.length > 0) ||
+        (Array.isArray(data.images) && data.images.length > 0) ||
+        typeof data.video === 'string'
+    );
+  }
+  if (routePath === 'igdl') {
+    return Boolean(
+      (Array.isArray(data) && data.length > 0) ||
+        (Array.isArray(data.result) && data.result.length > 0) ||
+        (Array.isArray(data.data) && data.data.length > 0) ||
+        data.url
+    );
+  }
+  if (routePath === 'fbdown') {
+    return Boolean(data.hd || data.sd || data.HD || data.Normal_video || data.url || data.result);
+  }
+  return Boolean(data.status || data.result || data.data || data.url);
+}
+
+async function fetchTiooWithFailover(routePath, encodedUrl, timeoutMs = 11000) {
+  const settled = await Promise.allSettled(
+    TIOO_BACKENDS.map((host) =>
+      fetchJsonWithTimeout(`${host}/${routePath}?url=${encodedUrl}`, timeoutMs)
+    )
+  );
+  const valid = settled
+    .filter((r) => r.status === 'fulfilled' && hasTiooMediaContent(r.value, routePath))
+    .map((r) => r.value);
+
+  if (valid.length === 0) return null;
+
+  if (routePath === 'youtube') {
+    const merged = { ...valid[0] };
+    for (let i = 1; i < valid.length; i += 1) {
+      const alt = valid[i];
+      if (!merged.mp4 && alt.mp4) merged.mp4 = alt.mp4;
+      if (!merged.mp3 && alt.mp3) merged.mp3 = alt.mp3;
+      if (!merged.title && alt.title) merged.title = alt.title;
+      if (!merged.author && alt.author) merged.author = alt.author;
+      if (!merged.thumbnail && alt.thumbnail) merged.thumbnail = alt.thumbnail;
+    }
+    return merged;
+  }
+
+  return valid[0];
+}
+
+function appendAudioExtractFallbackIfMissing(result) {
+  if (!result || !Array.isArray(result.links)) return result;
+  if (result.links.some((l) => l.isAudio)) return result;
+  const videoLink = result.links.find((l) => !l.isAudio && !l.isImage && l.url);
+  if (!videoLink) return result;
+  const isCorsBlockedGoogle = /^https?:\/\/[^/]*\.?googlevideo\.com\//i.test(videoLink.url);
+  if (isCorsBlockedGoogle) return result;
+
+  result.links.push({
+    label: 'Ekstrak Audio dari Video (WAV)',
+    quality: 'AUDIO',
+    ext: 'wav',
+    url: videoLink.url,
+    extractAudioFromVideo: true,
+    isAudio: true,
+    isImage: false,
+  });
+  return result;
 }
 
 function mergeCandidateResults(candidates = []) {
@@ -115,8 +196,8 @@ export async function fetchMediaDownload(rawUrl, onProgress = () => {}) {
   if (platform === 'tiktok') {
     emitProgress(35, 'Menghubungi server TikTok untuk Video HD, Foto & Audio MP3...', 'fetching');
 
-    const [tiooSettled, tikwmSettled, cobaltVidSettled, cobaltAudSettled] = await Promise.allSettled([
-      fetchJsonWithTimeout(`https://backend1.tioo.eu.org/ttdl?url=${encoded}`, 10000),
+    const [tiooVal, tikwmSettled, cobaltVidSettled, cobaltAudSettled] = await Promise.allSettled([
+      fetchTiooWithFailover('ttdl', encoded, 10000),
       fetchJsonWithTimeout(`https://www.tikwm.com/api/?url=${encoded}&hd=1`, 9500),
       fetchCobaltMedia(cleanUrl, { videoQuality: '1080' }, 10500),
       fetchCobaltMedia(cleanUrl, { downloadMode: 'audio', audioFormat: 'mp3', audioBitrate: '128' }, 10500),
@@ -129,8 +210,8 @@ export async function fetchMediaDownload(rawUrl, onProgress = () => {}) {
       const n = normalizeDownloaderResult(tikwmSettled.value, 'tiktok', cleanUrl);
       if (n) candidates.push(n);
     }
-    if (tiooSettled.status === 'fulfilled' && tiooSettled.value) {
-      const n = normalizeDownloaderResult(tiooSettled.value, 'tiktok', cleanUrl);
+    if (tiooVal.status === 'fulfilled' && tiooVal.value) {
+      const n = normalizeDownloaderResult(tiooVal.value, 'tiktok', cleanUrl);
       if (n) candidates.push(n);
     }
     if (cobaltVidSettled.status === 'fulfilled' && cobaltVidSettled.value) {
@@ -166,6 +247,7 @@ export async function fetchMediaDownload(rawUrl, onProgress = () => {}) {
     }
 
     if (merged && (merged.links.length > 0 || (merged.photos?.length || 0) > 0)) {
+      appendAudioExtractFallbackIfMissing(merged);
       emitProgress(100, 'Media TikTok siap diunduh!', 'ready');
       return merged;
     }
@@ -193,32 +275,50 @@ export async function fetchMediaDownload(rawUrl, onProgress = () => {}) {
         { downloadMode: 'audio', audioFormat: 'mp3', audioBitrate: '128' },
         13500
       ),
-      fetchJsonWithTimeout(`https://backend1.tioo.eu.org/youtube?url=${encoded}`, 13000),
+      fetchTiooWithFailover('youtube', encoded, 12000),
     ]);
 
-    emitProgress(70, 'Memeriksa kelengkapan format MP4 & MP3...', 'converting');
+    emitProgress(66, 'Memeriksa kelengkapan format MP4 & MP3...', 'converting');
 
-    const hasVideoFromPrimary = Boolean(
-      (cobaltVideoRes.status === 'fulfilled' && cobaltVideoRes.value?.url) ||
-        (tiooRes.status === 'fulfilled' && tiooRes.value?.mp4)
-    );
+    let tiooData = tiooRes.status === 'fulfilled' ? tiooRes.value : null;
     const hasTrueMp3FromPrimary = Boolean(
       cobaltAudioRes.status === 'fulfilled' && cobaltAudioRes.value?.url
     );
-    const hasAnyAudioFromPrimary = Boolean(
-      hasTrueMp3FromPrimary || (tiooRes.status === 'fulfilled' && tiooRes.value?.mp3)
+
+    // Wave 2 retry across Tioo nodes if audio URL is still missing
+    if (!hasTrueMp3FromPrimary && (!tiooData || !tiooData.mp3)) {
+      emitProgress(76, 'Mencoba ulang server cadangan Audio YouTube...', 'converting');
+      try {
+        const retryTioo = await fetchTiooWithFailover('youtube', encoded, 11000);
+        if (retryTioo) {
+          tiooData = tiooData
+            ? {
+                ...tiooData,
+                mp4: tiooData.mp4 || retryTioo.mp4,
+                mp3: tiooData.mp3 || retryTioo.mp3,
+              }
+            : retryTioo;
+        }
+      } catch {
+        // Ignore retry error
+      }
+    }
+
+    const hasVideoFromPrimary = Boolean(
+      (cobaltVideoRes.status === 'fulfilled' && cobaltVideoRes.value?.url) || tiooData?.mp4
     );
+    const hasAnyAudioFromPrimary = Boolean(hasTrueMp3FromPrimary || tiooData?.mp3);
 
     let mp4Fallback = null;
     let mp3Fallback = null;
 
-    if (!hasVideoFromPrimary || !hasAnyAudioFromPrimary || !hasTrueMp3FromPrimary) {
-      emitProgress(84, 'Melengkapi tautan Video MP4 & Musik MP3 cadangan...', 'converting');
+    if (!hasVideoFromPrimary || !hasAnyAudioFromPrimary) {
+      emitProgress(86, 'Melengkapi tautan Video MP4 & Musik MP3 cadangan...', 'converting');
       const [dcMp4, dcMp3] = await Promise.allSettled([
         !hasVideoFromPrimary
           ? fetchJsonWithTimeout(`https://apis.davidcyriltech.my.id/download/ytmp4?url=${encoded}`, 11000)
           : Promise.resolve(null),
-        !hasAnyAudioFromPrimary || !hasTrueMp3FromPrimary
+        !hasAnyAudioFromPrimary
           ? fetchJsonWithTimeout(`https://apis.davidcyriltech.my.id/download/ytmp3?url=${encoded}`, 11000)
           : Promise.resolve(null),
       ]);
@@ -231,7 +331,7 @@ export async function fetchMediaDownload(rawUrl, onProgress = () => {}) {
         oembed: oembedRes.status === 'fulfilled' ? oembedRes.value : null,
         cobaltVideo: cobaltVideoRes.status === 'fulfilled' ? cobaltVideoRes.value : null,
         cobaltAudio: cobaltAudioRes.status === 'fulfilled' ? cobaltAudioRes.value : null,
-        tioo: tiooRes.status === 'fulfilled' ? tiooRes.value : null,
+        tioo: tiooData,
         mp4: mp4Fallback,
         mp3: mp3Fallback,
       },
@@ -240,6 +340,7 @@ export async function fetchMediaDownload(rawUrl, onProgress = () => {}) {
     );
 
     if (normalized && normalized.links.length > 0) {
+      appendAudioExtractFallbackIfMissing(normalized);
       emitProgress(100, 'Video MP4 & Audio MP3 YouTube siap!', 'ready');
       return normalized;
     }
@@ -252,7 +353,7 @@ export async function fetchMediaDownload(rawUrl, onProgress = () => {}) {
     const [cobaltVidRes, cobaltAudRes, tiooFbRes, dcFbRes] = await Promise.allSettled([
       fetchCobaltMedia(cleanUrl, { videoQuality: '1080' }, 12000),
       fetchCobaltMedia(cleanUrl, { downloadMode: 'audio', audioFormat: 'mp3', audioBitrate: '128' }, 12000),
-      fetchJsonWithTimeout(`https://backend1.tioo.eu.org/fbdown?url=${encoded}`, 11000),
+      fetchTiooWithFailover('fbdown', encoded, 11000),
       fetchJsonWithTimeout(`https://apis.davidcyriltech.my.id/facebook?url=${encoded}`, 11000),
     ]);
 
@@ -284,6 +385,7 @@ export async function fetchMediaDownload(rawUrl, onProgress = () => {}) {
           isImage: false,
         });
       }
+      appendAudioExtractFallbackIfMissing(merged);
       emitProgress(100, 'Media Facebook siap diunduh!', 'ready');
       return merged;
     }
@@ -295,7 +397,7 @@ export async function fetchMediaDownload(rawUrl, onProgress = () => {}) {
     emitProgress(35, 'Mengambil Foto, Slide Carousel, Reels, Story & Caption IG...', 'fetching');
 
     const [tiooSettled, cobaltSettled, cobaltAudSettled, ryzenSettled] = await Promise.allSettled([
-      fetchJsonWithTimeout(`https://backend1.tioo.eu.org/igdl?url=${encoded}`, 15000),
+      fetchTiooWithFailover('igdl', encoded, 14000),
       fetchCobaltMedia(cleanUrl, { videoQuality: '1080' }, 12500),
       fetchCobaltMedia(cleanUrl, { downloadMode: 'audio', audioFormat: 'mp3', audioBitrate: '128' }, 12500),
       fetchJsonWithTimeout(`https://api.ryzendesu.vip/api/downloader/igdl?url=${encoded}`, 12000),
@@ -354,6 +456,7 @@ export async function fetchMediaDownload(rawUrl, onProgress = () => {}) {
           isImage: false,
         });
       }
+      appendAudioExtractFallbackIfMissing(best);
       emitProgress(100, 'Media Instagram siap diunduh!', 'ready');
       return best;
     }
@@ -516,3 +619,145 @@ export async function triggerBatchPhotoDownload(photos = [], baseTitle = 'manife
   });
   return completed;
 }
+
+function encodeAudioBufferToWav(audioBuffer) {
+  const numChannels = Math.min(2, audioBuffer.numberOfChannels || 1);
+  const sampleRate = audioBuffer.sampleRate || 44100;
+  const numSamples = audioBuffer.length;
+  const bytesPerSample = 2;
+  const blockAlign = numChannels * bytesPerSample;
+  const byteRate = sampleRate * blockAlign;
+  const dataByteLength = numSamples * blockAlign;
+  const buffer = new ArrayBuffer(44 + dataByteLength);
+  const view = new DataView(buffer);
+
+  const writeStr = (offset, str) => {
+    for (let i = 0; i < str.length; i += 1) {
+      view.setUint8(offset + i, str.charCodeAt(i));
+    }
+  };
+
+  writeStr(0, 'RIFF');
+  view.setUint32(4, 36 + dataByteLength, true);
+  writeStr(8, 'WAVE');
+  writeStr(12, 'fmt ');
+  view.setUint32(16, 16, true);
+  view.setUint16(20, 1, true);
+  view.setUint16(22, numChannels, true);
+  view.setUint32(24, sampleRate, true);
+  view.setUint32(28, byteRate, true);
+  view.setUint16(32, blockAlign, true);
+  view.setUint16(34, 16, true);
+  writeStr(36, 'data');
+  view.setUint32(40, dataByteLength, true);
+
+  const channels = [];
+  for (let ch = 0; ch < numChannels; ch += 1) {
+    channels.push(audioBuffer.getChannelData(ch));
+  }
+
+  let offset = 44;
+  for (let i = 0; i < numSamples; i += 1) {
+    for (let ch = 0; ch < numChannels; ch += 1) {
+      const sample = Math.max(-1, Math.min(1, channels[ch][i] || 0));
+      view.setInt16(offset, sample < 0 ? sample * 0x8000 : sample * 0x7fff, true);
+      offset += 2;
+    }
+  }
+
+  return new Blob([buffer], { type: 'audio/wav' });
+}
+
+export async function extractAudioFromVideoUrl(
+  videoUrl,
+  baseName = 'manifestudio-audio',
+  onProgress = () => {}
+) {
+  if (isBlockedRedirectDownloadUrl(videoUrl)) {
+    throw new Error('Tautan dialihkan ke halaman pihak ketiga dan diblokir.');
+  }
+
+  const emit = (stage, percent, label) => {
+    try {
+      onProgress({
+        stage,
+        percent: Math.max(0, Math.min(100, Math.round(percent))),
+        label,
+      });
+    } catch {
+      // Ignore callback error
+    }
+  };
+
+  const safeName =
+    String(baseName || 'manifestudio-audio')
+      .toLowerCase()
+      .replace(/[^a-z0-9-_]+/g, '-')
+      .replace(/^-+|-+$/g, '')
+      .slice(0, 48) || 'manifestudio-audio';
+  const filename = `${safeName}-audio.wav`;
+
+  emit('connecting', 10, 'Mengambil aliran video untuk mengekstrak audio...');
+  const res = await fetch(videoUrl);
+  if (!res.ok) {
+    throw new Error(`Server video mengembalikan HTTP ${res.status}`);
+  }
+
+  const totalBytes = Number(res.headers.get('content-length')) || 0;
+  let arrayBuffer;
+
+  if (res.body && typeof res.body.getReader === 'function') {
+    const reader = res.body.getReader();
+    const chunks = [];
+    let loaded = 0;
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      if (value) {
+        chunks.push(value);
+        loaded += value.byteLength;
+        const pct =
+          totalBytes > 0
+            ? Math.min(62, 12 + Math.round((loaded / totalBytes) * 50))
+            : Math.min(58, 16 + Math.round(loaded / 200000));
+        emit('downloading', pct, `Mengambil video (${formatBytes(loaded)})...`);
+      }
+    }
+    const blob = new Blob(chunks);
+    arrayBuffer = await blob.arrayBuffer();
+  } else {
+    emit('downloading', 45, 'Mengambil video untuk ekstraksi audio...');
+    arrayBuffer = await res.arrayBuffer();
+  }
+
+  const AudioCtx = window.AudioContext || window.webkitAudioContext;
+  if (!AudioCtx) {
+    throw new Error('Browser tidak mendukung dekode audio lokal.');
+  }
+
+  emit('converting', 72, 'Mengekstrak & mengonversi trek audio menjadi file audio...');
+  const ctx = new AudioCtx();
+  try {
+    const audioBuffer = await ctx.decodeAudioData(arrayBuffer);
+    emit('converting', 90, 'Menyusun berkas audio siap simpan...');
+    const wavBlob = encodeAudioBufferToWav(audioBuffer);
+    emit('done', 100, `Selesai! Menyimpan ${filename} (${formatBytes(wavBlob.size)})`);
+
+    const blobUrl = URL.createObjectURL(wavBlob);
+    const a = document.createElement('a');
+    a.href = blobUrl;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(blobUrl), 5000);
+    return true;
+  } finally {
+    try {
+      await ctx.close();
+    } catch {
+      // Ignore audio context close error
+    }
+  }
+}
+

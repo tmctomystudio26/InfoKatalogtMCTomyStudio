@@ -26,7 +26,7 @@ Platform web statis resmi **Manifestudio** (*by Tomy*) berbasis **100% Static HT
    - **Prakiraan Cuaca Presisi**: Deteksi hujan lebat/badai berbasis curah hujan konvektif, stasiun lokal & kalibrasi real-time, per jam & 7 hari (Open-Meteo).
    - **Jam Dunia & Globe 3D Interaktif**: Waktu UTC internasional, konversi WIB/WITA/WIT, dan globe yang dapat diputar serta diklik per negara target.
    - **Speedtest Internet**: Meter kecepatan real-time 60fps, ping, jitter, loaded latency, download/upload berbobot berkelanjutan (Cloudflare Speed Edge), server node, ISP, dan info perangkat.
-   - **Downloader Sosmed All-in-One + Bar Progres Live**: Unduh **Video MP4 & Audio MP3 lengkap bersamaan** tanpa watermark, Postingan Foto HD, Slide Carousel Multi-Foto (unduh semua/satuan), Story IG/TikTok/FB, Salin Caption 1-klik, deteksi link YT terpotong, serta **Bar Progres Konversi & Streaming Download Real-Time**.
+   - **Downloader Sosmed All-in-One + Bar Progres Live**: Unduh **Video MP4 & Audio MP3/M4A lengkap bersamaan** (dengan *failover* 4 node server, *Wave 2 audio retry*, dekode MIME proxy ganda, serta ekstraksi audio WAV otomatis di perangkat jika server hanya menyediakan video) tanpa watermark, Postingan Foto HD, Slide Carousel Multi-Foto (unduh semua/satuan), Story IG/TikTok/FB, Salin Caption 1-klik, deteksi link YT terpotong, serta **Bar Progres Konversi & Streaming Download Real-Time**.
    - **Kompresor Foto & Video HD (Anti-Pecah Sosmed)**: 4 metode kompresi *zero-loss* dengan preset TikTok HD, Instagram HD, WhatsApp HD, dan Original 1:1 untuk mencegah penurunan kualitas saat unggah.
 4. **Pemutar Musik Pintar Full Version (Bebas Iklan & Draggable)**:
    - Ikon musik melayang dapat digeser bebas ke posisi mana pun dan posisinya tersimpan.

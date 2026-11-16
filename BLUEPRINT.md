@@ -14,7 +14,7 @@ Dokumen teknis terpadu bagi **Tim IT, Human Developer, maupun AI Coding Agent** 
    - **Menu Lainnya (`tools.html`)**: Halaman terpisah untuk utilitas harian (`?tab=prayer | weather | worldclock | speedtest | downloader | compressor`) dengan tombol kembali ke katalog.
    - **Panel Admin (`admin.html`)**: Halaman *unlisted* (`noindex`) terenkripsi AES-256-GCM yang mempublikasikan perubahan katalog, aset upload, OpenGraph `index.html`, dan riwayat perubahan terperinci langsung via GitHub REST API.
 3. **Kualitas Pengalaman Mobile-First, Presisi Tinggi, & Ad-Free**:
-   - Semua kontrol responsif di layar HP (`360px–430px`) maupun desktop (`1440px`), menggunakan *Network-First Service Worker* (`manifestudio-cache-v21`) + query cache-busting `?v=21` agar pembaruan langsung muncul di perangkat mobile pengguna.
+   - Semua kontrol responsif di layar HP (`360px–430px`) maupun desktop (`1440px`), menggunakan *Network-First Service Worker* (`manifestudio-cache-v22`) + query cache-busting `?v=22` agar pembaruan langsung muncul di perangkat mobile pengguna.
    - Pemutar musik bebas iklan dapat digeser bebas dan memutar lagu versi penuh (*Full Version >= 75s*).
 
 ---
@@ -30,11 +30,11 @@ Dokumen teknis terpadu bagi **Tim IT, Human Developer, maupun AI Coding Agent** 
 | `js/location.js` | Geolocation GPS prioritas utama + reverse geocode Kelurahan/Kecamatan + fallback IP + autocomplete kota | `tools-logic.js` |
 | `js/globe.js` | Canvas 2D orthographic rotatable 3D globe + klik target negara + auto-rotate | `tools-logic.js` |
 | `js/speedtest.js` | Speedometer 60fps + ukur Ping/Jitter/DL/UL Cloudflare CDN (berbobot berkelanjutan) + telemetri perangkat | `tools-logic.js` |
-| `js/downloader.js` | Adapter paralel TikTok (Tioo/TikWM/Cobalt/DavidCyril), YouTube (Cobalt + Tioo + dual MP4/MP3 DavidCyril + cek ID terpotong), IG/FB (Video/Foto/Carousel/Story/Caption) + streaming download progress | `tools-logic.js` |
+| `js/downloader.js` | Adapter paralel TikTok (4-node Tioo/TikWM/Cobalt/DavidCyril), YouTube (Cobalt + 4-node Tioo + Wave 2 audio retry + dual MP4/MP3 DavidCyril + ekstraksi audio WAV client-side + cek ID terpotong), IG/FB (Video/Foto/Carousel/Story/Caption) + streaming download progress | `tools-logic.js` |
 | `js/compressor.js` | Kompresor Foto & Video HD Zero-Loss (binary EXIF/PNG/MP4 atom stripper & Social Shield encoder) | `tools-logic.js` |
 | `js/music.js` + `js/music-logic.js` | Widget musik draggable, algoritma preferensi, **Full Audio** (Audius), **SoundCloud Widget**, **Spotify Embed** | Audius / SoundCloud / Spotify |
 | `data/catalog.json` & `data/catalog-history.json` | Single Source of Truth produk, brand, OpenGraph, banners, kategori, voucher usage limits, FAQ & 12 snapshot riwayat | Service Worker Network-First |
-| `sw.js` + `manifest.webmanifest` | Network-First code/data cache (`manifestudio-cache-v21`) & instalasi PWA | — |
+| `sw.js` + `manifest.webmanifest` | Network-First code/data cache (`manifestudio-cache-v22`) & instalasi PWA | — |
 | `CNAME` | Konfigurasi domain kustom resmi GitHub Pages (`manifestudio.my.id`) — jangan dihapus | Cloudflare DNS |
 
 ---
@@ -59,10 +59,10 @@ Semua integrasi pihak ketiga berjalan murni *client-side* tanpa API key rahasia:
    - **Full Audio Direct Stream**: `https://api.audius.co/v1/tracks/search` + `/tracks/{id}/stream` (`duration >= 75s`).
    - **SoundCloud & Spotify Embed**: `https://w.soundcloud.com/player/` & `https://open.spotify.com/embed/playlist/...`.
 6. **Sosmed Media Downloader All-in-One**:
-   - **TikTok (Video No-WM/MP3/Photo Carousel)**: `https://backend1.tioo.eu.org/ttdl`, `https://www.tikwm.com/api/?url=...&hd=1`, `https://cobaltapi.cjs.nz/`, fallback `https://apis.davidcyriltech.my.id/download/tiktok`.
-   - **YouTube (Dual Video MP4 & Audio MP3)**: Paralel `https://www.youtube.com/oembed`, `https://cobaltapi.cjs.nz/` (video + audio MP3 terpisah), `https://backend1.tioo.eu.org/youtube`, & fallback ganda `https://apis.davidcyriltech.my.id/download/ytmp4` + `/ytmp3`.
-   - **Facebook (HD/SD/MP3/Photo/Story)**: `https://cobaltapi.cjs.nz/`, `https://apis.davidcyriltech.my.id/facebook`, & `https://backend1.tioo.eu.org/fbdown`.
-   - **Instagram (Reels/Photo/Carousel/Story/Caption)**: `https://backend1.tioo.eu.org/igdl`, `https://cobaltapi.cjs.nz/`, `https://api.ryzendesu.vip/api/downloader/igdl`, fallback `davidcyriltech/instagram`.
+   - **TikTok (Video No-WM/MP3/Photo Carousel)**: Failover paralel 4 node `https://backend1..4.tioo.eu.org/ttdl`, `https://www.tikwm.com/api/?url=...&hd=1`, `https://cobaltapi.cjs.nz/`, fallback `https://apis.davidcyriltech.my.id/download/tiktok`.
+   - **YouTube (Dual Video MP4 & Audio MP3/M4A/WAV)**: Paralel `https://www.youtube.com/oembed`, `https://cobaltapi.cjs.nz/` (video + audio MP3 terpisah), failover 4 node `https://backend1..4.tioo.eu.org/youtube` (+ Wave 2 retry untuk audio & dekode URI ganda proxy MIME), fallback ganda `https://apis.davidcyriltech.my.id/download/ytmp4` + `/ytmp3`, serta ekstraksi audio `.wav` client-side (`AudioContext`) jika hanya stream video yang tersedia.
+   - **Facebook (HD/SD/MP3/Photo/Story)**: `https://cobaltapi.cjs.nz/`, `https://apis.davidcyriltech.my.id/facebook`, & failover 4 node `https://backend1..4.tioo.eu.org/fbdown`.
+   - **Instagram (Reels/Photo/Carousel/Story/Caption)**: Failover 4 node `https://backend1..4.tioo.eu.org/igdl`, `https://cobaltapi.cjs.nz/`, `https://api.ryzendesu.vip/api/downloader/igdl`, fallback `davidcyriltech/instagram`.
 
 ---
 

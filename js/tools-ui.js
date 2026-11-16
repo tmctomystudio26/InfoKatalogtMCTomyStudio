@@ -22,26 +22,27 @@ import {
   matchIndonesianCityQuery,
   planMediaCompression,
   resolveAccurateWeatherCondition,
-} from './tools-logic.js?v=21';
+} from './tools-logic.js?v=22';
 import {
   describeLocationSource,
   resolveUserLocation,
   searchCitiesOnline,
   setManualLocation,
-} from './location.js?v=21';
-import { createInteractiveGlobe } from './globe.js?v=21';
+} from './location.js?v=22';
+import { createInteractiveGlobe } from './globe.js?v=22';
 import {
   createSpeedometerGauge,
   fetchSpeedtestEnvironment,
   readClientDeviceTelemetry,
   runInternetSpeedtest,
-} from './speedtest.js?v=21';
+} from './speedtest.js?v=22';
 import {
+  extractAudioFromVideoUrl,
   fetchMediaDownload,
   triggerBatchPhotoDownload,
   triggerDirectMediaSave,
-} from './downloader.js?v=21';
-import { compressMediaFile, inspectMediaFile } from './compressor.js?v=21';
+} from './downloader.js?v=22';
+import { compressMediaFile, inspectMediaFile } from './compressor.js?v=22';
 
 const PRAYER_CACHE_KEY = 'manifestudio_prayer_cache_v1';
 const MYQURAN_CITIES_KEY = 'manifestudio_myquran_cities_v1';
@@ -1342,8 +1343,8 @@ export function createToolsHubController({
       instagram: 'Instagram · Reels / Foto / Carousel / Story',
       facebook: 'Facebook · Video / Foto / Story',
     };
-    const previewVideo = res?.links?.find((l) => !l.isAudio && !l.isPhoto && l.ext === 'mp4') || null;
-    const previewAudio = res?.links?.find((l) => l.isAudio) || null;
+    const previewVideo = res?.links?.find((l) => !l.isAudio && !l.isImage && l.ext === 'mp4') || null;
+    const previewAudio = res?.links?.find((l) => l.isAudio && !l.extractAudioFromVideo) || null;
     const photos = Array.isArray(res?.photos) ? res.photos : [];
     const captionText = String(res?.caption || '').trim();
 
@@ -1376,7 +1377,7 @@ export function createToolsHubController({
               ${
                 contentMeta.isStory
                   ? `<span class="dl-plat-pill is-detected">Mode Story</span>`
-                  : contentMeta.isPhotoPost
+                  : contentMeta.isPhotoUrl || contentMeta.isPhotoPost
                   ? `<span class="dl-plat-pill is-detected">Mode Foto/Carousel</span>`
                   : ''
               }
@@ -2432,12 +2433,20 @@ export function createToolsHubController({
           render();
           rootEl.querySelector('#dl-save-progress-card')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
           try {
-            await triggerDirectMediaSave(
-              item.url,
-              `${toolState.dlResult.platform}-${toolState.dlResult.title}`,
-              item.ext,
-              updateSaveProgressDom
-            );
+            if (item.extractAudioFromVideo) {
+              await extractAudioFromVideoUrl(
+                item.url,
+                `${toolState.dlResult.platform}-${toolState.dlResult.title}`,
+                updateSaveProgressDom
+              );
+            } else {
+              await triggerDirectMediaSave(
+                item.url,
+                `${toolState.dlResult.platform}-${toolState.dlResult.title}`,
+                item.ext,
+                updateSaveProgressDom
+              );
+            }
             onToast(`${item.label} berhasil diproses!`);
           } catch (err) {
             toolState.dlSaveActive = false;

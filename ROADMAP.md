@@ -59,8 +59,8 @@ Dokumen ini adalah panduan resmi tujuan proyek, arsitektur, pencapaian implement
 - [x] **Validasi Voucher Ketat & Pengaturan Batas Penggunaan di Admin**:
   - Kode voucher tidak terdaftar ditolak dengan status `invalid` (`"Kode voucher ... tidak valid atau tidak terdaftar."`) — menghapus pesan `"dicatat & Cek Admin"`.
   - Admin dapat mengatur kuota pemakaian tiap voucher: **1 Kali Pakai (`once`)**, **Maksimal N Kali (`limited`)**, atau **Tak Terbatas (`unlimited`)** lengkap dengan pelacakan penggunaan per pelanggan.
-- [x] **Perbaikan Downloader Sosmed + Kelengkapan Dual MP4 & MP3**:
-  - Deteksi dini tautan YouTube terpotong (`parseYouTubeVideoId`), normalisasi penuh payload **Tioo `/ttdl` (`video[]` & `audio[]`)**, serta penggabungan paralel multi-provider agar **Video MP4 & Audio MP3 muncul lengkap bersamaan** (bukan hanya salah satu) + dukungan Foto HD, Carousel Multi-Slide, Story IG/TikTok/FB, dan Salin Caption 1-klik.
+- [x] **Perbaikan Downloader Sosmed + Kelengkapan Dual MP4 & Audio (MP3/M4A/WAV) (v22)**:
+  - Deteksi dini tautan YouTube terpotong (`parseYouTubeVideoId`), normalisasi penuh payload **Tioo `/ttdl` (`video[]` & `audio[]`)**, **failover paralel 4 node Tioo (`backend1..4.tioo.eu.org`)**, **Wave 2 audio retry** khusus YouTube, dekode URI ganda pada parameter MIME URL proxy (`audio/mp4` -> `.m4a`), serta fallback otomatis ekstraksi trek audio `.wav` client-side (`AudioContext`) bila stream audio terpisah gagal/diblokir sehingga **Video MP4 & Audio Musik tetap muncul lengkap bersamaan** + dukungan Foto HD, Carousel Multi-Slide, Story IG/TikTok/FB, dan Salin Caption 1-klik.
 - [x] **Bar Progres Konversi & Download Real-Time di Downloader**:
   - Menampilkan **Progres Pengambilan/Konversi** (`#dl-conv-progress-card`: menganalisis -> mengambil -> mengonversi -> siap) serta **Progres Streaming Download** (`#dl-save-progress-card`: MB terunduh / total MB & persentase `%` baik single file maupun batch multi-foto).
 

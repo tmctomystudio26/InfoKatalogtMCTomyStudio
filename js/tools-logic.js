@@ -1112,10 +1112,20 @@ export function isBlockedRedirectDownloadUrl(rawUrl) {
 }
 
 function inferAudioExtFromUrl(url, fallback = 'mp3') {
-  const raw = String(url || '');
-  if (/mime=audio(?:%2F|\/)webm|\.webm(\?|$)/i.test(raw)) return 'webm';
-  if (/mime=audio(?:%2F|\/)mp4|\.m4a(\?|$)/i.test(raw)) return 'm4a';
-  if (/\.ogg(\?|$)/i.test(raw)) return 'ogg';
+  let raw = String(url || '');
+  try {
+    raw = decodeURIComponent(decodeURIComponent(raw));
+  } catch {
+    try {
+      raw = decodeURIComponent(raw);
+    } catch {
+      // keep raw string
+    }
+  }
+  if (/mime=audio\/webm|\.webm(\?|$)/i.test(raw)) return 'webm';
+  if (/mime=audio\/mp4|\.m4a(\?|$)/i.test(raw)) return 'm4a';
+  if (/mime=audio\/ogg|\.ogg(\?|$)/i.test(raw)) return 'ogg';
+  if (/\.mp3(\?|$)/i.test(raw)) return 'mp3';
   return fallback;
 }
 
@@ -1558,8 +1568,13 @@ export function normalizeDownloaderResult(raw, platform, sourceUrl = '') {
     }
     if (raw.tioo?.mp3 && !isBlockedRedirectDownloadUrl(raw.tioo.mp3)) {
       const ext = inferAudioExtFromUrl(raw.tioo.mp3, 'mp3');
+      const hasAudioAlready = links.some((l) => l.isAudio);
       pushUniqueLink({
-        label: links.some((l) => l.isAudio) ? `Audio YouTube Alternatif (${ext.toUpperCase()})` : `Musik / Audio YouTube (${ext.toUpperCase()})`,
+        label: hasAudioAlready
+          ? `Audio YouTube Alternatif (${ext.toUpperCase()})`
+          : ext === 'mp3'
+          ? 'Musik / Audio YouTube (MP3)'
+          : `Musik / Audio YouTube (MP3 / ${ext.toUpperCase()})`,
         quality: ext.toUpperCase(),
         ext,
         url: String(raw.tioo.mp3),
