@@ -1,10 +1,10 @@
-import { createToolsHubController } from './tools-ui.js?v=23';
-import { initMusicPlayer } from './music.js?v=23';
-import { loadCatalogData } from './data.js?v=23';
-import { normalizeBrandConfig } from './store.js?v=23';
+import { createToolsHubController } from './tools-ui.js?v=24';
+import { initMusicPlayer } from './music.js?v=24';
+import { loadCatalogData } from './data.js?v=24';
+import { normalizeBrandConfig } from './store.js?v=24';
 
 const THEME_STORAGE_KEY = 'manifestudio_theme_v1';
-const VALID_TABS = new Set(['prayer', 'weather', 'worldclock', 'speedtest', 'downloader', 'compressor']);
+const VALID_TABS = new Set(['prayer', 'weather', 'worldclock', 'speedtest', 'downloader', 'compressor', 'music']);
 
 const TAB_META = {
   prayer: {
@@ -30,6 +30,10 @@ const TAB_META = {
   compressor: {
     title: 'Kompres Foto & Video HD (Anti-Pecah Sosmed)',
     subtitle: 'Optimalkan ukuran & bitstream tanpa mengurangi kualitas sedikitpun agar unggahan TikTok, IG, & WA tetap jernih.',
+  },
+  music: {
+    title: 'YT Music Player — Viral Indonesia',
+    subtitle: 'Pemutar YT Music API bebas iklan dengan daftar putar acak otomatis lagu Indonesia viral, pencarian lengkap, & sinkron dengan ikon mengambang.',
   },
 };
 

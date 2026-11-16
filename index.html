@@ -88,11 +88,11 @@ Dilengkapi Jadwal Sholat, Prakiraan Cuaca, Jam Dunia, Speedtest, Social Media Do
     />
 
     <!-- Styles -->
-    <link rel="stylesheet" href="./css/tokens.css?v=23" />
-    <link rel="stylesheet" href="./css/styles.css?v=23" />
+    <link rel="stylesheet" href="./css/tokens.css?v=24" />
+    <link rel="stylesheet" href="./css/styles.css?v=24" />
     <script>
       (function () {
-        var CURRENT_CACHE = 'manifestudio-cache-v23';
+        var CURRENT_CACHE = 'manifestudio-cache-v24';
         if ('caches' in window) {
           caches.keys().then(function (keys) {
             keys.forEach(function (k) {
@@ -101,7 +101,7 @@ Dilengkapi Jadwal Sholat, Prakiraan Cuaca, Jam Dunia, Speedtest, Social Media Do
           });
         }
         if ('serviceWorker' in navigator) {
-          navigator.serviceWorker.register('./sw.js?v=23').then(function (reg) {
+          navigator.serviceWorker.register('./sw.js?v=24').then(function (reg) {
             reg.update();
           }).catch(function () {});
         }
@@ -146,6 +146,7 @@ Dilengkapi Jadwal Sholat, Prakiraan Cuaca, Jam Dunia, Speedtest, Social Media Do
           <a href="./tools.html?tab=speedtest" class="header-nav-link">Speedtest</a>
           <a href="./tools.html?tab=downloader" class="header-nav-link">Downloader</a>
           <a href="./tools.html?tab=compressor" class="header-nav-link">Kompresor HD</a>
+          <a href="./tools.html?tab=music" class="header-nav-link">Musik YT</a>
         </nav>
 
         <div class="header-actions">
@@ -380,7 +381,7 @@ Dilengkapi Jadwal Sholat, Prakiraan Cuaca, Jam Dunia, Speedtest, Social Media Do
           href="./tools.html"
           id="utilities-callout-card"
           class="utilities-callout-card"
-          aria-label="Buka Menu Utilitas: Jadwal Sholat, Cuaca, Jam Dunia, Speedtest, Downloader & Kompres Media HD"
+          aria-label="Buka Menu Utilitas: Jadwal Sholat, Cuaca, Jam Dunia, Speedtest, Downloader, Kompres Media HD & Musik YT"
         >
           <img
             src="./assets/icons/menu-utilitas.svg"
@@ -392,10 +393,10 @@ Dilengkapi Jadwal Sholat, Prakiraan Cuaca, Jam Dunia, Speedtest, Social Media Do
           <div class="utilities-callout-copy">
             <div class="utilities-callout-head">
               <strong class="utilities-callout-title">Menu Utilitas</strong>
-              <span class="utilities-callout-sub-tag">6 Fitur Gratis</span>
+              <span class="utilities-callout-sub-tag">7 Fitur Gratis</span>
             </div>
             <p class="utilities-callout-desc">
-              Jadwal Sholat, Cuaca, Jam Dunia 3D, Speedtest, Downloader &amp; Kompres HD
+              Jadwal Sholat, Cuaca, Jam Dunia 3D, Speedtest, Downloader, Kompres HD &amp; Musik YT
             </p>
           </div>
           <span class="utilities-callout-cta" aria-hidden="true">
@@ -508,6 +509,6 @@ Dilengkapi Jadwal Sholat, Prakiraan Cuaca, Jam Dunia, Speedtest, Social Media Do
     <div id="cart-drawer-root" class="drawer-root" hidden></div>
     <div id="toast-notification" class="toast-notification" role="status" aria-live="polite" hidden></div>
 
-    <script type="module" src="./js/app.js?v=23"></script>
+    <script type="module" src="./js/app.js?v=24"></script>
   </body>
 </html>

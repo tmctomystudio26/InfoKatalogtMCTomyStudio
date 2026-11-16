@@ -42,19 +42,20 @@ import {
 } from './store.js';
 import {
   MIN_FULL_TRACK_SECONDS,
-  buildMusicEmbedUrl,
   clampMusicFabPosition,
-  createDefaultMusicPrefs,
+  extractYouTubeVideoId,
   filterFullLengthTracks,
   formatAudioTime,
   getPopoverAnchorClasses,
-  getTopSearchKeywords,
   normalizeMusicMode,
-  pickWeightedRandomTrack,
+  normalizeRepeatMode,
+  normalizeYtMusicTrack,
+  parseDurationSeconds,
+  parseSavedVolume,
+  pickShuffledViralTrack,
   rankSearchResults,
-  recordMusicPreference,
   scoreSearchRelevance,
-  scoreTrackForUser,
+  shuffleTracksFisherYates,
 } from './music-logic.js';
 import {
   decryptVault,
@@ -570,70 +571,70 @@ test('catalog history records snapshots, summarizes diffs, and auto-prunes old l
   assert.equal(getProductCardTone(6), 0);
 });
 
-test('smart music algorithm weights frequently searched and played songs without repeating current track', () => {
-  let prefs = createDefaultMusicPrefs();
-  prefs = recordMusicPreference(prefs, { type: 'search', term: 'lofi anime' });
-  prefs = recordMusicPreference(prefs, { type: 'search', term: 'lofi' });
-
-  const tracks = [
-    { id: 't1', title: 'Heavy Metal', artist: 'RockBand', genre: 'Metal', streamUrl: 'https://x/1.mp3' },
-    { id: 't2', title: 'Tokyo LoFi Vibes', artist: 'Kitsune', genre: 'LoFi', streamUrl: 'https://x/2.mp3' },
-    { id: 't3', title: 'Chill Jazz', artist: 'BlueNote', genre: 'Jazz', streamUrl: 'https://x/3.mp3' },
+test('YT Music player picks purely shuffled tracks prioritizing Viral Indonesia without search-history bias', () => {
+  const mixedCatalog = [
+    normalizeYtMusicTrack({
+      videoId: 'En-EHqRk8yg',
+      title: 'Garam & Madu (Sakit Dadaku)',
+      artist: 'Tenxi - Topic',
+      duration: 185,
+      isIndonesianViral: true,
+    }),
+    normalizeYtMusicTrack({
+      videoId: 'hc-8aB0Dkkw',
+      title: 'Untungnya, Hidup Harus Tetap Berjalan',
+      artist: 'Bernadya - Topic',
+      duration: 183,
+      isIndonesianViral: true,
+    }),
+    normalizeYtMusicTrack({
+      videoId: 'Zq1Jg0H5fzc',
+      title: 'everything u are',
+      artist: 'Hindia - Topic',
+      duration: 237,
+      isIndonesianViral: true,
+    }),
+    normalizeYtMusicTrack({
+      videoId: 'dQw4w9WgXcQ',
+      title: 'Global Pop Song',
+      artist: 'Artist Global',
+      duration: 213,
+      isIndonesianViral: false,
+    }),
   ];
 
-  prefs = recordMusicPreference(prefs, { type: 'play', track: tracks[1] });
-  assert.equal(getTopSearchKeywords(prefs, 1)[0], 'lofi');
+  // Artist suffix "- Topic" is cleaned cleanly and IDs extracted properly
+  assert.equal(mixedCatalog[0].artist, 'Tenxi');
+  assert.equal(mixedCatalog[0].id, 'yt-En-EHqRk8yg');
 
-  const sMetal = scoreTrackForUser(tracks[0], prefs);
-  const sLofi = scoreTrackForUser(tracks[1], prefs);
-  assert.ok(sLofi > sMetal * 3);
+  // Even over multiple deterministic RNG slices, Indonesian Viral tracks are always prioritized over non-viral tracks
+  for (let i = 0; i < 6; i += 1) {
+    const pick = pickShuffledViralTrack(mixedCatalog, {
+      currentTrackId: 'yt-En-EHqRk8yg',
+      prioritizeIndonesianViral: true,
+      rng: () => i / 6,
+    });
+    assert.ok(pick);
+    assert.notEqual(pick.id, 'yt-En-EHqRk8yg');
+    assert.equal(pick.isIndonesianViral, true);
+  }
 
-  // When currentTrackId is t2, weighted picker avoids repeating t2
-  const nextPick = pickWeightedRandomTrack(tracks, prefs, 't2', () => 0.5);
-  assert.ok(nextPick);
-  assert.notEqual(nextPick.id, 't2');
+  // Recent track IDs are avoided while other viral tracks exist
+  const freshPick = pickShuffledViralTrack(mixedCatalog, {
+    currentTrackId: 'yt-En-EHqRk8yg',
+    recentTrackIds: ['yt-hc-8aB0Dkkw'],
+    prioritizeIndonesianViral: true,
+    rng: () => 0.1,
+  });
+  assert.equal(freshPick?.id, 'yt-Zq1Jg0H5fzc');
 
-  // With rng favoring dominant weighted pool when t2 is allowed, picks t2
-  const favPick = pickWeightedRandomTrack(tracks, prefs, 't1', () => 0.3);
-  assert.equal(favPick?.id, 't2');
-
+  // Uniform Fisher-Yates shuffle produces all unique elements without dropping any
+  const shuffled = shuffleTracksFisherYates(mixedCatalog, () => 0.35);
+  assert.equal(shuffled.length, mixedCatalog.length);
   assert.equal(formatAudioTime(125), '02:05');
 });
 
-test('music player prioritizes Indonesian viral 2026, DJ/cover remixes, and clamps draggable position + popover offset cleanly', () => {
-  const prefs = createDefaultMusicPrefs();
-  const viralIndo = {
-    id: 'indo-1',
-    title: 'Tabola Bale (DJ Remix)',
-    artist: 'Silet Open Up',
-    genre: 'Indo Viral',
-    isIndonesianViral: true,
-    streamUrl: 'https://x/indo.m4a',
-  };
-  const coverIndo = {
-    id: 'indo-2',
-    title: 'Garam & Madu (Acoustic Cover)',
-    artist: 'Naykilla',
-    genre: 'Pop Indo',
-    isIndonesianViral: false,
-    streamUrl: 'https://x/cover.m4a',
-  };
-  const plainGlobal = {
-    id: 'global-1',
-    title: 'Generic Ambient Loop',
-    artist: 'Unknown',
-    genre: 'Ambient',
-    isIndonesianViral: false,
-    streamUrl: 'https://x/global.mp3',
-  };
-
-  const sViral = scoreTrackForUser(viralIndo, prefs);
-  const sCover = scoreTrackForUser(coverIndo, prefs);
-  const sPlain = scoreTrackForUser(plainGlobal, prefs);
-  assert.ok(sViral > sCover);
-  assert.ok(sCover > sPlain);
-
-  // Out-of-bounds drag coordinates clamp strictly inside viewport margins
+test('music player clamps draggable FAB position & popover viewport offsets cleanly', () => {
   const clampedTopLeft = clampMusicFabPosition({
     x: -50,
     y: -25,
@@ -654,7 +655,6 @@ test('music player prioritizes Indonesian viral 2026, DJ/cover remixes, and clam
   });
   assert.deepEqual(clampedBottomRight, { x: 1386, y: 846 });
 
-  // Top-right corner anchors align-right + open-down, staying inside viewport
   const topRightAnchor = getPopoverAnchorClasses({
     x: 1386,
     y: 12,
@@ -664,9 +664,8 @@ test('music player prioritizes Indonesian viral 2026, DJ/cover remixes, and clam
   });
   assert.equal(topRightAnchor.horizontal, 'align-right');
   assert.equal(topRightAnchor.vertical, 'open-down');
-  assert.ok(1386 + topRightAnchor.offsetX + 320 <= 1440 - 16);
+  assert.ok(1386 + topRightAnchor.offsetX + 316 <= 1440 - 16);
 
-  // Middle of narrow 390px mobile viewport clamps popover offsetX so neither edge clips
   const mobileCenterAnchor = getPopoverAnchorClasses({
     x: 175,
     y: 700,
@@ -676,41 +675,37 @@ test('music player prioritizes Indonesian viral 2026, DJ/cover remixes, and clam
   });
   assert.equal(mobileCenterAnchor.vertical, 'open-up');
   const popLeft = 175 + mobileCenterAnchor.offsetX;
-  const popWidth = Math.min(320, 390 - 32);
+  const popWidth = Math.min(316, 390 - 32);
   assert.ok(popLeft >= 16);
   assert.ok(popLeft + popWidth <= 390 - 16);
 });
 
-test('music player enforces full-length tracks (>=75s) over 30s previews and builds SoundCloud/Spotify embeds', () => {
+test('YT Music normalizer extracts video IDs, parses MM:SS durations, and enforces full-length tracks (>=75s)', () => {
+  assert.equal(extractYouTubeVideoId('/watch?v=En-EHqRk8yg'), 'En-EHqRk8yg');
+  assert.equal(extractYouTubeVideoId('https://music.youtube.com/watch?v=mGVLxyJwDYk&si=xyz'), 'mGVLxyJwDYk');
+  assert.equal(extractYouTubeVideoId('https://youtu.be/Zq1Jg0H5fzc'), 'Zq1Jg0H5fzc');
+  assert.equal(parseDurationSeconds('03:45'), 225);
+  assert.equal(parseDurationSeconds('1:02:03'), 3723);
+
   const mixed = [
-    { id: 'short-30', title: 'Clip 30s', artist: 'Preview', duration: 30, streamUrl: 'https://x/30.mp3' },
-    { id: 'full-1', title: 'Garam & Madu Remix', artist: 'Tenxi', duration: 251, streamUrl: 'https://x/251.mp3' },
-    { id: 'full-2', title: 'Satu Bulan Full', artist: 'Bernadya', duration: 200, streamUrl: 'https://x/200.mp3' },
+    normalizeYtMusicTrack({ videoId: 'short000001', title: 'Clip 30s', artist: 'Preview', duration: 30 }),
+    normalizeYtMusicTrack({ videoId: 'En-EHqRk8yg', title: 'Garam & Madu', artist: 'Tenxi', duration: 185, isIndonesianViral: true }),
+    normalizeYtMusicTrack({ videoId: 'hc-8aB0Dkkw', title: 'Untungnya', artist: 'Bernadya', duration: 183, isIndonesianViral: true }),
   ];
 
   const fullOnly = filterFullLengthTracks(mixed, MIN_FULL_TRACK_SECONDS);
   assert.equal(fullOnly.length, 2);
-  assert.equal(fullOnly.some((t) => t.id === 'short-30'), false);
+  assert.equal(fullOnly.some((t) => t.videoId === 'short000001'), false);
 
   for (let i = 0; i < 6; i += 1) {
-    const pick = pickWeightedRandomTrack(mixed, createDefaultMusicPrefs(), null, () => i / 10);
-    assert.notEqual(pick?.id, 'short-30');
+    const pick = pickShuffledViralTrack(mixed, { rng: () => i / 10 });
+    assert.notEqual(pick?.videoId, 'short000001');
     assert.ok((pick?.duration || 0) >= MIN_FULL_TRACK_SECONDS);
   }
 
-  assert.equal(normalizeMusicMode('SOUNDCLOUD'), 'soundcloud');
-  assert.equal(normalizeMusicMode('spotify'), 'spotify');
-  assert.equal(normalizeMusicMode('unknown'), 'full-audio');
-
-  const scEmbed = buildMusicEmbedUrl('soundcloud', 'https://api.soundcloud.com/users/1340727951');
-  assert.equal(scEmbed.startsWith('https://w.soundcloud.com/player/?'), true);
-  assert.equal(scEmbed.includes('1340727951'), true);
-
-  const spEmbed = buildMusicEmbedUrl('spotify', '37i9dQZEVXbObFQZ3JLcXt');
-  assert.equal(
-    spEmbed,
-    'https://open.spotify.com/embed/playlist/37i9dQZEVXbObFQZ3JLcXt?utm_source=generator&theme=0'
-  );
+  assert.equal(normalizeMusicMode('unknown'), 'yt-music');
+  assert.equal(normalizeRepeatMode('ONE'), 'one');
+  assert.equal(normalizeRepeatMode('invalid'), 'all');
 });
 
 test('social video downloader detects TikTok/YouTube/Instagram/Facebook URLs and normalizes no-watermark links', () => {
@@ -1522,6 +1517,22 @@ test('downloader v23 normalizes Siputzx ummy YouTube (dual MP4+M4A via CORS prox
     },
   ]);
   assert.equal(migratedBanners[0].kicker, 'Menu Utilitas · Prakiraan Cuaca');
+});
+
+test('parseSavedVolume handles null storage, empty strings, and out-of-range bounds safely', () => {
+  assert.equal(parseSavedVolume(null), 0.72);
+  assert.equal(parseSavedVolume(undefined), 0.72);
+  assert.equal(parseSavedVolume(''), 0.72);
+  assert.equal(parseSavedVolume('   '), 0.72);
+  assert.equal(parseSavedVolume('invalid'), 0.72);
+  assert.equal(parseSavedVolume(-0.5), 0.72);
+  assert.equal(parseSavedVolume(1.5), 0.72);
+  assert.equal(parseSavedVolume('0'), 0);
+  assert.equal(parseSavedVolume(0), 0);
+  assert.equal(parseSavedVolume('0.5'), 0.5);
+  assert.equal(parseSavedVolume(0.85), 0.85);
+  assert.equal(parseSavedVolume('1'), 1);
+  assert.equal(parseSavedVolume(null, 0.5), 0.5);
 });
 
 

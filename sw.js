@@ -1,4 +1,4 @@
-const CACHE_NAME = 'manifestudio-cache-v23';
+const CACHE_NAME = 'manifestudio-cache-v24';
 
 const PRECACHE_ASSETS = [
   './',
@@ -48,6 +48,7 @@ const PRECACHE_ASSETS = [
   './assets/icons/tool-speed.svg',
   './assets/icons/tool-downloader.svg',
   './assets/icons/tool-compressor.svg',
+  './assets/icons/tool-music.svg',
   './assets/icons/icon-192.png',
   './assets/icons/icon-512.png',
   './assets/icons/icon-maskable-512.png',

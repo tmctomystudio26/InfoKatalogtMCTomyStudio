@@ -2,116 +2,34 @@ import {
   CATALOG_PREVIEW_STORAGE_KEY,
   getDefaultCatalogSnapshot,
   loadCatalogData,
-} from './data.js?v=23';
+} from './data.js';
 import {
-  MAX_HISTORY_LOGS,
-  appendCatalogHistory,
-  applyOpenGraphToHtml,
-  collectAllActiveUploadLogoPaths,
-  collectOrphanedUploadLogos,
-  deleteBannerFromCatalog,
-  deleteCategoryFromCatalog,
-  deleteFaqFromCatalog,
-  deleteSocialFromCatalog,
-  describeCatalogChanges,
-  extractManagedUploadLogoPath,
   formatRupiah,
-  getProductCardTone,
-  moveBannerInCatalog,
-  moveProductInCatalog,
-  normalizeBanners,
-  normalizeBrandConfig,
-  normalizeOpenGraphConfig,
-  normalizeVoucherUsageConfig,
-  pruneCatalogHistory,
-  reorderProductToIndex,
   slugifyId,
-  summarizeCatalogDiff,
-  syncPaymentOptionsWithBrand,
   toggleProductStockInCatalog,
-  upsertBannerInCatalog,
-  upsertCategoryInCatalog,
-  upsertFaqInCatalog,
   upsertProductInCatalog,
-  upsertSocialInCatalog,
-} from './store.js?v=23';
+} from './store.js';
 import {
   decryptVault,
   encryptVault,
   verifyGitHubTokenAccess,
-} from './vault.js?v=23';
+} from './vault.js';
 
 const THEME_STORAGE_KEY = 'manifestudio_theme_v1';
 const ADMIN_VAULT_STORAGE_KEY = 'manifestudio_admin_vault_v1';
 const LEGACY_GH_STORAGE_KEY = 'manifestudio_admin_gh_v1';
-const ADMIN_LOGO_OPS_KEY = 'manifestudio_admin_logo_ops_v1';
-const ADMIN_HISTORY_STORAGE_KEY = 'manifestudio_admin_history_v1';
-
-const LOGO_PRESETS = [
-  { value: './assets/logos/custom-request.svg', label: 'Ikon Umum / Custom' },
-  { value: './assets/logos/netflix.svg', label: 'Netflix' },
-  { value: './assets/logos/canva.svg', label: 'Canva' },
-  { value: './assets/logos/youtube.svg', label: 'YouTube' },
-  { value: './assets/logos/spotify.svg', label: 'Spotify' },
-  { value: './assets/logos/viu.svg', label: 'Viu' },
-  { value: './assets/logos/vidio.svg', label: 'Vidio' },
-  { value: './assets/logos/alight-motion.svg', label: 'Alight Motion' },
-  { value: './assets/logos/wetv.svg', label: 'WeTV' },
-  { value: './assets/logos/prime-video.svg', label: 'Prime Video' },
-];
-
-const SOCIAL_LOGO_PRESETS = [
-  { value: './assets/icons/social-whatsapp.svg', label: 'WhatsApp' },
-  { value: './assets/icons/social-instagram.svg', label: 'Instagram' },
-  { value: './assets/icons/social-tiktok.svg', label: 'TikTok' },
-  { value: './assets/icons/social-telegram.svg', label: 'Telegram' },
-  { value: './assets/icons/social-globe.svg', label: 'Website / Link Umum' },
-];
-
-const BANNER_IMAGE_PRESETS = [
-  { value: './assets/hero-banner.jpg', label: 'Banner Katalog Default' },
-  { value: './assets/banner-prayer.jpg', label: 'Banner Jadwal Sholat' },
-  { value: './assets/banner-weather.jpg', label: 'Banner Prakiraan Cuaca' },
-  { value: './assets/banner-worldclock.jpg', label: 'Banner Jam Dunia' },
-  { value: './assets/banner-speedtest.jpg', label: 'Banner Speedtest' },
-  { value: '', label: 'Tanpa Gambar (Hanya Gradien Warna)' },
-];
-
-const BANNER_SCRIM_OPTIONS = [
-  { value: '', label: 'Biru Gelap Standar' },
-  { value: 'is-emerald', label: 'Hijau Emerald' },
-  { value: 'is-sky', label: 'Biru Langit Cerah' },
-  { value: 'is-indigo', label: 'Indigo / Ungu' },
-  { value: 'is-cyan', label: 'Cyan / Tosca' },
-  { value: 'is-violet', label: 'Violet / Magenta' },
-];
 
 const adminState = {
   theme: 'dark',
   unlocked: false,
   confirmResetVault: false,
   catalog: getDefaultCatalogSnapshot(),
-  baseCatalog: null,
-  lastPublishedProducts: [],
   source: 'fallback',
   activeTab: 'products',
   searchQuery: '',
   dirty: false,
   confirmDeleteProductId: null,
-  confirmDeleteCategoryId: null,
-  confirmDeleteBannerId: null,
   remoteSha: null,
-  logoEditMode: {}, // { [prodId]: 'upload' | 'link' }
-  pendingUploads: {}, // { [key]: { targetPath, base64Content, previewDataUrl, fileName } }
-  deletedUploadPaths: [], // managed repo paths queued for deletion on publish
-  newProdLogoMode: 'upload',
-  newProdPendingUpload: null,
-  brandLogoMode: 'upload',
-  newSocialPendingUpload: null,
-  newBannerPendingUpload: null,
-  history: [],
-  historySha: null,
-  isPublishing: false,
   ghConfig: {
     owner: '',
     repo: '',
@@ -146,225 +64,6 @@ function decodeBase64Utf8(base64Text) {
     bytes[i] = binary.charCodeAt(i);
   }
   return new TextDecoder().decode(bytes);
-}
-
-function encodeRepoPathSegments(filePath) {
-  return String(filePath || '')
-    .split('/')
-    .filter(Boolean)
-    .map((seg) => encodeURIComponent(seg))
-    .join('/');
-}
-
-function extractPublishedLogoEntries(catalog) {
-  const items = (catalog?.products || []).map((p) => ({
-    id: p.id,
-    logo: p.logo,
-  }));
-  if (catalog?.brand?.logo) {
-    items.push({ id: '__brand_logo__', logo: catalog.brand.logo });
-  }
-  if (catalog?.brand?.openGraph?.image) {
-    items.push({ id: '__og_image__', logo: catalog.brand.openGraph.image });
-  }
-  for (const soc of catalog?.brand?.socials || []) {
-    if (soc?.logo) {
-      items.push({ id: `__social__${soc.id}`, logo: soc.logo });
-    }
-  }
-  for (const ban of catalog?.banners || []) {
-    if (ban?.image) {
-      items.push({ id: `__banner__${ban.id}`, logo: ban.image });
-    }
-  }
-  return items;
-}
-
-function persistPendingLogoOps() {
-  try {
-    const payload = {
-      deletedUploadPaths: adminState.deletedUploadPaths,
-      lastPublishedProducts: adminState.lastPublishedProducts.map((p) => ({
-        id: p.id,
-        logo: p.logo,
-      })),
-    };
-    localStorage.setItem(ADMIN_LOGO_OPS_KEY, JSON.stringify(payload));
-  } catch {
-    // Ignore quota limits
-  }
-}
-
-function restorePendingLogoOps() {
-  try {
-    const raw = localStorage.getItem(ADMIN_LOGO_OPS_KEY);
-    if (!raw) return;
-    const parsed = JSON.parse(raw);
-    if (Array.isArray(parsed?.deletedUploadPaths)) {
-      adminState.deletedUploadPaths = [...new Set(parsed.deletedUploadPaths.filter(Boolean))];
-    }
-    if (Array.isArray(parsed?.lastPublishedProducts) && parsed.lastPublishedProducts.length > 0) {
-      adminState.lastPublishedProducts = parsed.lastPublishedProducts;
-    }
-  } catch {
-    // Ignore
-  }
-}
-
-function clearPendingLogoOps() {
-  adminState.pendingUploads = {};
-  adminState.deletedUploadPaths = [];
-  try {
-    localStorage.removeItem(ADMIN_LOGO_OPS_KEY);
-  } catch {
-    // Ignore
-  }
-}
-
-function queueManagedLogoForDeletion(logoUrl) {
-  const managedPath = extractManagedUploadLogoPath(logoUrl);
-  if (!managedPath) return;
-  if (!adminState.deletedUploadPaths.includes(managedPath)) {
-    adminState.deletedUploadPaths.push(managedPath);
-    persistPendingLogoOps();
-  }
-}
-
-async function compressLogoFile(file) {
-  if (!file || !String(file.type || '').startsWith('image/')) {
-    throw new Error('Pilih file gambar yang valid (PNG, JPG, WebP, atau SVG).');
-  }
-
-  if (file.type === 'image/svg+xml') {
-    const text = await file.text();
-    const cleanedSvg = text.replace(/<script[\s\S]*?>[\s\S]*?<\/script>/gi, '');
-    const base64Content = encodeBase64Utf8(cleanedSvg);
-    return {
-      ext: 'svg',
-      base64Content,
-      previewDataUrl: `data:image/svg+xml;base64,${base64Content}`,
-    };
-  }
-
-  const rawDataUrl = await new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(String(reader.result || ''));
-    reader.onerror = () => reject(new Error('Gagal membaca file gambar.'));
-    reader.readAsDataURL(file);
-  });
-
-  try {
-    const img = await new Promise((resolve, reject) => {
-      const image = new Image();
-      image.onload = () => resolve(image);
-      image.onerror = () => reject(new Error('Format gambar tidak dapat dirender browser.'));
-      image.src = rawDataUrl;
-    });
-
-    const maxSide = 256;
-    const width = Math.max(1, img.naturalWidth || img.width || 256);
-    const height = Math.max(1, img.naturalHeight || img.height || 256);
-    const scale = Math.min(1, maxSide / Math.max(width, height));
-    const targetW = Math.max(1, Math.round(width * scale));
-    const targetH = Math.max(1, Math.round(height * scale));
-
-    const canvas = document.createElement('canvas');
-    canvas.width = targetW;
-    canvas.height = targetH;
-    const ctx = canvas.getContext('2d');
-    if (ctx) {
-      ctx.clearRect(0, 0, targetW, targetH);
-      ctx.drawImage(img, 0, 0, targetW, targetH);
-      const pngDataUrl = canvas.toDataURL('image/png');
-      const base64Content = pngDataUrl.split(',')[1] || '';
-      if (base64Content) {
-        return {
-          ext: 'png',
-          base64Content,
-          previewDataUrl: pngDataUrl,
-        };
-      }
-    }
-  } catch {
-    // Fallback to raw data URL if canvas resize unavailable
-  }
-
-  const commaIdx = rawDataUrl.indexOf(',');
-  const base64Content = commaIdx >= 0 ? rawDataUrl.slice(commaIdx + 1) : '';
-  const ext = file.type.includes('jpeg') || file.type.includes('jpg') ? 'jpg' : file.type.includes('webp') ? 'webp' : 'png';
-  return {
-    ext,
-    base64Content,
-    previewDataUrl: rawDataUrl,
-  };
-}
-
-async function compressWideImageFile(file, { maxW = 1280, maxH = 720, quality = 0.9 } = {}) {
-  if (!file || !String(file.type || '').startsWith('image/')) {
-    throw new Error('Pilih file gambar yang valid (JPG, PNG, WebP, atau SVG).');
-  }
-
-  if (file.type === 'image/svg+xml') {
-    const text = await file.text();
-    const cleanedSvg = text.replace(/<script[\s\S]*?>[\s\S]*?<\/script>/gi, '');
-    const base64Content = encodeBase64Utf8(cleanedSvg);
-    return {
-      ext: 'svg',
-      base64Content,
-      previewDataUrl: `data:image/svg+xml;base64,${base64Content}`,
-    };
-  }
-
-  const rawDataUrl = await new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(String(reader.result || ''));
-    reader.onerror = () => reject(new Error('Gagal membaca file gambar.'));
-    reader.readAsDataURL(file);
-  });
-
-  try {
-    const img = await new Promise((resolve, reject) => {
-      const image = new Image();
-      image.onload = () => resolve(image);
-      image.onerror = () => reject(new Error('Format gambar tidak dapat dirender browser.'));
-      image.src = rawDataUrl;
-    });
-
-    const width = Math.max(1, img.naturalWidth || img.width || maxW);
-    const height = Math.max(1, img.naturalHeight || img.height || maxH);
-    const scale = Math.min(1, maxW / width, maxH / height);
-    const targetW = Math.max(1, Math.round(width * scale));
-    const targetH = Math.max(1, Math.round(height * scale));
-
-    const canvas = document.createElement('canvas');
-    canvas.width = targetW;
-    canvas.height = targetH;
-    const ctx = canvas.getContext('2d');
-    if (ctx) {
-      ctx.clearRect(0, 0, targetW, targetH);
-      ctx.drawImage(img, 0, 0, targetW, targetH);
-      const jpgDataUrl = canvas.toDataURL('image/jpeg', quality);
-      const base64Content = jpgDataUrl.split(',')[1] || '';
-      if (base64Content) {
-        return {
-          ext: 'jpg',
-          base64Content,
-          previewDataUrl: jpgDataUrl,
-        };
-      }
-    }
-  } catch {
-    // Fallback
-  }
-
-  const commaIdx = rawDataUrl.indexOf(',');
-  const base64Content = commaIdx >= 0 ? rawDataUrl.slice(commaIdx + 1) : '';
-  const ext = file.type.includes('png') ? 'png' : file.type.includes('webp') ? 'webp' : 'jpg';
-  return {
-    ext,
-    base64Content,
-    previewDataUrl: rawDataUrl,
-  };
 }
 
 let toastTimer = null;
@@ -426,6 +125,7 @@ function applyTheme() {
 
 function getStoredVaultRecord() {
   try {
+    // Purge any legacy unencrypted config immediately if present
     localStorage.removeItem(LEGACY_GH_STORAGE_KEY);
     const raw = localStorage.getItem(ADMIN_VAULT_STORAGE_KEY);
     if (!raw) return null;
@@ -462,6 +162,7 @@ function renderGateScreen() {
   dashboard.hidden = true;
   if (lockBtn) lockBtn.hidden = true;
 
+  // Clear rendered sensitive lists when locked
   const prodList = document.getElementById('admin-product-list');
   const voucherList = document.getElementById('admin-voucher-list');
   if (prodList) prodList.innerHTML = '';
@@ -493,39 +194,13 @@ async function openUnlockedDashboard() {
   adminState.unlocked = true;
   renderGateScreen();
 
-  restorePendingLogoOps();
-  loadLocalHistory();
   const loaded = await loadCatalogData({ allowLocalPreview: true });
   adminState.catalog = loaded.data;
-  adminState.catalog.brand = normalizeBrandConfig(adminState.catalog.brand || {});
-  adminState.catalog.banners = normalizeBanners(adminState.catalog.banners);
-  adminState.catalog.paymentOptions = syncPaymentOptionsWithBrand(
-    adminState.catalog.paymentOptions,
-    adminState.catalog.brand
-  );
   adminState.source = loaded.source;
-
-  const baseLoaded = await loadCatalogData({ allowLocalPreview: false });
-  baseLoaded.data.brand = normalizeBrandConfig(baseLoaded.data.brand || {});
-  baseLoaded.data.banners = normalizeBanners(baseLoaded.data.banners);
-  adminState.baseCatalog = structuredClone(baseLoaded.data);
-
-  if (loaded.source !== 'preview' || adminState.lastPublishedProducts.length === 0) {
-    adminState.lastPublishedProducts = extractPublishedLogoEntries(baseLoaded.data);
-  }
-
   updateSourceBadge();
   renderTabs();
-  renderCategoryOptions();
-  renderCategoryList();
-  renderBannerList();
-  renderBrandSettings();
-  renderFaqList();
   renderProductList();
   renderVoucherList();
-  renderHistoryList();
-  syncNewProductLogoUi();
-  pullHistoryFromGitHub().catch(() => {});
 }
 
 function updateSourceBadge() {
@@ -567,878 +242,12 @@ function renderTabs() {
   const panelMap = {
     products: 'panel-products',
     add: 'panel-add',
-    categories: 'panel-categories',
-    banners: 'panel-banners',
-    brand: 'panel-brand',
-    faq: 'panel-faq',
     vouchers: 'panel-vouchers',
-    history: 'panel-history',
   };
   Object.entries(panelMap).forEach(([tab, id]) => {
     const panel = document.getElementById(id);
     if (panel) panel.hidden = tab !== adminState.activeTab;
   });
-}
-
-function getAvailableProductCategories() {
-  const cats = Array.isArray(adminState.catalog?.categories)
-    ? adminState.catalog.categories.filter((c) => c && c.id && c.id !== 'all')
-    : [];
-  if (cats.length > 0) return cats;
-  return [
-    { id: 'streaming', label: 'Streaming Film' },
-    { id: 'music', label: 'Musik & Hiburan' },
-    { id: 'creative', label: 'Desain & Editing' },
-    { id: 'custom', label: 'Request & Custom' },
-  ];
-}
-
-function renderCategoryOptions() {
-  const select = document.getElementById('new-prod-category');
-  if (!select) return;
-  const currentVal = select.value;
-  const cats = getAvailableProductCategories();
-  select.innerHTML = cats
-    .map(
-      (cat) =>
-        `<option value="${escapeHtml(cat.id)}" ${cat.id === currentVal ? 'selected' : ''}>${escapeHtml(cat.label)}</option>`
-    )
-    .join('');
-}
-
-function renderCategoryList() {
-  if (!adminState.unlocked) return;
-  const container = document.getElementById('admin-category-list');
-  if (!container) return;
-
-  const categories = Array.isArray(adminState.catalog?.categories)
-    ? adminState.catalog.categories
-    : [];
-  const products = Array.isArray(adminState.catalog?.products)
-    ? adminState.catalog.products
-    : [];
-
-  if (categories.length === 0) {
-    container.innerHTML = `<p class="admin-subtitle">Belum ada kategori layanan.</p>`;
-    return;
-  }
-
-  container.innerHTML = categories
-    .map((cat) => {
-      const isAll = cat.id === 'all';
-      const usedCount = isAll
-        ? products.length
-        : products.filter((p) => p.category === cat.id).length;
-      const isConfirming = adminState.confirmDeleteCategoryId === cat.id;
-
-      return `
-        <div class="admin-category-row" data-category-row="${escapeHtml(cat.id)}">
-          <div class="admin-category-fields">
-            <div class="form-field">
-              <label for="cat-label-${escapeHtml(cat.id)}">
-                Nama Kategori ${isAll ? '(Tab Semua)' : ''}
-              </label>
-              <input
-                type="text"
-                id="cat-label-${escapeHtml(cat.id)}"
-                data-edit-cat-label="${escapeHtml(cat.id)}"
-                value="${escapeHtml(cat.label || '')}"
-              />
-            </div>
-            <div class="admin-category-meta">
-              <span class="admin-badge">ID: ${escapeHtml(cat.id)}</span>
-              <span class="admin-prod-meta">${usedCount} produk</span>
-            </div>
-          </div>
-          <div class="admin-category-actions">
-            ${
-              isAll
-                ? '<span class="admin-prod-meta">Tab Utama</span>'
-                : `<button
-                    type="button"
-                    class="btn btn-ghost btn-sm ${isConfirming ? 'is-danger-confirm' : ''}"
-                    data-delete-cat="${escapeHtml(cat.id)}"
-                  >
-                    ${isConfirming ? 'Konfirmasi Hapus' : 'Hapus Kategori'}
-                  </button>`
-            }
-          </div>
-        </div>
-      `;
-    })
-    .join('');
-
-  container.querySelectorAll('[data-edit-cat-label]').forEach((input) => {
-    input.addEventListener('input', (e) => {
-      const catId = input.getAttribute('data-edit-cat-label');
-      const target = (adminState.catalog.categories || []).find((c) => c.id === catId);
-      if (!target) return;
-      const nextVal = e.target.value.trim();
-      if (!nextVal) return;
-      target.label = nextVal;
-      markDirty();
-      renderCategoryOptions();
-    });
-  });
-
-  container.querySelectorAll('[data-delete-cat]').forEach((btn) => {
-    btn.addEventListener('click', () => {
-      const catId = btn.getAttribute('data-delete-cat');
-      if (!catId || catId === 'all') return;
-      const editableCats = getAvailableProductCategories();
-      if (editableCats.length <= 1) {
-        showToast('Minimal harus ada 1 kategori layanan aktif.');
-        return;
-      }
-      if (adminState.confirmDeleteCategoryId !== catId) {
-        adminState.confirmDeleteCategoryId = catId;
-        renderCategoryList();
-        return;
-      }
-      const deletedCat = (adminState.catalog.categories || []).find((c) => c.id === catId);
-      adminState.catalog = deleteCategoryFromCatalog(adminState.catalog, catId);
-      adminState.confirmDeleteCategoryId = null;
-      markDirty();
-      renderCategoryOptions();
-      renderCategoryList();
-      renderProductList();
-      showToast(`Kategori "${deletedCat?.label || catId}" dihapus.`);
-    });
-  });
-}
-
-function renderBannerList() {
-  if (!adminState.unlocked) return;
-  const container = document.getElementById('admin-banner-list');
-  if (!container) return;
-
-  adminState.catalog.banners = normalizeBanners(adminState.catalog.banners);
-  const banners = adminState.catalog.banners;
-
-  if (banners.length === 0) {
-    container.innerHTML = `<p class="admin-subtitle">Belum ada slide banner terdaftar.</p>`;
-    return;
-  }
-
-  container.innerHTML = banners
-    .map((ban, idx) => {
-      const isFirst = idx === 0;
-      const isLast = idx === banners.length - 1;
-      const pending = adminState.pendingUploads[`__banner__${ban.id}`];
-      const isConfirming = adminState.confirmDeleteBannerId === ban.id;
-
-      const presetOpts = BANNER_IMAGE_PRESETS.map(
-        (preset) =>
-          `<option value="${escapeHtml(preset.value)}" ${ban.image === preset.value ? 'selected' : ''}>${escapeHtml(preset.label)}</option>`
-      ).join('');
-
-      const scrimOpts = BANNER_SCRIM_OPTIONS.map(
-        (opt) =>
-          `<option value="${escapeHtml(opt.value)}" ${(ban.scrim || '') === opt.value ? 'selected' : ''}>${escapeHtml(opt.label)}</option>`
-      ).join('');
-
-      return `
-        <article class="admin-banner-card" data-banner-card="${escapeHtml(ban.id)}">
-          <div class="admin-banner-card-head">
-            <div class="admin-banner-preview-mini ${escapeHtml(ban.scrim || '')}">
-              ${
-                ban.image
-                  ? `<img src="${escapeHtml(ban.image)}" alt="" class="admin-banner-preview-img" data-banner-thumb="${escapeHtml(ban.id)}" />`
-                  : `<div class="admin-banner-preview-grad" data-banner-thumb-grad="${escapeHtml(ban.id)}"></div>`
-              }
-              <div class="admin-banner-preview-overlay">
-                <span class="admin-order-badge mono-num">Slide #${idx + 1}</span>
-                <strong data-banner-title-preview="${escapeHtml(ban.id)}">${escapeHtml(ban.heading || 'Slide Banner')}</strong>
-                <small data-banner-kicker-preview="${escapeHtml(ban.id)}">${escapeHtml(ban.kicker || '')}</small>
-              </div>
-            </div>
-
-            <div class="admin-order-controls">
-              <button
-                type="button"
-                class="btn btn-secondary btn-sm admin-order-btn"
-                data-move-banner="${escapeHtml(ban.id)}"
-                data-move-dir="up"
-                ${isFirst ? 'disabled' : ''}
-              >
-                ↑ Naik
-              </button>
-              <button
-                type="button"
-                class="btn btn-secondary btn-sm admin-order-btn"
-                data-move-banner="${escapeHtml(ban.id)}"
-                data-move-dir="down"
-                ${isLast ? 'disabled' : ''}
-              >
-                ↓ Turun
-              </button>
-              <button
-                type="button"
-                class="btn btn-ghost btn-sm ${isConfirming ? 'is-danger-confirm' : ''}"
-                data-delete-banner="${escapeHtml(ban.id)}"
-                ${banners.length <= 1 ? 'disabled' : ''}
-              >
-                ${isConfirming ? 'Konfirmasi Hapus' : 'Hapus Slide'}
-              </button>
-            </div>
-          </div>
-
-          <div class="admin-form-grid">
-            <div class="form-field">
-              <label for="ban-kicker-${escapeHtml(ban.id)}">Label Kicker (Teks Kecil Atas)</label>
-              <input
-                type="text"
-                id="ban-kicker-${escapeHtml(ban.id)}"
-                data-ban-id="${escapeHtml(ban.id)}"
-                data-ban-field="kicker"
-                value="${escapeHtml(ban.kicker || '')}"
-              />
-            </div>
-            <div class="form-field">
-              <label for="ban-heading-${escapeHtml(ban.id)}">Judul Utama Banner</label>
-              <input
-                type="text"
-                id="ban-heading-${escapeHtml(ban.id)}"
-                data-ban-id="${escapeHtml(ban.id)}"
-                data-ban-field="heading"
-                value="${escapeHtml(ban.heading || '')}"
-              />
-            </div>
-            <div class="form-field admin-sum-field">
-              <label for="ban-sub-${escapeHtml(ban.id)}">Deskripsi / Kalimat Penjelas Banner</label>
-              <input
-                type="text"
-                id="ban-sub-${escapeHtml(ban.id)}"
-                data-ban-id="${escapeHtml(ban.id)}"
-                data-ban-field="sub"
-                value="${escapeHtml(ban.sub || '')}"
-              />
-            </div>
-            <div class="form-field">
-              <label for="ban-cta-${escapeHtml(ban.id)}">Teks Tombol (CTA)</label>
-              <input
-                type="text"
-                id="ban-cta-${escapeHtml(ban.id)}"
-                data-ban-id="${escapeHtml(ban.id)}"
-                data-ban-field="ctaLabel"
-                value="${escapeHtml(ban.ctaLabel || '')}"
-              />
-            </div>
-            <div class="form-field">
-              <label for="ban-href-${escapeHtml(ban.id)}">Link Tujuan Saat Diklik</label>
-              <input
-                type="text"
-                id="ban-href-${escapeHtml(ban.id)}"
-                data-ban-id="${escapeHtml(ban.id)}"
-                data-ban-field="href"
-                value="${escapeHtml(ban.href || '#katalog')}"
-              />
-            </div>
-            <div class="form-field">
-              <label for="ban-scrim-${escapeHtml(ban.id)}">Tema Warna Latar / Overlay</label>
-              <select
-                id="ban-scrim-${escapeHtml(ban.id)}"
-                class="admin-select"
-                data-ban-id="${escapeHtml(ban.id)}"
-                data-ban-field="scrim"
-              >
-                ${scrimOpts}
-              </select>
-            </div>
-            <div class="form-field">
-              <label for="ban-preset-${escapeHtml(ban.id)}">Preset Gambar Banner</label>
-              <select
-                id="ban-preset-${escapeHtml(ban.id)}"
-                class="admin-select"
-                data-ban-preset="${escapeHtml(ban.id)}"
-              >
-                <option value="__custom__">— Pilih Preset Gambar / Gradien —</option>
-                ${presetOpts}
-              </select>
-            </div>
-            <div class="form-field admin-sum-field">
-              <label for="ban-img-${escapeHtml(ban.id)}">Path / URL Gambar Banner (Kosongkan untuk Tanpa Gambar / Gradien)</label>
-              <input
-                type="text"
-                id="ban-img-${escapeHtml(ban.id)}"
-                data-ban-id="${escapeHtml(ban.id)}"
-                data-ban-field="image"
-                value="${escapeHtml(String(ban.image || '').startsWith('data:') ? '' : ban.image || '')}"
-                placeholder="./assets/hero-banner.jpg atau https://... (kosongkan untuk gradien)"
-              />
-            </div>
-          </div>
-
-          <div class="admin-file-row">
-            <label
-              for="ban-file-${escapeHtml(ban.id)}"
-              class="btn btn-secondary btn-sm admin-file-trigger"
-            >
-              Upload Gambar Banner Baru
-            </label>
-            <input
-              type="file"
-              id="ban-file-${escapeHtml(ban.id)}"
-              class="visually-hidden-file"
-              accept="image/*"
-              data-ban-file="${escapeHtml(ban.id)}"
-            />
-            <span class="admin-prod-meta">
-              ${
-                pending
-                  ? `File baru siap diunggah: ${escapeHtml(pending.fileName)}`
-                  : ban.image
-                  ? `Gambar aktif: ${escapeHtml(String(ban.image).slice(0, 64))}`
-                  : 'Mode Gradien Warna Tanpa Foto'
-              }
-            </span>
-          </div>
-        </article>
-      `;
-    })
-    .join('');
-
-  container.querySelectorAll('[data-ban-id]').forEach((input) => {
-    const evtName = input.tagName === 'SELECT' ? 'change' : 'input';
-    input.addEventListener(evtName, (e) => {
-      const banId = input.getAttribute('data-ban-id');
-      const field = input.getAttribute('data-ban-field');
-      const target = (adminState.catalog.banners || []).find((b) => b.id === banId);
-      if (!target || !field) return;
-
-      if (field === 'image') {
-        const nextImg = e.target.value.trim();
-        queueManagedLogoForDeletion(target.image);
-        delete adminState.pendingUploads[`__banner__${banId}`];
-        target.image = nextImg;
-        const thumb = container.querySelector(`[data-banner-thumb="${banId}"]`);
-        if (thumb && nextImg) thumb.src = nextImg;
-      } else if (field === 'heading') {
-        target.heading = e.target.value;
-        const titlePreview = container.querySelector(`[data-banner-title-preview="${banId}"]`);
-        if (titlePreview) titlePreview.textContent = e.target.value || 'Slide Banner';
-      } else if (field === 'kicker') {
-        target.kicker = e.target.value;
-        const kickerPreview = container.querySelector(`[data-banner-kicker-preview="${banId}"]`);
-        if (kickerPreview) kickerPreview.textContent = e.target.value || '';
-      } else {
-        target[field] = e.target.value;
-      }
-      markDirty();
-    });
-  });
-
-  container.querySelectorAll('[data-ban-preset]').forEach((select) => {
-    select.addEventListener('change', (e) => {
-      const banId = select.getAttribute('data-ban-preset');
-      const val = e.target.value;
-      if (val === '__custom__') return;
-      const target = (adminState.catalog.banners || []).find((b) => b.id === banId);
-      if (!target) return;
-      queueManagedLogoForDeletion(target.image);
-      delete adminState.pendingUploads[`__banner__${banId}`];
-      target.image = val;
-      markDirty();
-      renderBannerList();
-      showToast(`Gambar banner "${target.heading}" diperbarui.`);
-    });
-  });
-
-  container.querySelectorAll('[data-ban-file]').forEach((fileInput) => {
-    fileInput.addEventListener('change', async (e) => {
-      const banId = fileInput.getAttribute('data-ban-file');
-      const file = e.target.files?.[0];
-      const target = (adminState.catalog.banners || []).find((b) => b.id === banId);
-      if (!file || !target) return;
-      try {
-        const result = await compressWideImageFile(file, { maxW: 1400, maxH: 640, quality: 0.9 });
-        queueManagedLogoForDeletion(target.image);
-        const safeSlug = slugifyId(banId);
-        const targetPath = `assets/logos/uploads/banner-${safeSlug}-${Date.now().toString(36)}.${result.ext}`;
-        adminState.pendingUploads[`__banner__${banId}`] = {
-          targetPath,
-          base64Content: result.base64Content,
-          previewDataUrl: result.previewDataUrl,
-          fileName: file.name,
-        };
-        target.image = result.previewDataUrl;
-        markDirty();
-        renderBannerList();
-        showToast(`Gambar banner "${target.heading}" siap diunggah saat Publikasi.`);
-      } catch (err) {
-        showToast(err.message || 'Gagal memproses gambar banner.');
-      }
-    });
-  });
-
-  container.querySelectorAll('[data-move-banner]').forEach((btn) => {
-    btn.addEventListener('click', () => {
-      const banId = btn.getAttribute('data-move-banner');
-      const dir = btn.getAttribute('data-move-dir');
-      adminState.catalog = moveBannerInCatalog(adminState.catalog, banId, dir);
-      markDirty();
-      renderBannerList();
-      showToast('Urutan slide banner diperbarui.');
-    });
-  });
-
-  container.querySelectorAll('[data-delete-banner]').forEach((btn) => {
-    btn.addEventListener('click', () => {
-      const banId = btn.getAttribute('data-delete-banner');
-      const bannersList = adminState.catalog.banners || [];
-      if (bannersList.length <= 1) {
-        showToast('Minimal harus ada 1 slide banner aktif.');
-        return;
-      }
-      if (adminState.confirmDeleteBannerId !== banId) {
-        adminState.confirmDeleteBannerId = banId;
-        renderBannerList();
-        return;
-      }
-      const deleted = bannersList.find((b) => b.id === banId);
-      if (deleted) {
-        queueManagedLogoForDeletion(deleted.image);
-        delete adminState.pendingUploads[`__banner__${banId}`];
-      }
-      adminState.catalog = deleteBannerFromCatalog(adminState.catalog, banId);
-      adminState.confirmDeleteBannerId = null;
-      markDirty();
-      renderBannerList();
-      showToast(`Banner "${deleted?.heading || banId}" dihapus.`);
-    });
-  });
-}
-
-function syncOpenGraphUi() {
-  adminState.catalog.brand = normalizeBrandConfig(adminState.catalog.brand || {});
-  const brand = adminState.catalog.brand;
-  const og = normalizeOpenGraphConfig(brand);
-  brand.openGraph = og;
-
-  const setVal = (id, val) => {
-    const el = document.getElementById(id);
-    if (el && document.activeElement !== el) {
-      el.value = String(val ?? '');
-    }
-  };
-
-  setVal('og-title-input', og.title);
-  setVal('og-tagline-input', og.tagline);
-  setVal('og-description-input', og.description);
-  setVal('og-sitename-input', og.siteName);
-  setVal('og-alt-input', og.imageAlt);
-  if (!String(og.image || '').startsWith('data:')) {
-    setVal('og-image-url', og.image || './assets/og-manifestudio.jpg');
-  }
-
-  const pending = adminState.pendingUploads['__og_image__'];
-  const statusEl = document.getElementById('og-image-status');
-  if (statusEl) {
-    if (pending) {
-      statusEl.textContent = `File gambar OpenGraph baru siap diunggah: ${pending.fileName}`;
-    } else if (extractManagedUploadLogoPath(og.image)) {
-      statusEl.textContent = `Tersimpan di repo: ${extractManagedUploadLogoPath(og.image)}`;
-    } else {
-      statusEl.textContent = `Aktif: ${og.image || './assets/og-manifestudio.jpg'}`;
-    }
-  }
-
-  const imgEl = document.getElementById('og-card-preview-img');
-  if (imgEl) imgEl.src = og.image || './assets/og-manifestudio.jpg';
-  const taglineEl = document.getElementById('og-card-preview-tagline');
-  if (taglineEl) taglineEl.textContent = og.tagline || brand.tagline || 'by Tomy';
-  const siteEl = document.getElementById('og-card-preview-site');
-  if (siteEl) siteEl.textContent = `${(og.siteName || brand.name || 'MANIFESTUDIO').toUpperCase()} · MANIFESTUDIO.MY.ID`;
-  const titleEl = document.getElementById('og-card-preview-title');
-  if (titleEl) titleEl.textContent = og.title;
-  const descEl = document.getElementById('og-card-preview-desc');
-  if (descEl) descEl.textContent = og.description;
-}
-
-function syncBrandLogoUi() {
-  const brand = normalizeBrandConfig(adminState.catalog.brand || {});
-  const mode = adminState.brandLogoMode;
-  document.querySelectorAll('[data-brand-logo-mode]').forEach((btn) => {
-    const isActive = btn.getAttribute('data-brand-logo-mode') === mode;
-    btn.classList.toggle('is-active', isActive);
-    btn.setAttribute('aria-pressed', String(isActive));
-  });
-
-  const uploadPane = document.getElementById('brand-logo-upload-pane');
-  const linkPane = document.getElementById('brand-logo-link-pane');
-  if (uploadPane) uploadPane.hidden = mode !== 'upload';
-  if (linkPane) linkPane.hidden = mode !== 'link';
-
-  const previewEl = document.getElementById('brand-logo-preview');
-  const statusEl = document.getElementById('brand-logo-status');
-  const urlInput = document.getElementById('brand-logo-url');
-  const pending = adminState.pendingUploads['__brand_logo__'];
-
-  if (previewEl) previewEl.src = brand.logo || './assets/icons/brand-icon.svg';
-  const headerLogo = document.querySelector('.site-header .brand-mark');
-  if (headerLogo) headerLogo.src = brand.logo || './assets/icons/brand-icon.svg';
-
-  if (urlInput && !String(brand.logo || '').startsWith('data:')) {
-    urlInput.value = brand.logo || './assets/icons/brand-icon.svg';
-  }
-  if (statusEl) {
-    if (pending) {
-      statusEl.textContent = `File logo brand siap diunggah: ${pending.fileName}`;
-    } else if (extractManagedUploadLogoPath(brand.logo)) {
-      statusEl.textContent = `Tersimpan di repo: ${extractManagedUploadLogoPath(brand.logo)}`;
-    } else {
-      statusEl.textContent = `Aktif: ${brand.logo || './assets/icons/brand-icon.svg'}`;
-    }
-  }
-}
-
-function renderSocialList() {
-  if (!adminState.unlocked) return;
-  const container = document.getElementById('admin-social-list');
-  if (!container) return;
-
-  adminState.catalog.brand = normalizeBrandConfig(adminState.catalog.brand || {});
-  const socials = adminState.catalog.brand.socials || [];
-
-  if (socials.length === 0) {
-    container.innerHTML = `<p class="admin-subtitle">Belum ada kontak / sosial media terdaftar.</p>`;
-    return;
-  }
-
-  container.innerHTML = socials
-    .map((soc) => {
-      const pending = adminState.pendingUploads[`__social__${soc.id}`];
-      const presetOptions = SOCIAL_LOGO_PRESETS.map(
-        (preset) =>
-          `<option value="${escapeHtml(preset.value)}" ${soc.logo === preset.value ? 'selected' : ''}>${escapeHtml(preset.label)}</option>`
-      ).join('');
-
-      return `
-        <div class="admin-social-card" data-social-card="${escapeHtml(soc.id)}">
-          <div class="admin-social-top">
-            <div class="admin-social-brand">
-              <img
-                src="${escapeHtml(soc.logo || './assets/icons/social-globe.svg')}"
-                alt="Logo ${escapeHtml(soc.label)}"
-                width="38"
-                height="38"
-                class="modal-logo admin-logo-thumb"
-                data-social-thumb="${escapeHtml(soc.id)}"
-              />
-              <div>
-                <strong class="admin-social-title" data-social-heading="${escapeHtml(soc.id)}">${escapeHtml(soc.label)}</strong>
-                <div class="admin-prod-meta">
-                  ${pending ? `File baru: ${escapeHtml(pending.fileName)}` : escapeHtml(soc.url)}
-                </div>
-              </div>
-            </div>
-            <button
-              type="button"
-              class="btn btn-ghost btn-sm"
-              data-delete-social="${escapeHtml(soc.id)}"
-              aria-label="Hapus kontak ${escapeHtml(soc.label)}"
-            >
-              Hapus
-            </button>
-          </div>
-
-          <div class="admin-form-grid">
-            <div class="form-field">
-              <label for="soc-label-${escapeHtml(soc.id)}">Nama / Label Tombol</label>
-              <input
-                type="text"
-                id="soc-label-${escapeHtml(soc.id)}"
-                data-soc-id="${escapeHtml(soc.id)}"
-                data-soc-field="label"
-                value="${escapeHtml(soc.label || '')}"
-              />
-            </div>
-            <div class="form-field">
-              <label for="soc-url-${escapeHtml(soc.id)}">Link URL Tujuan</label>
-              <input
-                type="text"
-                id="soc-url-${escapeHtml(soc.id)}"
-                data-soc-id="${escapeHtml(soc.id)}"
-                data-soc-field="url"
-                value="${escapeHtml(soc.url || '')}"
-              />
-            </div>
-            <div class="form-field">
-              <label for="soc-preset-${escapeHtml(soc.id)}">Preset Ikon Sosmed</label>
-              <select
-                id="soc-preset-${escapeHtml(soc.id)}"
-                class="admin-select"
-                data-soc-preset="${escapeHtml(soc.id)}"
-              >
-                <option value="">— Pilih Ikon Sosmed —</option>
-                ${presetOptions}
-              </select>
-            </div>
-            <div class="form-field">
-              <label for="soc-logo-${escapeHtml(soc.id)}">Path / URL Logo Sosmed</label>
-              <input
-                type="text"
-                id="soc-logo-${escapeHtml(soc.id)}"
-                data-soc-id="${escapeHtml(soc.id)}"
-                data-soc-field="logo"
-                value="${escapeHtml(String(soc.logo || '').startsWith('data:') ? '' : soc.logo || '')}"
-                placeholder="./assets/icons/social-..."
-              />
-            </div>
-          </div>
-
-          <div class="admin-file-row">
-            <label
-              for="soc-file-${escapeHtml(soc.id)}"
-              class="btn btn-secondary btn-sm admin-file-trigger"
-            >
-              Upload Logo Sosmed Baru
-            </label>
-            <input
-              type="file"
-              id="soc-file-${escapeHtml(soc.id)}"
-              class="visually-hidden-file"
-              accept="image/*"
-              data-soc-file="${escapeHtml(soc.id)}"
-            />
-            <span class="admin-prod-meta">Bisa upload logo custom (PNG/JPG/SVG/WebP) atau pilih preset di atas.</span>
-          </div>
-        </div>
-      `;
-    })
-    .join('');
-
-  container.querySelectorAll('[data-soc-id]').forEach((input) => {
-    input.addEventListener('input', (e) => {
-      const socId = input.getAttribute('data-soc-id');
-      const field = input.getAttribute('data-soc-field');
-      const soc = (adminState.catalog.brand?.socials || []).find((s) => s.id === socId);
-      if (!soc || !field) return;
-
-      if (field === 'logo') {
-        const nextLogo = e.target.value.trim();
-        if (!nextLogo) return;
-        queueManagedLogoForDeletion(soc.logo);
-        delete adminState.pendingUploads[`__social__${socId}`];
-        soc.logo = nextLogo;
-        const thumb = container.querySelector(`[data-social-thumb="${socId}"]`);
-        if (thumb) thumb.src = nextLogo;
-      } else if (field === 'label') {
-        soc.label = e.target.value;
-        soc.platform = e.target.value;
-        const heading = container.querySelector(`[data-social-heading="${socId}"]`);
-        if (heading) heading.textContent = e.target.value.trim() || 'Sosmed';
-      } else if (field === 'url') {
-        soc.url = e.target.value.trim();
-      }
-      markDirty();
-    });
-  });
-
-  container.querySelectorAll('[data-soc-preset]').forEach((select) => {
-    select.addEventListener('change', (e) => {
-      const socId = select.getAttribute('data-soc-preset');
-      const nextLogo = e.target.value;
-      const soc = (adminState.catalog.brand?.socials || []).find((s) => s.id === socId);
-      if (!soc || !nextLogo) return;
-      queueManagedLogoForDeletion(soc.logo);
-      delete adminState.pendingUploads[`__social__${socId}`];
-      soc.logo = nextLogo;
-      markDirty();
-      renderSocialList();
-      showToast(`Logo ${soc.label} diperbarui.`);
-    });
-  });
-
-  container.querySelectorAll('[data-soc-file]').forEach((fileInput) => {
-    fileInput.addEventListener('change', async (e) => {
-      const socId = fileInput.getAttribute('data-soc-file');
-      const file = e.target.files?.[0];
-      const soc = (adminState.catalog.brand?.socials || []).find((s) => s.id === socId);
-      if (!file || !soc) return;
-      try {
-        const result = await compressLogoFile(file);
-        queueManagedLogoForDeletion(soc.logo);
-        const safeSlug = slugifyId(socId);
-        const targetPath = `assets/logos/uploads/social-${safeSlug}-${Date.now().toString(36)}.${result.ext}`;
-        adminState.pendingUploads[`__social__${socId}`] = {
-          targetPath,
-          base64Content: result.base64Content,
-          previewDataUrl: result.previewDataUrl,
-          fileName: file.name,
-        };
-        soc.logo = result.previewDataUrl;
-        markDirty();
-        renderSocialList();
-        showToast(`Logo sosmed "${soc.label}" siap diunggah saat Publikasi.`);
-      } catch (err) {
-        showToast(err.message || 'Gagal memproses file logo sosmed.');
-      }
-    });
-  });
-
-  container.querySelectorAll('[data-delete-social]').forEach((btn) => {
-    btn.addEventListener('click', () => {
-      const socId = btn.getAttribute('data-delete-social');
-      const target = (adminState.catalog.brand?.socials || []).find((s) => s.id === socId);
-      if (!target) return;
-      queueManagedLogoForDeletion(target.logo);
-      delete adminState.pendingUploads[`__social__${socId}`];
-      adminState.catalog = deleteSocialFromCatalog(adminState.catalog, socId);
-      markDirty();
-      renderSocialList();
-      showToast(`Kontak "${target.label}" dihapus.`);
-    });
-  });
-}
-
-function renderBrandSettings() {
-  if (!adminState.unlocked) return;
-  adminState.catalog.brand = normalizeBrandConfig(adminState.catalog.brand || {});
-  const brand = adminState.catalog.brand;
-
-  const setVal = (id, val) => {
-    const el = document.getElementById(id);
-    if (el) el.value = String(val ?? '');
-  };
-
-  setVal('brand-name-input', brand.name || 'Manifestudio');
-  setVal('brand-tagline-input', brand.tagline || 'by Tomy');
-  setVal('brand-footer-input', brand.footerText || 'Dikelola oleh Manifestudio by Tomy © 2026');
-  setVal(
-    'brand-paylater-pct-input',
-    Math.round(Number(brand.payLaterSurchargeRate ?? 0.1) * 1000) / 10
-  );
-  setVal('brand-service-fee-flat-input', Number(brand.serviceFeeFlat || 0));
-  setVal('brand-service-fee-label-input', brand.serviceFeeLabel || 'Biaya Layanan');
-  setVal('brand-whatsapp-input', brand.whatsappNumber || '6285122936027');
-  setVal('brand-discount-threshold-input', Number(brand.discountThreshold ?? 50000));
-  setVal('brand-discount-amount-input', Number(brand.discountAmount ?? 2000));
-
-  syncBrandLogoUi();
-  syncOpenGraphUi();
-  renderSocialList();
-}
-
-function renderFaqList() {
-  if (!adminState.unlocked) return;
-  const container = document.getElementById('admin-faq-list');
-  if (!container) return;
-
-  const faqItems = Array.isArray(adminState.catalog?.faqItems)
-    ? adminState.catalog.faqItems
-    : [];
-
-  if (faqItems.length === 0) {
-    container.innerHTML = `<p class="admin-subtitle">Belum ada pertanyaan umum (FAQ). Tambahkan melalui formulir di bawah.</p>`;
-    return;
-  }
-
-  container.innerHTML = faqItems
-    .map(
-      (item, idx) => `
-      <div class="admin-faq-card" data-faq-row="${idx}">
-        <div class="admin-faq-head">
-          <span class="admin-order-badge mono-num">FAQ #${idx + 1}</span>
-          <div class="admin-order-controls">
-            <button
-              type="button"
-              class="btn btn-secondary btn-sm admin-order-btn"
-              data-move-faq="${idx}"
-              data-move-dir="up"
-              ${idx === 0 ? 'disabled' : ''}
-            >
-              ↑ Naik
-            </button>
-            <button
-              type="button"
-              class="btn btn-secondary btn-sm admin-order-btn"
-              data-move-faq="${idx}"
-              data-move-dir="down"
-              ${idx === faqItems.length - 1 ? 'disabled' : ''}
-            >
-              ↓ Turun
-            </button>
-            <button
-              type="button"
-              class="btn btn-ghost btn-sm"
-              data-delete-faq="${idx}"
-            >
-              Hapus
-            </button>
-          </div>
-        </div>
-        <div class="form-field">
-          <label for="faq-q-${idx}">Pertanyaan</label>
-          <input
-            type="text"
-            id="faq-q-${idx}"
-            data-faq-idx="${idx}"
-            data-faq-field="question"
-            value="${escapeHtml(item.question || '')}"
-          />
-        </div>
-        <div class="form-field">
-          <label for="faq-a-${idx}">Jawaban</label>
-          <textarea
-            id="faq-a-${idx}"
-            class="admin-textarea"
-            rows="2"
-            data-faq-idx="${idx}"
-            data-faq-field="answer"
-          >${escapeHtml(item.answer || '')}</textarea>
-        </div>
-      </div>
-    `
-    )
-    .join('');
-
-  container.querySelectorAll('[data-faq-idx]').forEach((input) => {
-    input.addEventListener('input', (e) => {
-      const idx = Number(input.getAttribute('data-faq-idx'));
-      const field = input.getAttribute('data-faq-field');
-      const target = adminState.catalog.faqItems?.[idx];
-      if (!target || !field) return;
-      target[field] = e.target.value;
-      markDirty();
-    });
-  });
-
-  container.querySelectorAll('[data-move-faq]').forEach((btn) => {
-    btn.addEventListener('click', () => {
-      const idx = Number(btn.getAttribute('data-move-faq'));
-      const dir = btn.getAttribute('data-move-dir');
-      const list = [...(adminState.catalog.faqItems || [])];
-      const targetIdx = dir === 'up' ? idx - 1 : idx + 1;
-      if (targetIdx < 0 || targetIdx >= list.length) return;
-      const [moved] = list.splice(idx, 1);
-      list.splice(targetIdx, 0, moved);
-      adminState.catalog.faqItems = list;
-      markDirty();
-      renderFaqList();
-      showToast('Urutan FAQ diperbarui.');
-    });
-  });
-
-  container.querySelectorAll('[data-delete-faq]').forEach((btn) => {
-    btn.addEventListener('click', () => {
-      const idx = Number(btn.getAttribute('data-delete-faq'));
-      adminState.catalog = deleteFaqFromCatalog(adminState.catalog, idx);
-      markDirty();
-      renderFaqList();
-      showToast('Pertanyaan umum dihapus.');
-    });
-  });
-}
-
-function getProductLogoMode(product) {
-  if (adminState.logoEditMode[product.id]) {
-    return adminState.logoEditMode[product.id];
-  }
-  if (adminState.pendingUploads[product.id] || extractManagedUploadLogoPath(product.logo)) {
-    return 'upload';
-  }
-  return 'link';
 }
 
 function renderProductList() {
@@ -1447,11 +256,8 @@ function renderProductList() {
   const countEl = document.getElementById('admin-product-count');
   if (!container) return;
 
-  const allProducts = adminState.catalog.products || [];
-  const totalProducts = allProducts.length;
-  const availableCategories = getAvailableProductCategories();
   const q = adminState.searchQuery.trim().toLowerCase();
-  const products = allProducts.filter((p) => {
+  const products = (adminState.catalog.products || []).filter((p) => {
     if (!q) return true;
     const inName = p.name.toLowerCase().includes(q);
     const inTag = (p.tag || '').toLowerCase().includes(q);
@@ -1475,40 +281,6 @@ function renderProductList() {
 
   container.innerHTML = products
     .map((product) => {
-      const globalIndex = allProducts.findIndex((p) => p.id === product.id);
-      const isFirst = globalIndex <= 0;
-      const isLast = globalIndex >= totalProducts - 1;
-      const logoMode = getProductLogoMode(product);
-      const pendingUpload = adminState.pendingUploads[product.id];
-      const managedPath = extractManagedUploadLogoPath(product.logo);
-
-      const logoStatusText = pendingUpload
-        ? `File baru siap diupload: ${pendingUpload.fileName}`
-        : managedPath
-        ? `Tersimpan di repo: ${managedPath}`
-        : String(product.logo || '').startsWith('data:')
-        ? 'Gambar upload lokal siap dipublikasikan'
-        : 'Menggunakan URL / Preset ikon';
-
-      const positionOptionsHtml = allProducts
-        .map(
-          (_item, idx) =>
-            `<option value="${idx}" ${idx === globalIndex ? 'selected' : ''}>Posisi #${idx + 1}</option>`
-        )
-        .join('');
-
-      const categorySelectHtml = availableCategories
-        .map(
-          (cat) =>
-            `<option value="${escapeHtml(cat.id)}" ${product.category === cat.id ? 'selected' : ''}>${escapeHtml(cat.label)}</option>`
-        )
-        .join('');
-
-      const presetOptionsHtml = LOGO_PRESETS.map(
-        (preset) =>
-          `<option value="${escapeHtml(preset.value)}" ${product.logo === preset.value ? 'selected' : ''}>${escapeHtml(preset.label)}</option>`
-      ).join('');
-
       const variantsHtml = (product.variants || [])
         .map(
           (variant, vIdx) => `
@@ -1578,92 +350,36 @@ function renderProductList() {
         .join('');
 
       const isConfirmingDelete = adminState.confirmDeleteProductId === product.id;
-      const cardTone = getProductCardTone(globalIndex);
 
       return `
-        <article class="admin-product-card" data-admin-product="${escapeHtml(product.id)}" data-card-tone="${cardTone}">
+        <article class="admin-product-card" data-admin-product="${escapeHtml(product.id)}">
           <div class="admin-prod-head">
             <div class="admin-prod-brand">
-              <span class="admin-order-badge mono-num" title="Urutan tampil di katalog">#${globalIndex + 1}</span>
               <img src="${escapeHtml(product.logo)}" alt="" width="42" height="42" class="modal-logo" />
-              <div class="admin-prod-title-wrap">
+              <div>
                 <h2 class="admin-prod-name">${escapeHtml(product.name)}</h2>
                 <span class="admin-prod-meta">ID: ${escapeHtml(product.id)} · ${(product.variants || []).length} varian</span>
               </div>
             </div>
-
             <div class="admin-prod-controls">
-              <div class="admin-order-controls" role="group" aria-label="Urutan tampil ${escapeHtml(product.name)}">
-                <button
-                  type="button"
-                  class="btn btn-secondary btn-sm admin-order-btn"
-                  data-move-prod="${escapeHtml(product.id)}"
-                  data-move-dir="up"
-                  ${isFirst ? 'disabled' : ''}
-                  aria-label="Naikkan urutan ${escapeHtml(product.name)}"
-                >
-                  ↑ Naik
-                </button>
-                <button
-                  type="button"
-                  class="btn btn-secondary btn-sm admin-order-btn"
-                  data-move-prod="${escapeHtml(product.id)}"
-                  data-move-dir="down"
-                  ${isLast ? 'disabled' : ''}
-                  aria-label="Turunkan urutan ${escapeHtml(product.name)}"
-                >
-                  ↓ Turun
-                </button>
-                <select
-                  class="admin-order-select"
-                  data-reorder-select="${escapeHtml(product.id)}"
-                  aria-label="Pilih urutan posisi ${escapeHtml(product.name)}"
-                >
-                  ${positionOptionsHtml}
-                </select>
-              </div>
-
-              <div class="admin-prod-action-pair">
-                <button
-                  type="button"
-                  class="btn ${product.outOfStock ? 'btn-primary' : 'btn-secondary'} btn-sm"
-                  data-toggle-stock="${escapeHtml(product.id)}"
-                >
-                  ${product.outOfStock ? 'Aktifkan Stok' : 'Tandai Habis'}
-                </button>
-                <button
-                  type="button"
-                  class="btn btn-ghost btn-sm ${isConfirmingDelete ? 'is-danger-confirm' : ''}"
-                  data-delete-product="${escapeHtml(product.id)}"
-                >
-                  ${isConfirmingDelete ? 'Konfirmasi Hapus' : 'Hapus Produk'}
-                </button>
-              </div>
+              <button
+                type="button"
+                class="btn ${product.outOfStock ? 'btn-primary' : 'btn-secondary'} btn-sm"
+                data-toggle-stock="${escapeHtml(product.id)}"
+              >
+                ${product.outOfStock ? 'Aktifkan Semua Stok' : 'Tandai Habis Semua'}
+              </button>
+              <button
+                type="button"
+                class="btn btn-ghost btn-sm ${isConfirmingDelete ? 'is-danger-confirm' : ''}"
+                data-delete-product="${escapeHtml(product.id)}"
+              >
+                ${isConfirmingDelete ? 'Konfirmasi Hapus' : 'Hapus Produk'}
+              </button>
             </div>
           </div>
 
           <div class="admin-prod-meta-grid">
-            <div class="form-field">
-              <label for="pname-${escapeHtml(product.id)}">Nama Produk</label>
-              <input
-                type="text"
-                id="pname-${escapeHtml(product.id)}"
-                data-prod-meta="${escapeHtml(product.id)}"
-                data-meta-field="name"
-                value="${escapeHtml(product.name || '')}"
-              />
-            </div>
-            <div class="form-field">
-              <label for="pcat-${escapeHtml(product.id)}">Kategori Layanan</label>
-              <select
-                id="pcat-${escapeHtml(product.id)}"
-                class="admin-select"
-                data-prod-meta="${escapeHtml(product.id)}"
-                data-meta-field="category"
-              >
-                ${categorySelectHtml}
-              </select>
-            </div>
             <div class="form-field">
               <label for="ptag-${escapeHtml(product.id)}">Label Tag</label>
               <input
@@ -1684,91 +400,24 @@ function renderProductList() {
                 value="${escapeHtml(product.summary || '')}"
               />
             </div>
-
-            <!-- Logo Manager: selalu tampil jelas di Mobile & Desktop -->
-            <div class="admin-logo-manager admin-logo-manager-full" data-testid="logo-manager-${escapeHtml(product.id)}">
-              <div class="admin-logo-head">
-                <div class="admin-logo-preview-wrap">
-                  <img
-                    src="${escapeHtml(product.logo)}"
-                    alt="Logo ${escapeHtml(product.name)}"
-                    width="42"
-                    height="42"
-                    class="modal-logo admin-logo-thumb"
-                  />
-                  <div>
-                    <strong class="admin-logo-title">Ganti Logo Produk</strong>
-                    <span class="admin-prod-meta">${escapeHtml(logoStatusText)}</span>
-                  </div>
-                </div>
-
-                <div class="admin-logo-tabs" role="group" aria-label="Pilih metode ganti logo ${escapeHtml(product.name)}">
-                  <button
-                    type="button"
-                    class="admin-logo-mode-btn ${logoMode === 'upload' ? 'is-active' : ''}"
-                    data-logo-mode-btn="${escapeHtml(product.id)}"
-                    data-logo-mode="upload"
-                    aria-pressed="${logoMode === 'upload'}"
-                  >
-                    Upload Gambar
-                  </button>
-                  <button
-                    type="button"
-                    class="admin-logo-mode-btn ${logoMode === 'link' ? 'is-active' : ''}"
-                    data-logo-mode-btn="${escapeHtml(product.id)}"
-                    data-logo-mode="link"
-                    aria-pressed="${logoMode === 'link'}"
-                  >
-                    Link / URL
-                  </button>
-                </div>
-              </div>
-
-              <div class="admin-logo-pane" ${logoMode === 'upload' ? '' : 'hidden'}>
-                <div class="admin-file-row">
-                  <label
-                    for="plogofile-${escapeHtml(product.id)}"
-                    class="btn btn-secondary btn-sm admin-file-trigger"
-                  >
-                    Pilih File Gambar
-                  </label>
-                  <input
-                    type="file"
-                    id="plogofile-${escapeHtml(product.id)}"
-                    class="visually-hidden-file"
-                    accept="image/*"
-                    data-prod-file-logo="${escapeHtml(product.id)}"
-                  />
-                  <span class="admin-prod-meta">Otomatis kompres &amp; hapus file upload lama saat publish ke GitHub.</span>
-                </div>
-              </div>
-
-              <div class="admin-logo-pane" ${logoMode === 'link' ? '' : 'hidden'}>
-                <div class="admin-logo-link-grid">
-                  <div class="form-field">
-                    <label for="plogopreset-${escapeHtml(product.id)}">Pilih Preset Cepat</label>
-                    <select
-                      id="plogopreset-${escapeHtml(product.id)}"
-                      class="admin-select"
-                      data-prod-preset-logo="${escapeHtml(product.id)}"
-                    >
-                      <option value="">— Pilih Ikon Bawaan —</option>
-                      ${presetOptionsHtml}
-                    </select>
-                  </div>
-                  <div class="form-field">
-                    <label for="plogo-${escapeHtml(product.id)}">URL / Path Logo</label>
-                    <input
-                      type="text"
-                      id="plogo-${escapeHtml(product.id)}"
-                      data-prod-meta="${escapeHtml(product.id)}"
-                      data-meta-field="logo"
-                      placeholder="https://... atau ./assets/logos/..."
-                      value="${escapeHtml(String(product.logo || '').startsWith('data:') ? '' : product.logo || '')}"
-                    />
-                  </div>
-                </div>
-              </div>
+            <div class="form-field">
+              <label for="plogo-${escapeHtml(product.id)}">URL / Path Logo</label>
+              <input
+                type="text"
+                id="plogo-${escapeHtml(product.id)}"
+                data-prod-meta="${escapeHtml(product.id)}"
+                data-meta-field="logo"
+                value="${escapeHtml(product.logo || '')}"
+              />
+            </div>
+            <div class="form-field">
+              <label for="plogofile-${escapeHtml(product.id)}">Atau Ganti Gambar Logo (File)</label>
+              <input
+                type="file"
+                id="plogofile-${escapeHtml(product.id)}"
+                accept="image/*"
+                data-prod-file-logo="${escapeHtml(product.id)}"
+              />
             </div>
           </div>
 
@@ -1808,30 +457,6 @@ function renderProductList() {
 }
 
 function bindProductListEvents(container) {
-  container.querySelectorAll('[data-move-prod]').forEach((btn) => {
-    btn.addEventListener('click', () => {
-      const prodId = btn.getAttribute('data-move-prod');
-      const dir = btn.getAttribute('data-move-dir');
-      if (!prodId || !dir) return;
-      adminState.catalog = moveProductInCatalog(adminState.catalog, prodId, dir);
-      markDirty();
-      renderProductList();
-      showToast('Urutan produk diperbarui.');
-    });
-  });
-
-  container.querySelectorAll('[data-reorder-select]').forEach((select) => {
-    select.addEventListener('change', (e) => {
-      const prodId = select.getAttribute('data-reorder-select');
-      const targetIdx = Number(e.target.value);
-      if (!prodId || !Number.isFinite(targetIdx)) return;
-      adminState.catalog = reorderProductToIndex(adminState.catalog, prodId, targetIdx);
-      markDirty();
-      renderProductList();
-      showToast(`Posisi produk dipindahkan ke urutan #${targetIdx + 1}.`);
-    });
-  });
-
   container.querySelectorAll('[data-toggle-stock]').forEach((btn) => {
     btn.addEventListener('click', () => {
       const prodId = btn.getAttribute('data-toggle-stock');
@@ -1860,113 +485,43 @@ function bindProductListEvents(container) {
         renderProductList();
         return;
       }
-      const deletedProd = adminState.catalog.products.find((p) => p.id === prodId);
-      if (deletedProd) {
-        queueManagedLogoForDeletion(deletedProd.logo);
-        delete adminState.pendingUploads[prodId];
-      }
       adminState.catalog.products = adminState.catalog.products.filter((p) => p.id !== prodId);
       adminState.confirmDeleteProductId = null;
       markDirty();
       renderProductList();
-      renderCategoryList();
       showToast('Produk dihapus dari daftar kerja.');
     });
   });
 
-  container.querySelectorAll('[data-logo-mode-btn]').forEach((btn) => {
-    btn.addEventListener('click', () => {
-      const prodId = btn.getAttribute('data-logo-mode-btn');
-      const mode = btn.getAttribute('data-logo-mode');
-      if (!prodId || (mode !== 'upload' && mode !== 'link')) return;
-      adminState.logoEditMode[prodId] = mode;
-      renderProductList();
-    });
-  });
-
-  container.querySelectorAll('[data-prod-preset-logo]').forEach((select) => {
-    select.addEventListener('change', (e) => {
-      const prodId = select.getAttribute('data-prod-preset-logo');
-      const nextUrl = e.target.value;
-      if (!prodId || !nextUrl) return;
-      const prod = adminState.catalog.products.find((p) => p.id === prodId);
-      if (!prod) return;
-      queueManagedLogoForDeletion(prod.logo);
-      delete adminState.pendingUploads[prodId];
-      prod.logo = nextUrl;
-      adminState.logoEditMode[prodId] = 'link';
-      markDirty();
-      renderProductList();
-      showToast(`Logo ${prod.name} diganti ke ikon preset.`);
-    });
-  });
-
   container.querySelectorAll('[data-prod-meta]').forEach((input) => {
-    const evtName = input.tagName === 'SELECT' ? 'change' : 'input';
-    input.addEventListener(evtName, (e) => {
+    input.addEventListener('input', (e) => {
       const prodId = input.getAttribute('data-prod-meta');
       const field = input.getAttribute('data-meta-field');
       const prod = adminState.catalog.products.find((p) => p.id === prodId);
       if (!prod || !field) return;
-
-      if (field === 'logo') {
-        const prevLogo = prod.logo;
-        const nextVal = e.target.value.trim();
-        if (!nextVal) return;
-        if (prevLogo !== nextVal) {
-          queueManagedLogoForDeletion(prevLogo);
-          delete adminState.pendingUploads[prodId];
-        }
-        prod.logo = nextVal;
-        const card = input.closest('.admin-product-card');
-        card?.querySelectorAll('.admin-logo-thumb, .admin-prod-brand .modal-logo').forEach((img) => {
-          img.src = nextVal;
-        });
-      } else if (field === 'name') {
-        prod.name = e.target.value;
-        const card = input.closest('.admin-product-card');
-        const headingEl = card?.querySelector('.admin-prod-name');
-        if (headingEl) {
-          headingEl.textContent = e.target.value.trim() || 'Produk Tanpa Nama';
-        }
-      } else if (field === 'category') {
-        prod.category = e.target.value;
-        renderCategoryList();
-        showToast(`Kategori ${prod.name} diperbarui.`);
-      } else {
-        prod[field] = e.target.value;
-      }
+      prod[field] = e.target.value;
       markDirty();
     });
   });
 
   container.querySelectorAll('[data-prod-file-logo]').forEach((fileInput) => {
-    fileInput.addEventListener('change', async (e) => {
+    fileInput.addEventListener('change', (e) => {
       const prodId = fileInput.getAttribute('data-prod-file-logo');
       const file = e.target.files?.[0];
-      if (!file || !prodId) return;
-      const prod = adminState.catalog.products.find((p) => p.id === prodId);
-      if (!prod) return;
-
-      try {
-        const result = await compressLogoFile(file);
-        queueManagedLogoForDeletion(prod.logo);
-        const safeSlug = slugifyId(prodId);
-        const targetPath = `assets/logos/uploads/${safeSlug}-${Date.now().toString(36)}.${result.ext}`;
-        adminState.pendingUploads[prodId] = {
-          targetPath,
-          base64Content: result.base64Content,
-          previewDataUrl: result.previewDataUrl,
-          fileName: file.name,
-        };
-        adminState.logoEditMode[prodId] = 'upload';
-        prod.logo = result.previewDataUrl;
-        markDirty();
-        renderProductList();
-        showToast(`Logo ${prod.name} diperbarui (${file.name}). Klik Publikasikan untuk sinkron & hapus logo lama.`);
-      } catch (err) {
-        showToast(err.message || 'Gagal memproses file logo.');
-      }
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = (evt) => {
+        const base64 = evt.target?.result;
+        if (typeof base64 === 'string') {
+          const prod = adminState.catalog.products.find((p) => p.id === prodId);
+          if (!prod) return;
+          prod.logo = base64;
+          markDirty();
+          renderProductList();
+          showToast(`Logo ${prod.name} diperbarui dari file.`);
+        }
+      };
+      reader.readAsDataURL(file);
     });
   });
 
@@ -2061,97 +616,28 @@ function renderVoucherList() {
   }
 
   container.innerHTML = vouchers
-    .map((v, idx) => {
-      const cfg = normalizeVoucherUsageConfig(v);
-      const usageSummary =
-        cfg.usageMode === 'unlimited'
-          ? 'Tak Terbatas (Berkali-kali)'
-          : cfg.usageMode === 'limited'
-          ? `Maksimal ${cfg.maxUses}x pakai`
-          : '1x pakai per pelanggan';
-
-      return `
-      <div class="admin-voucher-row" data-voucher-row="${idx}">
-        <div class="admin-voucher-info">
-          <div class="admin-voucher-title-line">
-            <strong class="mono-num">${escapeHtml(v.code)}</strong>
-            <span class="admin-badge">${escapeHtml(usageSummary)}</span>
-          </div>
+    .map(
+      (v, idx) => `
+      <div class="admin-voucher-row">
+        <div>
+          <strong class="mono-num">${escapeHtml(v.code)}</strong>
           <div class="admin-prod-meta">
             ${escapeHtml(v.label || (v.type === 'percent' ? `Diskon ${v.value}%` : `Potongan ${formatRupiah(v.value)}`))}
             · Min. ${escapeHtml(formatRupiah(v.minSubtotal || 0))}
           </div>
         </div>
-        <div class="admin-voucher-controls">
-          <select
-            class="admin-select admin-voucher-mode-select"
-            data-voucher-usage-mode="${idx}"
-            aria-label="Batas pemakaian voucher ${escapeHtml(v.code)}"
-          >
-            <option value="once" ${cfg.usageMode === 'once' ? 'selected' : ''}>1x Pakai</option>
-            <option value="limited" ${cfg.usageMode === 'limited' ? 'selected' : ''}>Maks N Kali</option>
-            <option value="unlimited" ${cfg.usageMode === 'unlimited' ? 'selected' : ''}>Tak Terbatas</option>
-          </select>
-          <input
-            type="number"
-            min="2"
-            step="1"
-            class="admin-voucher-max-input"
-            data-voucher-max-uses="${idx}"
-            aria-label="Jumlah maksimal penggunaan ${escapeHtml(v.code)}"
-            value="${escapeHtml(cfg.usageMode === 'limited' ? cfg.maxUses : 5)}"
-            ${cfg.usageMode !== 'limited' ? 'hidden' : ''}
-          />
-          <button
-            type="button"
-            class="btn btn-ghost btn-sm"
-            data-remove-voucher="${idx}"
-            aria-label="Hapus voucher ${escapeHtml(v.code)}"
-          >
-            Hapus
-          </button>
-        </div>
+        <button
+          type="button"
+          class="btn btn-ghost btn-sm"
+          data-remove-voucher="${idx}"
+          aria-label="Hapus voucher ${escapeHtml(v.code)}"
+        >
+          Hapus
+        </button>
       </div>
-    `;
-    })
+    `
+    )
     .join('');
-
-  container.querySelectorAll('[data-voucher-usage-mode]').forEach((select) => {
-    select.addEventListener('change', (e) => {
-      const idx = Number(select.getAttribute('data-voucher-usage-mode'));
-      const voucher = adminState.catalog.vouchers?.[idx];
-      if (!voucher) return;
-      const mode = e.target.value;
-      if (mode === 'unlimited') {
-        voucher.usageMode = 'unlimited';
-        voucher.maxUses = 0;
-      } else if (mode === 'limited') {
-        voucher.usageMode = 'limited';
-        voucher.maxUses = Math.max(2, Math.round(Number(voucher.maxUses) || 5));
-      } else {
-        voucher.usageMode = 'once';
-        voucher.maxUses = 1;
-      }
-      markDirty();
-      renderVoucherList();
-      showToast(`Batas penggunaan voucher ${voucher.code} diperbarui.`);
-    });
-  });
-
-  container.querySelectorAll('[data-voucher-max-uses]').forEach((input) => {
-    input.addEventListener('input', (e) => {
-      const idx = Number(input.getAttribute('data-voucher-max-uses'));
-      const voucher = adminState.catalog.vouchers?.[idx];
-      if (!voucher) return;
-      const maxUses = Math.max(2, Math.round(Number(e.target.value) || 2));
-      voucher.usageMode = 'limited';
-      voucher.maxUses = maxUses;
-      markDirty();
-      const row = container.querySelector(`[data-voucher-row="${idx}"]`);
-      const badge = row?.querySelector('.admin-badge');
-      if (badge) badge.textContent = `Maksimal ${maxUses}x pakai`;
-    });
-  });
 
   container.querySelectorAll('[data-remove-voucher]').forEach((btn) => {
     btn.addEventListener('click', () => {
@@ -2162,99 +648,6 @@ function renderVoucherList() {
       showToast('Voucher dihapus.');
     });
   });
-}
-
-function syncNewProductLogoUi() {
-  const mode = adminState.newProdLogoMode;
-  document.querySelectorAll('[data-new-logo-mode]').forEach((btn) => {
-    const isActive = btn.getAttribute('data-new-logo-mode') === mode;
-    btn.classList.toggle('is-active', isActive);
-    btn.setAttribute('aria-pressed', String(isActive));
-  });
-
-  const uploadPane = document.getElementById('new-prod-logo-upload-pane');
-  const linkPane = document.getElementById('new-prod-logo-link-pane');
-  if (uploadPane) uploadPane.hidden = mode !== 'upload';
-  if (linkPane) linkPane.hidden = mode !== 'link';
-
-  const previewEl = document.getElementById('new-prod-logo-preview');
-  const statusEl = document.getElementById('new-prod-logo-status');
-  const urlInput = document.getElementById('new-prod-logo-url');
-
-  const activeSrc =
-    mode === 'upload' && adminState.newProdPendingUpload
-      ? adminState.newProdPendingUpload.previewDataUrl
-      : urlInput?.value.trim() || './assets/logos/custom-request.svg';
-
-  if (previewEl) previewEl.src = activeSrc;
-  if (statusEl) {
-    if (mode === 'upload' && adminState.newProdPendingUpload) {
-      statusEl.textContent = `File siap: ${adminState.newProdPendingUpload.fileName}`;
-    } else if (mode === 'upload') {
-      statusEl.textContent = 'Belum ada file dipilih (atau gunakan tab Link / URL)';
-    } else {
-      statusEl.textContent = `Link aktif: ${activeSrc}`;
-    }
-  }
-}
-
-async function putGitHubFile({ owner, repo, branch, token, filePath, base64Content, message, sha = null }) {
-  const endpoint = `https://api.github.com/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/contents/${encodeRepoPathSegments(filePath)}`;
-  const body = {
-    message,
-    content: base64Content,
-    branch,
-    ...(sha ? { sha } : {}),
-  };
-  const res = await fetch(endpoint, {
-    method: 'PUT',
-    headers: {
-      Accept: 'application/vnd.github+json',
-      Authorization: `Bearer ${token}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify(body),
-  });
-  if (!res.ok) {
-    const errData = await res.json().catch(() => ({}));
-    throw new Error(errData.message || `GitHub HTTP ${res.status} (${filePath})`);
-  }
-  return res.json();
-}
-
-async function deleteGitHubFile({ owner, repo, branch, token, filePath, message }) {
-  const endpoint = `https://api.github.com/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/contents/${encodeRepoPathSegments(filePath)}`;
-  const getRes = await fetch(`${endpoint}?ref=${encodeURIComponent(branch)}`, {
-    headers: {
-      Accept: 'application/vnd.github+json',
-      Authorization: `Bearer ${token}`,
-    },
-    cache: 'no-store',
-  });
-
-  if (getRes.status === 404) {
-    return false;
-  }
-  if (!getRes.ok) {
-    return false;
-  }
-  const meta = await getRes.json();
-  if (!meta?.sha) return false;
-
-  const delRes = await fetch(endpoint, {
-    method: 'DELETE',
-    headers: {
-      Accept: 'application/vnd.github+json',
-      Authorization: `Bearer ${token}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      message,
-      sha: meta.sha,
-      branch,
-    }),
-  });
-  return delRes.ok;
 }
 
 async function pullFromGitHub() {
@@ -2277,22 +670,11 @@ async function pullFromGitHub() {
     if (!parsed || !Array.isArray(parsed.products)) {
       throw new Error('Format catalog.json tidak valid.');
     }
-    parsed.brand = normalizeBrandConfig(parsed.brand || {});
-    parsed.banners = normalizeBanners(parsed.banners);
-    parsed.paymentOptions = syncPaymentOptionsWithBrand(parsed.paymentOptions, parsed.brand);
     adminState.catalog = parsed;
-    adminState.baseCatalog = structuredClone(parsed);
-    adminState.lastPublishedProducts = extractPublishedLogoEntries(parsed);
     adminState.remoteSha = payload.sha || null;
     adminState.source = 'github';
     adminState.dirty = false;
-    clearPendingLogoOps();
     updateSourceBadge();
-    renderCategoryOptions();
-    renderCategoryList();
-    renderBannerList();
-    renderBrandSettings();
-    renderFaqList();
     renderProductList();
     renderVoucherList();
     setStatusBox('admin-status-box', 'Berhasil memuat katalog terbaru langsung dari GitHub.', 'ok');
@@ -2306,568 +688,23 @@ async function pullFromGitHub() {
   }
 }
 
-function setPublishProgress({ visible = true, percent = 0, label = '' }) {
-  const box = document.getElementById('admin-publish-progress');
-  const labelEl = document.getElementById('admin-progress-label');
-  const pctEl = document.getElementById('admin-progress-pct');
-  const barEl = document.getElementById('admin-progress-bar');
-  const fillEl = document.getElementById('admin-progress-fill');
-  if (!box) return;
-
-  if (!visible) {
-    box.hidden = true;
-    return;
-  }
-  const safePct = Math.max(0, Math.min(100, Math.round(Number(percent) || 0)));
-  box.hidden = false;
-  if (labelEl && label) labelEl.textContent = label;
-  if (pctEl) pctEl.textContent = `${safePct}%`;
-  if (barEl) barEl.setAttribute('aria-valuenow', String(safePct));
-  if (fillEl) fillEl.style.width = `${safePct}%`;
-}
-
-function loadLocalHistory() {
-  try {
-    const raw = localStorage.getItem(ADMIN_HISTORY_STORAGE_KEY);
-    if (!raw) {
-      adminState.history = [];
-      return;
-    }
-    const parsed = JSON.parse(raw);
-    adminState.history = pruneCatalogHistory(parsed, MAX_HISTORY_LOGS);
-  } catch {
-    adminState.history = [];
-  }
-}
-
-function saveLocalHistory(entries) {
-  const pruned = pruneCatalogHistory(entries, MAX_HISTORY_LOGS);
-  adminState.history = pruned;
-  try {
-    localStorage.setItem(ADMIN_HISTORY_STORAGE_KEY, JSON.stringify(pruned));
-  } catch {
-    // Ignore storage quota
-  }
-  return pruned;
-}
-
-function recordLocalHistory(action, summary, snapshot, prevSnapshotOverride = null) {
-  const prevSnapshot =
-    prevSnapshotOverride ||
-    adminState.baseCatalog ||
-    adminState.history[0]?.snapshot ||
-    null;
-
-  const details = prevSnapshot
-    ? describeCatalogChanges(prevSnapshot, snapshot)
-    : ['Sinkronisasi / penyimpanan snapshot katalog'];
-
-  const resolvedSummary =
-    summary ||
-    (prevSnapshot ? summarizeCatalogDiff(prevSnapshot, snapshot) : details[0]);
-
-  const updated = appendCatalogHistory(
-    adminState.history,
-    {
-      action,
-      summary: resolvedSummary,
-      details,
-      snapshot,
-      prevSnapshot,
-    },
-    MAX_HISTORY_LOGS
-  );
-  if (action === 'publish' || action === 'preview' || action === 'manual') {
-    adminState.baseCatalog = structuredClone(snapshot);
-  }
-  saveLocalHistory(updated);
-  renderHistoryList();
-  return updated;
-}
-
-function formatHistoryDate(isoString) {
-  try {
-    return new Intl.DateTimeFormat('id-ID', {
-      day: '2-digit',
-      month: 'short',
-      year: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-    }).format(new Date(isoString));
-  } catch {
-    return String(isoString || '');
-  }
-}
-
-function renderHistoryList() {
-  if (!adminState.unlocked) return;
-  const limitEl = document.getElementById('history-limit-label');
-  if (limitEl) limitEl.textContent = String(MAX_HISTORY_LOGS);
-
-  const listEl = document.getElementById('admin-history-list');
-  if (!listEl) return;
-
-  const logs = pruneCatalogHistory(adminState.history, MAX_HISTORY_LOGS);
-  if (logs.length === 0) {
-    listEl.innerHTML = `
-      <div class="empty-state">
-        <h3>Belum ada riwayat perubahan</h3>
-        <p>Log otomatis dicatat setiap kali Anda mempublikasikan ke GitHub atau menyimpan snapshot manual.</p>
-      </div>
-    `;
-    return;
-  }
-
-  const badgeLabel = {
-    publish: 'Publikasi GitHub',
-    preview: 'Pratinjau Lokal',
-    restore: 'Cadangan Sebelum Restore',
-    manual: 'Snapshot Manual',
-  };
-
-  listEl.innerHTML = logs
-    .map((entry, idx) => {
-      const olderSnapshot = logs[idx + 1]?.snapshot || null;
-      const rawDetails =
-        Array.isArray(entry.details) && entry.details.length > 0
-          ? entry.details
-          : olderSnapshot && entry.snapshot
-          ? describeCatalogChanges(olderSnapshot, entry.snapshot)
-          : entry.summary
-          ? [entry.summary]
-          : ['Pembaruan katalog'];
-
-      const isLegacyVagueSummary = /^\+\d+\s+produk\b/i.test(String(entry.summary || '').trim());
-      const headlineText =
-        isLegacyVagueSummary && rawDetails.length > 0
-          ? rawDetails.length === 1
-            ? rawDetails[0]
-            : `${rawDetails.length} tindakan perubahan tercatat (${rawDetails[0]})`
-          : entry.summary || rawDetails[0] || 'Pembaruan katalog';
-
-      const detailsListHtml = rawDetails
-        .map((item) => `<li class="admin-history-detail-item">${escapeHtml(item)}</li>`)
-        .join('');
-
-      return `
-      <article class="admin-history-row" data-history-id="${escapeHtml(entry.id)}">
-        <div class="admin-history-main">
-          <div class="admin-history-meta-top">
-            <span class="admin-badge ${entry.action === 'publish' ? 'is-ok' : 'is-warn'}">${escapeHtml(badgeLabel[entry.action] || 'Perubahan')}</span>
-            <time class="admin-prod-meta mono-num">${escapeHtml(formatHistoryDate(entry.createdAt))}</time>
-            ${idx === 0 ? '<span class="admin-history-latest">Terbaru</span>' : ''}
-            <span class="admin-prod-meta">${rawDetails.length} rincian tindakan</span>
-          </div>
-          <strong class="admin-history-summary">${escapeHtml(headlineText)}</strong>
-          <ul class="admin-history-details-list" aria-label="Rincian tindakan perubahan">
-            ${detailsListHtml}
-          </ul>
-          <span class="admin-prod-meta">${Number(entry.productCount || 0)} produk · ${Number(entry.voucherCount || 0)} voucher</span>
-        </div>
-        <div class="admin-history-actions">
-          <button
-            type="button"
-            class="btn btn-primary btn-sm"
-            data-restore-history="${escapeHtml(entry.id)}"
-          >
-            Pulihkan
-          </button>
-          <button
-            type="button"
-            class="btn btn-ghost btn-sm"
-            data-delete-history="${escapeHtml(entry.id)}"
-            aria-label="Hapus log ${escapeHtml(headlineText)}"
-          >
-            Hapus
-          </button>
-        </div>
-      </article>
-    `;
-    })
-    .join('');
-
-  listEl.querySelectorAll('[data-restore-history]').forEach((btn) => {
-    btn.addEventListener('click', () => {
-      const id = btn.getAttribute('data-restore-history');
-      const target = adminState.history.find((h) => h.id === id);
-      if (!target || !target.snapshot) return;
-
-      recordLocalHistory(
-        'restore',
-        `Cadangan sebelum restore ke versi ${formatHistoryDate(target.createdAt)}`,
-        adminState.catalog,
-        target.snapshot
-      );
-
-      adminState.catalog = structuredClone(target.snapshot);
-      adminState.catalog.brand = normalizeBrandConfig(adminState.catalog.brand || {});
-      adminState.catalog.banners = normalizeBanners(adminState.catalog.banners);
-      adminState.catalog.paymentOptions = syncPaymentOptionsWithBrand(
-        adminState.catalog.paymentOptions,
-        adminState.catalog.brand
-      );
-      adminState.baseCatalog = structuredClone(adminState.catalog);
-      markDirty();
-      try {
-        localStorage.setItem(CATALOG_PREVIEW_STORAGE_KEY, JSON.stringify(adminState.catalog));
-      } catch {
-        // Ignore
-      }
-      adminState.activeTab = 'products';
-      renderTabs();
-      renderCategoryOptions();
-      renderCategoryList();
-      renderBannerList();
-      renderBrandSettings();
-      renderFaqList();
-      renderProductList();
-      renderVoucherList();
-      setStatusBox(
-        'admin-status-box',
-        `Katalog dipulihkan ke versi ${formatHistoryDate(target.createdAt)}. Klik "Simpan & Publikasikan ke GitHub" untuk menerapkan secara live.`,
-        'info'
-      );
-      showToast('Katalog berhasil dipulihkan dari riwayat.');
-    });
-  });
-
-  listEl.querySelectorAll('[data-delete-history]').forEach((btn) => {
-    btn.addEventListener('click', () => {
-      const id = btn.getAttribute('data-delete-history');
-      const next = adminState.history.filter((h) => h.id !== id);
-      saveLocalHistory(next);
-      renderHistoryList();
-      showToast('Log riwayat dihapus.');
-    });
-  });
-}
-
-async function pullHistoryFromGitHub() {
-  if (!adminState.unlocked) return;
-
-  const mergeAndSaveLogs = (incomingLogs = []) => {
-    if (!Array.isArray(incomingLogs) || incomingLogs.length === 0) return;
-    const mergedMap = new Map();
-    for (const item of [...incomingLogs, ...adminState.history]) {
-      if (!item || !item.id) continue;
-      const existing = mergedMap.get(item.id);
-      if (!existing) {
-        mergedMap.set(item.id, item);
-      } else if (
-        (!Array.isArray(existing.details) || existing.details.length === 0) &&
-        Array.isArray(item.details) &&
-        item.details.length > 0
-      ) {
-        mergedMap.set(item.id, item);
-      }
-    }
-    saveLocalHistory([...mergedMap.values()]);
-    renderHistoryList();
-  };
-
-  try {
-    const localRes = await fetch(`./data/catalog-history.json?t=${Date.now()}`, {
-      cache: 'no-store',
-    });
-    if (localRes.ok) {
-      const localPayload = await localRes.json();
-      if (Array.isArray(localPayload?.logs)) {
-        mergeAndSaveLogs(localPayload.logs);
-      }
-    }
-  } catch {
-    // Ignore local fetch fallback error
-  }
-
-  const { owner, repo, branch, token } = adminState.ghConfig;
-  if (!owner || !repo) return;
-
-  const url = `https://api.github.com/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/contents/data/catalog-history.json?ref=${encodeURIComponent(branch)}`;
-  const headers = { Accept: 'application/vnd.github+json' };
-  if (token) headers.Authorization = `Bearer ${token}`;
-
-  const res = await fetch(url, { headers, cache: 'no-store' });
-  if (!res.ok) return;
-  const payload = await res.json();
-  adminState.historySha = payload.sha || null;
-  const decoded = decodeBase64Utf8(payload.content);
-  const parsed = JSON.parse(decoded);
-  const remoteLogs = Array.isArray(parsed?.logs) ? parsed.logs : [];
-  mergeAndSaveLogs(remoteLogs);
-}
-
-async function syncHistoryToGitHub({ owner, repo, branch, token, logs }) {
-  const endpoint = `https://api.github.com/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/contents/data/catalog-history.json`;
-  let sha = adminState.historySha;
-  try {
-    const getRes = await fetch(`${endpoint}?ref=${encodeURIComponent(branch)}`, {
-      headers: {
-        Accept: 'application/vnd.github+json',
-        Authorization: `Bearer ${token}`,
-      },
-      cache: 'no-store',
-    });
-    if (getRes.ok) {
-      const meta = await getRes.json();
-      sha = meta.sha || sha;
-    } else if (getRes.status === 404) {
-      sha = null;
-    }
-  } catch {
-    // Use existing sha if available
-  }
-
-  const pruned = pruneCatalogHistory(logs, MAX_HISTORY_LOGS);
-  const bodyJson = JSON.stringify(
-    {
-      updatedAt: new Date().toISOString(),
-      maxLogs: MAX_HISTORY_LOGS,
-      logs: pruned,
-    },
-    null,
-    2
-  );
-  const payload = await putGitHubFile({
-    owner,
-    repo,
-    branch,
-    token,
-    filePath: 'data/catalog-history.json',
-    base64Content: encodeBase64Utf8(`${bodyJson}\n`),
-    message: `chore(history): catat riwayat katalog (maks ${MAX_HISTORY_LOGS} log)`,
-    sha,
-  });
-  adminState.historySha = payload.content?.sha || sha;
-}
-
-async function syncOpenGraphIndexHtmlToGitHub({ owner, repo, branch, token, brand }) {
-  const endpoint = `https://api.github.com/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/contents/index.html`;
-  const getRes = await fetch(`${endpoint}?ref=${encodeURIComponent(branch)}`, {
-    headers: {
-      Accept: 'application/vnd.github+json',
-      Authorization: `Bearer ${token}`,
-    },
-    cache: 'no-store',
-  });
-  if (!getRes.ok) return false;
-  const meta = await getRes.json();
-  if (!meta?.content || !meta?.sha) return false;
-  const currentHtml = decodeBase64Utf8(meta.content);
-  const updatedHtml = applyOpenGraphToHtml(currentHtml, brand.openGraph, brand);
-  if (updatedHtml === currentHtml) return false;
-
-  await putGitHubFile({
-    owner,
-    repo,
-    branch,
-    token,
-    filePath: 'index.html',
-    base64Content: encodeBase64Utf8(updatedHtml),
-    message: 'chore(opengraph): update meta tag OpenGraph di index.html via Panel Admin',
-    sha: meta.sha,
-  });
-  return true;
-}
-
-function putGitHubFileWithProgress({
-  owner,
-  repo,
-  branch,
-  token,
-  filePath,
-  base64Content,
-  message,
-  sha = null,
-  onUploadProgress = null,
-}) {
-  const endpoint = `https://api.github.com/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/contents/${encodeRepoPathSegments(filePath)}`;
-  const bodyStr = JSON.stringify({
-    message,
-    content: base64Content,
-    branch,
-    ...(sha ? { sha } : {}),
-  });
-
-  return new Promise((resolve, reject) => {
-    const xhr = new XMLHttpRequest();
-    xhr.open('PUT', endpoint, true);
-    xhr.setRequestHeader('Accept', 'application/vnd.github+json');
-    xhr.setRequestHeader('Authorization', `Bearer ${token}`);
-    xhr.setRequestHeader('Content-Type', 'application/json');
-
-    if (xhr.upload && typeof onUploadProgress === 'function') {
-      xhr.upload.onprogress = (evt) => {
-        if (evt.lengthComputable && evt.total > 0) {
-          onUploadProgress(evt.loaded / evt.total);
-        }
-      };
-    }
-
-    xhr.onload = () => {
-      let data = {};
-      try {
-        data = JSON.parse(xhr.responseText || '{}');
-      } catch {
-        data = {};
-      }
-      if (xhr.status >= 200 && xhr.status < 300) {
-        onUploadProgress?.(1);
-        resolve(data);
-      } else {
-        reject(new Error(data.message || `GitHub HTTP ${xhr.status} (${filePath})`));
-      }
-    };
-
-    xhr.onerror = () => reject(new Error(`Koneksi gagal saat mengunggah ${filePath}`));
-    xhr.send(bodyStr);
-  });
-}
-
 async function publishToGitHub() {
-  if (!adminState.unlocked || adminState.isPublishing) return;
+  if (!adminState.unlocked) return;
   const { owner, repo, branch, token } = adminState.ghConfig;
   if (!token) {
     setStatusBox('admin-status-box', 'Sesi token kosong. Kunci lalu buka kembali brankas Anda.', 'error');
     return;
   }
 
-  adminState.isPublishing = true;
-  const publishBtn = document.getElementById('publish-github-btn');
-  if (publishBtn) publishBtn.disabled = true;
-
   const endpoint = `https://api.github.com/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/contents/data/catalog.json`;
-  setStatusBox('admin-status-box', 'Mengunggah perubahan, banner, OpenGraph & logo ke GitHub Pages...', 'info');
+  const headers = {
+    Accept: 'application/vnd.github+json',
+    Authorization: `Bearer ${token}`,
+    'Content-Type': 'application/json',
+  };
 
+  setStatusBox('admin-status-box', 'Mempublikasikan perubahan ke GitHub Pages...', 'info');
   try {
-    const nextCatalog = structuredClone(adminState.catalog);
-    nextCatalog.brand = normalizeBrandConfig(nextCatalog.brand || {});
-    nextCatalog.banners = normalizeBanners(nextCatalog.banners);
-    nextCatalog.paymentOptions = syncPaymentOptionsWithBrand(
-      nextCatalog.paymentOptions,
-      nextCatalog.brand
-    );
-
-    const uploadQueue = [];
-
-    for (const prod of nextCatalog.products || []) {
-      const pending = adminState.pendingUploads[prod.id];
-      if (pending && prod.logo === pending.previewDataUrl) {
-        uploadQueue.push({
-          label: `logo produk ${prod.name}`,
-          pending,
-          applyPath: (relPath) => {
-            prod.logo = relPath;
-          },
-        });
-      }
-    }
-
-    const brandPending = adminState.pendingUploads['__brand_logo__'];
-    if (brandPending && nextCatalog.brand.logo === brandPending.previewDataUrl) {
-      uploadQueue.push({
-        label: 'logo brand utama',
-        pending: brandPending,
-        applyPath: (relPath) => {
-          nextCatalog.brand.logo = relPath;
-        },
-      });
-    }
-
-    const ogPending = adminState.pendingUploads['__og_image__'];
-    if (ogPending && nextCatalog.brand.openGraph?.image === ogPending.previewDataUrl) {
-      uploadQueue.push({
-        label: 'gambar OpenGraph',
-        pending: ogPending,
-        applyPath: (relPath) => {
-          nextCatalog.brand.openGraph.image = relPath;
-        },
-      });
-    }
-
-    for (const soc of nextCatalog.brand.socials || []) {
-      const socPending = adminState.pendingUploads[`__social__${soc.id}`];
-      if (socPending && soc.logo === socPending.previewDataUrl) {
-        uploadQueue.push({
-          label: `logo sosmed ${soc.label}`,
-          pending: socPending,
-          applyPath: (relPath) => {
-            soc.logo = relPath;
-          },
-        });
-      }
-    }
-
-    for (const ban of nextCatalog.banners || []) {
-      const banPending = adminState.pendingUploads[`__banner__${ban.id}`];
-      if (banPending && ban.image === banPending.previewDataUrl) {
-        uploadQueue.push({
-          label: `gambar banner ${ban.heading}`,
-          pending: banPending,
-          applyPath: (relPath) => {
-            ban.image = relPath;
-          },
-        });
-      }
-    }
-
-    const diffOrphans = collectOrphanedUploadLogos(
-      adminState.lastPublishedProducts,
-      nextCatalog.products,
-      nextCatalog
-    );
-    const stillActiveSet = collectAllActiveUploadLogoPaths(nextCatalog);
-    const preUploadActiveSet = new Set(stillActiveSet);
-    for (const job of uploadQueue) {
-      if (job.pending?.targetPath) preUploadActiveSet.add(job.pending.targetPath);
-    }
-    const plannedOrphans = [...new Set([...diffOrphans, ...adminState.deletedUploadPaths])].filter(
-      (p) => p && !preUploadActiveSet.has(p)
-    );
-
-    const totalWeight =
-      uploadQueue.length * 1.2 +
-      0.5 + // fetch remote SHA
-      1.8 + // upload catalog.json
-      0.6 + // sync index.html OpenGraph
-      plannedOrphans.length * 0.5 +
-      0.8; // sync history log
-    let completedWeight = 0;
-
-    const updateWeightedProgress = (partialWeight, label) => {
-      const ratio = totalWeight > 0 ? Math.min(0.99, (completedWeight + partialWeight) / totalWeight) : 0;
-      setPublishProgress({
-        visible: true,
-        percent: Math.max(2, Math.round(ratio * 100)),
-        label,
-      });
-    };
-
-    updateWeightedProgress(0.05, 'Memvalidasi data katalog & gambar...');
-
-    // 1. Upload pending compressed logo/banner/OG files directly to assets/logos/uploads/
-    let uploadedLogosCount = 0;
-    for (let i = 0; i < uploadQueue.length; i += 1) {
-      const job = uploadQueue[i];
-      const { pending } = job;
-      const stepLabel = `Mengunggah (${i + 1}/${uploadQueue.length}): ${job.label}...`;
-      await putGitHubFileWithProgress({
-        owner,
-        repo,
-        branch,
-        token,
-        filePath: pending.targetPath,
-        base64Content: pending.base64Content,
-        message: `chore(assets): upload ${job.label} via Panel Admin`,
-        onUploadProgress: (frac) => updateWeightedProgress(frac * 1.2, stepLabel),
-      });
-      job.applyPath(`./${pending.targetPath}`);
-      uploadedLogosCount += 1;
-      completedWeight += 1.2;
-    }
-
-    // 2. Fetch latest catalog.json SHA
-    updateWeightedProgress(0.15, 'Memeriksa versi catalog.json di GitHub...');
-    let prevRemoteCatalog = null;
     const getRes = await fetch(`${endpoint}?ref=${encodeURIComponent(branch)}`, {
       headers: {
         Accept: 'application/vnd.github+json',
@@ -2880,143 +717,47 @@ async function publishToGitHub() {
     if (getRes.ok) {
       const currentMeta = await getRes.json();
       latestSha = currentMeta.sha || latestSha;
-      try {
-        prevRemoteCatalog = JSON.parse(decodeBase64Utf8(currentMeta.content));
-      } catch {
-        prevRemoteCatalog = null;
-      }
     } else if (getRes.status !== 404) {
       throw new Error(`Gagal cek versi file (HTTP ${getRes.status})`);
     }
-    completedWeight += 0.5;
 
-    // 3. Upload updated catalog.json with realtime byte progress
-    const formattedJson = `${JSON.stringify(nextCatalog, null, 2)}\n`;
-    const putPayload = await putGitHubFileWithProgress({
-      owner,
-      repo,
+    const formattedJson = `${JSON.stringify(adminState.catalog, null, 2)}\n`;
+    const body = {
+      message: 'chore(catalog): update produk, harga, atau stok via Panel Admin',
+      content: encodeBase64Utf8(formattedJson),
       branch,
-      token,
-      filePath: 'data/catalog.json',
-      base64Content: encodeBase64Utf8(formattedJson),
-      message: 'chore(catalog): update katalog via Panel Admin',
-      sha: latestSha,
-      onUploadProgress: (frac) =>
-        updateWeightedProgress(frac * 1.8, 'Mengunggah catalog.json ke GitHub...'),
+      ...(latestSha ? { sha: latestSha } : {}),
+    };
+
+    const putRes = await fetch(endpoint, {
+      method: 'PUT',
+      headers,
+      body: JSON.stringify(body),
     });
-    completedWeight += 1.8;
 
-    // 3b. Sync OpenGraph meta tags directly to index.html in GitHub repo
-    updateWeightedProgress(0.2, 'Menyinkronkan meta tag OpenGraph di index.html...');
-    try {
-      await syncOpenGraphIndexHtmlToGitHub({
-        owner,
-        repo,
-        branch,
-        token,
-        brand: nextCatalog.brand,
-      });
-    } catch {
-      // Non-fatal if index.html is unchanged
-    }
-    completedWeight += 0.6;
-
-    // 4. Delete previous uploaded logo files that were replaced or removed
-    const finalActiveSet = collectAllActiveUploadLogoPaths(nextCatalog);
-    const allOrphansToDelete = [...new Set([...diffOrphans, ...adminState.deletedUploadPaths])].filter(
-      (p) => p && !finalActiveSet.has(p)
-    );
-
-    let deletedLogosCount = 0;
-    for (let i = 0; i < allOrphansToDelete.length; i += 1) {
-      const orphanPath = allOrphansToDelete[i];
-      updateWeightedProgress(
-        0.2,
-        `Membersihkan file gambar lama (${i + 1}/${allOrphansToDelete.length})...`
-      );
-      const removed = await deleteGitHubFile({
-        owner,
-        repo,
-        branch,
-        token,
-        filePath: orphanPath,
-        message: `chore(assets): hapus file gambar lama ${orphanPath}`,
-      });
-      if (removed) deletedLogosCount += 1;
-      completedWeight += 0.5;
+    if (!putRes.ok) {
+      const errData = await putRes.json().catch(() => ({}));
+      throw new Error(errData.message || `GitHub HTTP ${putRes.status}`);
     }
 
-    // 5. Record change history & enforce log limit cleanly
-    updateWeightedProgress(0.3, `Menyimpan riwayat perubahan (maks ${MAX_HISTORY_LOGS} log)...`);
-    const baselineCatalog = prevRemoteCatalog || adminState.baseCatalog;
-    const changeSummary = summarizeCatalogDiff(baselineCatalog, nextCatalog);
-    const updatedLogs = recordLocalHistory(
-      'publish',
-      changeSummary,
-      nextCatalog,
-      baselineCatalog
-    );
-    try {
-      await syncHistoryToGitHub({
-        owner,
-        repo,
-        branch,
-        token,
-        logs: updatedLogs,
-      });
-    } catch {
-      // Non-fatal: history stays safely saved locally
-    }
-
-    adminState.catalog = nextCatalog;
-    adminState.baseCatalog = structuredClone(nextCatalog);
-    adminState.lastPublishedProducts = extractPublishedLogoEntries(nextCatalog);
+    const putPayload = await putRes.json();
     adminState.remoteSha = putPayload.content?.sha || latestSha;
     adminState.source = 'github';
     adminState.dirty = false;
-    clearPendingLogoOps();
-
     try {
       localStorage.removeItem(CATALOG_PREVIEW_STORAGE_KEY);
     } catch {
       // Ignore
     }
-
     updateSourceBadge();
-    renderCategoryOptions();
-    renderCategoryList();
-    renderBannerList();
-    renderBrandSettings();
-    renderFaqList();
-    renderProductList();
-    renderHistoryList();
-
-    setPublishProgress({
-      visible: true,
-      percent: 100,
-      label: 'Publikasi selesai & riwayat tercatat!',
-    });
-
-    const cleanupNote =
-      deletedLogosCount > 0 ? ` (${deletedLogosCount} file gambar lama otomatis dihapus)` : '';
-    const uploadNote =
-      uploadedLogosCount > 0 ? ` · ${uploadedLogosCount} gambar baru diunggah` : '';
     setStatusBox(
       'admin-status-box',
-      `Berhasil dipublikasikan ke GitHub!${uploadNote}${cleanupNote} (${changeSummary})`,
+      'Berhasil dipublikasikan ke GitHub! GitHub Pages otomatis memperbarui katalog publik dalam ~30 detik.',
       'ok'
     );
     showToast('Perubahan katalog berhasil dipublikasikan ke GitHub.');
   } catch (err) {
-    setPublishProgress({
-      visible: true,
-      percent: 0,
-      label: `Gagal: ${err.message}`,
-    });
     setStatusBox('admin-status-box', `Gagal mempublikasikan: ${err.message}`, 'error');
-  } finally {
-    adminState.isPublishing = false;
-    if (publishBtn) publishBtn.disabled = false;
   }
 }
 
@@ -3142,15 +883,7 @@ function bindEvents() {
   document.getElementById('save-preview-btn')?.addEventListener('click', () => {
     if (!adminState.unlocked) return;
     try {
-      adminState.catalog.brand = normalizeBrandConfig(adminState.catalog.brand || {});
-      adminState.catalog.banners = normalizeBanners(adminState.catalog.banners);
-      adminState.catalog.paymentOptions = syncPaymentOptionsWithBrand(
-        adminState.catalog.paymentOptions,
-        adminState.catalog.brand
-      );
       localStorage.setItem(CATALOG_PREVIEW_STORAGE_KEY, JSON.stringify(adminState.catalog));
-      persistPendingLogoOps();
-      recordLocalHistory('preview', null, adminState.catalog);
       adminState.source = 'preview';
       adminState.dirty = false;
       updateSourceBadge();
@@ -3165,19 +898,6 @@ function bindEvents() {
     }
   });
 
-  document.getElementById('snapshot-history-btn')?.addEventListener('click', () => {
-    if (!adminState.unlocked) return;
-    recordLocalHistory('manual', null, adminState.catalog);
-    showToast(`Snapshot disimpan ke riwayat (maks ${MAX_HISTORY_LOGS} log).`);
-  });
-
-  document.getElementById('clear-history-btn')?.addEventListener('click', () => {
-    if (!adminState.unlocked) return;
-    saveLocalHistory([]);
-    renderHistoryList();
-    showToast('Seluruh log riwayat lokal dibersihkan.');
-  });
-
   document.getElementById('clear-preview-btn')?.addEventListener('click', async () => {
     if (!adminState.unlocked) return;
     try {
@@ -3185,25 +905,11 @@ function bindEvents() {
     } catch {
       // Ignore
     }
-    clearPendingLogoOps();
     const fresh = await loadCatalogData({ allowLocalPreview: false });
-    fresh.data.brand = normalizeBrandConfig(fresh.data.brand || {});
-    fresh.data.banners = normalizeBanners(fresh.data.banners);
-    fresh.data.paymentOptions = syncPaymentOptionsWithBrand(
-      fresh.data.paymentOptions,
-      fresh.data.brand
-    );
     adminState.catalog = fresh.data;
-    adminState.baseCatalog = structuredClone(fresh.data);
-    adminState.lastPublishedProducts = extractPublishedLogoEntries(fresh.data);
     adminState.source = fresh.source;
     adminState.dirty = false;
     updateSourceBadge();
-    renderCategoryOptions();
-    renderCategoryList();
-    renderBannerList();
-    renderBrandSettings();
-    renderFaqList();
     renderProductList();
     renderVoucherList();
     setStatusBox('admin-status-box', 'Pratinjau lokal dihapus — kembali mengikuti catalog.json live.', 'info');
@@ -3229,33 +935,12 @@ function bindEvents() {
     btn.addEventListener('click', () => {
       adminState.activeTab = btn.getAttribute('data-admin-tab') || 'products';
       renderTabs();
-      if (adminState.activeTab === 'history') {
-        renderHistoryList();
-      } else if (adminState.activeTab === 'categories') {
-        renderCategoryList();
-      } else if (adminState.activeTab === 'banners') {
-        renderBannerList();
-      } else if (adminState.activeTab === 'brand') {
-        renderBrandSettings();
-      } else if (adminState.activeTab === 'faq') {
-        renderFaqList();
-      }
     });
   });
 
   document.getElementById('admin-product-search')?.addEventListener('input', (e) => {
     adminState.searchQuery = e.target.value;
     renderProductList();
-  });
-
-  // Add New Product Logo Mode Tabs + Listeners
-  document.querySelectorAll('[data-new-logo-mode]').forEach((btn) => {
-    btn.addEventListener('click', () => {
-      const mode = btn.getAttribute('data-new-logo-mode');
-      if (mode !== 'upload' && mode !== 'link') return;
-      adminState.newProdLogoMode = mode;
-      syncNewProductLogoUi();
-    });
   });
 
   const presetEl = document.getElementById('new-prod-logo-preset');
@@ -3265,31 +950,21 @@ function bindEvents() {
   presetEl?.addEventListener('change', () => {
     if (logoUrlEl && presetEl.value) {
       logoUrlEl.value = presetEl.value;
-      adminState.newProdPendingUpload = null;
-      syncNewProductLogoUi();
     }
   });
 
-  logoUrlEl?.addEventListener('input', () => {
-    adminState.newProdPendingUpload = null;
-    syncNewProductLogoUi();
-  });
-
-  newProdFileEl?.addEventListener('change', async (e) => {
+  newProdFileEl?.addEventListener('change', (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    try {
-      const result = await compressLogoFile(file);
-      adminState.newProdPendingUpload = {
-        ...result,
-        fileName: file.name,
-      };
-      adminState.newProdLogoMode = 'upload';
-      syncNewProductLogoUi();
-      showToast(`Logo "${file.name}" siap untuk produk baru.`);
-    } catch (err) {
-      showToast(err.message || 'Gagal membaca file logo.');
-    }
+    const reader = new FileReader();
+    reader.onload = (evt) => {
+      const base64 = evt.target?.result;
+      if (typeof base64 === 'string' && logoUrlEl) {
+        logoUrlEl.value = base64;
+        showToast('File logo produk baru siap digunakan.');
+      }
+    };
+    reader.readAsDataURL(file);
   });
 
   document.getElementById('add-product-form')?.addEventListener('submit', (e) => {
@@ -3297,21 +972,16 @@ function bindEvents() {
     if (!adminState.unlocked) return;
     const name = document.getElementById('new-prod-name')?.value.trim() || '';
     const category = document.getElementById('new-prod-category')?.value || 'streaming';
-    const pendingUpload =
-      adminState.newProdLogoMode === 'upload' ? adminState.newProdPendingUpload : null;
-    const logo = pendingUpload
-      ? pendingUpload.previewDataUrl
-      : document.getElementById('new-prod-logo-url')?.value.trim() ||
-        './assets/logos/custom-request.svg';
+    const logo =
+      document.getElementById('new-prod-logo-url')?.value.trim() ||
+      './assets/logos/custom-request.svg';
     const tag = document.getElementById('new-prod-tag')?.value.trim() || 'Tersedia';
     const summary = document.getElementById('new-prod-summary')?.value.trim() || '';
     const variantName = document.getElementById('new-prod-variant-name')?.value.trim() || '';
     const variantPrice = Number(document.getElementById('new-prod-variant-price')?.value || 0);
 
     try {
-      const newProdId = slugifyId(name);
       adminState.catalog = upsertProductInCatalog(adminState.catalog, {
-        id: newProdId,
         name,
         category,
         logo,
@@ -3319,25 +989,9 @@ function bindEvents() {
         summary,
         variants: [{ name: variantName, price: variantPrice, outOfStock: false }],
       });
-
-      if (pendingUpload) {
-        adminState.pendingUploads[newProdId] = {
-          targetPath: `assets/logos/uploads/${newProdId}-${Date.now().toString(36)}.${pendingUpload.ext}`,
-          base64Content: pendingUpload.base64Content,
-          previewDataUrl: pendingUpload.previewDataUrl,
-          fileName: pendingUpload.fileName,
-        };
-        adminState.logoEditMode[newProdId] = 'upload';
-      }
-
       markDirty();
       e.target.reset();
-      adminState.newProdPendingUpload = null;
-      adminState.newProdLogoMode = 'upload';
       if (logoUrlEl) logoUrlEl.value = './assets/logos/custom-request.svg';
-      syncNewProductLogoUi();
-      renderCategoryList();
-
       adminState.activeTab = 'products';
       adminState.searchQuery = '';
       const searchEl = document.getElementById('admin-product-search');
@@ -3350,424 +1004,6 @@ function bindEvents() {
     }
   });
 
-  // Kategori Layanan Baru
-  document.getElementById('add-category-form')?.addEventListener('submit', (e) => {
-    e.preventDefault();
-    if (!adminState.unlocked) return;
-    const label = document.getElementById('new-category-label')?.value.trim() || '';
-    const customId = document.getElementById('new-category-id')?.value.trim() || '';
-    try {
-      adminState.catalog = upsertCategoryInCatalog(adminState.catalog, {
-        id: customId ? slugifyId(customId) : slugifyId(label),
-        label,
-      });
-      markDirty();
-      e.target.reset();
-      renderCategoryOptions();
-      renderCategoryList();
-      renderProductList();
-      showToast(`Kategori layanan "${label}" berhasil ditambahkan.`);
-    } catch (err) {
-      showToast(err.message || 'Gagal menambah kategori.');
-    }
-  });
-
-  // Banner Baru (Upload / Preset / Form Submit)
-  const newBanPresetEl = document.getElementById('new-banner-preset');
-  const newBanImgUrlEl = document.getElementById('new-banner-image-url');
-  const newBanPreviewEl = document.getElementById('new-banner-image-preview');
-  const newBanStatusEl = document.getElementById('new-banner-image-status');
-  const newBanFileEl = document.getElementById('new-banner-image-file');
-
-  newBanPresetEl?.addEventListener('change', () => {
-    if (!newBanImgUrlEl) return;
-    newBanImgUrlEl.value = newBanPresetEl.value;
-    adminState.newBannerPendingUpload = null;
-    if (newBanPreviewEl) {
-      newBanPreviewEl.src = newBanPresetEl.value || './assets/hero-banner.jpg';
-      newBanPreviewEl.hidden = !newBanPresetEl.value;
-    }
-    if (newBanStatusEl) {
-      newBanStatusEl.textContent = newBanPresetEl.value
-        ? `Preset dipilih: ${newBanPresetEl.value}`
-        : 'Mode Gradien Warna (Tanpa Foto)';
-    }
-  });
-
-  newBanImgUrlEl?.addEventListener('input', () => {
-    const val = newBanImgUrlEl.value.trim();
-    adminState.newBannerPendingUpload = null;
-    if (newBanPreviewEl) {
-      if (val) {
-        newBanPreviewEl.src = val;
-        newBanPreviewEl.hidden = false;
-      } else {
-        newBanPreviewEl.hidden = true;
-      }
-    }
-    if (newBanStatusEl) {
-      newBanStatusEl.textContent = val ? `Link gambar: ${val}` : 'Mode Gradien Warna (Tanpa Foto)';
-    }
-  });
-
-  newBanFileEl?.addEventListener('change', async (e) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    try {
-      const result = await compressWideImageFile(file, { maxW: 1400, maxH: 640, quality: 0.9 });
-      adminState.newBannerPendingUpload = {
-        ...result,
-        fileName: file.name,
-      };
-      if (newBanPreviewEl) {
-        newBanPreviewEl.src = result.previewDataUrl;
-        newBanPreviewEl.hidden = false;
-      }
-      if (newBanStatusEl) {
-        newBanStatusEl.textContent = `File gambar banner siap: ${file.name}`;
-      }
-      showToast(`Gambar banner "${file.name}" siap ditambahkan.`);
-    } catch (err) {
-      showToast(err.message || 'Gagal memproses file gambar banner.');
-    }
-  });
-
-  document.getElementById('add-banner-form')?.addEventListener('submit', (e) => {
-    e.preventDefault();
-    if (!adminState.unlocked) return;
-    const kicker = document.getElementById('new-banner-kicker')?.value.trim() || 'Promo Spesial · Manifestudio';
-    const heading = document.getElementById('new-banner-heading')?.value.trim() || '';
-    const sub = document.getElementById('new-banner-sub')?.value.trim() || '';
-    const ctaLabel = document.getElementById('new-banner-cta')?.value.trim() || 'Lihat →';
-    const href = document.getElementById('new-banner-href')?.value.trim() || '#katalog';
-    const scrim = document.getElementById('new-banner-scrim')?.value || '';
-    const pendingUpload = adminState.newBannerPendingUpload;
-    const image = pendingUpload
-      ? pendingUpload.previewDataUrl
-      : newBanImgUrlEl?.value.trim() ?? './assets/hero-banner.jpg';
-
-    try {
-      const bannerId = `banner-${slugifyId(heading)}-${Date.now().toString(36).slice(-3)}`;
-      adminState.catalog = upsertBannerInCatalog(adminState.catalog, {
-        id: bannerId,
-        kicker,
-        heading,
-        sub,
-        ctaLabel,
-        href,
-        scrim,
-        image,
-      });
-
-      if (pendingUpload) {
-        adminState.pendingUploads[`__banner__${bannerId}`] = {
-          targetPath: `assets/logos/uploads/${bannerId}.${pendingUpload.ext}`,
-          base64Content: pendingUpload.base64Content,
-          previewDataUrl: pendingUpload.previewDataUrl,
-          fileName: pendingUpload.fileName,
-        };
-      }
-
-      markDirty();
-      e.target.reset();
-      adminState.newBannerPendingUpload = null;
-      if (newBanImgUrlEl) newBanImgUrlEl.value = './assets/hero-banner.jpg';
-      if (newBanPreviewEl) {
-        newBanPreviewEl.src = './assets/hero-banner.jpg';
-        newBanPreviewEl.hidden = false;
-      }
-      if (newBanStatusEl) {
-        newBanStatusEl.textContent = 'Rasio landscape 16:9 atau 21:9 direkomendasikan.';
-      }
-      renderBannerList();
-      showToast(`Slide banner "${heading}" berhasil ditambahkan.`);
-    } catch (err) {
-      showToast(err.message || 'Gagal menambah slide banner.');
-    }
-  });
-
-  // Brand Logo Mode & Upload / Link / Reset
-  document.querySelectorAll('[data-brand-logo-mode]').forEach((btn) => {
-    btn.addEventListener('click', () => {
-      const mode = btn.getAttribute('data-brand-logo-mode');
-      if (mode !== 'upload' && mode !== 'link') return;
-      adminState.brandLogoMode = mode;
-      syncBrandLogoUi();
-    });
-  });
-
-  document.getElementById('brand-logo-file')?.addEventListener('change', async (e) => {
-    const file = e.target.files?.[0];
-    if (!file || !adminState.unlocked) return;
-    try {
-      const result = await compressLogoFile(file);
-      adminState.catalog.brand = normalizeBrandConfig(adminState.catalog.brand || {});
-      queueManagedLogoForDeletion(adminState.catalog.brand.logo);
-      const targetPath = `assets/logos/uploads/brand-${Date.now().toString(36)}.${result.ext}`;
-      adminState.pendingUploads['__brand_logo__'] = {
-        targetPath,
-        base64Content: result.base64Content,
-        previewDataUrl: result.previewDataUrl,
-        fileName: file.name,
-      };
-      adminState.catalog.brand.logo = result.previewDataUrl;
-      adminState.brandLogoMode = 'upload';
-      markDirty();
-      syncBrandLogoUi();
-      showToast(`Logo brand "${file.name}" siap diunggah saat Publikasi.`);
-    } catch (err) {
-      showToast(err.message || 'Gagal memproses file logo brand.');
-    }
-  });
-
-  document.getElementById('brand-logo-url')?.addEventListener('input', (e) => {
-    if (!adminState.unlocked) return;
-    const nextUrl = e.target.value.trim();
-    if (!nextUrl) return;
-    adminState.catalog.brand = normalizeBrandConfig(adminState.catalog.brand || {});
-    queueManagedLogoForDeletion(adminState.catalog.brand.logo);
-    delete adminState.pendingUploads['__brand_logo__'];
-    adminState.catalog.brand.logo = nextUrl;
-    markDirty();
-    syncBrandLogoUi();
-  });
-
-  document.getElementById('brand-logo-reset-btn')?.addEventListener('click', () => {
-    if (!adminState.unlocked) return;
-    adminState.catalog.brand = normalizeBrandConfig(adminState.catalog.brand || {});
-    queueManagedLogoForDeletion(adminState.catalog.brand.logo);
-    delete adminState.pendingUploads['__brand_logo__'];
-    adminState.catalog.brand.logo = './assets/icons/brand-icon.svg';
-    markDirty();
-    syncBrandLogoUi();
-    showToast('Logo brand dikembalikan ke logo default Manifestudio.');
-  });
-
-  // OpenGraph Image Upload, URL, Reset & Fields
-  document.getElementById('og-image-file')?.addEventListener('change', async (e) => {
-    const file = e.target.files?.[0];
-    if (!file || !adminState.unlocked) return;
-    try {
-      const result = await compressWideImageFile(file, { maxW: 1200, maxH: 630, quality: 0.92 });
-      adminState.catalog.brand = normalizeBrandConfig(adminState.catalog.brand || {});
-      queueManagedLogoForDeletion(adminState.catalog.brand.openGraph?.image);
-      const targetPath = `assets/logos/uploads/og-${Date.now().toString(36)}.${result.ext}`;
-      adminState.pendingUploads['__og_image__'] = {
-        targetPath,
-        base64Content: result.base64Content,
-        previewDataUrl: result.previewDataUrl,
-        fileName: file.name,
-      };
-      adminState.catalog.brand.openGraph.image = result.previewDataUrl;
-      markDirty();
-      syncOpenGraphUi();
-      showToast(`Gambar OpenGraph "${file.name}" siap diunggah saat Publikasi.`);
-    } catch (err) {
-      showToast(err.message || 'Gagal memproses file gambar OpenGraph.');
-    }
-  });
-
-  document.getElementById('og-image-url')?.addEventListener('input', (e) => {
-    if (!adminState.unlocked) return;
-    const nextUrl = e.target.value.trim();
-    if (!nextUrl) return;
-    adminState.catalog.brand = normalizeBrandConfig(adminState.catalog.brand || {});
-    queueManagedLogoForDeletion(adminState.catalog.brand.openGraph?.image);
-    delete adminState.pendingUploads['__og_image__'];
-    adminState.catalog.brand.openGraph.image = nextUrl;
-    markDirty();
-    syncOpenGraphUi();
-  });
-
-  document.getElementById('og-image-reset-btn')?.addEventListener('click', () => {
-    if (!adminState.unlocked) return;
-    adminState.catalog.brand = normalizeBrandConfig(adminState.catalog.brand || {});
-    queueManagedLogoForDeletion(adminState.catalog.brand.openGraph?.image);
-    delete adminState.pendingUploads['__og_image__'];
-    adminState.catalog.brand.openGraph.image = './assets/og-manifestudio.jpg';
-    markDirty();
-    syncOpenGraphUi();
-    showToast('Gambar OpenGraph dikembalikan ke gambar default.');
-  });
-
-  const bindOgField = (inputId, fieldKey) => {
-    document.getElementById(inputId)?.addEventListener('input', (e) => {
-      if (!adminState.unlocked) return;
-      adminState.catalog.brand = normalizeBrandConfig(adminState.catalog.brand || {});
-      adminState.catalog.brand.openGraph[fieldKey] = e.target.value.trim();
-      adminState.catalog.brand.openGraph = normalizeOpenGraphConfig(adminState.catalog.brand);
-      markDirty();
-      syncOpenGraphUi();
-    });
-  };
-
-  bindOgField('og-title-input', 'title');
-  bindOgField('og-tagline-input', 'tagline');
-  bindOgField('og-description-input', 'description');
-  bindOgField('og-sitename-input', 'siteName');
-  bindOgField('og-alt-input', 'imageAlt');
-
-  // Brand Identity & Service Fee Live Inputs
-  const bindBrandField = (inputId, applyFn) => {
-    document.getElementById(inputId)?.addEventListener('input', (e) => {
-      if (!adminState.unlocked) return;
-      adminState.catalog.brand = normalizeBrandConfig(adminState.catalog.brand || {});
-      applyFn(adminState.catalog.brand, e.target.value);
-      adminState.catalog.paymentOptions = syncPaymentOptionsWithBrand(
-        adminState.catalog.paymentOptions,
-        adminState.catalog.brand
-      );
-      markDirty();
-    });
-  };
-
-  bindBrandField('brand-name-input', (b, val) => {
-    b.name = val.trim() || 'Manifestudio';
-  });
-  bindBrandField('brand-tagline-input', (b, val) => {
-    b.tagline = val.trim() || 'by Tomy';
-  });
-  bindBrandField('brand-footer-input', (b, val) => {
-    b.footerText = val.trim() || 'Dikelola oleh Manifestudio by Tomy © 2026';
-  });
-  bindBrandField('brand-paylater-pct-input', (b, val) => {
-    const pct = Math.max(0, Math.min(100, Number(val) || 0));
-    b.payLaterSurchargeRate = Math.round(pct * 10) / 1000;
-  });
-  bindBrandField('brand-service-fee-flat-input', (b, val) => {
-    b.serviceFeeFlat = Math.max(0, Math.round(Number(val) || 0));
-  });
-  bindBrandField('brand-service-fee-label-input', (b, val) => {
-    b.serviceFeeLabel = val.trim() || 'Biaya Layanan';
-  });
-  bindBrandField('brand-whatsapp-input', (b, val) => {
-    const cleanWa = val.replace(/[^0-9]/g, '') || '6285122936027';
-    b.whatsappNumber = cleanWa;
-    const waSocial = (b.socials || []).find((s) => s.id === 'social-whatsapp');
-    if (waSocial) {
-      waSocial.url = `https://wa.me/${cleanWa}`;
-      waSocial.handle = `+${cleanWa}`;
-      renderSocialList();
-    }
-  });
-  bindBrandField('brand-discount-threshold-input', (b, val) => {
-    b.discountThreshold = Math.max(0, Math.round(Number(val) || 0));
-  });
-  bindBrandField('brand-discount-amount-input', (b, val) => {
-    b.discountAmount = Math.max(0, Math.round(Number(val) || 0));
-  });
-
-  // Add New Social Media / Contact Form
-  const newSocPresetEl = document.getElementById('new-social-logo-preset');
-  const newSocUrlEl = document.getElementById('new-social-logo-url');
-  const newSocPreviewEl = document.getElementById('new-social-logo-preview');
-  const newSocStatusEl = document.getElementById('new-social-logo-status');
-  const newSocFileEl = document.getElementById('new-social-logo-file');
-
-  newSocPresetEl?.addEventListener('change', () => {
-    if (newSocUrlEl && newSocPresetEl.value) {
-      newSocUrlEl.value = newSocPresetEl.value;
-      adminState.newSocialPendingUpload = null;
-      if (newSocPreviewEl) newSocPreviewEl.src = newSocPresetEl.value;
-      if (newSocStatusEl) newSocStatusEl.textContent = `Preset dipilih: ${newSocPresetEl.value}`;
-    }
-  });
-
-  newSocUrlEl?.addEventListener('input', () => {
-    const val = newSocUrlEl.value.trim();
-    if (!val) return;
-    adminState.newSocialPendingUpload = null;
-    if (newSocPreviewEl) newSocPreviewEl.src = val;
-    if (newSocStatusEl) newSocStatusEl.textContent = `Link logo: ${val}`;
-  });
-
-  newSocFileEl?.addEventListener('change', async (e) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    try {
-      const result = await compressLogoFile(file);
-      adminState.newSocialPendingUpload = {
-        ...result,
-        fileName: file.name,
-      };
-      if (newSocPreviewEl) newSocPreviewEl.src = result.previewDataUrl;
-      if (newSocStatusEl) newSocStatusEl.textContent = `File siap: ${file.name}`;
-      showToast(`Logo sosmed "${file.name}" siap ditambahkan.`);
-    } catch (err) {
-      showToast(err.message || 'Gagal membaca file logo sosmed.');
-    }
-  });
-
-  document.getElementById('add-social-form')?.addEventListener('submit', (e) => {
-    e.preventDefault();
-    if (!adminState.unlocked) return;
-    const label = document.getElementById('new-social-label')?.value.trim() || '';
-    const url = document.getElementById('new-social-url')?.value.trim() || '';
-    const pendingUpload = adminState.newSocialPendingUpload;
-    const logo = pendingUpload
-      ? pendingUpload.previewDataUrl
-      : newSocUrlEl?.value.trim() || './assets/icons/social-globe.svg';
-
-    try {
-      const socialId = `social-${slugifyId(label)}-${Date.now().toString(36).slice(-3)}`;
-      adminState.catalog = upsertSocialInCatalog(adminState.catalog, {
-        id: socialId,
-        platform: label,
-        label,
-        url,
-        logo,
-      });
-
-      if (pendingUpload) {
-        adminState.pendingUploads[`__social__${socialId}`] = {
-          targetPath: `assets/logos/uploads/${socialId}.${pendingUpload.ext}`,
-          base64Content: pendingUpload.base64Content,
-          previewDataUrl: pendingUpload.previewDataUrl,
-          fileName: pendingUpload.fileName,
-        };
-      }
-
-      markDirty();
-      e.target.reset();
-      adminState.newSocialPendingUpload = null;
-      if (newSocUrlEl) newSocUrlEl.value = './assets/icons/social-whatsapp.svg';
-      if (newSocPreviewEl) newSocPreviewEl.src = './assets/icons/social-whatsapp.svg';
-      if (newSocStatusEl) {
-        newSocStatusEl.textContent = 'Bisa pilih preset, link URL, atau upload gambar sendiri.';
-      }
-      renderSocialList();
-      showToast(`Kontak / sosmed "${label}" berhasil ditambahkan.`);
-    } catch (err) {
-      showToast(err.message || 'Gagal menambah kontak sosmed.');
-    }
-  });
-
-  // Add FAQ Form
-  document.getElementById('add-faq-form')?.addEventListener('submit', (e) => {
-    e.preventDefault();
-    if (!adminState.unlocked) return;
-    const question = document.getElementById('new-faq-question')?.value.trim() || '';
-    const answer = document.getElementById('new-faq-answer')?.value.trim() || '';
-    try {
-      adminState.catalog = upsertFaqInCatalog(adminState.catalog, { question, answer });
-      markDirty();
-      e.target.reset();
-      renderFaqList();
-      showToast('Pertanyaan umum (FAQ) baru berhasil ditambahkan.');
-    } catch (err) {
-      showToast(err.message || 'Pertanyaan dan jawaban wajib diisi.');
-    }
-  });
-
-  const newVoucherUsageSelect = document.getElementById('new-voucher-usage-mode');
-  const newVoucherMaxField = document.getElementById('new-voucher-max-uses-field');
-  const syncNewVoucherUsageField = () => {
-    if (!newVoucherUsageSelect || !newVoucherMaxField) return;
-    newVoucherMaxField.hidden = newVoucherUsageSelect.value !== 'limited';
-  };
-  newVoucherUsageSelect?.addEventListener('change', syncNewVoucherUsageField);
-  syncNewVoucherUsageField();
-
   document.getElementById('add-voucher-form')?.addEventListener('submit', (e) => {
     e.preventDefault();
     if (!adminState.unlocked) return;
@@ -3775,13 +1011,6 @@ function bindEvents() {
     const type = document.getElementById('new-voucher-type')?.value || 'fixed';
     const value = Math.max(1, Math.round(Number(document.getElementById('new-voucher-value')?.value) || 0));
     const minSubtotal = Math.max(0, Math.round(Number(document.getElementById('new-voucher-min')?.value) || 0));
-    const rawUsageMode = document.getElementById('new-voucher-usage-mode')?.value || 'once';
-    const rawMaxUses = Math.max(2, Math.round(Number(document.getElementById('new-voucher-max-uses')?.value) || 5));
-
-    const usageCfg = normalizeVoucherUsageConfig({
-      usageMode: rawUsageMode,
-      maxUses: rawUsageMode === 'unlimited' ? 0 : rawUsageMode === 'limited' ? rawMaxUses : 1,
-    });
 
     if (!code) {
       showToast('Kode voucher tidak boleh kosong.');
@@ -3795,19 +1024,10 @@ function bindEvents() {
 
     adminState.catalog.vouchers = [
       ...(adminState.catalog.vouchers || []).filter((v) => v.code !== code),
-      {
-        code,
-        type,
-        value,
-        minSubtotal,
-        usageMode: usageCfg.usageMode,
-        maxUses: usageCfg.maxUses,
-        label,
-      },
+      { code, type, value, minSubtotal, label },
     ];
     markDirty();
     e.target.reset();
-    syncNewVoucherUsageField();
     renderVoucherList();
     showToast(`Voucher ${code} ditambahkan.`);
   });
@@ -3818,12 +1038,6 @@ function bootstrapAdmin() {
   applyTheme();
   bindEvents();
   renderGateScreen();
-  if (
-    typeof window !== 'undefined' &&
-    (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
-  ) {
-    window.__unlockAdminForLocalVerification = () => openUnlockedDashboard();
-  }
 }
 
 bootstrapAdmin();

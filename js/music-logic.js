@@ -1,71 +1,124 @@
 /**
- * Pure recommendation & preference-scoring logic for Ad-Free Smart Music Player.
- * Tracks searched keywords and frequently played tracks/artists/genres.
+ * Pure logic for Manifestudio YT Music Player (Hub + Minimal Floating Dock).
+ * - Uses community open-source YT Music API normalization & pure Fisher-Yates shuffle.
+ * - Zero dependency on user search history or play-frequency weighting.
+ * - Strictly prioritizes Indonesian Viral tracks during automatic shuffled playback.
  */
 
-export const MAX_SEARCH_TERMS = 24;
-export const MAX_TRACK_STATS = 40;
 export const MIN_FULL_TRACK_SECONDS = 75;
-export const MUSIC_MODES = ['full-audio', 'soundcloud', 'spotify'];
+export const REPEAT_MODES = ['all', 'one', 'off'];
+export const MUSIC_MODES = ['yt-music'];
 
 export function normalizeMusicMode(mode) {
   const clean = String(mode || '').trim().toLowerCase();
-  return MUSIC_MODES.includes(clean) ? clean : 'full-audio';
+  return MUSIC_MODES.includes(clean) ? clean : 'yt-music';
+}
+
+export function normalizeRepeatMode(mode) {
+  const clean = String(mode || '').trim().toLowerCase();
+  return REPEAT_MODES.includes(clean) ? clean : 'all';
+}
+
+export function extractYouTubeVideoId(raw) {
+  const value = String(raw || '').trim();
+  if (!value) return '';
+  if (/^[a-zA-Z0-9_-]{11}$/.test(value)) return value;
+
+  const queryMatch = value.match(/[?&]v=([a-zA-Z0-9_-]{11})(?:[&#?/]|$)/);
+  if (queryMatch) return queryMatch[1];
+
+  const pathMatch = value.match(
+    /(?:youtu\.be\/|youtube\.com\/(?:embed|shorts|live)\/|music\.youtube\.com\/watch\?v=)([a-zA-Z0-9_-]{11})(?:[&#?/]|$)/i
+  );
+  if (pathMatch) return pathMatch[1];
+
+  return '';
+}
+
+export function parseDurationSeconds(raw) {
+  if (typeof raw === 'number' && Number.isFinite(raw)) {
+    return Math.max(0, Math.round(raw));
+  }
+  const str = String(raw || '').trim();
+  if (!str) return 0;
+  if (/^\d+$/.test(str)) {
+    return Math.max(0, Number(str));
+  }
+  const parts = str.split(':').map((p) => Number(p.trim()));
+  if (parts.some((n) => !Number.isFinite(n) || n < 0)) return 0;
+  if (parts.length === 2) return parts[0] * 60 + parts[1];
+  if (parts.length === 3) return parts[0] * 3600 + parts[1] * 60 + parts[2];
+  return 0;
+}
+
+export function normalizeYtMusicTrack(item, options = {}) {
+  if (!item || typeof item !== 'object') return null;
+
+  const videoId =
+    extractYouTubeVideoId(item.videoId) ||
+    extractYouTubeVideoId(item.url) ||
+    extractYouTubeVideoId(item.id);
+  if (!videoId) return null;
+
+  const title = String(item.title || '').trim();
+  if (!title) return null;
+
+  const duration = parseDurationSeconds(
+    item.duration ?? item.seconds ?? item.lengthSeconds ?? item.timestamp
+  );
+
+  const artist = String(
+    item.uploaderName ||
+      item.artist ||
+      item.author?.name ||
+      item.author ||
+      item.channel ||
+      'Artis YT Music'
+  )
+    .replace(/\s*-\s*Topic$/i, '')
+    .trim();
+
+  const fallbackThumb = `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`;
+  const rawThumb = String(item.thumbnail || item.artwork || item.image || '').trim();
+  const artwork = rawThumb.startsWith('http') ? rawThumb : fallbackThumb;
+
+  const isIndo =
+    typeof options.isIndonesianViral === 'boolean'
+      ? options.isIndonesianViral
+      : typeof item.isIndonesianViral === 'boolean'
+      ? item.isIndonesianViral
+      : true;
+
+  const genre = String(options.genre || item.genre || (isIndo ? 'Viral Indonesia' : 'YT Music')).trim();
+  const sourceLabel = String(options.sourceLabel || item.sourceLabel || 'YT Music API').trim();
+
+  return {
+    id: `yt-${videoId}`,
+    videoId,
+    title,
+    artist: artist || 'Artis YT Music',
+    genre,
+    tags: `${title} ${artist} ${genre} ${isIndo ? 'indonesia viral yt music' : 'yt music'}`.trim(),
+    duration,
+    artwork,
+    artworkFallback: fallbackThumb,
+    watchUrl: `https://music.youtube.com/watch?v=${videoId}`,
+    isIndonesianViral: isIndo,
+    sourceLabel,
+    streamUrl: item.streamUrl ? String(item.streamUrl) : '',
+  };
 }
 
 export function filterFullLengthTracks(tracks = [], minSeconds = MIN_FULL_TRACK_SECONDS) {
   const minDur = Math.max(0, Number(minSeconds) || 0);
   if (!Array.isArray(tracks)) return [];
   return tracks.filter(
-    (t) => t && t.id && t.streamUrl && Number(t.duration || 0) >= minDur
+    (t) =>
+      t &&
+      t.id &&
+      Boolean(t.videoId || t.streamUrl) &&
+      Number(t.duration || 0) >= minDur
   );
-}
-
-export function buildMusicEmbedUrl(mode, target) {
-  const safeMode = normalizeMusicMode(mode);
-  const raw = String(target || '').trim();
-  if (!raw) return '';
-
-  if (safeMode === 'soundcloud') {
-    const params = new URLSearchParams({
-      url: raw,
-      color: '#2563eb',
-      auto_play: 'false',
-      hide_related: 'true',
-      show_comments: 'false',
-      show_user: 'true',
-      show_reposts: 'false',
-      show_teaser: 'false',
-      visual: 'false',
-      show_artwork: 'true',
-    });
-    return `https://w.soundcloud.com/player/?${params.toString()}`;
-  }
-
-  if (safeMode === 'spotify') {
-    if (raw.startsWith('https://open.spotify.com/embed/')) {
-      return raw;
-    }
-    if (raw.startsWith('https://open.spotify.com/')) {
-      return raw.replace('https://open.spotify.com/', 'https://open.spotify.com/embed/');
-    }
-    const cleanId = raw.replace(/^spotify:(playlist|track|album):/i, '');
-    const kindMatch = raw.match(/^spotify:(playlist|track|album):/i);
-    const kind = kindMatch ? kindMatch[1].toLowerCase() : 'playlist';
-    return `https://open.spotify.com/embed/${kind}/${encodeURIComponent(cleanId)}?utm_source=generator&theme=0`;
-  }
-
-  return '';
-}
-
-export function createDefaultMusicPrefs() {
-  return {
-    searches: {}, // { normalizedTerm: { count, lastUsedAt } }
-    trackPlays: {}, // { trackId: { count, title, artist, genre, lastPlayedAt } }
-    genres: {}, // { normalizedGenre: weight }
-    artists: {}, // { normalizedArtist: weight }
-    skips: {}, // { trackId: skipCount }
-  };
 }
 
 export function tokenizeText(raw) {
@@ -76,180 +129,67 @@ export function tokenizeText(raw) {
     .filter((w) => w.length >= 2);
 }
 
-function pruneMapByRecency(mapObj, maxKeys, scoreFn) {
-  const entries = Object.entries(mapObj || {});
-  if (entries.length <= maxKeys) return mapObj || {};
-  entries.sort((a, b) => scoreFn(b[1]) - scoreFn(a[1]));
-  return Object.fromEntries(entries.slice(0, maxKeys));
+export function shuffleTracksFisherYates(tracks = [], rng = Math.random) {
+  if (!Array.isArray(tracks)) return [];
+  const copy = [...tracks];
+  for (let i = copy.length - 1; i > 0; i -= 1) {
+    const r = Math.min(0.999999, Math.max(0, Number(rng?.() ?? Math.random())));
+    const j = Math.floor(r * (i + 1));
+    [copy[i], copy[j]] = [copy[j], copy[i]];
+  }
+  return copy;
 }
 
-export function recordMusicPreference(currentPrefs, event) {
-  const base = createDefaultMusicPrefs();
-  const prefs = {
-    searches: { ...(currentPrefs?.searches || base.searches) },
-    trackPlays: { ...(currentPrefs?.trackPlays || base.trackPlays) },
-    genres: { ...(currentPrefs?.genres || base.genres) },
-    artists: { ...(currentPrefs?.artists || base.artists) },
-    skips: { ...(currentPrefs?.skips || base.skips) },
+/**
+ * Picks a track purely at random (no user search or play history bias),
+ * strictly prioritizing Indonesian Viral tracks (`isIndonesianViral === true`)
+ * while avoiding the current & recently played tracks when alternatives exist.
+ */
+export function pickShuffledViralTrack(tracks = [], options = {}) {
+  const {
+    currentTrackId = null,
+    recentTrackIds = [],
+    prioritizeIndonesianViral = true,
+    blockedVideoIds = null,
+    minSeconds = MIN_FULL_TRACK_SECONDS,
+    rng = Math.random,
+  } = options || {};
+
+  if (!Array.isArray(tracks) || tracks.length === 0) return null;
+
+  const isNotBlocked = (t) => {
+    if (!t || !t.id || !(t.videoId || t.streamUrl)) return false;
+    if (blockedVideoIds && t.videoId && blockedVideoIds.has(t.videoId)) return false;
+    return true;
   };
-  const now = Date.now();
 
-  if (event?.type === 'search') {
-    const clean = String(event.term || '').trim().toLowerCase();
-    if (clean.length >= 2) {
-      const prev = prefs.searches[clean] || { count: 0, lastUsedAt: 0 };
-      prefs.searches[clean] = {
-        count: prev.count + 1,
-        lastUsedAt: now,
-      };
-      for (const token of tokenizeText(clean)) {
-        if (token !== clean) {
-          const tp = prefs.searches[token] || { count: 0, lastUsedAt: 0 };
-          prefs.searches[token] = {
-            count: tp.count + 0.5,
-            lastUsedAt: now,
-          };
-        }
-      }
-      prefs.searches = pruneMapByRecency(
-        prefs.searches,
-        MAX_SEARCH_TERMS,
-        (v) => (v.count || 0) * 1000 + (v.lastUsedAt || 0) / 1e9
-      );
-    }
-  } else if (event?.type === 'play' && event.track) {
-    const t = event.track;
-    const id = String(t.id || '').trim();
-    if (id) {
-      const prev = prefs.trackPlays[id] || { count: 0 };
-      prefs.trackPlays[id] = {
-        count: prev.count + 1,
-        title: t.title || '',
-        artist: t.artist || '',
-        genre: t.genre || '',
-        lastPlayedAt: now,
-      };
-      prefs.trackPlays = pruneMapByRecency(
-        prefs.trackPlays,
-        MAX_TRACK_STATS,
-        (v) => (v.count || 0) * 1000 + (v.lastPlayedAt || 0) / 1e9
-      );
-    }
-    const g = String(t.genre || '').trim().toLowerCase();
-    if (g) prefs.genres[g] = (prefs.genres[g] || 0) + 1;
-    const a = String(t.artist || '').trim().toLowerCase();
-    if (a) prefs.artists[a] = (prefs.artists[a] || 0) + 1;
-  } else if (event?.type === 'skip' && event.track) {
-    const id = String(event.track.id || '').trim();
-    if (id) {
-      prefs.skips[id] = (prefs.skips[id] || 0) + 1;
-    }
-  }
+  const fullOnly = filterFullLengthTracks(tracks, minSeconds).filter(isNotBlocked);
+  const validFallback = tracks.filter(isNotBlocked);
+  const basePool = fullOnly.length > 0 ? fullOnly : validFallback;
+  if (basePool.length === 0) return null;
 
-  return prefs;
-}
+  const recentSet = new Set(Array.isArray(recentTrackIds) ? recentTrackIds : []);
 
-export function getTopSearchKeywords(prefs, limit = 3) {
-  const entries = Object.entries(prefs?.searches || {});
-  if (entries.length === 0) return [];
-  return entries
-    .sort(
-      (a, b) =>
-        (b[1].count || 0) * 10 + (b[1].lastUsedAt || 0) / 1e12 -
-        ((a[1].count || 0) * 10 + (a[1].lastUsedAt || 0) / 1e12)
-    )
-    .slice(0, limit)
-    .map(([term]) => term);
-}
+  const withoutCurrent =
+    basePool.length > 1 && currentTrackId
+      ? basePool.filter((t) => t.id !== currentTrackId)
+      : basePool;
 
-export function scoreTrackForUser(track, prefs) {
-  if (!track) return 1;
-  let score = 1;
-  const hay = `${track.title || ''} ${track.artist || ''} ${track.genre || ''} ${track.tags || ''}`.toLowerCase();
+  const viralCandidates = prioritizeIndonesianViral
+    ? withoutCurrent.filter((t) => Boolean(t.isIndonesianViral))
+    : [];
 
-  // Prioritize Indonesian viral 2026 Gen-Z songs, DJ remixes, & covers
-  if (track.isIndonesianViral) {
-    score += 2.5;
-  }
-  if (/\b(remix|dj|edit|koplo|cover|acoustic|sped up|slowed|indonesia|indo)\b/i.test(hay)) {
-    score += 1.4;
-  }
-
-  // Search keyword & token affinity boost
-  for (const [term, meta] of Object.entries(prefs?.searches || {})) {
-    if (!term || term.length < 2) continue;
-    const count = Number(meta?.count || 0);
-    if (hay.includes(term)) {
-      score += 3.5 * Math.min(6, count);
-    }
-  }
-
-  // Genre affinity
-  const g = String(track.genre || '').trim().toLowerCase();
-  if (g && prefs?.genres?.[g]) {
-    score += 2.2 * Math.min(5, prefs.genres[g]);
-  }
-
-  // Artist affinity
-  const a = String(track.artist || '').trim().toLowerCase();
-  if (a && prefs?.artists?.[a]) {
-    score += 3 * Math.min(5, prefs.artists[a]);
-  }
-
-  // Track play familiarity boost (sweet spot before slight cooldown)
-  const plays = Number(prefs?.trackPlays?.[track.id]?.count || 0);
-  if (plays > 0) {
-    score += Math.min(8, plays * 2.4);
-  }
-
-  // Skip penalty
-  const skips = Number(prefs?.skips?.[track.id] || 0);
-  if (skips > 0) {
-    score = Math.max(0.25, score / (1 + skips * 1.4));
-  }
-
-  return Number(score.toFixed(4));
-}
-
-export function pickWeightedRandomTrack(
-  tracks = [],
-  prefs = null,
-  currentTrackId = null,
-  rng = Math.random
-) {
-  const fullOnly = filterFullLengthTracks(tracks, MIN_FULL_TRACK_SECONDS);
-  const list =
-    fullOnly.length > 0
-      ? fullOnly
-      : Array.isArray(tracks)
-      ? tracks.filter((t) => t && t.id && t.streamUrl)
-      : [];
-  if (list.length === 0) return null;
-
-  const pool =
-    list.length > 1 && currentTrackId
-      ? list.filter((t) => t.id !== currentTrackId)
-      : list;
-
-  const weighted = pool.map((track) => ({
-    track,
-    weight: Math.max(0.1, scoreTrackForUser(track, prefs)),
-  }));
-  const totalWeight = weighted.reduce((sum, item) => sum + item.weight, 0);
-
-  if (totalWeight <= 0) return pool[0];
+  const preferredPool = viralCandidates.length > 0 ? viralCandidates : withoutCurrent;
+  const freshPool = preferredPool.filter((t) => !recentSet.has(t.id));
+  const finalPool = freshPool.length > 0 ? freshPool : preferredPool;
 
   const r = Math.min(0.999999, Math.max(0, Number(rng?.() ?? Math.random())));
-  let cursor = r * totalWeight;
-  for (const item of weighted) {
-    cursor -= item.weight;
-    if (cursor <= 0) return item.track;
-  }
-  return weighted[weighted.length - 1].track;
+  const idx = Math.floor(r * finalPool.length);
+  return finalPool[idx] || finalPool[0];
 }
 
 export function scoreSearchRelevance(track, query) {
-  if (!track || !track.streamUrl) return 0;
+  if (!track || !(track.videoId || track.streamUrl)) return 0;
   const cleanQuery = String(query || '')
     .toLowerCase()
     .replace(/[^a-z0-9\s]/g, ' ')
@@ -287,18 +227,16 @@ export function scoreSearchRelevance(track, query) {
     }
   }
 
-  // Require strong overlap on title/artist so unrelated DJ/ambient tracks don't match loosely
   const minRequiredHits = tokens.length === 1 ? 1 : Math.ceil(tokens.length * 0.5);
   if (titleOrArtistTokenHits < minRequiredHits && !combined.includes(cleanQuery)) {
     return 0;
   }
 
-  // Deprioritize short meme clips / parodies when user searches a real song
   const dur = Number(track.duration || 0);
   if (dur > 0 && dur < MIN_FULL_TRACK_SECONDS) {
     score = Math.max(0, score - 22);
   }
-  if (/\b(parody|parodi|lucu|shorts|#shorts|prank|sound effect)\b/i.test(combined)) {
+  if (/\b(parody|parodi|lucu|shorts|#shorts|prank|sound effect|reaction)\b/i.test(combined)) {
     score = Math.max(0, score - 25);
   }
 
@@ -313,14 +251,13 @@ export function rankSearchResults(tracks = [], query = '', minSeconds = MIN_FULL
   const candidates =
     fullOnly.length > 0
       ? fullOnly
-      : tracks.filter((t) => t && t.id && t.streamUrl && Number(t.duration || 0) >= 45);
+      : tracks.filter((t) => t && t.id && (t.videoId || t.streamUrl) && Number(t.duration || 0) >= 45);
 
   return candidates
     .map((track) => ({ track, relevance: scoreSearchRelevance(track, query) }))
     .filter((entry) => entry.relevance > 0)
     .sort((a, b) => {
       if (b.relevance !== a.relevance) return b.relevance - a.relevance;
-      // Prefer standard song length (90s..420s) over mega 1-hour mixes on tie
       const aNorm = a.track.duration <= 420 ? 1 : 0;
       const bNorm = b.track.duration <= 420 ? 1 : 0;
       if (bNorm !== aNorm) return bNorm - aNorm;
@@ -370,7 +307,7 @@ export function getPopoverAnchorClasses({
   const horizontal = centerX > vw * 0.52 ? 'align-right' : 'align-left';
   const vertical = centerY < vh * 0.48 ? 'open-down' : 'open-up';
 
-  const popWidth = Math.min(320, vw - margin * 2);
+  const popWidth = Math.min(316, vw - margin * 2);
   const idealLeft = horizontal === 'align-right' ? fabX + fabSize - popWidth : fabX;
   const maxLeft = Math.max(margin, vw - popWidth - margin);
   const clampedLeft = Math.min(maxLeft, Math.max(margin, idealLeft));
@@ -383,3 +320,11 @@ export function getPopoverAnchorClasses({
   };
 }
 
+export function parseSavedVolume(raw, fallback = 0.72) {
+  if (raw === null || raw === undefined) return fallback;
+  const str = String(raw).trim();
+  if (!str) return fallback;
+  const num = Number(str);
+  if (Number.isFinite(num) && num >= 0 && num <= 1) return num;
+  return fallback;
+}

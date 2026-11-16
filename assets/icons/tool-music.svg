@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64" fill="none">
+  <defs>
+    <linearGradient id="ytMusicBg" x1="6" y1="6" x2="58" y2="58" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#f43f5e" />
+      <stop offset="52%" stop-color="#6366f1" />
+      <stop offset="100%" stop-color="#06b6d4" />
+    </linearGradient>
+    <linearGradient id="ytMusicGloss" x1="10" y1="6" x2="50" y2="46" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#ffffff" stop-opacity="0.34" />
+      <stop offset="100%" stop-color="#ffffff" stop-opacity="0" />
+    </linearGradient>
+  </defs>
+  <rect x="4" y="4" width="56" height="56" rx="16" fill="url(#ytMusicBg)" />
+  <rect x="6" y="6" width="52" height="52" rx="14" fill="url(#ytMusicGloss)" />
+  <path d="M26 42V22l18-3.5v19" stroke="#ffffff" stroke-width="3.8" stroke-linecap="round" stroke-linejoin="round" />
+  <circle cx="21" cy="43" r="5" fill="#ffffff" />
+  <circle cx="39" cy="39" r="5" fill="#ffffff" />
+  <circle cx="48" cy="15" r="3.6" fill="#fde047" />
+</svg>

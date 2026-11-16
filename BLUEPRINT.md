@@ -14,8 +14,8 @@ Dokumen teknis terpadu bagi **Tim IT, Human Developer, maupun AI Coding Agent** 
    - **Menu Utilitas (`tools.html`)**: Halaman terpisah untuk utilitas harian (`?tab=prayer | weather | worldclock | speedtest | downloader | compressor`) yang ditonjolkan melalui kartu aksen `#utilities-callout-card` (`assets/icons/menu-utilitas.svg`) di atas filter kategori, lengkap dengan tombol kembali ke katalog.
    - **Panel Admin (`admin.html`)**: Halaman *unlisted* (`noindex`) terenkripsi AES-256-GCM yang mempublikasikan perubahan katalog, aset upload, OpenGraph `index.html`, dan riwayat perubahan terperinci langsung via GitHub REST API.
 3. **Kualitas Pengalaman Mobile-First, Presisi Tinggi, & Ad-Free**:
-   - Semua kontrol responsif di layar HP (`360px–430px`) maupun desktop (`1440px`), menggunakan *Network-First Service Worker* (`manifestudio-cache-v23`) + query cache-busting `?v=23` agar pembaruan langsung muncul di perangkat mobile pengguna.
-   - Pemutar musik bebas iklan dapat digeser bebas dan memutar lagu versi penuh (*Full Version >= 75s*).
+   - Semua kontrol responsif di layar HP (`360px–430px`) maupun desktop (`1440px`), menggunakan *Network-First Service Worker* (`manifestudio-cache-v24`) + query cache-busting `?v=24` agar pembaruan langsung muncul di perangkat mobile pengguna.
+   - Pemutar musik YT Music open-source bebas iklan dapat digeser bebas, memutar lagu viral Indonesia secara acak otomatis tiap kali tombol ditekan, dan dilengkapi Hub lengkap di Menu Utilitas.
 
 ---
 
@@ -26,15 +26,15 @@ Dokumen teknis terpadu bagi **Tim IT, Human Developer, maupun AI Coding Agent** 
 | `index.html` + `js/app.js` | Storefront katalog, carousel banner dinamis, kategori dinamis, modal varian, drawer checkout, voucher tracking | `data.js`, `store.js`, `pwa.js`, `music.js` |
 | `order.html` + `js/order.js` + `js/receipt.js` | Invoice bersih + HTML5 Canvas Struk JPEG `< 60 KB` + format WA Order (tanpa voucher invalid) | `data.js`, `store.js`, `music.js` |
 | `admin.html` + `js/admin.js` + `js/vault.js` | Gate AES-256-GCM + PBKDF2, edit produk/varian/urutan/logo/brand/tagline/biaya layanan/sosmed/FAQ/voucher limits/OpenGraph/banner, riwayat itemized + restore 12 log | `data.js`, `store.js`, `vault.js` |
-| `tools.html` + `js/tools-page.js` + `js/tools-ui.js` + `js/tools-logic.js` | Router sub-tab `Menu Utilitas`, pure math & domain logic, UI bar progres konversi & download | `location.js`, `globe.js`, `speedtest.js`, `downloader.js`, `compressor.js`, `music.js` |
+| `tools.html` + `js/tools-page.js` + `js/tools-ui.js` + `js/tools-logic.js` | Router sub-tab `Menu Utilitas`, pure math & domain logic, UI bar progres konversi & download, Hub Pemutar Musik YT lengkap | `location.js`, `globe.js`, `speedtest.js`, `downloader.js`, `compressor.js`, `music.js` |
 | `js/location.js` | Geolocation GPS prioritas utama + reverse geocode Kelurahan/Kecamatan + fallback IP + autocomplete kota | `tools-logic.js` |
 | `js/globe.js` | Canvas 2D orthographic rotatable 3D globe + klik target negara + auto-rotate | `tools-logic.js` |
 | `js/speedtest.js` | Speedometer 60fps + ukur Ping/Jitter/DL/UL Cloudflare CDN (berbobot berkelanjutan) + telemetri perangkat | `tools-logic.js` |
 | `js/downloader.js` | Adapter paralel TikTok (4-node Tioo/TikWM/Cobalt/DavidCyril), YouTube (Cobalt + 4-node Tioo + Siputzx Ummy + vidsnap CORS proxy + Wave 2 audio retry + DavidCyril + ekstrak WAV client-side), IG (`Siputzx sssinstagram` + `Ummy` + Cobalt + Tioo + `fastdl`/`igram` fallback), FB + streaming download progress | `tools-logic.js` |
 | `js/compressor.js` | Kompresor Foto & Video HD Zero-Loss (binary EXIF/PNG/MP4 atom stripper & Social Shield encoder) | `tools-logic.js` |
-| `js/music.js` + `js/music-logic.js` | Widget musik draggable, algoritma preferensi, **Full Audio** (Audius), **SoundCloud Widget**, **Spotify Embed** | Audius / SoundCloud / Spotify |
+| `js/music.js` + `js/music-logic.js` | Floating dock minimalis modern draggable, YT Music API open-source (Piped `music_songs` + Siputzx), YouTube IFrame Audio Engine, Fisher-Yates auto-shuffle prioritas Viral Indonesia tiap tombol ditekan, sinkron 1:1 dengan Hub Utilitas | YouTube IFrame API / Piped API / Siputzx |
 | `data/catalog.json` & `data/catalog-history.json` | Single Source of Truth produk, brand, OpenGraph, banners, kategori, voucher usage limits, FAQ & 12 snapshot riwayat | Service Worker Network-First |
-| `sw.js` + `manifest.webmanifest` | Network-First code/data cache (`manifestudio-cache-v23`) & instalasi PWA | — |
+| `sw.js` + `manifest.webmanifest` | Network-First code/data cache (`manifestudio-cache-v24`) & instalasi PWA | — |
 | `CNAME` | Konfigurasi domain kustom resmi GitHub Pages (`manifestudio.my.id`) — jangan dihapus | Cloudflare DNS |
 
 ---
@@ -55,9 +55,11 @@ Semua integrasi pihak ketiga berjalan murni *client-side* tanpa API key rahasia:
 4. **Speedtest Internet**:
    - **CDN Info**: `https://speed.cloudflare.com/cdn-cgi/trace` & `https://speed.cloudflare.com/meta`.
    - **Bandwidth & Latency**: `https://speed.cloudflare.com/__down?bytes=...` & `https://speed.cloudflare.com/__up`.
-5. **Pemutar Musik Full Version (Bebas Iklan)**:
-   - **Full Audio Direct Stream**: `https://api.audius.co/v1/tracks/search` + `/tracks/{id}/stream` (`duration >= 75s`).
-   - **SoundCloud & Spotify Embed**: `https://w.soundcloud.com/player/` & `https://open.spotify.com/embed/playlist/...`.
+5. **Pemutar Musik YT Music API Komunitas Open-Source & Shuffled Viral Indonesia**:
+   - **Open-Source Community API**: `https://api.piped.private.coffee/search?filter=music_songs`, `https://pipedapi.ducks.party/search?filter=music_songs`, & `https://api.siputzx.my.id/api/s/youtube` (CORS-enabled).
+   - **Mesin Pemutar YouTube IFrame**: Berjalan langsung di browser klien tanpa iklan, bebas CORS, dan bebas throttled.
+   - **Pemutaran Acak Otomatis Tiap Klik Tombol**: Logika Fisher-Yates shuffle yang memprioritaskan lagu Indonesia viral setiap kali user menekan tombol apa pun di web, tanpa bergantung riwayat pencarian.
+   - **Dua Tampilan Tersinkron**: Panel lengkap informatif di Menu Utilitas (`tools.html?tab=music`) dan floating dock minimalis modern (`js/music.js`).
 6. **Sosmed Media Downloader All-in-One**:
    - **TikTok (Video No-WM/MP3/Photo Carousel)**: Failover paralel 4 node `https://backend1..4.tioo.eu.org/ttdl`, `https://www.tikwm.com/api/?url=...&hd=1`, `https://cobaltapi.cjs.nz/`, fallback `https://apis.davidcyriltech.my.id/download/tiktok`.
    - **YouTube (Dual Video MP4 & Audio M4A/MP3/WAV)**: Paralel `https://www.youtube.com/oembed`, `https://api.siputzx.my.id/api/d/ummy` (MP4 + M4A), `https://cobaltapi.cjs.nz/` (video + audio MP3 terpisah), failover 4 node `https://backend1..4.tioo.eu.org/youtube` (+ Wave 2 audio retry & pembungkusan stream `googlevideo.com` via `https://api.vidsnap.app/proxy?u=...` yang lolos CORS serta pemblokiran redirect `sf-converter.com`), fallback ganda `https://apis.davidcyriltech.my.id/download/ytmp4` + `/ytmp3`, serta ekstraksi audio `.wav` client-side (`AudioContext`).
