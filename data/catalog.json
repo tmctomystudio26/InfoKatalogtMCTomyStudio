@@ -18,7 +18,7 @@
       "title": "Manifestudio by Tomy —  Akun Premium Murah Berkualitas dan Utilitas",
       "description": "Platform Akun Premium Murah Berkualitas.\nDilengkapi Jadwal Sholat, Prakiraan Cuaca, Jam Dunia, Speedtest, Social Media Downloader & Kompres Media HD.",
       "tagline": "by Tomy · Katalog Layanan Digital & Utilitas Terpadu",
-      "image": "./assets/og-manifestudio.jpg",
+      "image": "./assets/logos/uploads/og-mwjd9o6g.jpg",
       "imageAlt": "Banner Katalog Layanan Digital & Utilitas Manifestudio",
       "siteName": "Manifestudio"
     },
@@ -169,8 +169,8 @@
       "type": "fixed",
       "value": 2000,
       "minSubtotal": 12000,
-      "usageMode": "once",
-      "maxUses": 1,
+      "usageMode": "unlimited",
+      "maxUses": 0,
       "label": "Potongan Rp2.000 (min. Rp12.000)"
     },
     {
