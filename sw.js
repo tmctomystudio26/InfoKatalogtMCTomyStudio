@@ -1,4 +1,4 @@
-const CACHE_NAME = 'manifestudio-cache-v14';
+const CACHE_NAME = 'manifestudio-cache-v20';
 
 const PRECACHE_ASSETS = [
   './',
@@ -18,6 +18,7 @@ const PRECACHE_ASSETS = [
   './js/globe.js',
   './js/speedtest.js',
   './js/downloader.js',
+  './js/compressor.js',
   './js/tools-ui.js',
   './js/tools-page.js',
   './js/music-logic.js',
@@ -45,6 +46,7 @@ const PRECACHE_ASSETS = [
   './assets/icons/tool-world.svg',
   './assets/icons/tool-speed.svg',
   './assets/icons/tool-downloader.svg',
+  './assets/icons/tool-compressor.svg',
   './assets/icons/icon-192.png',
   './assets/icons/icon-512.png',
   './assets/icons/icon-maskable-512.png',
@@ -87,31 +89,29 @@ self.addEventListener('fetch', (event) => {
   const url = new URL(event.request.url);
   if (url.origin !== self.location.origin) return;
 
-  if (event.request.mode === 'navigate') {
-    event.respondWith(
-      fetch(event.request)
-        .then((response) => {
-          const clone = response.clone();
-          caches.open(CACHE_NAME).then((cache) => cache.put(event.request, clone));
-          return response;
-        })
-        .catch(() => caches.match(event.request, { ignoreSearch: true }).then((m) => m || caches.match('./index.html')))
-    );
-    return;
-  }
+  const isCodeOrData =
+    event.request.mode === 'navigate' ||
+    url.pathname.endsWith('.html') ||
+    url.pathname.endsWith('.js') ||
+    url.pathname.endsWith('.css') ||
+    url.pathname.endsWith('.json');
 
-  // Always prefer fresh catalog.json from network so Admin Panel updates show immediately
-  if (url.pathname.endsWith('/data/catalog.json')) {
+  // Network-first for HTML, JS, CSS, and JSON so updates appear immediately without stale SW cache
+  if (isCodeOrData) {
     event.respondWith(
       fetch(event.request)
         .then((response) => {
           if (response && response.status === 200) {
             const clone = response.clone();
-            caches.open(CACHE_NAME).then((cache) => cache.put('./data/catalog.json', clone));
+            caches.open(CACHE_NAME).then((cache) => cache.put(event.request, clone));
           }
           return response;
         })
-        .catch(() => caches.match('./data/catalog.json'))
+        .catch(() =>
+          caches
+            .match(event.request, { ignoreSearch: true })
+            .then((m) => m || (event.request.mode === 'navigate' ? caches.match('./index.html') : undefined))
+        )
     );
     return;
   }

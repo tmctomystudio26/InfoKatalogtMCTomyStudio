@@ -51,9 +51,12 @@ export function initPwaManager() {
   // Register Service Worker with relative path for GitHub Pages subpath safety
   if ('serviceWorker' in navigator) {
     window.addEventListener('load', () => {
-      navigator.serviceWorker.register('./sw.js').catch(() => {
-        // Silent fallback if SW registration is blocked in private mode
-      });
+      navigator.serviceWorker
+        .register('./sw.js?v=20')
+        .then((reg) => reg.update())
+        .catch(() => {
+          // Silent fallback if SW registration is blocked in private mode
+        });
     });
   }
 

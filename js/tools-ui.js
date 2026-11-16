@@ -22,26 +22,26 @@ import {
   matchIndonesianCityQuery,
   planMediaCompression,
   resolveAccurateWeatherCondition,
-} from './tools-logic.js';
+} from './tools-logic.js?v=20';
 import {
   describeLocationSource,
   resolveUserLocation,
   searchCitiesOnline,
   setManualLocation,
-} from './location.js';
-import { createInteractiveGlobe } from './globe.js';
+} from './location.js?v=20';
+import { createInteractiveGlobe } from './globe.js?v=20';
 import {
   createSpeedometerGauge,
   fetchSpeedtestEnvironment,
   readClientDeviceTelemetry,
   runInternetSpeedtest,
-} from './speedtest.js';
+} from './speedtest.js?v=20';
 import {
   fetchMediaDownload,
   triggerBatchPhotoDownload,
   triggerDirectMediaSave,
-} from './downloader.js';
-import { compressMediaFile, inspectMediaFile } from './compressor.js';
+} from './downloader.js?v=20';
+import { compressMediaFile, inspectMediaFile } from './compressor.js?v=20';
 
 const PRAYER_CACHE_KEY = 'manifestudio_prayer_cache_v1';
 const MYQURAN_CITIES_KEY = 'manifestudio_myquran_cities_v1';
