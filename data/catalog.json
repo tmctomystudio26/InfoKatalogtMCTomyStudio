@@ -524,6 +524,12 @@
           "name": "7 Hari - 100 Peserta",
           "price": 10000,
           "outOfStock": false
+        },
+        {
+          "id": "zoom-pro-sghw",
+          "name": "14 Hari - 100 Peserta",
+          "price": 15000,
+          "outOfStock": false
         }
       ]
     },
@@ -553,6 +559,24 @@
           "id": "cek-ai-gptzero-jb9n",
           "name": ">5000 kata (hubungi admin)",
           "price": 0,
+          "outOfStock": false
+        }
+      ]
+    },
+    {
+      "id": "bstation",
+      "name": "Bstation",
+      "category": "streaming",
+      "logo": "https://play-lh.googleusercontent.com/GRaGILWLQ783himRR36yRjD2mKo1nyHkMCuBuVMTM1UIqlcwzWns54KVGi8w6I4Ea52Oh2yCBF6cbRpPex66zQ",
+      "isBestSeller": false,
+      "outOfStock": false,
+      "tag": "Tersedia",
+      "summary": "Bstation Premium",
+      "variants": [
+        {
+          "id": "bstation-v1",
+          "name": "12 Bulan",
+          "price": 20000,
           "outOfStock": false
         }
       ]
