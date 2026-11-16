@@ -22,29 +22,29 @@ import {
   matchIndonesianCityQuery,
   planMediaCompression,
   resolveAccurateWeatherCondition,
-} from './tools-logic.js?v=24';
+} from './tools-logic.js?v=25';
 import {
   describeLocationSource,
   resolveUserLocation,
   searchCitiesOnline,
   setManualLocation,
-} from './location.js?v=24';
-import { createInteractiveGlobe } from './globe.js?v=24';
+} from './location.js?v=25';
+import { createInteractiveGlobe } from './globe.js?v=25';
 import {
   createSpeedometerGauge,
   fetchSpeedtestEnvironment,
   readClientDeviceTelemetry,
   runInternetSpeedtest,
-} from './speedtest.js?v=24';
+} from './speedtest.js?v=25';
 import {
   extractAudioFromVideoUrl,
   fetchMediaDownload,
   triggerBatchPhotoDownload,
   triggerDirectMediaSave,
-} from './downloader.js?v=24';
-import { compressMediaFile, inspectMediaFile } from './compressor.js?v=24';
-import { formatAudioTime } from './music-logic.js?v=24';
-import { MUSIC_PRESET_CATEGORIES, getMusicController, initMusicPlayer } from './music.js?v=24';
+} from './downloader.js?v=25';
+import { compressMediaFile, inspectMediaFile } from './compressor.js?v=25';
+import { formatAudioTime } from './music-logic.js?v=25';
+import { MUSIC_PRESET_CATEGORIES, getMusicController, initMusicPlayer } from './music.js?v=25';
 
 const PRAYER_CACHE_KEY = 'manifestudio_prayer_cache_v1';
 const MYQURAN_CITIES_KEY = 'manifestudio_myquran_cities_v1';
@@ -2145,6 +2145,16 @@ export function createToolsHubController({
 
           <button
             type="button"
+            id="music-hub-autoclick-btn"
+            class="btn btn-secondary btn-sm music-hub-mode-btn ${mState.autoClickPlayEnabled !== false ? 'is-active' : ''}"
+            data-music-control="true"
+            aria-pressed="${mState.autoClickPlayEnabled !== false}"
+            title="Otomatis putar lagu saat menekan tombol di web"
+          >
+            <span>${mState.autoClickPlayEnabled !== false ? 'Auto-Klik: ON' : 'Auto-Klik: OFF'}</span>
+          </button>
+          <button
+            type="button"
             id="music-hub-random-viral-btn"
             class="btn btn-secondary btn-sm music-hub-random-btn"
             data-music-control="true"
@@ -2281,6 +2291,10 @@ export function createToolsHubController({
       ctrl.toggleMute();
     });
 
+    rootEl.querySelector('#music-hub-autoclick-btn')?.addEventListener('click', (e) => {
+      e.stopPropagation();
+      ctrl.toggleAutoClickPlay?.();
+    });
     rootEl.querySelector('#music-hub-random-viral-btn')?.addEventListener('click', (e) => {
       e.stopPropagation();
       ctrl.playNext({ reason: 'any-button-click' });

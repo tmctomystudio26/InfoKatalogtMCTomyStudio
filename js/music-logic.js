@@ -22,6 +22,7 @@ export function normalizeRepeatMode(mode) {
 export function extractYouTubeVideoId(raw) {
   const value = String(raw || '').trim();
   if (!value) return '';
+  if (/^aud-/i.test(value)) return '';
   if (/^[a-zA-Z0-9_-]{11}$/.test(value)) return value;
 
   const queryMatch = value.match(/[?&]v=([a-zA-Z0-9_-]{11})(?:[&#?/]|$)/);
@@ -53,12 +54,13 @@ export function parseDurationSeconds(raw) {
 
 export function normalizeYtMusicTrack(item, options = {}) {
   if (!item || typeof item !== 'object') return null;
-
   const videoId =
     extractYouTubeVideoId(item.videoId) ||
     extractYouTubeVideoId(item.url) ||
     extractYouTubeVideoId(item.id);
-  if (!videoId) return null;
+  const directStreamUrl = String(item.streamUrl || '').trim();
+  const customId = String(item.id || '').trim();
+  if (!videoId && !directStreamUrl) return null;
 
   const title = String(item.title || '').trim();
   if (!title) return null;
@@ -66,7 +68,6 @@ export function normalizeYtMusicTrack(item, options = {}) {
   const duration = parseDurationSeconds(
     item.duration ?? item.seconds ?? item.lengthSeconds ?? item.timestamp
   );
-
   const artist = String(
     item.uploaderName ||
       item.artist ||
@@ -78,23 +79,24 @@ export function normalizeYtMusicTrack(item, options = {}) {
     .replace(/\s*-\s*Topic$/i, '')
     .trim();
 
-  const fallbackThumb = `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`;
+  const fallbackThumb = videoId
+    ? `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`
+    : './assets/icons/brand-icon.svg';
   const rawThumb = String(item.thumbnail || item.artwork || item.image || '').trim();
   const artwork = rawThumb.startsWith('http') ? rawThumb : fallbackThumb;
-
   const isIndo =
     typeof options.isIndonesianViral === 'boolean'
       ? options.isIndonesianViral
       : typeof item.isIndonesianViral === 'boolean'
       ? item.isIndonesianViral
       : true;
-
   const genre = String(options.genre || item.genre || (isIndo ? 'Viral Indonesia' : 'YT Music')).trim();
   const sourceLabel = String(options.sourceLabel || item.sourceLabel || 'YT Music API').trim();
+  const resolvedId = videoId ? `yt-${videoId}` : customId || `aud-${title.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`;
 
   return {
-    id: `yt-${videoId}`,
-    videoId,
+    id: resolvedId,
+    videoId: videoId || '',
     title,
     artist: artist || 'Artis YT Music',
     genre,
@@ -102,10 +104,12 @@ export function normalizeYtMusicTrack(item, options = {}) {
     duration,
     artwork,
     artworkFallback: fallbackThumb,
-    watchUrl: `https://music.youtube.com/watch?v=${videoId}`,
+    watchUrl: videoId
+      ? `https://music.youtube.com/watch?v=${videoId}`
+      : item.watchUrl || `https://music.youtube.com/search?q=${encodeURIComponent(`${title} ${artist}`)}`,
     isIndonesianViral: isIndo,
     sourceLabel,
-    streamUrl: item.streamUrl ? String(item.streamUrl) : '',
+    streamUrl: directStreamUrl,
   };
 }
 

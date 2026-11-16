@@ -14,7 +14,7 @@ import {
   isBlockedRedirectDownloadUrl,
   normalizeDownloaderResult,
   parseYouTubeVideoId,
-} from './tools-logic.js?v=24';
+} from './tools-logic.js?v=25';
 
 const COBALT_ENDPOINT = 'https://cobaltapi.cjs.nz/';
 const TIOO_BACKENDS = [
@@ -24,13 +24,53 @@ const TIOO_BACKENDS = [
   'https://backend4.tioo.eu.org',
 ];
 
+const CIRCUIT_COOLDOWN_MS = 180000; // 3 minutes cooldown per failing mirror host
+const nodeCircuitMap = new Map();
+
+function isNodeCircuitOpen(url) {
+  try {
+    const origin = new URL(url).origin;
+    const state = nodeCircuitMap.get(origin);
+    if (!state) return false;
+    if (state.failures >= 2 && Date.now() - state.lastFailedAt < CIRCUIT_COOLDOWN_MS) {
+      return true;
+    }
+    if (Date.now() - state.lastFailedAt >= CIRCUIT_COOLDOWN_MS) {
+      nodeCircuitMap.delete(origin);
+    }
+  } catch {
+    // Ignore URL parse error
+  }
+  return false;
+}
+
+function recordNodeOutcome(url, ok) {
+  try {
+    const origin = new URL(url).origin;
+    if (ok) {
+      nodeCircuitMap.delete(origin);
+      return;
+    }
+    const prev = nodeCircuitMap.get(origin) || { failures: 0, lastFailedAt: 0 };
+    nodeCircuitMap.set(origin, {
+      failures: prev.failures + 1,
+      lastFailedAt: Date.now(),
+    });
+  } catch {
+    // Ignore
+  }
+}
+
 function sanitizeInputUrl(rawUrl) {
   const trimmed = String(rawUrl || '').trim();
   if (!trimmed) return '';
   return /^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`;
 }
 
-async function fetchJsonWithTimeout(url, timeoutMs = 11000, fetchOpts = {}) {
+async function fetchJsonWithTimeout(url, timeoutMs = 9500, fetchOpts = {}) {
+  if (isNodeCircuitOpen(url) && !fetchOpts.bypassCircuit) {
+    throw new Error('Node mirror sedang cooldown sementara');
+  }
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
@@ -40,9 +80,19 @@ async function fetchJsonWithTimeout(url, timeoutMs = 11000, fetchOpts = {}) {
       ...fetchOpts,
     });
     if (!res.ok) {
+      if (res.status >= 500 || res.status === 429 || res.status === 403) {
+        recordNodeOutcome(url, false);
+      }
       throw new Error(`HTTP ${res.status}`);
     }
-    return await res.json();
+    const data = await res.json();
+    recordNodeOutcome(url, true);
+    return data;
+  } catch (err) {
+    if (err?.name === 'AbortError' || /failed to fetch|network/i.test(String(err?.message || ''))) {
+      recordNodeOutcome(url, false);
+    }
+    throw err;
   } finally {
     clearTimeout(timer);
   }

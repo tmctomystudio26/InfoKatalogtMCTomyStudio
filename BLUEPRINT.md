@@ -14,7 +14,7 @@ Dokumen teknis terpadu bagi **Tim IT, Human Developer, maupun AI Coding Agent** 
    - **Menu Utilitas (`tools.html`)**: Halaman terpisah untuk utilitas harian (`?tab=prayer | weather | worldclock | speedtest | downloader | compressor`) yang ditonjolkan melalui kartu aksen `#utilities-callout-card` (`assets/icons/menu-utilitas.svg`) di atas filter kategori, lengkap dengan tombol kembali ke katalog.
    - **Panel Admin (`admin.html`)**: Halaman *unlisted* (`noindex`) terenkripsi AES-256-GCM yang mempublikasikan perubahan katalog, aset upload, OpenGraph `index.html`, dan riwayat perubahan terperinci langsung via GitHub REST API.
 3. **Kualitas Pengalaman Mobile-First, Presisi Tinggi, & Ad-Free**:
-   - Semua kontrol responsif di layar HP (`360px–430px`) maupun desktop (`1440px`), menggunakan *Network-First Service Worker* (`manifestudio-cache-v24`) + query cache-busting `?v=24` agar pembaruan langsung muncul di perangkat mobile pengguna.
+   - Semua kontrol responsif di layar HP (`360px–430px`) maupun desktop (`1440px`), menggunakan *Network-First Service Worker* (`manifestudio-cache-v25`) + query cache-busting `?v=24` agar pembaruan langsung muncul di perangkat mobile pengguna.
    - Pemutar musik YT Music open-source bebas iklan dapat digeser bebas, memutar lagu viral Indonesia secara acak otomatis tiap kali tombol ditekan, dan dilengkapi Hub lengkap di Menu Utilitas.
 
 ---
@@ -34,7 +34,7 @@ Dokumen teknis terpadu bagi **Tim IT, Human Developer, maupun AI Coding Agent** 
 | `js/compressor.js` | Kompresor Foto & Video HD Zero-Loss (binary EXIF/PNG/MP4 atom stripper & Social Shield encoder) | `tools-logic.js` |
 | `js/music.js` + `js/music-logic.js` | Floating dock minimalis modern draggable, YT Music API open-source (Piped `music_songs` + Siputzx), YouTube IFrame Audio Engine, Fisher-Yates auto-shuffle prioritas Viral Indonesia tiap tombol ditekan, sinkron 1:1 dengan Hub Utilitas | YouTube IFrame API / Piped API / Siputzx |
 | `data/catalog.json` & `data/catalog-history.json` | Single Source of Truth produk, brand, OpenGraph, banners, kategori, voucher usage limits, FAQ & 12 snapshot riwayat | Service Worker Network-First |
-| `sw.js` + `manifest.webmanifest` | Network-First code/data cache (`manifestudio-cache-v24`) & instalasi PWA | — |
+| `sw.js` + `manifest.webmanifest` | Network-First code/data cache (`manifestudio-cache-v25`) & instalasi PWA | — |
 | `CNAME` | Konfigurasi domain kustom resmi GitHub Pages (`manifestudio.my.id`) — jangan dihapus | Cloudflare DNS |
 
 ---
@@ -84,7 +84,8 @@ Semua integrasi pihak ketiga berjalan murni *client-side* tanpa API key rahasia:
 | `manifestudio_user_location_v1` | `localStorage` | Lokasi terakhir (GPS / IP / manual) untuk Sholat & Cuaca |
 | `manifestudio_weather_cal_v1` | `localStorage` | Kalibrasi cuaca aktual lokal pengguna (auto-expire 3 jam) |
 | `manifestudio_music_prefs_v1` | `localStorage` | Riwayat pencarian, artist/genre weights, play count, & skip |
-| `manifestudio_music_session_v1` | `localStorage` | Status pause, `lastTrackId`, stasiun SoundCloud & Spotify |
+| `manifestudio_music_session_v1` | `sessionStorage` + `localStorage` | Status `explicitPaused`, `wasPlaying`, `lastTrackId`, & `currentTime` lintas halaman |
+| `manifestudio_music_clickplay_v1` | `localStorage` | Preferensi toggle Auto-Klik musik (`true` / `false`) |
 | `manifestudio_music_pos_v1` | `localStorage` | Koordinat `(x, y)` ikon musik hasil geser pengguna |
 | `manifestudio_music_mode_v1` | `localStorage` | Mode musik aktif: `'full-audio'`, `'soundcloud'`, `'spotify'` |
 

@@ -1542,3 +1542,74 @@ test('parseSavedVolume handles null storage, empty strings, and out-of-range bou
 
 
 
+
+test('applyOpenGraphToHtml deduplicates repeated tagline in <title> and syncs JSON-LD image & description', () => {
+  const og = normalizeOpenGraphConfig({
+    openGraph: {
+      title: 'Manifestudio by Tomy — Akun Premium Murah Berkualitas dan Utilitas',
+      tagline: 'by Tomy · Katalog Layanan Digital & Utilitas Terpadu',
+      description: 'Platform Akun Premium Murah Berkualitas.\nDilengkapi Jadwal Sholat & Cuaca.',
+      image: 'https://raw.githubusercontent.com/tmctomystudio26/Source/refs/heads/main/1794840032-picsay.jpg',
+      imageAlt: 'Banner Katalog Manifestudio',
+      siteName: 'Manifestudio',
+    },
+  });
+
+  const sampleHtml = `<!doctype html><html><head>
+  <title>Old Title</title>
+  <meta name="description" content="Old" />
+  <meta property="og:title" content="Old" />
+  <meta property="og:description" content="Old" />
+  <meta property="og:image" content="https://old" />
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "WebApplication",
+    "name": "OldName",
+    "description": "OldDesc",
+    "image": "https://manifestudio.my.id/assets/og-manifestudio.jpg?v=3"
+  }
+  </script>
+</head></html>`;
+
+  const updated = applyOpenGraphToHtml(sampleHtml, og, { name: 'Manifestudio' });
+  assert.equal(
+    updated.includes('<title>Manifestudio by Tomy — Akun Premium Murah Berkualitas dan Utilitas</title>'),
+    true
+  );
+  assert.equal(updated.includes('(by Tomy'), false);
+  assert.equal(
+    updated.includes('"image": "https://raw.githubusercontent.com/tmctomystudio26/Source/refs/heads/main/1794840032-picsay.jpg"'),
+    true
+  );
+  assert.equal(
+    updated.includes('"description": "Platform Akun Premium Murah Berkualitas. Dilengkapi Jadwal Sholat & Cuaca."'),
+    true
+  );
+});
+
+test('normalizeYtMusicTrack supports hybrid tracks with both videoId and background-safe streamUrl or direct streamUrl', () => {
+  const hybrid = normalizeYtMusicTrack({
+    videoId: 'En-EHqRk8yg',
+    title: 'Garam & Madu (Sakit Dadaku)',
+    artist: 'Tenxi, Naykilla & Jemsii',
+    duration: 251,
+    streamUrl: 'https://api.audius.co/v1/tracks/Nlzyaxp/stream?app_name=Manifestudio',
+  });
+  assert.ok(hybrid);
+  assert.equal(hybrid.id, 'yt-En-EHqRk8yg');
+  assert.equal(hybrid.videoId, 'En-EHqRk8yg');
+  assert.equal(hybrid.streamUrl, 'https://api.audius.co/v1/tracks/Nlzyaxp/stream?app_name=Manifestudio');
+
+  const directOnly = normalizeYtMusicTrack({
+    id: 'aud-WEjzjgB',
+    title: 'Satu Bulan',
+    artist: 'Bernadya',
+    duration: 200,
+    streamUrl: 'https://api.audius.co/v1/tracks/WEjzjgB/stream?app_name=Manifestudio',
+  });
+  assert.ok(directOnly);
+  assert.equal(directOnly.id, 'aud-WEjzjgB');
+  assert.equal(directOnly.videoId, '');
+  assert.equal(directOnly.streamUrl, 'https://api.audius.co/v1/tracks/WEjzjgB/stream?app_name=Manifestudio');
+});

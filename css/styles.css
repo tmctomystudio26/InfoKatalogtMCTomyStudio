@@ -4278,6 +4278,12 @@ a {
   color: var(--ink);
 }
 
+.music-icon-mini-btn.is-active {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 14%, var(--surface-elevated));
+}
+
 .music-drag-tip {
   font-size: 0.7rem;
   color: var(--ink-muted);

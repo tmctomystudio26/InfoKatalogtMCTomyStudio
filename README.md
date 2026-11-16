@@ -1,104 +1,71 @@
-# Manifestudio — Web Katalog, Transaksi & Panel Admin Statis
+# Manifestudio — Storefront Katalog Digital, Utility Hub & Panel Admin Statis
 
-Katalog web statis resmi **Manifestudio** (dikelola oleh tMC Tomy Studio) untuk pemesanan akun premium dan layanan digital bergaransi. Dirancang 100% kompatibel dengan **GitHub Pages (Zero-Backend)** serta mendukung instalasi **Progressive Web App (PWA)** dengan modul native JavaScript ES Modules.
+Platform web statis resmi **Manifestudio** (*by Tomy*) berbasis **100% Static HTML/CSS + Native ES Modules (GitHub Pages & PWA Ready)** yang memadukan katalog akun premium, konfirmasi pesanan WhatsApp + struk Canvas 2D, Panel Admin terenkripsi AES-256-GCM penuh fitur, pemutar musik *full version* bebas iklan, serta halaman utilitas terpisah **Menu Utilitas** (`tools.html`).
+
+---
+
+## 🎯 Tujuan Proyek
+
+- Menyediakan toko produk digital statis zero-backend (`https://manifestudio.my.id/`) yang cepat, ringan, dan siap instal sebagai PWA di desktop maupun seluler.
+- Memberikan kendali operasional penuh kepada Admin langsung lewat peramban terenkripsi tanpa menyentuh kode sumber.
+- Menghadirkan utilitas produktivitas harian bebas iklan bagi pengunjung (Jadwal Sholat, Cuaca Presisi, Jam Dunia 3D, Speedtest, Downloader All-in-One berbar progres, dan Kompresor Media HD).
 
 ---
 
 ## 🌟 Fitur Utama
 
-- **Katalog Interaktif Bergaya Toko Top-Up**:
-  - Banner promosi ringkas dan elegan tanpa mengaburkan pemilihan produk.
-  - Grid produk 5 kolom responsif dengan kartu logo dan indikator harga termurah.
-  - Pencarian real-time, filter kategori, dan filter ketersediaan stok.
-- **Pemesanan Mandiri & Konfirmasi Dedikasi (`order.html`)**:
-  - Alur checkout dari drawer langsung mengarahkan pengguna ke halaman rincian pesanan khusus (`order.html`).
-  - Keranjang belanja di beranda otomatis dikosongkan setelah checkout agar bersih saat pelanggan kembali membuat pesanan baru.
-  - Tata letak invoice bersih tanpa tulisan berlebih; tombol aksi WhatsApp dan unduh struk tersusun rapi di bawah rincian Total Bayar.
-- **Struk Belanja HTML5 Canvas (Tema Anime & Standar Nasional)**:
-  - Generator struk otomatis berbasis Canvas 2D (`js/receipt.js`) berestetika anime modern beraksen cyber-violet dan stempel "VERIFIKASI ADMIN".
-  - Memuat rincian standar nasional: nomor invoice unik `MS-YYMMDD-HHMMSS`, rincian paket, subtotal, diskon belanja, biaya layanan, dan kontak CS.
-  - File output JPEG ultra-ringan (~35–45 KB) yang otomatis terunduh saat menekan tombol WhatsApp atau unduh struk.
-- **Transparansi Metode Pembayaran**:
-  - `Bayar Sekarang`: 0% biaya tambahan.
-  - `Bayar Nanti (Setelah Akun Diterima)`: biaya layanan tambahan **+10%** dihitung secara otomatis dan transparan.
-- **Sistem Voucher Sekali Pakai (*One-Time Use Vouchers*)**:
-  - Mendukung potongan tetap (Rp) dan persentase (%) dengan batas minimum belanja.
-  - Voucher yang telah dicheckout otomatis dicatat di `localStorage` (`manifestudio_used_vouchers_v1`) agar tidak bisa digunakan berulang kali di perangkat yang sama.
-- **Panel Admin Terenkripsi Tanpa Edit Kode (`admin.html`)**:
-  - Halaman *unlisted* yang dilindungi layar kunci **AES-256-GCM + PBKDF2-SHA256 (100.000 iterasi)**.
-  - Verifikasi otomatis izin tulis (*Push*) token GitHub PAT.
-  - Edit harga, ubah nama paket, tambah/hapus varian, tambah produk baru, hapus produk, toggle stok habis, dan kelola voucher langsung dari browser.
-  - **Fitur Upload Logo File**: Memungkinkan admin memilih file logo gambar langsung dari memori HP/PC untuk setiap produk yang sudah ada maupun produk baru.
-  - Sinkronisasi dua arah langsung ke `data/catalog.json` via GitHub Contents REST API.
-- **Menu Utilitas (7 Fitur Gratis) & YT Music Hub (`tools.html`)**:
-  - Jadwal Sholat Kemenag RI (koordinat presisi + countdown adzan), Prakiraan Cuaca real-time, Jam Dunia & Bola Dunia 3D interaktif, Speedtest Internet berbobot CDN, Downloader Sosmed No-Watermark All-in-One, dan Kompresor HD Zero-Loss.
-  - **YT Music Hub & Floating Dock**: Sumber terbuka API YT Music komunitas open-source (Piped `music_songs` + Siputzx), pemutaran acak otomatis (Fisher-Yates) memprioritaskan lagu Indonesia viral setiap kali user menekan tombol apa pun di web, kontrol deck informatif, pencarian live, dan sinkronisasi 1:1 ke floating dock melayang.
-- **PWA Lengkap**:
-  - Banner install fleksibel dengan opsi minimize ke dock melayang (`−`) atau sembunyikan (`×`).
-  - Cache offline menggunakan Service Worker (`sw.js?v=24`).
+1. **Katalog Top-Up Modern, Tombol Khusus Menu Utilitas & Multi-Banner Carousel Dinamis**:
+   - Slide banner interaktif yang sepenuhnya dapat ditambah, diubah teks/gambarnya, atau diatur urutannya lewat Panel Admin.
+   - Akses **Menu Utilitas (`#utilities-callout-card`)** terpisah di atas pencarian dengan ikon vektor khusus (`menu-utilitas.svg`) — rapi dan terpisah penuh dari daftar kategori layanan agar langsung terlihat pengunjung.
+   - Grid produk responsif (5 kolom desktop → 2 kolom mobile), pencarian instan, filter kategori dinamis, status stok, serta *FAQ* yang dapat diedit Admin.
+2. **Checkout Bersih, Voucher Berkuota Ketat, Biaya Layanan Fleksibel & Struk JPEG (`order.html`)**:
+   - Validasi voucher ketat: kode yang tidak terdaftar langsung ditolak sebagai **Tidak Valid** (bukan dicatat menunggu Admin). Mendukung kuota **1x Pakai**, **Maksimal N Kali**, atau **Tak Terbatas**.
+   - Skema *Bayar Sekarang (0%)*, *Bayar Belakangan (+% dapat diatur Admin)*, dan *Biaya Layanan Flat* transparan.
+   - Generator struk belanja HTML5 Canvas 2D (`MS-YYMMDD-HHMMSS`) `< 60 KB` + kirim WhatsApp 1-klik.
+3. **Menu Utilitas — Halaman Utilitas Terpisah (`tools.html`)**:
+   - **Jadwal Sholat Indonesia**: Resmi Kemenag RI (MyQuran v2 + AlAdhan method=20), prioritas GPS presisi Kelurahan/Kecamatan → fallback IP → cari kota.
+   - **Prakiraan Cuaca Presisi**: Deteksi hujan lebat/badai berbasis curah hujan konvektif, stasiun lokal & kalibrasi real-time, per jam & 7 hari (Open-Meteo).
+   - **Jam Dunia & Globe 3D Interaktif**: Waktu UTC internasional, konversi WIB/WITA/WIT, dan globe yang dapat diputar serta diklik per negara target.
+   - **Speedtest Internet**: Meter kecepatan real-time 60fps, ping, jitter, loaded latency, download/upload berbobot berkelanjutan (Cloudflare Speed Edge), server node, ISP, dan info perangkat.
+   - **Downloader Sosmed All-in-One + Bar Progres Live (`v23`)**: Unduh **Video MP4 HD & Audio M4A/MP3 bersamaan** pada YouTube (`Siputzx Ummy` + `4-node Tioo` + `vidsnap.app/proxy` CORS), serta **Reels, Foto HD, Carousel Multi-Slide, Story & Salin Caption** pada Instagram (`Siputzx sssinstagram` + `Ummy` + `fastdl`/`igram` fallback), bebas jebakan redirect HTML (`sf-converter`/`savetube`), lengkap dengan **Bar Progres Konversi & Streaming Download Real-Time** + pemutar pratinjau `<video>` / `<audio>` + ekstraksi `.wav` lokal.
+   - **Kompresor Foto & Video HD (Anti-Pecah Sosmed)**: 4 metode kompresi *zero-loss* dengan preset TikTok HD, Instagram HD, WhatsApp HD, dan Original 1:1 untuk mencegah penurunan kualitas saat unggah.
+4. **Pemutar YT Music Viral Indonesia & Background Audio Non-Stop (`tools.html?tab=music` & Floating Dock)**:
+   - Menggabungkan **YT Music Community API** (`Piped music_songs` & `Siputzx`), **Native HTML5 Background Audio Stream (Audius CDN)**, dan **YouTube IFrame Audio Engine**.
+   - **Tetap Menyala Saat Layar Dimatikan / Pindah Tab**: Memprioritaskan stream `<audio>` native + *visibilitychange handoff* + **MediaSession Lock-Screen Controls** agar musik tidak berhenti saat layar HP mati atau pindah aplikasi.
+   - **Persistensi Status Pause Lintas Halaman & Toggle Auto-Klik**: Status jeda (`explicitPaused`) dan progres lagu tersimpan lintas halaman (`index.html`, `tools.html`, `order.html`) lengkap dengan tombol **Auto-Klik ON/OFF**.
+5. **Panel Admin Terenkripsi AES-256-GCM (`admin.html`)**:
+   - Dilindungi PBKDF2-SHA256 + verifikasi token GitHub PAT.
+   - Kelola produk, sub-varian, harga, stok, kategori layanan custom, **kuota pemakaian voucher**, **logo brand**, **tagline/footer**, **biaya layanan**, **kontak & logo sosmed**, **FAQ**, **OpenGraph & Meta Tag Live** (otomatis menyinkronkan `index.html`), **Slide Banner**, bar progres publikasi GitHub, serta **Riwayat Perubahan Terperinci per Aksi (maks 12 log + Restore 1-klik)**.
 
 ---
 
-## 📂 Struktur Berkas Proyek
+## 📂 Struktur Berkas Utama
 
 ```text
-├── index.html                 # Halaman utama storefront, modal varian, & drawer checkout
-├── order.html                 # Halaman konfirmasi pesanan dedikasi & pratinjau struk
-├── admin.html                 # Panel Admin terenkripsi AES-256-GCM untuk manajemen katalog
-├── manifest.webmanifest       # Konfigurasi instalasi PWA
-├── sw.js                      # Service Worker (caching offline & Network-First untuk catalog.json)
-├── ROADMAP.md                 # Peta pengembangan & panduan arsitektur developer
-├── README.md                  # Dokumentasi proyek
+├── index.html            # Beranda katalog toko, multi-banner carousel, drawer checkout & FAQ
+├── order.html            # Halaman konfirmasi invoice dedikasi & unduh struk Canvas 2D
+├── tools.html            # Halaman Menu Utilitas (Sholat, Cuaca, Jam Dunia, Speedtest, Downloader, Kompresor HD)
+├── admin.html            # Panel Admin terenkripsi AES-256-GCM (Kendali penuh toko & CMS)
+├── BLUEPRINT.md          # Arsitektur teknis lengkap, tujuan proyek, daftar API & storage keys
+├── ROADMAP.md            # Pencapaian milestone (Fase 1-7) & rencana fase berikutnya
 ├── data/
-│   └── catalog.json           # Sumber data tunggal katalog publik, varian, voucher, & FAQ
-├── css/
-│   ├── tokens.css             # Desain token (warna, font, spacing, radius, tema gelap/terang)
-│   └── styles.css             # Styling responsif seluruh komponen aplikasi
-├── js/
-│   ├── app.js                 # Orkestrasi interaksi storefront beranda & drawer checkout
-│   ├── order.js               # Handler halaman konfirmasi pesanan, unduh struk & WhatsApp handoff
-│   ├── admin.js               # Logika Panel Admin, upload logo file, & GitHub REST API sync
-│   ├── data.js                # Loader catalog.json dengan dukungan pratinjau lokal & fallback
-│   ├── store.js               # Logika murni bisnis (keranjang, diskon, voucher, fee 10%, formatter)
-│   ├── store.test.mjs         # Unit test suite logika bisnis menggunakan node:test
-│   ├── receipt.js             # Canvas 2D generator struk belanja tema anime & invoice resmi
-│   ├── vault.js               # Modul Web Crypto API (PBKDF2-SHA256 + AES-256-GCM) & verifikasi token
-│   └── pwa.js                 # Handler siklus hidup instalasi PWA & mode dock melayang
-└── assets/
-    ├── icons/                 # Favicon dan ikon PWA
-    ├── images/                # Banner promosi dan gambar ilustrasi
-    └── logos/                 # Logo SVG bawaan berbagai layanan (Netflix, Canva, YouTube, dll)
+│   ├── catalog.json      # Single Source of Truth katalog, brand, OpenGraph, banners, kategori, voucher & FAQ
+│   └── catalog-history.json # Log riwayat perubahan katalog (maks 12 snapshot + rincian aksi)
+├── css/                  # Design tokens & responsive styles
+├── js/                   # Native ES Modules (store, tools-logic, downloader, compressor, speedtest, music, vault, admin)
+└── assets/               # Ikon SVG, gambar banner, logo produk, uploads & og-manifestudio.jpg (1200×630)
 ```
 
 ---
 
-## 🧪 Pengujian Unit & Verifikasi
-
-Proyek ini dilengkapi dengan unit test tanpa dependensi eksternal (menggunakan standard runner bawaan Node.js):
+## 🧪 Pengujian & Verifikasi Developer
 
 ```bash
-# Menjalankan unit test logika belanja, voucher, dan brankas kriptografi
-node --test .repos/InfoKatalogtMCTomyStudio/js/store.test.mjs
+# Jalankan seluruh unit test (voucher limits, downloader dual MP4/MP3, weather, compressor, admin history)
+npx --yes tsx --test InfoKatalogtMCTomyStudio/js/store.test.mjs
+
+# Build dan Lint proyek
+npm run build && npm run lint
 ```
 
----
-
-## 🔑 Kunci Penyimpanan Lokal (Local Storage Keys)
-
-| Kunci Storage | Lokasi | Keterangan |
-|---|---|---|
-| `manifestudio_cart_v1` | `localStorage` | Daftar item di dalam keranjang belanja |
-| `manifestudio_theme_v1` | `localStorage` | Preferensi mode tampilan (`dark` / `light`) |
-| `manifestudio_used_vouchers_v1` | `localStorage` | Riwayat voucher sekali pakai yang sudah dicheckout |
-| `manifestudio_pending_order_v1` | `sessionStorage` | Snapshot pesanan aktif yang ditransfer ke `order.html` |
-| `manifestudio_admin_vault_v1` | `localStorage` | Kredensial PAT GitHub admin terenkripsi AES-256-GCM |
-| `manifestudio_catalog_preview_v1`| `localStorage` | Data pratinjau lokal admin sebelum dipublikasikan |
-
----
-
-## 💡 Panduan Untuk Pengembang (Developer / AI Assistant)
-
-1. **Path Relatif**: Selalu gunakan path relatif berawalan `./` pada seluruh tag HTML, skrip, impor JS, dan CSS agar aplikasi tidak rusak saat dihosting di subfolder GitHub Pages.
-2. **Tanpa Build Step Wajib**: File JavaScript dijalankan langsung oleh browser sebagai Native ES Modules (`type="module"`).
-3. **Ukuran Canvas Struk**: Generator `js/receipt.js` harus selalu menghasilkan file JPEG di bawah 60 KB agar ringan diunduh pada koneksi seluler.
-4. **Detail Lengkap Roadmap**: Rujuk berkas `ROADMAP.md` untuk melihat status milestone dan instruksi pengembangan fase berikutnya.
+Detail lengkap mengenai arsitektur, kontrak API gratis, dan pedoman pengembangan lanjutan tersedia pada **`BLUEPRINT.md`** dan **`ROADMAP.md`**.

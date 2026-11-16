@@ -19,8 +19,25 @@
       rel="stylesheet"
     />
 
-    <link rel="stylesheet" href="./css/tokens.css" />
-    <link rel="stylesheet" href="./css/styles.css" />
+    <link rel="stylesheet" href="./css/tokens.css?v=25" />
+    <link rel="stylesheet" href="./css/styles.css?v=25" />
+    <script>
+      (function () {
+        var CURRENT_CACHE = 'manifestudio-cache-v25';
+        if ('caches' in window) {
+          caches.keys().then(function (keys) {
+            keys.forEach(function (k) {
+              if (k !== CURRENT_CACHE) caches.delete(k);
+            });
+          });
+        }
+        if ('serviceWorker' in navigator) {
+          navigator.serviceWorker.register('./sw.js?v=25').then(function (reg) {
+            reg.update();
+          }).catch(function () {});
+        }
+      })();
+    </script>
   </head>
   <body>
     <header class="site-header">
@@ -35,7 +52,7 @@
           />
           <div class="brand-text">
             <span class="brand-name">Admin Panel</span>
-            <span class="brand-tagline">Manifestudio · Terenkripsi</span>
+            <span class="brand-tagline">Panel Terenkripsi</span>
           </div>
         </a>
 
@@ -215,6 +232,23 @@
             </button>
           </div>
 
+          <div id="admin-publish-progress" class="admin-progress-box" hidden>
+            <div class="admin-progress-head">
+              <span id="admin-progress-label" class="admin-progress-label">Menyiapkan publikasi...</span>
+              <strong id="admin-progress-pct" class="admin-progress-pct mono-num">0%</strong>
+            </div>
+            <div
+              class="admin-progress-track"
+              role="progressbar"
+              id="admin-progress-bar"
+              aria-valuemin="0"
+              aria-valuemax="100"
+              aria-valuenow="0"
+            >
+              <div id="admin-progress-fill" class="admin-progress-fill" style="width: 0%"></div>
+            </div>
+          </div>
+
           <div id="admin-status-box" class="admin-status-box" role="status" hidden></div>
         </section>
 
@@ -242,12 +276,62 @@
           <button
             type="button"
             role="tab"
+            id="tab-btn-categories"
+            class="cat-tab"
+            data-admin-tab="categories"
+            aria-selected="false"
+          >
+            Kategori Layanan
+          </button>
+          <button
+            type="button"
+            role="tab"
+            id="tab-btn-banners"
+            class="cat-tab"
+            data-admin-tab="banners"
+            aria-selected="false"
+          >
+            Banner Promo
+          </button>
+          <button
+            type="button"
+            role="tab"
+            id="tab-btn-brand"
+            class="cat-tab"
+            data-admin-tab="brand"
+            aria-selected="false"
+          >
+            Brand, OpenGraph &amp; Kontak
+          </button>
+          <button
+            type="button"
+            role="tab"
+            id="tab-btn-faq"
+            class="cat-tab"
+            data-admin-tab="faq"
+            aria-selected="false"
+          >
+            Pertanyaan Umum (FAQ)
+          </button>
+          <button
+            type="button"
+            role="tab"
             id="tab-btn-vouchers"
             class="cat-tab"
             data-admin-tab="vouchers"
             aria-selected="false"
           >
             Voucher Promo
+          </button>
+          <button
+            type="button"
+            role="tab"
+            id="tab-btn-history"
+            class="cat-tab"
+            data-admin-tab="history"
+            aria-selected="false"
+          >
+            Riwayat Perubahan
           </button>
         </div>
 
@@ -262,7 +346,7 @@
                 type="search"
                 id="admin-product-search"
                 class="search-input"
-                placeholder="Cari produk atau varian untuk edit harga & stok..."
+                placeholder="Cari produk atau varian..."
                 aria-label="Cari produk di panel admin"
               />
             </div>
@@ -287,7 +371,7 @@
                 </div>
 
                 <div class="form-field">
-                  <label for="new-prod-category">Kategori</label>
+                  <label for="new-prod-category">Kategori Layanan</label>
                   <select id="new-prod-category" class="admin-select">
                     <option value="streaming">Streaming Film</option>
                     <option value="music">Musik &amp; Hiburan</option>
@@ -296,38 +380,85 @@
                   </select>
                 </div>
 
-                <div class="form-field">
-                  <label for="new-prod-logo-preset">Ikon Logo</label>
-                  <select id="new-prod-logo-preset" class="admin-select">
-                    <option value="./assets/logos/custom-request.svg">Ikon Umum / Custom</option>
-                    <option value="./assets/logos/netflix.svg">Netflix</option>
-                    <option value="./assets/logos/canva.svg">Canva</option>
-                    <option value="./assets/logos/youtube.svg">YouTube</option>
-                    <option value="./assets/logos/spotify.svg">Spotify</option>
-                    <option value="./assets/logos/viu.svg">Viu</option>
-                    <option value="./assets/logos/vidio.svg">Vidio</option>
-                    <option value="./assets/logos/alight-motion.svg">Alight Motion</option>
-                    <option value="./assets/logos/wetv.svg">WeTV</option>
-                    <option value="./assets/logos/prime-video.svg">Prime Video</option>
-                  </select>
-                </div>
+                <div class="admin-logo-manager admin-logo-manager-full">
+                  <div class="admin-logo-head">
+                    <div class="admin-logo-preview-wrap">
+                      <img
+                        src="./assets/logos/custom-request.svg"
+                        alt="Pratinjau logo produk baru"
+                        width="44"
+                        height="44"
+                        id="new-prod-logo-preview"
+                        class="modal-logo"
+                      />
+                      <div>
+                        <strong class="admin-logo-title">Logo Layanan</strong>
+                        <span id="new-prod-logo-status" class="admin-prod-meta">Gunakan upload gambar atau link URL</span>
+                      </div>
+                    </div>
+                    <div class="admin-logo-tabs" role="group" aria-label="Pilih sumber logo produk baru">
+                      <button
+                        type="button"
+                        class="admin-logo-mode-btn is-active"
+                        data-new-logo-mode="upload"
+                        aria-pressed="true"
+                      >
+                        Upload File
+                      </button>
+                      <button
+                        type="button"
+                        class="admin-logo-mode-btn"
+                        data-new-logo-mode="link"
+                        aria-pressed="false"
+                      >
+                        Link / URL
+                      </button>
+                    </div>
+                  </div>
 
-                <div class="form-field">
-                  <label for="new-prod-logo-url">Path / URL Logo</label>
-                  <input
-                    type="text"
-                    id="new-prod-logo-url"
-                    value="./assets/logos/custom-request.svg"
-                  />
-                </div>
+                  <div id="new-prod-logo-upload-pane" class="admin-logo-pane">
+                    <div class="admin-file-row">
+                      <label for="new-prod-logo-file" class="btn btn-secondary btn-sm admin-file-trigger">
+                        Pilih File Gambar Logo
+                      </label>
+                      <input
+                        type="file"
+                        id="new-prod-logo-file"
+                        class="visually-hidden-file"
+                        accept="image/*"
+                      />
+                      <span class="admin-prod-meta">PNG / JPG / WebP / SVG otomatis dioptimalkan ke 256×256.</span>
+                    </div>
+                  </div>
 
-                <div class="form-field">
-                  <label for="new-prod-logo-file">Atau Unggah Gambar Logo Baru</label>
-                  <input
-                    type="file"
-                    id="new-prod-logo-file"
-                    accept="image/*"
-                  />
+                  <div id="new-prod-logo-link-pane" class="admin-logo-pane" hidden>
+                    <div class="admin-logo-link-grid">
+                      <div class="form-field">
+                        <label for="new-prod-logo-preset">Preset Ikon Bawaan</label>
+                        <select id="new-prod-logo-preset" class="admin-select">
+                          <option value="./assets/logos/custom-request.svg">Ikon Umum / Custom</option>
+                          <option value="./assets/logos/netflix.svg">Netflix</option>
+                          <option value="./assets/logos/canva.svg">Canva</option>
+                          <option value="./assets/logos/youtube.svg">YouTube</option>
+                          <option value="./assets/logos/spotify.svg">Spotify</option>
+                          <option value="./assets/logos/viu.svg">Viu</option>
+                          <option value="./assets/logos/vidio.svg">Vidio</option>
+                          <option value="./assets/logos/alight-motion.svg">Alight Motion</option>
+                          <option value="./assets/logos/wetv.svg">WeTV</option>
+                          <option value="./assets/logos/prime-video.svg">Prime Video</option>
+                        </select>
+                      </div>
+                      <div class="form-field">
+                        <label for="new-prod-logo-url">Path / URL Link Logo</label>
+                        <input
+                          type="text"
+                          id="new-prod-logo-url"
+                          value="./assets/logos/custom-request.svg"
+                          placeholder="https://... atau ./assets/logos/..."
+                        />
+                      </div>
+                    </div>
+                  </div>
                 </div>
 
                 <div class="form-field">
@@ -376,6 +507,571 @@
           </div>
         </section>
 
+        <!-- Panel Kategori Layanan -->
+        <section id="panel-categories" class="admin-panel" aria-labelledby="tab-btn-categories" hidden>
+          <div class="admin-card">
+            <h2 class="admin-section-title">Kelola Kategori Layanan</h2>
+            <p class="admin-subtitle">
+              Ubah nama kategori yang sudah ada atau tambahkan kategori layanan baru (contoh: AI &amp; Produktivitas, Gaming &amp; Voucher, Cloud Storage, dll). Kategori otomatis muncul di filter toko dan pilihan produk.
+            </p>
+
+            <div id="admin-category-list" class="admin-category-list"></div>
+
+            <form id="add-category-form" class="admin-add-form">
+              <h3 class="admin-subhead">Tambah Kategori Layanan Baru</h3>
+              <div class="admin-form-grid">
+                <div class="form-field">
+                  <label for="new-category-label">Nama Kategori Layanan <span class="req">*</span></label>
+                  <input
+                    type="text"
+                    id="new-category-label"
+                    placeholder="Contoh: AI & Produktivitas"
+                    required
+                  />
+                </div>
+                <div class="form-field">
+                  <label for="new-category-id">ID Kategori (Opsional, otomatis dari nama)</label>
+                  <input
+                    type="text"
+                    id="new-category-id"
+                    placeholder="Contoh: ai-tools"
+                  />
+                </div>
+              </div>
+              <div class="admin-action-bar">
+                <button type="submit" class="btn btn-primary btn-sm">
+                  + Tambah Kategori Layanan
+                </button>
+              </div>
+            </form>
+          </div>
+        </section>
+
+        <!-- Panel Banner Promo Carousel -->
+        <section id="panel-banners" class="admin-panel" aria-labelledby="tab-btn-banners" hidden>
+          <div class="admin-card">
+            <h2 class="admin-section-title">Kelola Banner Carousel Halaman Utama</h2>
+            <p class="admin-subtitle">
+              Tambah, edit, urutkan, atau hapus slide banner di halaman depan toko. Anda bisa mengganti gambar latar banner (upload foto/gambar sendiri, pilih preset, atau gunakan gradien elegan) serta mengubah seluruh tulisan dan link tujuan pada setiap banner.
+            </p>
+
+            <div id="admin-banner-list" class="admin-banner-list"></div>
+
+            <form id="add-banner-form" class="admin-add-form">
+              <h3 class="admin-subhead">Tambah Slide Banner Baru</h3>
+              <div class="admin-form-grid">
+                <div class="form-field">
+                  <label for="new-banner-kicker">Label Kicker (Teks Kecil Atas)</label>
+                  <input
+                    type="text"
+                    id="new-banner-kicker"
+                    value="Promo Spesial · Manifestudio"
+                    placeholder="Contoh: Promo Spesial · Manifestudio"
+                  />
+                </div>
+                <div class="form-field">
+                  <label for="new-banner-heading">Judul Utama Banner <span class="req">*</span></label>
+                  <input
+                    type="text"
+                    id="new-banner-heading"
+                    placeholder="Contoh: Diskon Spesial Paket Bundling"
+                    required
+                  />
+                </div>
+                <div class="form-field admin-sum-field">
+                  <label for="new-banner-sub">Deskripsi / Kalimat Penjelas Banner</label>
+                  <input
+                    type="text"
+                    id="new-banner-sub"
+                    placeholder="Contoh: Dapatkan harga lebih hemat untuk pemesanan 2 layanan sekaligus."
+                  />
+                </div>
+                <div class="form-field">
+                  <label for="new-banner-cta">Teks Tombol (CTA)</label>
+                  <input
+                    type="text"
+                    id="new-banner-cta"
+                    value="Lihat Promo →"
+                    placeholder="Contoh: Lihat Promo →"
+                  />
+                </div>
+                <div class="form-field">
+                  <label for="new-banner-href">Link Tujuan Saat Diklik</label>
+                  <input
+                    type="text"
+                    id="new-banner-href"
+                    value="#katalog"
+                    placeholder="#katalog atau ./tools.html?tool=compressor"
+                  />
+                </div>
+                <div class="form-field">
+                  <label for="new-banner-scrim">Tema Warna Latar / Overlay</label>
+                  <select id="new-banner-scrim" class="admin-select">
+                    <option value="">Biru Gelap Standar</option>
+                    <option value="is-emerald">Hijau Emerald</option>
+                    <option value="is-sky">Biru Langit Cerah</option>
+                    <option value="is-indigo">Indigo / Ungu</option>
+                    <option value="is-cyan">Cyan / Tosca</option>
+                    <option value="is-violet">Violet / Magenta</option>
+                  </select>
+                </div>
+                <div class="form-field">
+                  <label for="new-banner-preset">Preset Gambar Banner</label>
+                  <select id="new-banner-preset" class="admin-select">
+                    <option value="./assets/hero-banner.jpg">Banner Katalog Default</option>
+                    <option value="./assets/banner-prayer.jpg">Banner Jadwal Sholat</option>
+                    <option value="./assets/banner-weather.jpg">Banner Prakiraan Cuaca</option>
+                    <option value="./assets/banner-worldclock.jpg">Banner Jam Dunia</option>
+                    <option value="./assets/banner-speedtest.jpg">Banner Speedtest</option>
+                    <option value="">Tanpa Gambar (Hanya Gradien Warna)</option>
+                  </select>
+                </div>
+                <div class="form-field admin-sum-field">
+                  <label for="new-banner-image-url">Path / URL Gambar Banner (Opsional)</label>
+                  <input
+                    type="text"
+                    id="new-banner-image-url"
+                    value="./assets/hero-banner.jpg"
+                    placeholder="./assets/hero-banner.jpg atau https://... (kosongkan untuk gradien)"
+                  />
+                </div>
+                <div class="form-field admin-sum-field">
+                  <div class="admin-file-row">
+                    <img
+                      src="./assets/hero-banner.jpg"
+                      alt="Pratinjau gambar banner baru"
+                      width="96"
+                      height="48"
+                      id="new-banner-image-preview"
+                      class="admin-banner-thumb"
+                    />
+                    <label for="new-banner-image-file" class="btn btn-secondary btn-sm admin-file-trigger">
+                      Upload Gambar Banner Baru
+                    </label>
+                    <input
+                      type="file"
+                      id="new-banner-image-file"
+                      class="visually-hidden-file"
+                      accept="image/*"
+                    />
+                    <span id="new-banner-image-status" class="admin-prod-meta">Rasio landscape 16:9 atau 21:9 direkomendasikan.</span>
+                  </div>
+                </div>
+              </div>
+              <div class="admin-action-bar">
+                <button type="submit" class="btn btn-primary btn-sm">
+                  + Tambah Slide Banner
+                </button>
+              </div>
+            </form>
+          </div>
+        </section>
+
+        <!-- Panel Brand, Biaya Layanan, OpenGraph & Kontak Sosmed -->
+        <section id="panel-brand" class="admin-panel" aria-labelledby="tab-btn-brand" hidden>
+          <!-- Card 1: Identitas & Logo Brand -->
+          <div class="admin-card">
+            <h2 class="admin-section-title">Ubah Logo Brand &amp; Identitas Header/Footer</h2>
+            <p class="admin-subtitle">
+              Atur logo utama toko, nama brand, tulisan di bawah nama brand (tagline header), serta teks hak cipta di footer.
+            </p>
+
+            <div class="admin-logo-manager">
+              <div class="admin-logo-head">
+                <div class="admin-logo-preview-wrap">
+                  <img
+                    src="./assets/icons/brand-icon.svg"
+                    alt="Pratinjau logo brand utama"
+                    width="48"
+                    height="48"
+                    id="brand-logo-preview"
+                    class="modal-logo admin-logo-thumb"
+                  />
+                  <div>
+                    <strong class="admin-logo-title">Logo Brand Utama</strong>
+                    <span id="brand-logo-status" class="admin-prod-meta">Menggunakan logo bawaan Manifestudio</span>
+                  </div>
+                </div>
+                <div class="admin-logo-tabs" role="group" aria-label="Pilih sumber logo brand">
+                  <button
+                    type="button"
+                    class="admin-logo-mode-btn is-active"
+                    data-brand-logo-mode="upload"
+                    aria-pressed="true"
+                  >
+                    Upload Gambar
+                  </button>
+                  <button
+                    type="button"
+                    class="admin-logo-mode-btn"
+                    data-brand-logo-mode="link"
+                    aria-pressed="false"
+                  >
+                    Link / URL
+                  </button>
+                </div>
+              </div>
+
+              <div id="brand-logo-upload-pane" class="admin-logo-pane">
+                <div class="admin-file-row">
+                  <label for="brand-logo-file" class="btn btn-secondary btn-sm admin-file-trigger">
+                    Pilih File Gambar Logo Brand
+                  </label>
+                  <input
+                    type="file"
+                    id="brand-logo-file"
+                    class="visually-hidden-file"
+                    accept="image/*"
+                  />
+                  <button type="button" id="brand-logo-reset-btn" class="btn btn-ghost btn-sm">
+                    Reset ke Logo Default
+                  </button>
+                  <span class="admin-prod-meta">Otomatis dikompres &amp; disimpan ke repositori saat Publikasi.</span>
+                </div>
+              </div>
+
+              <div id="brand-logo-link-pane" class="admin-logo-pane" hidden>
+                <div class="form-field">
+                  <label for="brand-logo-url">Path / URL Logo Brand</label>
+                  <input
+                    type="text"
+                    id="brand-logo-url"
+                    value="./assets/icons/brand-icon.svg"
+                    placeholder="./assets/icons/brand-icon.svg atau https://..."
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div class="admin-form-grid">
+              <div class="form-field">
+                <label for="brand-name-input">Nama Brand</label>
+                <input
+                  type="text"
+                  id="brand-name-input"
+                  value="Manifestudio"
+                  placeholder="Manifestudio"
+                />
+              </div>
+              <div class="form-field">
+                <label for="brand-tagline-input">Tagline Header (Tulisan di Bawah Nama Brand)</label>
+                <input
+                  type="text"
+                  id="brand-tagline-input"
+                  value="by Tomy"
+                  placeholder="Contoh: by Tomy"
+                />
+              </div>
+              <div class="form-field admin-sum-field">
+                <label for="brand-footer-input">Teks Hak Cipta Footer</label>
+                <input
+                  type="text"
+                  id="brand-footer-input"
+                  value="Dikelola oleh Manifestudio by Tomy © 2026"
+                  placeholder="Dikelola oleh Manifestudio by Tomy © 2026"
+                />
+              </div>
+            </div>
+          </div>
+
+          <!-- Card 2: Pengaturan OpenGraph & Social Share Preview -->
+          <div class="admin-card">
+            <h2 class="admin-section-title">Pengaturan OpenGraph &amp; Tampilan Share Link (WA / FB / IG / X / Telegram)</h2>
+            <p class="admin-subtitle">
+              Atur gambar pratinjau (thumbnail), judul kalimat, tagline, dan caption saat link website dibagikan di WhatsApp, Telegram, Facebook, Instagram, atau X. Saat Anda klik <strong>Simpan &amp; Publikasikan ke GitHub</strong>, sistem otomatis memperbarui meta tag di <code>index.html</code> dan <code>data/catalog.json</code>.
+            </p>
+
+            <div class="admin-og-preview-card" aria-label="Pratinjau Kartu Share Sosial Media">
+              <div class="admin-og-preview-media">
+                <img
+                  src="./assets/og-manifestudio.jpg"
+                  alt="Pratinjau gambar OpenGraph"
+                  id="og-card-preview-img"
+                  class="admin-og-preview-img"
+                />
+                <span id="og-card-preview-tagline" class="admin-og-preview-badge">by Tomy</span>
+              </div>
+              <div class="admin-og-preview-body">
+                <span id="og-card-preview-site" class="admin-og-preview-domain">MANIFESTUDIO.MY.ID</span>
+                <strong id="og-card-preview-title" class="admin-og-preview-title">Manifestudio — Katalog Layanan Digital &amp; Langganan</strong>
+                <p id="og-card-preview-desc" class="admin-og-preview-desc">
+                  Pesan layanan streaming, musik, desain, dan kebutuhan akun digital dengan proses cepat via WhatsApp.
+                </p>
+              </div>
+            </div>
+
+            <div class="admin-logo-manager">
+              <div class="admin-logo-head">
+                <div>
+                  <strong class="admin-logo-title">Gambar Thumbnail OpenGraph (Rasio 1200×630)</strong>
+                  <div id="og-image-status" class="admin-prod-meta">Aktif: ./assets/og-manifestudio.jpg</div>
+                </div>
+                <div class="admin-file-row">
+                  <label for="og-image-file" class="btn btn-secondary btn-sm admin-file-trigger">
+                    Upload Gambar OpenGraph
+                  </label>
+                  <input
+                    type="file"
+                    id="og-image-file"
+                    class="visually-hidden-file"
+                    accept="image/*"
+                  />
+                  <button type="button" id="og-image-reset-btn" class="btn btn-ghost btn-sm">
+                    Reset Gambar Default
+                  </button>
+                </div>
+              </div>
+              <div class="form-field">
+                <label for="og-image-url">Atau Path / URL Gambar OpenGraph</label>
+                <input
+                  type="text"
+                  id="og-image-url"
+                  value="./assets/og-manifestudio.jpg"
+                  placeholder="./assets/og-manifestudio.jpg atau https://..."
+                />
+              </div>
+            </div>
+
+            <div class="admin-form-grid">
+              <div class="form-field">
+                <label for="og-title-input">Judul OpenGraph (Kalimat Utama Share Link)</label>
+                <input
+                  type="text"
+                  id="og-title-input"
+                  value="Manifestudio — Katalog Layanan Digital &amp; Langganan"
+                  placeholder="Manifestudio — Katalog Layanan Digital &amp; Langganan"
+                />
+              </div>
+              <div class="form-field">
+                <label for="og-tagline-input">Tagline OpenGraph</label>
+                <input
+                  type="text"
+                  id="og-tagline-input"
+                  value="by Tomy"
+                  placeholder="Contoh: by Tomy · Cepat, Aman &amp; Bergaransi"
+                />
+              </div>
+              <div class="form-field admin-sum-field">
+                <label for="og-description-input">Caption / Deskripsi OpenGraph</label>
+                <textarea
+                  id="og-description-input"
+                  class="admin-textarea"
+                  rows="2"
+                  placeholder="Pesan layanan streaming, musik, desain, dan kebutuhan akun digital dengan proses cepat via WhatsApp."
+                >Pesan layanan streaming, musik, desain, dan kebutuhan akun digital dengan proses cepat via WhatsApp.</textarea>
+              </div>
+              <div class="form-field">
+                <label for="og-sitename-input">Nama Situs (og:site_name)</label>
+                <input
+                  type="text"
+                  id="og-sitename-input"
+                  value="Manifestudio"
+                  placeholder="Manifestudio"
+                />
+              </div>
+              <div class="form-field">
+                <label for="og-alt-input">Teks Alternatif Gambar (og:image:alt)</label>
+                <input
+                  type="text"
+                  id="og-alt-input"
+                  value="Pratinjau Katalog Layanan Digital Manifestudio"
+                  placeholder="Pratinjau Katalog Layanan Digital Manifestudio"
+                />
+              </div>
+            </div>
+          </div>
+
+          <!-- Card 3: Biaya Layanan & Diskon Otomatis -->
+          <div class="admin-card">
+            <h2 class="admin-section-title">Pengaturan Biaya Layanan &amp; Diskon Otomatis</h2>
+            <p class="admin-subtitle">
+              Atur besaran persentase biaya layanan Bayar Nanti, biaya layanan tetap (jika ada), serta ambang diskon otomatis keranjang.
+            </p>
+
+            <div class="admin-form-grid">
+              <div class="form-field">
+                <label for="brand-paylater-pct-input">Biaya Layanan Bayar Nanti (%)</label>
+                <input
+                  type="number"
+                  id="brand-paylater-pct-input"
+                  min="0"
+                  max="100"
+                  step="0.5"
+                  value="10"
+                />
+              </div>
+              <div class="form-field">
+                <label for="brand-service-fee-flat-input">Biaya Layanan Tetap Semua Pesanan (Rp)</label>
+                <input
+                  type="number"
+                  id="brand-service-fee-flat-input"
+                  min="0"
+                  step="500"
+                  value="0"
+                />
+              </div>
+              <div class="form-field">
+                <label for="brand-service-fee-label-input">Nama Label Biaya Layanan Tetap</label>
+                <input
+                  type="text"
+                  id="brand-service-fee-label-input"
+                  value="Biaya Layanan"
+                  placeholder="Contoh: Biaya Layanan / Biaya Admin"
+                />
+              </div>
+              <div class="form-field">
+                <label for="brand-whatsapp-input">Nomor WhatsApp Admin Utama (Format 628...)</label>
+                <input
+                  type="text"
+                  id="brand-whatsapp-input"
+                  value="6285122936027"
+                  placeholder="6285122936027"
+                />
+              </div>
+              <div class="form-field">
+                <label for="brand-discount-threshold-input">Minimal Belanja Diskon Otomatis (Rp)</label>
+                <input
+                  type="number"
+                  id="brand-discount-threshold-input"
+                  min="0"
+                  step="1000"
+                  value="50000"
+                />
+              </div>
+              <div class="form-field">
+                <label for="brand-discount-amount-input">Nominal Potongan Diskon Otomatis (Rp)</label>
+                <input
+                  type="number"
+                  id="brand-discount-amount-input"
+                  min="0"
+                  step="500"
+                  value="2000"
+                />
+              </div>
+            </div>
+          </div>
+
+          <!-- Card 4: Kontak & Sosial Media Admin + Logo Sosmed -->
+          <div class="admin-card">
+            <h2 class="admin-section-title">Kontak &amp; Sosial Media Admin (Beserta Logo Sosmed)</h2>
+            <p class="admin-subtitle">
+              Edit, tambah, atau hapus tombol kontak &amp; sosial media yang tampil di bagian bawah toko, lengkap dengan ikon/logo sosmed masing-masing.
+            </p>
+
+            <div id="admin-social-list" class="admin-social-list"></div>
+
+            <form id="add-social-form" class="admin-add-form">
+              <h3 class="admin-subhead">Tambah Kontak / Sosial Media Baru</h3>
+              <div class="admin-form-grid">
+                <div class="form-field">
+                  <label for="new-social-label">Nama / Label Tombol Sosmed <span class="req">*</span></label>
+                  <input
+                    type="text"
+                    id="new-social-label"
+                    placeholder="Contoh: Instagram @tmctomystudio atau Telegram Admin"
+                    required
+                  />
+                </div>
+                <div class="form-field">
+                  <label for="new-social-url">Link URL Tujuan <span class="req">*</span></label>
+                  <input
+                    type="text"
+                    id="new-social-url"
+                    placeholder="Contoh: https://instagram.com/tmctomystudio atau https://t.me/..."
+                    required
+                  />
+                </div>
+                <div class="form-field">
+                  <label for="new-social-logo-preset">Preset Logo Sosmed</label>
+                  <select id="new-social-logo-preset" class="admin-select">
+                    <option value="./assets/icons/social-whatsapp.svg">WhatsApp</option>
+                    <option value="./assets/icons/social-instagram.svg">Instagram</option>
+                    <option value="./assets/icons/social-tiktok.svg">TikTok</option>
+                    <option value="./assets/icons/social-telegram.svg">Telegram</option>
+                    <option value="./assets/icons/social-globe.svg">Website / Link Umum</option>
+                  </select>
+                </div>
+                <div class="form-field">
+                  <label for="new-social-logo-url">Atau Path / URL Logo Sosmed</label>
+                  <input
+                    type="text"
+                    id="new-social-logo-url"
+                    value="./assets/icons/social-whatsapp.svg"
+                    placeholder="./assets/icons/social-whatsapp.svg atau https://..."
+                  />
+                </div>
+                <div class="form-field admin-sum-field">
+                  <div class="admin-file-row">
+                    <img
+                      src="./assets/icons/social-whatsapp.svg"
+                      alt="Pratinjau logo sosmed baru"
+                      width="36"
+                      height="36"
+                      id="new-social-logo-preview"
+                      class="modal-logo admin-logo-thumb"
+                    />
+                    <label for="new-social-logo-file" class="btn btn-secondary btn-sm admin-file-trigger">
+                      Upload File Logo Sosmed Baru
+                    </label>
+                    <input
+                      type="file"
+                      id="new-social-logo-file"
+                      class="visually-hidden-file"
+                      accept="image/*"
+                    />
+                    <span id="new-social-logo-status" class="admin-prod-meta">Bisa pilih preset, link URL, atau upload gambar sendiri.</span>
+                  </div>
+                </div>
+              </div>
+              <div class="admin-action-bar">
+                <button type="submit" class="btn btn-primary btn-sm">
+                  + Tambah Kontak / Sosmed
+                </button>
+              </div>
+            </form>
+          </div>
+        </section>
+
+        <!-- Panel Pertanyaan Umum (FAQ) -->
+        <section id="panel-faq" class="admin-panel" aria-labelledby="tab-btn-faq" hidden>
+          <div class="admin-card">
+            <h2 class="admin-section-title">Kelola Pertanyaan Umum (FAQ)</h2>
+            <p class="admin-subtitle">
+              Edit pertanyaan dan jawaban yang sering diajukan pelanggan di halaman depan toko, atau tambahkan pertanyaan baru.
+            </p>
+
+            <div id="admin-faq-list" class="admin-faq-list"></div>
+
+            <form id="add-faq-form" class="admin-add-form">
+              <h3 class="admin-subhead">Tambah Pertanyaan Umum Baru</h3>
+              <div class="form-field">
+                <label for="new-faq-question">Pertanyaan <span class="req">*</span></label>
+                <input
+                  type="text"
+                  id="new-faq-question"
+                  placeholder="Contoh: Apakah akun bergaransi penuh selama masa aktif?"
+                  required
+                />
+              </div>
+              <div class="form-field">
+                <label for="new-faq-answer">Jawaban Lengkap <span class="req">*</span></label>
+                <textarea
+                  id="new-faq-answer"
+                  class="admin-textarea"
+                  rows="3"
+                  placeholder="Tulis penjelasan jawaban yang jelas untuk pelanggan..."
+                  required
+                ></textarea>
+              </div>
+              <div class="admin-action-bar">
+                <button type="submit" class="btn btn-primary btn-sm">
+                  + Tambah Pertanyaan Umum
+                </button>
+              </div>
+            </form>
+          </div>
+        </section>
+
         <section id="panel-vouchers" class="admin-panel" aria-labelledby="tab-btn-vouchers" hidden>
           <div class="admin-card">
             <h2 class="admin-section-title">Kelola Kode Voucher</h2>
@@ -407,6 +1103,18 @@
                   <label for="new-voucher-min">Minimal Belanja (Rp)</label>
                   <input type="number" id="new-voucher-min" min="0" step="1000" value="15000" />
                 </div>
+                <div class="form-field">
+                  <label for="new-voucher-usage-mode">Batas Penggunaan Voucher</label>
+                  <select id="new-voucher-usage-mode" class="admin-select">
+                    <option value="once">1 Kali Pakai Per Pelanggan</option>
+                    <option value="limited">Batasi Jumlah Pakai (N Kali)</option>
+                    <option value="unlimited">Tak Terbatas (Berkali-kali)</option>
+                  </select>
+                </div>
+                <div class="form-field" id="new-voucher-max-uses-field" hidden>
+                  <label for="new-voucher-max-uses">Maksimal Penggunaan (Kali)</label>
+                  <input type="number" id="new-voucher-max-uses" min="2" step="1" value="5" />
+                </div>
               </div>
               <div class="admin-action-bar">
                 <button type="submit" class="btn btn-primary btn-sm">Tambah Voucher</button>
@@ -414,11 +1122,34 @@
             </form>
           </div>
         </section>
+
+        <section id="panel-history" class="admin-panel" aria-labelledby="tab-btn-history" hidden>
+          <div class="admin-card">
+            <div class="admin-card-head">
+              <div>
+                <h2 class="admin-section-title">Riwayat Perubahan Katalog</h2>
+                <p class="admin-subtitle">
+                  Otomatis menyimpan hingga <strong id="history-limit-label">12</strong> log terbaru beserta rincian lengkap setiap tindakan (perubahan harga, sub produk, logo, biaya layanan, kategori, dll).
+                </p>
+              </div>
+              <div class="admin-history-toolbar">
+                <button type="button" id="snapshot-history-btn" class="btn btn-secondary btn-sm">
+                  + Simpan Snapshot Sekarang
+                </button>
+                <button type="button" id="clear-history-btn" class="btn btn-ghost btn-sm">
+                  Bersihkan Log
+                </button>
+              </div>
+            </div>
+
+            <div id="admin-history-list" class="admin-history-list"></div>
+          </div>
+        </section>
       </div>
     </main>
 
     <div id="toast-notification" class="toast-notification" role="status" aria-live="polite" hidden></div>
 
-    <script type="module" src="./js/admin.js"></script>
+    <script type="module" src="./js/admin.js?v=25"></script>
   </body>
 </html>

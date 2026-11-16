@@ -916,7 +916,14 @@ export function applyOpenGraphToHtml(htmlString = '', openGraphInput = {}, brand
       .replaceAll('<', '&lt;')
       .replaceAll('>', '&gt;');
 
-  const fullTitle = og.tagline ? `${og.title} (${og.tagline})` : og.title;
+  const titleLower = String(og.title || '').toLowerCase();
+  const taglineRaw = String(og.tagline || '').trim();
+  const taglineFirstPart = taglineRaw.split(/[·|—-]/)[0].trim().toLowerCase();
+  const isTaglineDuplicate =
+    !taglineRaw ||
+    titleLower.includes(taglineRaw.toLowerCase()) ||
+    (taglineFirstPart.length >= 4 && titleLower.includes(taglineFirstPart));
+  const fullTitle = !isTaglineDuplicate ? `${og.title} (${taglineRaw})` : og.title;
   const safeTitle = escapeAttr(og.title);
   const safeDesc = escapeAttr(og.description);
   const safeAlt = escapeAttr(og.imageAlt || og.tagline || og.title);
@@ -953,6 +960,26 @@ export function applyOpenGraphToHtml(htmlString = '', openGraphInput = {}, brand
   replaceMeta('name', 'twitter:description', safeDesc);
   replaceMeta('name', 'twitter:image', safeImg);
   replaceMeta('name', 'twitter:image:alt', safeAlt);
+
+  out = out.replace(
+    /(<script\s+type=["']application\/ld\+json["']>\s*)([\s\S]*?)(\s*<\/script>)/i,
+    (match, openTag, jsonText, closeTag) => {
+      try {
+        const parsed = JSON.parse(jsonText);
+        if (parsed && typeof parsed === 'object') {
+          parsed.name = og.siteName || brand.name || parsed.name || 'Manifestudio';
+          if (og.description) {
+            parsed.description = String(og.description).replace(/\s+/g, ' ').trim();
+          }
+          parsed.image = absImg;
+          return `${openTag}${JSON.stringify(parsed, null, 2)}${closeTag}`;
+        }
+      } catch {
+        // Ignore malformed JSON-LD and keep original block
+      }
+      return match;
+    }
+  );
 
   return out;
 }
