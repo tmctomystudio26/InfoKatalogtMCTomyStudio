@@ -144,7 +144,7 @@
     },
     {
       "id": "pendidikan",
-      "label": "Pendidikan"
+      "label": "Pendidikan & Pekerjaan"
     }
   ],
   "paymentOptions": [
@@ -505,6 +505,24 @@
           "id": "cek-turnitin-8fnd",
           "name": "Turnitin V2",
           "price": 25000,
+          "outOfStock": false
+        }
+      ]
+    },
+    {
+      "id": "zoom-pro",
+      "name": "Zoom Pro",
+      "category": "pendidikan",
+      "logo": "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcSV3G_jBuK0VNzE1gVORXPf5LSTgoTsCN_T8FFxiiaXwQ&s=10",
+      "isBestSeller": false,
+      "outOfStock": false,
+      "tag": "Tersedia",
+      "summary": "Zoom Premium Durasi Meeting Tanpa Batas",
+      "variants": [
+        {
+          "id": "zoom-pro-v1",
+          "name": "7 Hari - 100 Peserta",
+          "price": 10000,
           "outOfStock": false
         }
       ]
