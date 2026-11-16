@@ -11,10 +11,10 @@ Dokumen teknis terpadu bagi **Tim IT, Human Developer, maupun AI Coding Agent** 
 2. **Pemisahan Halaman Clean & Modular**:
    - **Storefront (`index.html`)**: Fokus pada pencarian, filter kategori dinamis, banner carousel yang dapat diatur Admin, belanja cepat, & validasi voucher ketat berkuota.
    - **Order Konfirmasi (`order.html`)**: Halaman invoice terpisah + HTML5 Canvas struk JPEG `< 60 KB` + WhatsApp handoff bebas catatan palsu.
-   - **Menu Lainnya (`tools.html`)**: Halaman terpisah untuk utilitas harian (`?tab=prayer | weather | worldclock | speedtest | downloader | compressor`) dengan tombol kembali ke katalog.
+   - **Menu Utilitas (`tools.html`)**: Halaman terpisah untuk utilitas harian (`?tab=prayer | weather | worldclock | speedtest | downloader | compressor`) yang ditonjolkan melalui kartu aksen `#utilities-callout-card` (`assets/icons/menu-utilitas.svg`) di atas filter kategori, lengkap dengan tombol kembali ke katalog.
    - **Panel Admin (`admin.html`)**: Halaman *unlisted* (`noindex`) terenkripsi AES-256-GCM yang mempublikasikan perubahan katalog, aset upload, OpenGraph `index.html`, dan riwayat perubahan terperinci langsung via GitHub REST API.
 3. **Kualitas Pengalaman Mobile-First, Presisi Tinggi, & Ad-Free**:
-   - Semua kontrol responsif di layar HP (`360px–430px`) maupun desktop (`1440px`), menggunakan *Network-First Service Worker* (`manifestudio-cache-v22`) + query cache-busting `?v=22` agar pembaruan langsung muncul di perangkat mobile pengguna.
+   - Semua kontrol responsif di layar HP (`360px–430px`) maupun desktop (`1440px`), menggunakan *Network-First Service Worker* (`manifestudio-cache-v23`) + query cache-busting `?v=23` agar pembaruan langsung muncul di perangkat mobile pengguna.
    - Pemutar musik bebas iklan dapat digeser bebas dan memutar lagu versi penuh (*Full Version >= 75s*).
 
 ---
@@ -26,15 +26,15 @@ Dokumen teknis terpadu bagi **Tim IT, Human Developer, maupun AI Coding Agent** 
 | `index.html` + `js/app.js` | Storefront katalog, carousel banner dinamis, kategori dinamis, modal varian, drawer checkout, voucher tracking | `data.js`, `store.js`, `pwa.js`, `music.js` |
 | `order.html` + `js/order.js` + `js/receipt.js` | Invoice bersih + HTML5 Canvas Struk JPEG `< 60 KB` + format WA Order (tanpa voucher invalid) | `data.js`, `store.js`, `music.js` |
 | `admin.html` + `js/admin.js` + `js/vault.js` | Gate AES-256-GCM + PBKDF2, edit produk/varian/urutan/logo/brand/tagline/biaya layanan/sosmed/FAQ/voucher limits/OpenGraph/banner, riwayat itemized + restore 12 log | `data.js`, `store.js`, `vault.js` |
-| `tools.html` + `js/tools-page.js` + `js/tools-ui.js` + `js/tools-logic.js` | Router sub-tab `Menu Lainnya`, pure math & domain logic, UI bar progres konversi & download | `location.js`, `globe.js`, `speedtest.js`, `downloader.js`, `compressor.js`, `music.js` |
+| `tools.html` + `js/tools-page.js` + `js/tools-ui.js` + `js/tools-logic.js` | Router sub-tab `Menu Utilitas`, pure math & domain logic, UI bar progres konversi & download | `location.js`, `globe.js`, `speedtest.js`, `downloader.js`, `compressor.js`, `music.js` |
 | `js/location.js` | Geolocation GPS prioritas utama + reverse geocode Kelurahan/Kecamatan + fallback IP + autocomplete kota | `tools-logic.js` |
 | `js/globe.js` | Canvas 2D orthographic rotatable 3D globe + klik target negara + auto-rotate | `tools-logic.js` |
 | `js/speedtest.js` | Speedometer 60fps + ukur Ping/Jitter/DL/UL Cloudflare CDN (berbobot berkelanjutan) + telemetri perangkat | `tools-logic.js` |
-| `js/downloader.js` | Adapter paralel TikTok (4-node Tioo/TikWM/Cobalt/DavidCyril), YouTube (Cobalt + 4-node Tioo + Wave 2 audio retry + dual MP4/MP3 DavidCyril + ekstraksi audio WAV client-side + cek ID terpotong), IG/FB (Video/Foto/Carousel/Story/Caption) + streaming download progress | `tools-logic.js` |
+| `js/downloader.js` | Adapter paralel TikTok (4-node Tioo/TikWM/Cobalt/DavidCyril), YouTube (Cobalt + 4-node Tioo + Siputzx Ummy + vidsnap CORS proxy + Wave 2 audio retry + DavidCyril + ekstrak WAV client-side), IG (`Siputzx sssinstagram` + `Ummy` + Cobalt + Tioo + `fastdl`/`igram` fallback), FB + streaming download progress | `tools-logic.js` |
 | `js/compressor.js` | Kompresor Foto & Video HD Zero-Loss (binary EXIF/PNG/MP4 atom stripper & Social Shield encoder) | `tools-logic.js` |
 | `js/music.js` + `js/music-logic.js` | Widget musik draggable, algoritma preferensi, **Full Audio** (Audius), **SoundCloud Widget**, **Spotify Embed** | Audius / SoundCloud / Spotify |
 | `data/catalog.json` & `data/catalog-history.json` | Single Source of Truth produk, brand, OpenGraph, banners, kategori, voucher usage limits, FAQ & 12 snapshot riwayat | Service Worker Network-First |
-| `sw.js` + `manifest.webmanifest` | Network-First code/data cache (`manifestudio-cache-v22`) & instalasi PWA | — |
+| `sw.js` + `manifest.webmanifest` | Network-First code/data cache (`manifestudio-cache-v23`) & instalasi PWA | — |
 | `CNAME` | Konfigurasi domain kustom resmi GitHub Pages (`manifestudio.my.id`) — jangan dihapus | Cloudflare DNS |
 
 ---
@@ -60,9 +60,9 @@ Semua integrasi pihak ketiga berjalan murni *client-side* tanpa API key rahasia:
    - **SoundCloud & Spotify Embed**: `https://w.soundcloud.com/player/` & `https://open.spotify.com/embed/playlist/...`.
 6. **Sosmed Media Downloader All-in-One**:
    - **TikTok (Video No-WM/MP3/Photo Carousel)**: Failover paralel 4 node `https://backend1..4.tioo.eu.org/ttdl`, `https://www.tikwm.com/api/?url=...&hd=1`, `https://cobaltapi.cjs.nz/`, fallback `https://apis.davidcyriltech.my.id/download/tiktok`.
-   - **YouTube (Dual Video MP4 & Audio MP3/M4A/WAV)**: Paralel `https://www.youtube.com/oembed`, `https://cobaltapi.cjs.nz/` (video + audio MP3 terpisah), failover 4 node `https://backend1..4.tioo.eu.org/youtube` (+ Wave 2 retry untuk audio & dekode URI ganda proxy MIME), fallback ganda `https://apis.davidcyriltech.my.id/download/ytmp4` + `/ytmp3`, serta ekstraksi audio `.wav` client-side (`AudioContext`) jika hanya stream video yang tersedia.
+   - **YouTube (Dual Video MP4 & Audio M4A/MP3/WAV)**: Paralel `https://www.youtube.com/oembed`, `https://api.siputzx.my.id/api/d/ummy` (MP4 + M4A), `https://cobaltapi.cjs.nz/` (video + audio MP3 terpisah), failover 4 node `https://backend1..4.tioo.eu.org/youtube` (+ Wave 2 audio retry & pembungkusan stream `googlevideo.com` via `https://api.vidsnap.app/proxy?u=...` yang lolos CORS serta pemblokiran redirect `sf-converter.com`), fallback ganda `https://apis.davidcyriltech.my.id/download/ytmp4` + `/ytmp3`, serta ekstraksi audio `.wav` client-side (`AudioContext`).
    - **Facebook (HD/SD/MP3/Photo/Story)**: `https://cobaltapi.cjs.nz/`, `https://apis.davidcyriltech.my.id/facebook`, & failover 4 node `https://backend1..4.tioo.eu.org/fbdown`.
-   - **Instagram (Reels/Photo/Carousel/Story/Caption)**: Failover 4 node `https://backend1..4.tioo.eu.org/igdl`, `https://cobaltapi.cjs.nz/`, `https://api.ryzendesu.vip/api/downloader/igdl`, fallback `davidcyriltech/instagram`.
+   - **Instagram (Reels/Photo/Carousel/Story/Caption)**: Paralel **`https://api.siputzx.my.id/api/d/sssinstagram`**, **`https://api.siputzx.my.id/api/d/ummy`**, `https://cobaltapi.cjs.nz/`, & 4-node `tioo.eu.org/igdl`, dengan fallback `siputzx/fastdl`, `siputzx/igram`, dan `davidcyriltech/instagram`.
 
 ---
 

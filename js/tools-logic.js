@@ -1099,6 +1099,8 @@ export function isBlockedRedirectDownloadUrl(rawUrl) {
     'cdn403.savetube.vip',
     'cdn404.savetube.vip',
     'cdn405.savetube.vip',
+    'du.sf-converter.com',
+    'sf-converter.com',
     'y2mate.com',
     'ssyoutube.com',
   ];
@@ -1125,29 +1127,57 @@ function inferAudioExtFromUrl(url, fallback = 'mp3') {
   if (/mime=audio\/webm|\.webm(\?|$)/i.test(raw)) return 'webm';
   if (/mime=audio\/mp4|\.m4a(\?|$)/i.test(raw)) return 'm4a';
   if (/mime=audio\/ogg|\.ogg(\?|$)/i.test(raw)) return 'ogg';
+  if (/mime=audio\/opus|\.opus(\?|$)/i.test(raw)) return 'opus';
   if (/\.mp3(\?|$)/i.test(raw)) return 'mp3';
   return fallback;
 }
 
 function inferImageExtFromUrl(url, fallback = 'jpg') {
-  const raw = String(url || '');
-  if (/\.png(\?|$)|format=png/i.test(raw)) return 'png';
-  if (/\.webp(\?|$)|format=webp/i.test(raw)) return 'webp';
+  let raw = String(url || '');
+  try {
+    raw = decodeURIComponent(decodeURIComponent(raw));
+  } catch {
+    try {
+      raw = decodeURIComponent(raw);
+    } catch {
+      // keep raw string
+    }
+  }
+  if (/\.png(\?|$|&)|format=png/i.test(raw)) return 'png';
+  if (/\.webp(\?|$|&)|format=webp/i.test(raw)) return 'webp';
   return fallback;
 }
 
 function isLikelyImageUrl(url = '', explicitType = '') {
   const t = String(explicitType || '').toLowerCase();
-  if (t === 'photo' || t === 'image' || t === 'jpg' || t === 'png' || t === 'webp') return true;
+  if (t === 'photo' || t === 'image' || t === 'jpg' || t === 'jpeg' || t === 'png' || t === 'webp') return true;
   if (t === 'video' || t === 'mp4') return false;
-  const s = String(url || '');
-  if (/\.mp4(\?|$)|mime=video|video_mp4/i.test(s)) return false;
-  if (/\.(jpg|jpeg|png|webp|heic)(\?|$)/i.test(s)) return true;
+  let s = String(url || '');
+  try {
+    s = decodeURIComponent(decodeURIComponent(s));
+  } catch {
+    try {
+      s = decodeURIComponent(s);
+    } catch {
+      // keep raw string
+    }
+  }
+  if (/\.mp4(\?|$|&)|mime=video|video_mp4|dashinit\.mp4/i.test(s)) return false;
+  if (/\.(jpg|jpeg|png|webp|heic)(\?|$|&)/i.test(s)) return true;
   if (/tiktokcdn\.com.*(photomode|obj\/tos|img)/i.test(s) && !/\.mp4/i.test(s)) return true;
-  if (/cdninstagram\.com|fbcdn\.net/i.test(s) && !/\.mp4(\?|$)|bytestart=/i.test(s) && /_n\.jpg|_n\.webp|dst-jpg|dst-webp/i.test(s)) {
+  if (/cdninstagram\.com|fbcdn\.net/i.test(s) && !/\.mp4(\?|$|&)|bytestart=/i.test(s) && /_n\.jpg|_n\.webp|dst-jpg|dst-webp|\.jpg(\?|&|$)/i.test(s)) {
     return true;
   }
   return false;
+}
+
+export function wrapCorsMediaProxyIfNeeded(rawUrl = '') {
+  const s = String(rawUrl || '').trim();
+  if (!s) return '';
+  if (/^https?:\/\/[^/]*\.?googlevideo\.com\//i.test(s)) {
+    return `https://api.vidsnap.app/proxy?u=${encodeURIComponent(s)}`;
+  }
+  return s;
 }
 
 function normalizeCobaltEntry(entry, { isAudio = false, quality = '' } = {}) {
@@ -1505,9 +1535,29 @@ export function normalizeDownloaderResult(raw, platform, sourceUrl = '') {
   if (safePlatform === 'youtube') {
     const links = [];
     const seenUrls = new Set();
-    let title = String(raw.oembed?.title || raw.tioo?.title || raw.mp4?.result?.title || raw.mp3?.result?.title || '');
-    let author = String(raw.oembed?.author_name || raw.tioo?.author || 'YouTube');
-    let thumbnail = String(raw.oembed?.thumbnail_url || raw.tioo?.thumbnail || raw.mp4?.result?.thumbnail || raw.mp3?.result?.thumbnail || '');
+    const ummyData = raw.ummy?.data || (Array.isArray(raw.data?.url) ? raw.data : null);
+    let title = String(
+      raw.oembed?.title ||
+        raw.tioo?.title ||
+        ummyData?.meta?.title ||
+        raw.mp4?.result?.title ||
+        raw.mp3?.result?.title ||
+        ''
+    );
+    let author = String(
+      raw.oembed?.author_name ||
+        raw.tioo?.author ||
+        ummyData?.meta?.author ||
+        'YouTube'
+    );
+    let thumbnail = String(
+      raw.oembed?.thumbnail_url ||
+        raw.tioo?.thumbnail ||
+        ummyData?.thumb ||
+        raw.mp4?.result?.thumbnail ||
+        raw.mp3?.result?.thumbnail ||
+        ''
+    );
     let durationSec = Number(raw.mp4?.result?.duration || raw.mp3?.result?.duration || 0);
 
     const pushUniqueLink = (item) => {
@@ -1523,6 +1573,36 @@ export function normalizeDownloaderResult(raw, platform, sourceUrl = '') {
         title = cobaltVideo[0].filename.replace(/\s*\([^)]*\)\.[a-z0-9]+$/i, '');
       }
     }
+    if (raw.tioo?.mp4 && !isBlockedRedirectDownloadUrl(raw.tioo.mp4)) {
+      pushUniqueLink({
+        label: 'Video YouTube (MP4)',
+        quality: 'MP4',
+        ext: 'mp4',
+        url: String(raw.tioo.mp4),
+        isAudio: false,
+      });
+    }
+
+    // Siputzx /api/d/ummy YouTube streams (MP4 with audio + M4A/OPUS audio wrapped for browser CORS)
+    if (ummyData && Array.isArray(ummyData.url)) {
+      const ummyUrls = ummyData.url.filter((u) => u?.url && !isBlockedRedirectDownloadUrl(u.url));
+      const ummyVideo =
+        ummyUrls.find((u) => String(u.ext || '').toLowerCase() === 'mp4' && u.no_audio === false) ||
+        ummyUrls.find((u) => String(u.ext || '').toLowerCase() === 'mp4' && !/dash/i.test(String(u.type || '')));
+      if (ummyVideo) {
+        const qLabel = ummyVideo.quality ? `${ummyVideo.quality}p` : '360p';
+        pushUniqueLink({
+          label: links.some((l) => !l.isAudio)
+            ? `Video YouTube Cadangan (${qLabel})`
+            : `Video YouTube (${qLabel})`,
+          quality: qLabel.toUpperCase(),
+          ext: 'mp4',
+          url: wrapCorsMediaProxyIfNeeded(ummyVideo.url),
+          isAudio: false,
+        });
+      }
+    }
+
     if (raw.mp4?.result?.download_url && !isBlockedRedirectDownloadUrl(raw.mp4.result.download_url)) {
       const mp4 = raw.mp4.result;
       pushUniqueLink({
@@ -1530,15 +1610,6 @@ export function normalizeDownloaderResult(raw, platform, sourceUrl = '') {
         quality: String(mp4.quality || 'MP4'),
         ext: 'mp4',
         url: String(mp4.download_url),
-        isAudio: false,
-      });
-    }
-    if (raw.tioo?.mp4 && !isBlockedRedirectDownloadUrl(raw.tioo.mp4)) {
-      pushUniqueLink({
-        label: links.some((l) => !l.isAudio) ? 'Video YouTube Alternatif (MP4)' : 'Video YouTube (MP4)',
-        quality: 'MP4',
-        ext: 'mp4',
-        url: String(raw.tioo.mp4),
         isAudio: false,
       });
     }
@@ -1580,6 +1651,37 @@ export function normalizeDownloaderResult(raw, platform, sourceUrl = '') {
         url: String(raw.tioo.mp3),
         isAudio: true,
       });
+    }
+    if (ummyData && Array.isArray(ummyData.url)) {
+      const ummyAudios = ummyData.url.filter(
+        (u) =>
+          u?.url &&
+          !isBlockedRedirectDownloadUrl(u.url) &&
+          (u.audio === true || /audio|m4a|mp3|opus/i.test(`${u.type || ''} ${u.ext || ''}`))
+      );
+      // Prefer M4A (universal playback + MP3 compatibility) then highest-bitrate Opus
+      const sortedAudios = [...ummyAudios].sort((a, b) => {
+        const aM4a = String(a.ext || '').toLowerCase() === 'm4a' ? 1 : 0;
+        const bM4a = String(b.ext || '').toLowerCase() === 'm4a' ? 1 : 0;
+        if (aM4a !== bM4a) return bM4a - aM4a;
+        return Number(b.quality || 0) - Number(a.quality || 0);
+      });
+      const bestAudio = sortedAudios[0];
+      if (bestAudio) {
+        const ext = String(bestAudio.ext || inferAudioExtFromUrl(bestAudio.url, 'm4a')).toLowerCase();
+        const hasAudioAlready = links.some((l) => l.isAudio);
+        pushUniqueLink({
+          label: hasAudioAlready
+            ? `Audio YouTube Alternatif (${ext.toUpperCase()})`
+            : ext === 'mp3'
+            ? 'Musik / Audio YouTube (MP3)'
+            : `Musik / Audio YouTube (MP3 / ${ext.toUpperCase()})`,
+          quality: bestAudio.quality ? `${bestAudio.quality}kbps ${ext.toUpperCase()}` : ext.toUpperCase(),
+          ext,
+          url: wrapCorsMediaProxyIfNeeded(bestAudio.url),
+          isAudio: true,
+        });
+      }
     }
 
     if (links.length === 0) return null;
@@ -1737,12 +1839,18 @@ export function normalizeDownloaderResult(raw, platform, sourceUrl = '') {
 
     const list = Array.isArray(raw)
       ? raw
+      : Array.isArray(raw.data?.url)
+      ? raw.data.url
+      : Array.isArray(raw.result?.url)
+      ? raw.result.url
       : Array.isArray(raw.result)
       ? raw.result
       : Array.isArray(raw.data)
       ? raw.data
       : Array.isArray(raw.medias)
       ? raw.medias
+      : Array.isArray(raw.data?.medias)
+      ? raw.data.medias
       : Array.isArray(raw.result?.medias)
       ? raw.result.medias
       : Array.isArray(raw.images)
@@ -1755,7 +1863,7 @@ export function normalizeDownloaderResult(raw, platform, sourceUrl = '') {
 
     const links = [];
     const seenUrls = new Set();
-    let thumb = '';
+    let thumb = String(raw.data?.thumb || raw.thumb || raw.result?.thumbnail || '');
     list.forEach((item) => {
       const mediaUrl =
         typeof item === 'string'
@@ -1766,9 +1874,17 @@ export function normalizeDownloaderResult(raw, platform, sourceUrl = '') {
       if (seenUrls.has(cleanMediaUrl)) return;
       seenUrls.add(cleanMediaUrl);
       if (!thumb && item?.thumbnail) thumb = String(item.thumbnail);
-      const isImg = isLikelyImageUrl(cleanMediaUrl, item?.type || item?.extension);
-      const ext = isImg ? inferImageExtFromUrl(cleanMediaUrl, 'jpg') : 'mp4';
+      const isImg = isLikelyImageUrl(cleanMediaUrl, item?.type || item?.ext || item?.extension);
+      const explicitExt = String(item?.ext || '').toLowerCase();
+      const ext = isImg
+        ? (explicitExt === 'jpeg' ? 'jpg' : explicitExt || inferImageExtFromUrl(cleanMediaUrl, 'jpg'))
+        : 'mp4';
       const idx = links.length;
+      const qualityBadge = item?.quality
+        ? `${item.quality}${/^\d+$/.test(String(item.quality)) ? 'p' : ''} ${ext.toUpperCase()}`
+        : isImg
+        ? `HD ${ext.toUpperCase()}`
+        : 'HD MP4';
       links.push({
         label: isImg
           ? isStory
@@ -1777,12 +1893,12 @@ export function normalizeDownloaderResult(raw, platform, sourceUrl = '') {
           : isStory
           ? `Story Video Instagram #${idx + 1}`
           : `Video Reels Instagram #${idx + 1}`,
-        quality: isImg ? `HD ${ext.toUpperCase()}` : 'HD MP4',
+        quality: qualityBadge,
         ext,
         url: cleanMediaUrl,
         isAudio: false,
         isImage: isImg,
-        thumb: isImg ? cleanMediaUrl : String(item?.thumbnail || ''),
+        thumb: isImg ? cleanMediaUrl : String(item?.thumbnail || thumb || ''),
       });
     });
 
@@ -1790,6 +1906,8 @@ export function normalizeDownloaderResult(raw, platform, sourceUrl = '') {
     const photos = buildPhotosArrayFromLinksAndRaw(links, raw.images);
     const caption = String(
       raw.caption ||
+        raw.data?.meta?.title ||
+        raw.meta?.title ||
         raw.result?.caption ||
         raw.result?.title ||
         raw.data?.caption ||
@@ -1809,7 +1927,7 @@ export function normalizeDownloaderResult(raw, platform, sourceUrl = '') {
     return {
       platform: 'instagram',
       title:
-        caption ||
+        (caption ? caption.split('\n')[0].slice(0, 90) : '') ||
         (isStory
           ? 'Story Instagram'
           : mediaType === 'carousel'
@@ -1818,8 +1936,8 @@ export function normalizeDownloaderResult(raw, platform, sourceUrl = '') {
           ? 'Postingan Foto Instagram'
           : 'Post / Reels Instagram'),
       caption,
-      author: String(raw.author || raw.result?.author || raw.result?.owner || 'Instagram'),
-      thumbnail: photos[0]?.thumb || thumb || String(raw.result?.thumbnail || ''),
+      author: String(raw.author || raw.data?.meta?.author || raw.result?.author || raw.result?.owner || 'Instagram'),
+      thumbnail: photos[0]?.thumb || thumb || '',
       durationSec: 0,
       isStory,
       mediaType,

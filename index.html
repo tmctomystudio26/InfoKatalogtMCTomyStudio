@@ -88,11 +88,11 @@ Dilengkapi Jadwal Sholat, Prakiraan Cuaca, Jam Dunia, Speedtest, Social Media Do
     />
 
     <!-- Styles -->
-    <link rel="stylesheet" href="./css/tokens.css?v=22" />
-    <link rel="stylesheet" href="./css/styles.css?v=22" />
+    <link rel="stylesheet" href="./css/tokens.css?v=23" />
+    <link rel="stylesheet" href="./css/styles.css?v=23" />
     <script>
       (function () {
-        var CURRENT_CACHE = 'manifestudio-cache-v22';
+        var CURRENT_CACHE = 'manifestudio-cache-v23';
         if ('caches' in window) {
           caches.keys().then(function (keys) {
             keys.forEach(function (k) {
@@ -101,7 +101,7 @@ Dilengkapi Jadwal Sholat, Prakiraan Cuaca, Jam Dunia, Speedtest, Social Media Do
           });
         }
         if ('serviceWorker' in navigator) {
-          navigator.serviceWorker.register('./sw.js?v=22').then(function (reg) {
+          navigator.serviceWorker.register('./sw.js?v=23').then(function (reg) {
             reg.update();
           }).catch(function () {});
         }
@@ -190,7 +190,7 @@ Dilengkapi Jadwal Sholat, Prakiraan Cuaca, Jam Dunia, Speedtest, Social Media Do
 
     <main id="top">
       <!-- Swipeable Multi-Banner Carousel -->
-      <section class="promo-banner-section" aria-label="Sorotan Layanan &amp; Menu Lainnya">
+      <section class="promo-banner-section" aria-label="Sorotan Layanan &amp; Menu Utilitas">
         <div class="container">
           <div
             class="banner-carousel"
@@ -238,7 +238,7 @@ Dilengkapi Jadwal Sholat, Prakiraan Cuaca, Jam Dunia, Speedtest, Social Media Do
                 <div class="promo-banner-scrim scrim-prayer" aria-hidden="true"></div>
                 <div class="promo-banner-content">
                   <div class="promo-banner-copy">
-                    <span class="promo-kicker">Menu Lainnya · Kemenag RI</span>
+                    <span class="promo-kicker">Menu Utilitas · Kemenag RI</span>
                     <h2 class="promo-heading">Sholat On-Time, Hitung Mundur Real-Time</h2>
                     <p class="promo-sub">
                       Cek Imsak hingga Isya otomatis sesuai lokasi GPS atau kotamu di Indonesia.
@@ -264,7 +264,7 @@ Dilengkapi Jadwal Sholat, Prakiraan Cuaca, Jam Dunia, Speedtest, Social Media Do
                 <div class="promo-banner-scrim scrim-weather" aria-hidden="true"></div>
                 <div class="promo-banner-content">
                   <div class="promo-banner-copy">
-                    <span class="promo-kicker">Menu Lainnya · Cuaca Live</span>
+                    <span class="promo-kicker">Menu Utilitas · Cuaca Live</span>
                     <h2 class="promo-heading">Cek Cuaca Dulu Sebelum Berangkat</h2>
                     <p class="promo-sub">
                       Pantau suhu, angin, dan peluang hujan per jam hingga 7 hari sesuai lokasimu.
@@ -290,7 +290,7 @@ Dilengkapi Jadwal Sholat, Prakiraan Cuaca, Jam Dunia, Speedtest, Social Media Do
                 <div class="promo-banner-scrim scrim-world" aria-hidden="true"></div>
                 <div class="promo-banner-content">
                   <div class="promo-banner-copy">
-                    <span class="promo-kicker">Menu Lainnya · Standar UTC</span>
+                    <span class="promo-kicker">Menu Utilitas · Standar UTC</span>
                     <h2 class="promo-heading">Putar Bola Dunia &amp; Konversi WIB/WITA/WIT</h2>
                     <p class="promo-sub">
                       Klik negara di globe interaktif untuk cek zona waktu &amp; selisih jam Indonesia.
@@ -316,7 +316,7 @@ Dilengkapi Jadwal Sholat, Prakiraan Cuaca, Jam Dunia, Speedtest, Social Media Do
                 <div class="promo-banner-scrim scrim-weather" aria-hidden="true"></div>
                 <div class="promo-banner-content">
                   <div class="promo-banner-copy">
-                    <span class="promo-kicker">Menu Lainnya · Speedtest</span>
+                    <span class="promo-kicker">Menu Utilitas · Speedtest</span>
                     <h2 class="promo-heading">Uji Kecepatan Internet &amp; Ping Real-Time</h2>
                     <p class="promo-sub">
                       Cek download, upload, latensi, server, ISP, dan info perangkat dalam satu klik.
@@ -335,7 +335,7 @@ Dilengkapi Jadwal Sholat, Prakiraan Cuaca, Jam Dunia, Speedtest, Social Media Do
                 <div class="promo-banner-scrim scrim-downloader" aria-hidden="true"></div>
                 <div class="promo-banner-content">
                   <div class="promo-banner-copy">
-                    <span class="promo-kicker">Menu Lainnya · Downloader</span>
+                    <span class="promo-kicker">Menu Utilitas · Downloader</span>
                     <h2 class="promo-heading">Download Video TikTok, YT, IG &amp; FB Tanpa Watermark</h2>
                     <p class="promo-sub">
                       Tempel tautan video atau Reels untuk unduh MP4 HD bersih maupun audio MP3 gratis.
@@ -372,12 +372,37 @@ Dilengkapi Jadwal Sholat, Prakiraan Cuaca, Jam Dunia, Speedtest, Social Media Do
       <!-- Catalog Section -->
       <section id="katalog" class="catalog-section container">
         <div class="catalog-top-bar">
-          <div>
-            <h2 id="catalog-section-title" class="section-title">Pilih Layanan</h2>
-            <p id="catalog-section-subtitle" class="section-subtitle">Pilih aplikasi untuk melihat paket &amp; garansi.</p>
-          </div>
+          <h2 id="catalog-section-title" class="section-title">Pilih Layanan</h2>
           <span id="catalog-count" class="catalog-count">10 layanan</span>
         </div>
+
+        <a
+          href="./tools.html"
+          id="utilities-callout-card"
+          class="utilities-callout-card"
+          aria-label="Buka Menu Utilitas: Jadwal Sholat, Cuaca, Jam Dunia, Speedtest, Downloader & Kompres Media HD"
+        >
+          <img
+            src="./assets/icons/menu-utilitas.svg"
+            alt=""
+            width="42"
+            height="42"
+            class="utilities-callout-icon"
+          />
+          <div class="utilities-callout-copy">
+            <div class="utilities-callout-head">
+              <strong class="utilities-callout-title">Menu Utilitas</strong>
+              <span class="utilities-callout-sub-tag">6 Fitur Gratis</span>
+            </div>
+            <p class="utilities-callout-desc">
+              Jadwal Sholat, Cuaca, Jam Dunia 3D, Speedtest, Downloader &amp; Kompres HD
+            </p>
+          </div>
+          <span class="utilities-callout-cta" aria-hidden="true">
+            <span>Buka</span>
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg>
+          </span>
+        </a>
 
         <div class="filter-toolbar">
           <div class="filter-top-row" id="catalog-search-row">
@@ -410,7 +435,7 @@ Dilengkapi Jadwal Sholat, Prakiraan Cuaca, Jam Dunia, Speedtest, Social Media Do
             </label>
           </div>
 
-          <div id="category-tabs" class="category-tabs" role="group" aria-label="Filter kategori produk dan menu lainnya"></div>
+          <div id="category-tabs" class="category-tabs" role="group" aria-label="Filter kategori produk"></div>
         </div>
 
         <div id="product-grid" class="product-grid"></div>
@@ -420,7 +445,6 @@ Dilengkapi Jadwal Sholat, Prakiraan Cuaca, Jam Dunia, Speedtest, Social Media Do
 
       <section id="faq" class="faq-section container" aria-labelledby="faq-heading">
         <h2 id="faq-heading" class="section-title">Pertanyaan Umum</h2>
-        <p class="section-subtitle">Info aktivasi, garansi, pembayaran, dan menu utilitas.</p>
         <div id="faq-list" class="faq-list"></div>
       </section>
     </main>
@@ -433,7 +457,7 @@ Dilengkapi Jadwal Sholat, Prakiraan Cuaca, Jam Dunia, Speedtest, Social Media Do
         </div>
 
         <div id="footer-social-links" class="footer-links">
-          <a href="./tools.html" class="footer-link-btn">Menu Lainnya</a>
+          <a href="./tools.html" class="footer-link-btn">Menu Utilitas</a>
           <a
             href="https://wa.me/6285122936027"
             target="_blank"
@@ -484,6 +508,6 @@ Dilengkapi Jadwal Sholat, Prakiraan Cuaca, Jam Dunia, Speedtest, Social Media Do
     <div id="cart-drawer-root" class="drawer-root" hidden></div>
     <div id="toast-notification" class="toast-notification" role="status" aria-live="polite" hidden></div>
 
-    <script type="module" src="./js/app.js?v=22"></script>
+    <script type="module" src="./js/app.js?v=23"></script>
   </body>
 </html>

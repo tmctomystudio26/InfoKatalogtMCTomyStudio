@@ -1,6 +1,6 @@
 # Manifestudio — Storefront Katalog Digital, Utility Hub & Panel Admin Statis
 
-Platform web statis resmi **Manifestudio** (*by Tomy*) berbasis **100% Static HTML/CSS + Native ES Modules (GitHub Pages & PWA Ready)** yang memadukan katalog akun premium, konfirmasi pesanan WhatsApp + struk Canvas 2D, Panel Admin terenkripsi AES-256-GCM penuh fitur, pemutar musik *full version* bebas iklan, serta halaman utilitas terpisah **Menu Lainnya** (`tools.html`).
+Platform web statis resmi **Manifestudio** (*by Tomy*) berbasis **100% Static HTML/CSS + Native ES Modules (GitHub Pages & PWA Ready)** yang memadukan katalog akun premium, konfirmasi pesanan WhatsApp + struk Canvas 2D, Panel Admin terenkripsi AES-256-GCM penuh fitur, pemutar musik *full version* bebas iklan, serta halaman utilitas terpisah **Menu Utilitas** (`tools.html`).
 
 ---
 
@@ -14,19 +14,20 @@ Platform web statis resmi **Manifestudio** (*by Tomy*) berbasis **100% Static HT
 
 ## 🌟 Fitur Utama
 
-1. **Katalog Top-Up Modern & Multi-Banner Carousel Dinamis**:
+1. **Katalog Top-Up Modern, Tombol Khusus Menu Utilitas & Multi-Banner Carousel Dinamis**:
    - Slide banner interaktif yang sepenuhnya dapat ditambah, diubah teks/gambarnya, atau diatur urutannya lewat Panel Admin.
+   - Akses **Menu Utilitas (`#utilities-callout-card`)** terpisah di atas pencarian dengan ikon vektor khusus (`menu-utilitas.svg`) — rapi dan terpisah penuh dari daftar kategori layanan agar langsung terlihat pengunjung.
    - Grid produk responsif (5 kolom desktop → 2 kolom mobile), pencarian instan, filter kategori dinamis, status stok, serta *FAQ* yang dapat diedit Admin.
 2. **Checkout Bersih, Voucher Berkuota Ketat, Biaya Layanan Fleksibel & Struk JPEG (`order.html`)**:
    - Validasi voucher ketat: kode yang tidak terdaftar langsung ditolak sebagai **Tidak Valid** (bukan dicatat menunggu Admin). Mendukung kuota **1x Pakai**, **Maksimal N Kali**, atau **Tak Terbatas**.
    - Skema *Bayar Sekarang (0%)*, *Bayar Belakangan (+% dapat diatur Admin)*, dan *Biaya Layanan Flat* transparan.
    - Generator struk belanja HTML5 Canvas 2D (`MS-YYMMDD-HHMMSS`) `< 60 KB` + kirim WhatsApp 1-klik.
-3. **Menu Lainnya — Halaman Utilitas Terpisah (`tools.html`)**:
+3. **Menu Utilitas — Halaman Utilitas Terpisah (`tools.html`)**:
    - **Jadwal Sholat Indonesia**: Resmi Kemenag RI (MyQuran v2 + AlAdhan method=20), prioritas GPS presisi Kelurahan/Kecamatan → fallback IP → cari kota.
    - **Prakiraan Cuaca Presisi**: Deteksi hujan lebat/badai berbasis curah hujan konvektif, stasiun lokal & kalibrasi real-time, per jam & 7 hari (Open-Meteo).
    - **Jam Dunia & Globe 3D Interaktif**: Waktu UTC internasional, konversi WIB/WITA/WIT, dan globe yang dapat diputar serta diklik per negara target.
    - **Speedtest Internet**: Meter kecepatan real-time 60fps, ping, jitter, loaded latency, download/upload berbobot berkelanjutan (Cloudflare Speed Edge), server node, ISP, dan info perangkat.
-   - **Downloader Sosmed All-in-One + Bar Progres Live**: Unduh **Video MP4 & Audio MP3/M4A lengkap bersamaan** (dengan *failover* 4 node server, *Wave 2 audio retry*, dekode MIME proxy ganda, serta ekstraksi audio WAV otomatis di perangkat jika server hanya menyediakan video) tanpa watermark, Postingan Foto HD, Slide Carousel Multi-Foto (unduh semua/satuan), Story IG/TikTok/FB, Salin Caption 1-klik, deteksi link YT terpotong, serta **Bar Progres Konversi & Streaming Download Real-Time**.
+   - **Downloader Sosmed All-in-One + Bar Progres Live (`v23`)**: Unduh **Video MP4 HD & Audio M4A/MP3 bersamaan** pada YouTube (`Siputzx Ummy` + `4-node Tioo` + `vidsnap.app/proxy` CORS), serta **Reels, Foto HD, Carousel Multi-Slide, Story & Salin Caption** pada Instagram (`Siputzx sssinstagram` + `Ummy` + `fastdl`/`igram` fallback), bebas jebakan redirect HTML (`sf-converter`/`savetube`), lengkap dengan **Bar Progres Konversi & Streaming Download Real-Time** + pemutar pratinjau `<video>` / `<audio>` + ekstraksi `.wav` lokal.
    - **Kompresor Foto & Video HD (Anti-Pecah Sosmed)**: 4 metode kompresi *zero-loss* dengan preset TikTok HD, Instagram HD, WhatsApp HD, dan Original 1:1 untuk mencegah penurunan kualitas saat unggah.
 4. **Pemutar Musik Pintar Full Version (Bebas Iklan & Draggable)**:
    - Ikon musik melayang dapat digeser bebas ke posisi mana pun dan posisinya tersimpan.
@@ -42,7 +43,7 @@ Platform web statis resmi **Manifestudio** (*by Tomy*) berbasis **100% Static HT
 ```text
 ├── index.html            # Beranda katalog toko, multi-banner carousel, drawer checkout & FAQ
 ├── order.html            # Halaman konfirmasi invoice dedikasi & unduh struk Canvas 2D
-├── tools.html            # Halaman Menu Lainnya (Sholat, Cuaca, Jam Dunia, Speedtest, Downloader, Kompresor HD)
+├── tools.html            # Halaman Menu Utilitas (Sholat, Cuaca, Jam Dunia, Speedtest, Downloader, Kompresor HD)
 ├── admin.html            # Panel Admin terenkripsi AES-256-GCM (Kendali penuh toko & CMS)
 ├── BLUEPRINT.md          # Arsitektur teknis lengkap, tujuan proyek, daftar API & storage keys
 ├── ROADMAP.md            # Pencapaian milestone (Fase 1-7) & rencana fase berikutnya

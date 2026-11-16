@@ -1,4 +1,4 @@
-const CACHE_NAME = 'manifestudio-cache-v22';
+const CACHE_NAME = 'manifestudio-cache-v23';
 
 const PRECACHE_ASSETS = [
   './',
@@ -36,6 +36,7 @@ const PRECACHE_ASSETS = [
   './assets/banner-worldclock.jpg',
   './assets/banner-speedtest.jpg',
   './assets/icons/brand-icon.svg',
+  './assets/icons/menu-utilitas.svg',
   './assets/icons/social-whatsapp.svg',
   './assets/icons/social-tiktok.svg',
   './assets/icons/social-instagram.svg',

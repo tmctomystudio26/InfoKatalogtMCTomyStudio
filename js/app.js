@@ -4,7 +4,7 @@ import {
   PAY_LATER_SURCHARGE_RATE,
   getDefaultCatalogSnapshot,
   loadCatalogData,
-} from './data.js?v=22';
+} from './data.js?v=23';
 import {
   PENDING_ORDER_STORAGE_KEY,
   addToCart,
@@ -21,9 +21,9 @@ import {
   syncPaymentOptionsWithBrand,
   updateCartQty,
   validateOrderForm,
-} from './store.js?v=22';
-import { initPwaManager } from './pwa.js?v=22';
-import { initMusicPlayer } from './music.js?v=22';
+} from './store.js?v=23';
+import { initPwaManager } from './pwa.js?v=23';
+import { initMusicPlayer } from './music.js?v=23';
 
 const THEME_STORAGE_KEY = 'manifestudio_theme_v1';
 const CART_STORAGE_KEY = 'manifestudio_cart_v1';
@@ -204,14 +204,7 @@ function renderCategories() {
     })
     .join('');
 
-  const menuLainnyaLink = `
-    <a href="./tools.html" class="cat-tab is-tools-tab">
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="7" height="7" x="3" y="3" rx="1"/><rect width="7" height="7" x="14" y="3" rx="1"/><rect width="7" height="7" x="14" y="14" rx="1"/><rect width="7" height="7" x="3" y="14" rx="1"/></svg>
-      <span>Menu Lainnya</span>
-    </a>
-  `;
-
-  container.innerHTML = `${tabsHtml}${menuLainnyaLink}`;
+  container.innerHTML = tabsHtml;
 
   container.querySelectorAll('.cat-tab[data-category]').forEach((btn) => {
     btn.addEventListener('click', () => {
@@ -1524,7 +1517,7 @@ function renderBrandAndFooter() {
       .join('');
 
     socialContainer.innerHTML = `
-      <a href="./tools.html" class="footer-link-btn">Menu Lainnya</a>
+      <a href="./tools.html" class="footer-link-btn">Menu Utilitas</a>
       ${socialsHtml}
     `;
     if (installBtn) {

@@ -577,7 +577,7 @@
     },
     {
       "question": "Bagaimana kerja Jadwal Sholat, Cuaca, Jam Dunia, dan Speedtest?",
-      "answer": "Buka Menu Lainnya untuk mengakses semua utilitas di halaman terpisah. Lokasi memakai izin GPS browser terlebih dahulu, lalu otomatis fallback ke IP atau pencarian kota manual."
+      "answer": "Buka Menu Utilitas untuk mengakses semua utilitas di halaman terpisah. Lokasi memakai izin GPS browser terlebih dahulu, lalu otomatis fallback ke IP atau pencarian kota manual."
     },
     {
       "question": "Bisakah request aplikasi atau paket durasi khusus?",

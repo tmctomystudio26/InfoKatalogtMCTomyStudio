@@ -14,7 +14,7 @@ import {
   isBlockedRedirectDownloadUrl,
   normalizeDownloaderResult,
   parseYouTubeVideoId,
-} from './tools-logic.js?v=22';
+} from './tools-logic.js?v=23';
 
 const COBALT_ENDPOINT = 'https://cobaltapi.cjs.nz/';
 const TIOO_BACKENDS = [
@@ -161,7 +161,8 @@ function mergeCandidateResults(candidates = []) {
       // Prioritize filling missing MP3 or missing MP4, plus any unique items
       if ((l.isAudio && !alreadyHasAudio) || (!l.isAudio && !l.isImage && !alreadyHasVideo) || (!l.isImage && primary.links.length < 6)) {
         seenUrls.add(l.url);
-        primary.links.push(l);
+        const duplicateLabel = primary.links.some((x) => x.label === l.label);
+        primary.links.push(duplicateLabel ? { ...l, label: `${l.label} (Mirror ${i + 1})` } : l);
       }
     }
 
@@ -265,31 +266,51 @@ export async function fetchMediaDownload(rawUrl, onProgress = () => {}) {
       );
     }
 
-    emitProgress(35, 'Mengambil stream Video MP4 & mengonversi Audio MP3 YouTube...', 'fetching');
+    emitProgress(32, 'Mengambil stream Video MP4 & mengonversi Audio MP3 YouTube...', 'fetching');
 
-    const [oembedRes, cobaltVideoRes, cobaltAudioRes, tiooRes] = await Promise.allSettled([
+    const [oembedRes, cobaltVideoRes, cobaltAudioRes, tiooRes, ummyRes] = await Promise.allSettled([
       fetchJsonWithTimeout(`https://www.youtube.com/oembed?url=${encoded}&format=json`, 6000),
-      fetchCobaltMedia(cleanUrl, { videoQuality: '720' }, 13500),
+      fetchCobaltMedia(cleanUrl, { videoQuality: '720' }, 12000),
       fetchCobaltMedia(
         cleanUrl,
         { downloadMode: 'audio', audioFormat: 'mp3', audioBitrate: '128' },
-        13500
+        12000
       ),
-      fetchTiooWithFailover('youtube', encoded, 12000),
+      fetchTiooWithFailover('youtube', encoded, 11500),
+      fetchJsonWithTimeout(`https://api.siputzx.my.id/api/d/ummy?url=${encoded}`, 13000),
     ]);
 
     emitProgress(66, 'Memeriksa kelengkapan format MP4 & MP3...', 'converting');
 
     let tiooData = tiooRes.status === 'fulfilled' ? tiooRes.value : null;
-    const hasTrueMp3FromPrimary = Boolean(
-      cobaltAudioRes.status === 'fulfilled' && cobaltAudioRes.value?.url
+    const ummyPayload = ummyRes.status === 'fulfilled' && ummyRes.value?.status ? ummyRes.value : null;
+    const ummyUrls = Array.isArray(ummyPayload?.data?.url) ? ummyPayload.data.url : [];
+
+    const hasUmmyVideo = ummyUrls.some(
+      (u) =>
+        u?.url &&
+        !isBlockedRedirectDownloadUrl(u.url) &&
+        String(u.ext || '').toLowerCase() === 'mp4' &&
+        (u.no_audio === false || !/dash/i.test(String(u.type || '')))
+    );
+    const hasUmmyAudio = ummyUrls.some(
+      (u) =>
+        u?.url &&
+        !isBlockedRedirectDownloadUrl(u.url) &&
+        (u.audio === true || /audio|m4a|mp3|opus/i.test(`${u.type || ''} ${u.ext || ''}`))
     );
 
-    // Wave 2 retry across Tioo nodes if audio URL is still missing
-    if (!hasTrueMp3FromPrimary && (!tiooData || !tiooData.mp3)) {
+    const hasTrueAudioFromPrimary = Boolean(
+      (cobaltAudioRes.status === 'fulfilled' && cobaltAudioRes.value?.url) ||
+        tiooData?.mp3 ||
+        hasUmmyAudio
+    );
+
+    // Wave 2 retry across Tioo nodes if audio stream is still missing
+    if (!hasTrueAudioFromPrimary) {
       emitProgress(76, 'Mencoba ulang server cadangan Audio YouTube...', 'converting');
       try {
-        const retryTioo = await fetchTiooWithFailover('youtube', encoded, 11000);
+        const retryTioo = await fetchTiooWithFailover('youtube', encoded, 10000);
         if (retryTioo) {
           tiooData = tiooData
             ? {
@@ -305,25 +326,34 @@ export async function fetchMediaDownload(rawUrl, onProgress = () => {}) {
     }
 
     const hasVideoFromPrimary = Boolean(
-      (cobaltVideoRes.status === 'fulfilled' && cobaltVideoRes.value?.url) || tiooData?.mp4
+      (cobaltVideoRes.status === 'fulfilled' && cobaltVideoRes.value?.url) ||
+        tiooData?.mp4 ||
+        hasUmmyVideo
     );
-    const hasAnyAudioFromPrimary = Boolean(hasTrueMp3FromPrimary || tiooData?.mp3);
+    const hasAnyAudioAfterRetry = Boolean(hasTrueAudioFromPrimary || tiooData?.mp3);
 
     let mp4Fallback = null;
     let mp3Fallback = null;
 
-    if (!hasVideoFromPrimary || !hasAnyAudioFromPrimary) {
+    if (!hasVideoFromPrimary || !hasAnyAudioAfterRetry) {
       emitProgress(86, 'Melengkapi tautan Video MP4 & Musik MP3 cadangan...', 'converting');
-      const [dcMp4, dcMp3] = await Promise.allSettled([
+      const [dcMp4, dcMp3v2, dcMp3] = await Promise.allSettled([
         !hasVideoFromPrimary
-          ? fetchJsonWithTimeout(`https://apis.davidcyriltech.my.id/download/ytmp4?url=${encoded}`, 11000)
+          ? fetchJsonWithTimeout(`https://apis.davidcyriltech.my.id/download/ytmp4?url=${encoded}`, 10000)
           : Promise.resolve(null),
-        !hasAnyAudioFromPrimary
-          ? fetchJsonWithTimeout(`https://apis.davidcyriltech.my.id/download/ytmp3?url=${encoded}`, 11000)
+        !hasAnyAudioAfterRetry
+          ? fetchJsonWithTimeout(`https://apis.davidcyriltech.my.id/download/ytmp3v2?url=${encoded}`, 10000)
+          : Promise.resolve(null),
+        !hasAnyAudioAfterRetry
+          ? fetchJsonWithTimeout(`https://apis.davidcyriltech.my.id/download/ytmp3?url=${encoded}`, 10000)
           : Promise.resolve(null),
       ]);
       if (dcMp4.status === 'fulfilled') mp4Fallback = dcMp4.value;
-      if (dcMp3.status === 'fulfilled') mp3Fallback = dcMp3.value;
+      if (dcMp3v2.status === 'fulfilled' && dcMp3v2.value?.result?.download_url) {
+        mp3Fallback = dcMp3v2.value;
+      } else if (dcMp3.status === 'fulfilled') {
+        mp3Fallback = dcMp3.value;
+      }
     }
 
     const normalized = normalizeDownloaderResult(
@@ -332,6 +362,7 @@ export async function fetchMediaDownload(rawUrl, onProgress = () => {}) {
         cobaltVideo: cobaltVideoRes.status === 'fulfilled' ? cobaltVideoRes.value : null,
         cobaltAudio: cobaltAudioRes.status === 'fulfilled' ? cobaltAudioRes.value : null,
         tioo: tiooData,
+        ummy: ummyPayload,
         mp4: mp4Fallback,
         mp3: mp3Fallback,
       },
@@ -396,27 +427,22 @@ export async function fetchMediaDownload(rawUrl, onProgress = () => {}) {
   if (platform === 'instagram') {
     emitProgress(35, 'Mengambil Foto, Slide Carousel, Reels, Story & Caption IG...', 'fetching');
 
-    const [tiooSettled, cobaltSettled, cobaltAudSettled, ryzenSettled] = await Promise.allSettled([
-      fetchTiooWithFailover('igdl', encoded, 14000),
-      fetchCobaltMedia(cleanUrl, { videoQuality: '1080' }, 12500),
-      fetchCobaltMedia(cleanUrl, { downloadMode: 'audio', audioFormat: 'mp3', audioBitrate: '128' }, 12500),
-      fetchJsonWithTimeout(`https://api.ryzendesu.vip/api/downloader/igdl?url=${encoded}`, 12000),
+    const [sssSettled, ummyIgSettled, cobaltSettled, cobaltAudSettled, tiooSettled] = await Promise.allSettled([
+      fetchJsonWithTimeout(`https://api.siputzx.my.id/api/d/sssinstagram?url=${encoded}`, 14000),
+      fetchJsonWithTimeout(`https://api.siputzx.my.id/api/d/ummy?url=${encoded}`, 14000),
+      fetchCobaltMedia(cleanUrl, { videoQuality: '1080' }, 11500),
+      fetchCobaltMedia(cleanUrl, { downloadMode: 'audio', audioFormat: 'mp3', audioBitrate: '128' }, 11500),
+      fetchTiooWithFailover('igdl', encoded, 11000),
     ]);
 
-    emitProgress(75, 'Mengonversi hasil media & merapikan caption...', 'converting');
+    emitProgress(72, 'Mengonversi hasil media & merapikan caption...', 'converting');
 
     const candidates = [];
-    if (tiooSettled.status === 'fulfilled' && tiooSettled.value) {
-      const norm = normalizeDownloaderResult(tiooSettled.value, 'instagram', cleanUrl);
-      if (norm) candidates.push(norm);
-    }
-    if (cobaltSettled.status === 'fulfilled' && cobaltSettled.value) {
-      const norm = normalizeDownloaderResult(cobaltSettled.value, 'instagram', cleanUrl);
-      if (norm) candidates.push(norm);
-    }
-    if (ryzenSettled.status === 'fulfilled' && ryzenSettled.value) {
-      const norm = normalizeDownloaderResult(ryzenSettled.value, 'instagram', cleanUrl);
-      if (norm) candidates.push(norm);
+    for (const settled of [sssSettled, ummyIgSettled, cobaltSettled, tiooSettled]) {
+      if (settled.status === 'fulfilled' && settled.value) {
+        const norm = normalizeDownloaderResult(settled.value, 'instagram', cleanUrl);
+        if (norm) candidates.push(norm);
+      }
     }
 
     let best = null;
@@ -429,14 +455,20 @@ export async function fetchMediaDownload(rawUrl, onProgress = () => {}) {
       best = mergeCandidateResults(candidates);
     } else {
       emitProgress(86, 'Mencoba server cadangan Instagram...', 'fetching');
-      try {
-        const json = await fetchJsonWithTimeout(
-          `https://apis.davidcyriltech.my.id/instagram?url=${encoded}`,
-          11000
-        );
-        best = normalizeDownloaderResult(json, 'instagram', cleanUrl);
-      } catch {
-        // Fallback failed
+      const [fastdlSettled, igramSettled, dcIgSettled] = await Promise.allSettled([
+        fetchJsonWithTimeout(`https://api.siputzx.my.id/api/d/fastdl?url=${encoded}`, 11000),
+        fetchJsonWithTimeout(`https://api.siputzx.my.id/api/d/igram?url=${encoded}`, 11000),
+        fetchJsonWithTimeout(`https://apis.davidcyriltech.my.id/instagram?url=${encoded}`, 11000),
+      ]);
+      const fbCandidates = [];
+      for (const settled of [fastdlSettled, igramSettled, dcIgSettled]) {
+        if (settled.status === 'fulfilled' && settled.value) {
+          const norm = normalizeDownloaderResult(settled.value, 'instagram', cleanUrl);
+          if (norm) fbCandidates.push(norm);
+        }
+      }
+      if (fbCandidates.length > 0) {
+        best = mergeCandidateResults(fbCandidates);
       }
     }
 

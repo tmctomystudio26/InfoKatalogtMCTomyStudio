@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Menu Lainnya — Manifestudio</title>
+    <title>Menu Utilitas — Manifestudio</title>
     <meta
       name="description"
       content="Jadwal Sholat Kemenag RI, Prakiraan Cuaca, Jam Dunia UTC dengan Bola Dunia Interaktif, dan Speedtest Internet di Manifestudio."
@@ -13,7 +13,7 @@
 
     <!-- Open Graph & Social Share -->
     <meta property="og:url" content="https://manifestudio.my.id/tools.html" />
-    <meta property="og:title" content="Menu Lainnya — Manifestudio" />
+    <meta property="og:title" content="Menu Utilitas — Manifestudio" />
     <meta
       property="og:description"
       content="Jadwal Sholat Kemenag RI, Cuaca, Jam Dunia UTC, Speedtest Internet, &amp; Downloader Video TikTok/YouTube/IG/FB Tanpa Watermark."
@@ -34,7 +34,7 @@
     <meta property="og:site_name" content="Manifestudio" />
 
     <meta name="twitter:card" content="summary_large_image" />
-    <meta name="twitter:title" content="Menu Lainnya — Manifestudio" />
+    <meta name="twitter:title" content="Menu Utilitas — Manifestudio" />
     <meta
       name="twitter:description"
       content="Jadwal Sholat Kemenag RI, Cuaca, Jam Dunia UTC, Speedtest Internet, &amp; Downloader Video No Watermark."
@@ -59,11 +59,11 @@
       rel="stylesheet"
     />
 
-    <link rel="stylesheet" href="./css/tokens.css?v=22" />
-    <link rel="stylesheet" href="./css/styles.css?v=22" />
+    <link rel="stylesheet" href="./css/tokens.css?v=23" />
+    <link rel="stylesheet" href="./css/styles.css?v=23" />
     <script>
       (function () {
-        var CURRENT_CACHE = 'manifestudio-cache-v22';
+        var CURRENT_CACHE = 'manifestudio-cache-v23';
         if ('caches' in window) {
           caches.keys().then(function (keys) {
             keys.forEach(function (k) {
@@ -72,7 +72,7 @@
           });
         }
         if ('serviceWorker' in navigator) {
-          navigator.serviceWorker.register('./sw.js?v=22').then(function (reg) {
+          navigator.serviceWorker.register('./sw.js?v=23').then(function (reg) {
             reg.update();
           }).catch(function () {});
         }
@@ -97,7 +97,7 @@
           </div>
         </a>
 
-        <nav class="header-nav" aria-label="Navigasi menu lainnya">
+        <nav class="header-nav" aria-label="Navigasi menu utilitas">
           <a href="./index.html" class="header-nav-link">Katalog</a>
           <button type="button" class="header-nav-link" data-tools-nav="prayer">Jadwal Sholat</button>
           <button type="button" class="header-nav-link" data-tools-nav="weather">Cuaca</button>
@@ -125,7 +125,7 @@
     <main class="tools-page-shell container">
       <div class="tools-page-head">
         <div>
-          <h1 id="tools-page-title" class="section-title">Menu Lainnya</h1>
+          <h1 id="tools-page-title" class="section-title">Menu Utilitas</h1>
           <p id="tools-page-subtitle" class="section-subtitle">
             Jadwal sholat Kemenag RI, cuaca, jam dunia UTC, dan tes kecepatan internet.
           </p>
@@ -176,6 +176,6 @@
     </footer>
 
     <div id="toast-notification" class="toast-notification" role="status" aria-live="polite" hidden></div>
-    <script type="module" src="./js/tools-page.js?v=22"></script>
+    <script type="module" src="./js/tools-page.js?v=23"></script>
   </body>
 </html>

@@ -1,5 +1,5 @@
 /**
- * UI Controller for "Menu Lainnya" (Jadwal Sholat, Prakiraan Cuaca Presisi Tinggi,
+ * UI Controller for "Menu Utilitas" (Jadwal Sholat, Prakiraan Cuaca Presisi Tinggi,
  * Jam Dunia & Bola Dunia Interaktif, Speedtest, Downloader Video/Foto/Story/Caption,
  * & Kompresor Foto/Video HD Anti-Pecah Sosmed)
  * Zero external runtime dependencies; designed for both desktop & mobile touch ergonomics.
@@ -22,27 +22,27 @@ import {
   matchIndonesianCityQuery,
   planMediaCompression,
   resolveAccurateWeatherCondition,
-} from './tools-logic.js?v=22';
+} from './tools-logic.js?v=23';
 import {
   describeLocationSource,
   resolveUserLocation,
   searchCitiesOnline,
   setManualLocation,
-} from './location.js?v=22';
-import { createInteractiveGlobe } from './globe.js?v=22';
+} from './location.js?v=23';
+import { createInteractiveGlobe } from './globe.js?v=23';
 import {
   createSpeedometerGauge,
   fetchSpeedtestEnvironment,
   readClientDeviceTelemetry,
   runInternetSpeedtest,
-} from './speedtest.js?v=22';
+} from './speedtest.js?v=23';
 import {
   extractAudioFromVideoUrl,
   fetchMediaDownload,
   triggerBatchPhotoDownload,
   triggerDirectMediaSave,
-} from './downloader.js?v=22';
-import { compressMediaFile, inspectMediaFile } from './compressor.js?v=22';
+} from './downloader.js?v=23';
+import { compressMediaFile, inspectMediaFile } from './compressor.js?v=23';
 
 const PRAYER_CACHE_KEY = 'manifestudio_prayer_cache_v1';
 const MYQURAN_CITIES_KEY = 'manifestudio_myquran_cities_v1';

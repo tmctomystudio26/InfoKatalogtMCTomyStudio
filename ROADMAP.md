@@ -38,7 +38,7 @@ Dokumen ini adalah panduan resmi tujuan proyek, arsitektur, pencapaian implement
 - [x] Halaman konfirmasi dedikasi `order.html`.
 - [x] Bagian *Pertanyaan Umum (FAQ)* ringkas & mutakhir.
 
-### ✅ Fase 5 — Menu Lainnya Terpisah & Pemutar Musik Full Version Bebas Iklan (Selesai)
+### ✅ Fase 5 — Menu Utilitas Terpisah & Pemutar Musik Full Version Bebas Iklan (Selesai)
 - [x] Halaman terpisah `tools.html` + pemutar musik melayang bebas iklan (`Full Audio >= 75 detik` via Audius, `SoundCloud Widget`, `Spotify Embed`) dengan posisi *draggable* persisten.
 - [x] **OpenGraph WhatsApp/Sosmed Ready**: Thumbnail `1200×630` baseline JPEG `< 110 KB` URL absolut HTTPS `https://manifestudio.my.id/`.
 - [x] **Custom Domain & HTTPS Aktif**: Domain `manifestudio.my.id` melalui Cloudflare DNS ke GitHub Pages (`CNAME`), serta bersih sepenuhnya dari keterikatan Replit.
@@ -64,17 +64,25 @@ Dokumen ini adalah panduan resmi tujuan proyek, arsitektur, pencapaian implement
 - [x] **Bar Progres Konversi & Download Real-Time di Downloader**:
   - Menampilkan **Progres Pengambilan/Konversi** (`#dl-conv-progress-card`: menganalisis -> mengambil -> mengonversi -> siap) serta **Progres Streaming Download** (`#dl-save-progress-card`: MB terunduh / total MB & persentase `%` baik single file maupun batch multi-foto).
 
+### ✅ Fase 8 — Menu Utilitas Terpisah & Perbaikan Downloader IG/YT CORS (v23, Selesai)
+- [x] **Pemisahan & Penonjolan "Menu Utilitas" + Ikon Khusus (`menu-utilitas.svg`)**:
+  - Memisahkan tombol/kartu **Menu Utilitas** keluar dari deretan pill kategori (`#category-tabs`) menjadi kartu aksen terpisah (`#utilities-callout-card`) di beranda, serta mengganti seluruh istilah *Menu Lainnya* menjadi *Menu Utilitas*.
+  - Menghapus subjudul statis *"Pilih aplikasi untuk melihat paket & garansi."* dan *"Info aktivasi, garansi, pembayaran, dan menu utilitas."* agar antarmuka katalog & FAQ lebih ringkas.
+- [x] **Perbaikan Total Instagram Downloader & YouTube Dual MP4 + Audio (`v23`)**:
+  - **Instagram**: Mengganti endpoint mati (`api.ryzendesu.vip`) dengan paralel **`api.siputzx.my.id/api/d/sssinstagram`** + **`api.siputzx.my.id/api/d/ummy`** (+ fallback `fastdl` / `igram` / `davidcyriltech`), mendukung Reels MP4 HD, postingan foto tunggal, carousel multi-foto (termasuk URI proxy terenkode), Story, serta salin caption penuh.
+  - **YouTube Dual MP4 + Audio M4A/MP3**: Mengintegrasikan `api.siputzx.my.id/api/d/ummy` secara paralel, membungkus stream `googlevideo.com` dengan **`api.vidsnap.app/proxy?u=...`** agar bebas blokir CORS, serta memblokir tautan jebakan redirect HTML `sf-converter.com` / `du.sf-converter.com`.
+
 ---
 
 ## 🚀 Rencana Pengembangan Selanjutnya (Next Milestones)
 
-### 🔹 Fase 8 — Riwayat Transaksi Pelanggan & Pembayaran QRIS Dinamis
+### 🔹 Fase 9 — Riwayat Transaksi Pelanggan & Pembayaran QRIS Dinamis
 1. **Riwayat Pesanan Lokal Pelanggan**:
    - Simpan hingga 10 riwayat pesanan terakhir dari `order.html` ke `localStorage` agar pelanggan dapat mengunduh ulang struk atau menanyakan status ke CS kapan saja.
 2. **Modal QRIS & Rekening Bank Resmi (Dapat Diedit dari Admin)**:
    - Tampilan QRIS statis/rekening saat memilih metode *Bayar Sekarang* dengan tombol salin nomor rekening 1-klik dan pengelolaan gambar QRIS di Admin.
 
-### 🔹 Fase 9 — Analitik Lokal & Ekosistem Utilitas Lanjutan
+### 🔹 Fase 10 — Analitik Lokal & Ekosistem Utilitas Lanjutan
 1. **Riwayat Speedtest & Perbandingan ISP**:
    - Menyimpan 5 hasil pengujian Speedtest terakhir untuk membandingkan kestabilan jaringan pelanggan.
 2. **Subdomain Terpisah Opsional**:

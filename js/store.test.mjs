@@ -90,6 +90,7 @@ import {
   projectOrthographic,
   resolveAccurateWeatherCondition,
   speedToGaugeRatio,
+  wrapCorsMediaProxyIfNeeded,
 } from './tools-logic.js';
 import {
   stripJpegExifLossless,
@@ -1398,6 +1399,131 @@ test('downloader detects truncated YouTube URLs, normalizes TikTok Tioo response
   assert.equal(audioRes[0].isAudio, true);
   assert.equal(audioRes[0].label.includes('Musik / Audio YouTube'), true);
 });
+
+test('downloader v23 normalizes Siputzx ummy YouTube (dual MP4+M4A via CORS proxy), blocks sf-converter redirects, and parses IG sssinstagram/carousel', () => {
+  assert.equal(isBlockedRedirectDownloadUrl('https://du.sf-converter.com/go?file=abc'), true);
+  assert.equal(isBlockedRedirectDownloadUrl('https://sf-converter.com/download'), true);
+
+  const wrappedGv = wrapCorsMediaProxyIfNeeded(
+    'https://rr3---sn-abc.googlevideo.com/videoplayback?mime=audio%2Fmp4'
+  );
+  assert.equal(wrappedGv.startsWith('https://api.vidsnap.app/proxy?u='), true);
+  assert.equal(wrapCorsMediaProxyIfNeeded('https://media.sssinstagram.com/get?token=1'), 'https://media.sssinstagram.com/get?token=1');
+
+  const ytUmmy = normalizeDownloaderResult(
+    {
+      ummy: {
+        status: true,
+        data: {
+          meta: {
+            title: 'DJ BERSAMAMU FULL REMIX',
+            duration: '03:45',
+            source: 'https://youtu.be/tOUxfW_BWtM',
+          },
+          thumb: 'https://i.ytimg.com/vi/tOUxfW_BWtM/hqdefault.jpg',
+          url: [
+            {
+              url: 'https://rr1---sn-xyz.googlevideo.com/videoplayback?mime=video%2Fmp4',
+              ext: 'mp4',
+              quality: '360',
+              no_audio: false,
+            },
+            {
+              url: 'https://du.sf-converter.com/go?payload=redirect-html',
+              ext: 'mp3',
+              type: 'audio',
+            },
+            {
+              url: 'https://rr1---sn-xyz.googlevideo.com/videoplayback?mime=audio%2Fmp4',
+              ext: 'm4a',
+              type: 'audio',
+              audio: true,
+              bitrate: '131kbps',
+            },
+          ],
+        },
+      },
+    },
+    'youtube',
+    'https://youtu.be/tOUxfW_BWtM'
+  );
+  assert.ok(ytUmmy);
+  const ytVid = ytUmmy.links.filter((l) => !l.isAudio && l.ext === 'mp4');
+  const ytAud = ytUmmy.links.filter((l) => l.isAudio);
+  assert.equal(ytVid.length, 1);
+  assert.equal(ytAud.length, 1);
+  assert.equal(ytAud[0].ext, 'm4a');
+  assert.equal(ytAud[0].url.startsWith('https://api.vidsnap.app/proxy?u='), true);
+  assert.equal(ytUmmy.links.some((l) => l.url.includes('sf-converter.com')), false);
+
+  // Siputzx sssinstagram Reels + long caption
+  const igSssReel = normalizeDownloaderResult(
+    {
+      status: true,
+      data: {
+        meta: { title: 'Robot Arm Showcase\n#robotics #viral' },
+        thumb: 'https://media.sssinstagram.com/get?uri=https%3A%2F%2Fscontent.cdninstagram.com%2Fthumb.jpg',
+        url: [
+          {
+            url: 'https://media.sssinstagram.com/get?token=eyJ1cmwiOiJodHRwIn0',
+            name: 'MP4',
+            type: 'mp4',
+            ext: 'mp4',
+            quality: '360',
+          },
+        ],
+      },
+    },
+    'instagram',
+    'https://www.instagram.com/reel/DZwKgQVBQtv/'
+  );
+  assert.ok(igSssReel);
+  assert.equal(igSssReel.mediaType, 'video');
+  assert.equal(igSssReel.caption, 'Robot Arm Showcase\n#robotics #viral');
+  assert.equal(igSssReel.links.length, 1);
+  assert.equal(igSssReel.links[0].ext, 'mp4');
+  assert.equal(igSssReel.links[0].isImage, false);
+
+  // Siputzx sssinstagram multi-photo Carousel with wrapped proxy URI
+  const igCarousel = normalizeDownloaderResult(
+    {
+      status: true,
+      data: {
+        meta: { title: 'Carousel Foto Produk' },
+        url: [
+          {
+            url: 'https://media.sssinstagram.com/get?token=a&uri=https%3A%2F%2Fcdn.ig%2Fslide1.jpeg%3Fstp%3Ddst-jpg',
+            ext: 'jpeg',
+            type: 'jpg',
+          },
+          {
+            url: 'https://scontent.cdninstagram.com/v/slide2.jpg',
+            ext: 'jpg',
+            type: 'image',
+          },
+        ],
+      },
+    },
+    'instagram',
+    'https://www.instagram.com/p/C9slide123/'
+  );
+  assert.ok(igCarousel);
+  assert.equal(igCarousel.mediaType, 'carousel');
+  assert.equal(igCarousel.photos.length, 2);
+  assert.equal(igCarousel.links.every((l) => l.isImage && l.ext === 'jpg'), true);
+
+  // Legacy Menu Lainnya banner kickers auto-migrate to Menu Utilitas
+  const migratedBanners = normalizeBanners([
+    {
+      id: 'banner-weather',
+      kicker: 'Menu Lainnya · Prakiraan Cuaca',
+      heading: 'Pantau Cuaca',
+      href: './tools.html?tab=weather',
+    },
+  ]);
+  assert.equal(migratedBanners[0].kicker, 'Menu Utilitas · Prakiraan Cuaca');
+});
+
 
 
 

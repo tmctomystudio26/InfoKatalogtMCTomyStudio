@@ -494,7 +494,7 @@ export const DEFAULT_BANNERS = [
   },
   {
     id: 'banner-prayer',
-    kicker: 'Menu Lainnya · Jadwal Sholat',
+    kicker: 'Menu Utilitas · Jadwal Sholat',
     heading: 'Waktu Imsak & Sholat 5 Waktu Resmi Kemenag RI',
     sub: 'Deteksi otomatis lokasi GPS/kecamatan kamu lengkap dengan hitung mundur waktu sholat berikutnya.',
     ctaLabel: 'Buka Jadwal Sholat',
@@ -504,7 +504,7 @@ export const DEFAULT_BANNERS = [
   },
   {
     id: 'banner-weather',
-    kicker: 'Menu Lainnya · Prakiraan Cuaca',
+    kicker: 'Menu Utilitas · Prakiraan Cuaca',
     heading: 'Pantau Cuaca Real-Time & Prakiraan 7 Hari',
     sub: 'Cek suhu, curah hujan aktual per jam, hembusan angin, dan prakiraan mingguan di kotamu.',
     ctaLabel: 'Cek Cuaca',
@@ -514,7 +514,7 @@ export const DEFAULT_BANNERS = [
   },
   {
     id: 'banner-worldclock',
-    kicker: 'Menu Lainnya · Standar UTC',
+    kicker: 'Menu Utilitas · Standar UTC',
     heading: 'Putar Bola Dunia & Konversi WIB/WITA/WIT',
     sub: 'Klik negara di globe interaktif untuk cek zona waktu & selisih jam Indonesia.',
     ctaLabel: 'Putar Bola Dunia',
@@ -524,7 +524,7 @@ export const DEFAULT_BANNERS = [
   },
   {
     id: 'banner-speedtest',
-    kicker: 'Menu Lainnya · Speedtest',
+    kicker: 'Menu Utilitas · Speedtest',
     heading: 'Uji Kecepatan Internet & Ping Real-Time',
     sub: 'Cek rata-rata download, upload, latensi, server, ISP, dan info perangkat dalam satu klik.',
     ctaLabel: 'Mulai Speedtest',
@@ -534,7 +534,7 @@ export const DEFAULT_BANNERS = [
   },
   {
     id: 'banner-downloader',
-    kicker: 'Menu Lainnya · Downloader',
+    kicker: 'Menu Utilitas · Downloader',
     heading: 'Download Video, Foto, Story & Caption Sosmed Tanpa Watermark',
     sub: 'Unduh video MP4 HD, slide foto TikTok/IG, Story, MP3, & salin caption otomatis.',
     ctaLabel: 'Buka Downloader',
@@ -544,7 +544,7 @@ export const DEFAULT_BANNERS = [
   },
   {
     id: 'banner-compressor',
-    kicker: 'Menu Lainnya · Kompresor HD',
+    kicker: 'Menu Utilitas · Kompresor HD',
     heading: 'Kompres Foto & Video Anti-Pecah untuk TikTok, IG & WA',
     sub: 'Optimasi ukuran file tanpa mengurangi kualitas visual agar tidak dikompres ulang oleh sosmed.',
     ctaLabel: 'Kompres Media HD',
@@ -588,7 +588,9 @@ export function normalizeBanners(banners, fallbackBanners = DEFAULT_BANNERS) {
     .filter((b) => b && (String(b.heading || '').trim() || String(b.kicker || '').trim()))
     .map((b, idx) => ({
       id: String(b.id || `banner-${idx + 1}`).trim(),
-      kicker: String(b.kicker || 'Promo & Info').trim(),
+      kicker: String(b.kicker || 'Promo & Info')
+        .trim()
+        .replace(/^Menu Lainnya\b/i, 'Menu Utilitas'),
       heading: String(b.heading || 'Manifestudio').trim(),
       sub: String(b.sub || '').trim(),
       ctaLabel: String(b.ctaLabel || 'Selengkapnya').trim() || 'Selengkapnya',
