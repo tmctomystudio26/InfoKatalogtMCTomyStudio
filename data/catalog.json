@@ -528,6 +528,36 @@
       ]
     },
     {
+      "id": "cek-ai-gptzero",
+      "name": "Cek AI GPTZero",
+      "category": "pendidikan",
+      "logo": "https://assets.clever.com/resource-icons/apps/68790fa79ab5560042bfb0dc/icon_786dfa7.png",
+      "isBestSeller": false,
+      "outOfStock": false,
+      "tag": "Tersedia",
+      "summary": "AI Detector paling akurat untuk mendeteksi tulisan berbasis AI pada skripsi, tugas, maupun artikel. Dilengkapi skor dan laporan resmi dari GPTZero.",
+      "variants": [
+        {
+          "id": "cek-ai-gptzero-v1",
+          "name": "1-2500 kata",
+          "price": 5000,
+          "outOfStock": false
+        },
+        {
+          "id": "cek-ai-gptzero-iikf",
+          "name": "2500-5000 kata",
+          "price": 10000,
+          "outOfStock": false
+        },
+        {
+          "id": "cek-ai-gptzero-jb9n",
+          "name": ">5000 kata (hubungi admin)",
+          "price": 0,
+          "outOfStock": false
+        }
+      ]
+    },
+    {
       "id": "request-custom",
       "name": "Request dan Custom Produk",
       "category": "custom",
