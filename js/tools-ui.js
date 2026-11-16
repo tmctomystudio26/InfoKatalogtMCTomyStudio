@@ -1,19 +1,27 @@
 /**
- * UI Controller for "Menu Lainnya" (Jadwal Sholat, Prakiraan Cuaca, Jam Dunia & Bola Dunia Interaktif)
+ * UI Controller for "Menu Lainnya" (Jadwal Sholat, Prakiraan Cuaca Presisi Tinggi,
+ * Jam Dunia & Bola Dunia Interaktif, Speedtest, Downloader Video/Foto/Story/Caption,
+ * & Kompresor Foto/Video HD Anti-Pecah Sosmed)
  * Zero external runtime dependencies; designed for both desktop & mobile touch ergonomics.
  */
 
 import {
+  COMPRESSION_METHODS,
+  COMPRESSION_PLATFORM_PRESETS,
   INDONESIA_ZONES,
   WORLD_LOCATIONS,
   convertWorldTime,
   describeWeatherCode,
+  detectDownloaderContentType,
   detectDownloaderPlatform,
+  formatBytes,
   formatDetailedLocationLabel,
   getNextPrayerInfo,
   getZoneTimeParts,
   isIndonesiaLocation,
   matchIndonesianCityQuery,
+  planMediaCompression,
+  resolveAccurateWeatherCondition,
 } from './tools-logic.js';
 import {
   describeLocationSource,
@@ -28,11 +36,17 @@ import {
   readClientDeviceTelemetry,
   runInternetSpeedtest,
 } from './speedtest.js';
-import { fetchMediaDownload, triggerDirectMediaSave } from './downloader.js';
+import {
+  fetchMediaDownload,
+  triggerBatchPhotoDownload,
+  triggerDirectMediaSave,
+} from './downloader.js';
+import { compressMediaFile, inspectMediaFile } from './compressor.js';
 
 const PRAYER_CACHE_KEY = 'manifestudio_prayer_cache_v1';
 const MYQURAN_CITIES_KEY = 'manifestudio_myquran_cities_v1';
-const WEATHER_CACHE_KEY = 'manifestudio_weather_cache_v1';
+const WEATHER_CACHE_KEY = 'manifestudio_weather_cache_v2';
+const WEATHER_CALIBRATION_KEY = 'manifestudio_weather_cal_v1';
 
 function escapeHtml(str) {
   return String(str ?? '')
@@ -189,7 +203,6 @@ async function fetchPrayerSchedule(loc, explicitCityId = null) {
     return payload;
   };
 
-  // 1. Prioritize coordinate-exact Kemenag method=20 when user has sub-district (Kelurahan/Kecamatan) or GPS precision
   if (hasSubDistrictPrecision) {
     try {
       const exact = await fetchAlAdhanPrecision();
@@ -199,7 +212,6 @@ async function fetchPrayerSchedule(loc, explicitCityId = null) {
     }
   }
 
-  // 2. MyQuran v2 (Bimas Islam Kemenag RI Kab/Kota markaz)
   try {
     const citySched = await fetchMyQuranCitySchedule();
     if (citySched) return citySched;
@@ -207,7 +219,6 @@ async function fetchPrayerSchedule(loc, explicitCityId = null) {
     // Fall through
   }
 
-  // 3. Coordinate fallback if MyQuran didn't match
   if (!hasSubDistrictPrecision) {
     try {
       const exact = await fetchAlAdhanPrecision();
@@ -217,7 +228,6 @@ async function fetchPrayerSchedule(loc, explicitCityId = null) {
     }
   }
 
-  // 4. Offline localStorage cache
   try {
     const cachedRaw = localStorage.getItem(PRAYER_CACHE_KEY);
     if (cachedRaw) {
@@ -233,36 +243,67 @@ async function fetchPrayerSchedule(loc, explicitCityId = null) {
   throw new Error('Tidak dapat memuat jadwal sholat. Periksa koneksi internet Anda.');
 }
 
+async function fetchLiveStationObservation(lat, lon) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 3600);
+  try {
+    const res = await fetch(
+      `https://wttr.in/${encodeURIComponent(lat)},${encodeURIComponent(lon)}?format=j1`,
+      { cache: 'no-store', signal: controller.signal }
+    );
+    if (!res.ok) return null;
+    const json = await res.json();
+    const cur = json?.current_condition?.[0];
+    if (!cur) return null;
+    return {
+      precipMM: Number(cur.precipMM) || 0,
+      weatherCode: Number(cur.weatherCode) || 0,
+      weatherDesc: cur.weatherDesc?.[0]?.value || '',
+      humidity: Number(cur.humidity) || 0,
+      windspeedKmph: Number(cur.windspeedKmph) || 0,
+    };
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 async function fetchWeatherForecast(loc) {
   const url =
     `https://api.open-meteo.com/v1/forecast?latitude=${encodeURIComponent(loc.lat)}&longitude=${encodeURIComponent(loc.lon)}` +
-    `&current=temperature_2m,relative_humidity_2m,apparent_temperature,precipitation,weather_code,wind_speed_10m,is_day` +
-    `&hourly=temperature_2m,precipitation_probability,weather_code,is_day` +
-    `&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max,sunrise,sunset` +
+    `&current=temperature_2m,relative_humidity_2m,apparent_temperature,precipitation,rain,showers,weather_code,wind_speed_10m,wind_gusts_10m,is_day` +
+    `&hourly=temperature_2m,precipitation_probability,precipitation,rain,showers,weather_code,wind_gusts_10m,is_day` +
+    `&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max,precipitation_sum,sunrise,sunset` +
     `&timezone=auto&forecast_days=7`;
 
   try {
-    const res = await fetch(url, { cache: 'no-store' });
-    if (res.ok) {
-      const json = await res.json();
-      if (json && json.current) {
-        const payload = {
-          fetchedAt: new Date().toISOString(),
-          cityLabel: loc.city,
-          regionLabel: loc.region || loc.country,
-          timezone: json.timezone || 'Asia/Jakarta',
-          current: json.current,
-          hourly: json.hourly,
-          daily: json.daily,
-          offline: false,
-        };
-        try {
-          localStorage.setItem(WEATHER_CACHE_KEY, JSON.stringify(payload));
-        } catch {
-          // Ignore
-        }
-        return payload;
+    const [meteoSettled, stationSettled] = await Promise.allSettled([
+      fetch(url, { cache: 'no-store' }).then((r) => (r.ok ? r.json() : null)),
+      fetchLiveStationObservation(loc.lat, loc.lon),
+    ]);
+
+    const json = meteoSettled.status === 'fulfilled' ? meteoSettled.value : null;
+    const stationObs = stationSettled.status === 'fulfilled' ? stationSettled.value : null;
+
+    if (json && json.current) {
+      const payload = {
+        fetchedAt: new Date().toISOString(),
+        cityLabel: loc.city,
+        regionLabel: loc.region || loc.country,
+        timezone: json.timezone || 'Asia/Jakarta',
+        current: json.current,
+        hourly: json.hourly,
+        daily: json.daily,
+        stationObs,
+        offline: false,
+      };
+      try {
+        localStorage.setItem(WEATHER_CACHE_KEY, JSON.stringify(payload));
+      } catch {
+        // Ignore
       }
+      return payload;
     }
   } catch {
     // Try cache
@@ -283,6 +324,35 @@ async function fetchWeatherForecast(loc) {
   throw new Error('Tidak dapat memuat prakiraan cuaca. Periksa koneksi internet Anda.');
 }
 
+function loadSavedWeatherCalibration() {
+  try {
+    const raw = localStorage.getItem(WEATHER_CALIBRATION_KEY);
+    if (!raw) return 'auto';
+    const parsed = JSON.parse(raw);
+    if (parsed && parsed.mode && Date.now() - Number(parsed.ts || 0) < 3 * 3600 * 1000) {
+      return parsed.mode;
+    }
+  } catch {
+    // Ignore
+  }
+  return 'auto';
+}
+
+function saveWeatherCalibration(mode) {
+  try {
+    if (!mode || mode === 'auto') {
+      localStorage.removeItem(WEATHER_CALIBRATION_KEY);
+    } else {
+      localStorage.setItem(
+        WEATHER_CALIBRATION_KEY,
+        JSON.stringify({ mode, ts: Date.now() })
+      );
+    }
+  } catch {
+    // Ignore
+  }
+}
+
 export function createToolsHubController({
   rootEl,
   onToast = () => {},
@@ -292,7 +362,7 @@ export function createToolsHubController({
   const initialClock = getZoneTimeParts(new Date(), 'Asia/Jakarta');
 
   const toolState = {
-    activeSubTab: 'prayer', // 'prayer' | 'weather' | 'worldclock' | 'speedtest'
+    activeSubTab: 'prayer', // 'prayer' | 'weather' | 'worldclock' | 'speedtest' | 'downloader' | 'compressor'
     location: null,
     locationLoading: false,
     prayerData: null,
@@ -306,6 +376,7 @@ export function createToolsHubController({
     weatherError: '',
     weatherSearchQuery: '',
     weatherSuggestions: [],
+    weatherCalibration: loadSavedWeatherCalibration(), // 'auto' | 'heavy-rain' | 'storm' | 'light-rain' | 'clear'
     selectedWorldId: 'jp',
     worldSearchQuery: '',
     globeAutoRotate: false,
@@ -313,7 +384,7 @@ export function createToolsHubController({
     convTime: initialClock.timeShort || '12:00',
     convSourceZone: 'Asia/Jakarta',
     speedRunning: false,
-    speedPhase: 'idle', // 'idle' | 'ping' | 'download' | 'upload' | 'done'
+    speedPhase: 'idle',
     speedPhaseLabel: 'Siap menguji koneksi',
     speedProgress: 0,
     speedLiveMbps: 0,
@@ -326,8 +397,19 @@ export function createToolsHubController({
     dlUrl: '',
     dlLoading: false,
     dlSavingIdx: -1,
+    dlBatchSaving: false,
+    dlBatchProgressText: '',
     dlError: '',
     dlResult: null,
+    compMethodId: 'social-shield',
+    compPresetId: 'tiktok-hd',
+    compFile: null,
+    compInspect: null,
+    compLoading: false,
+    compProgressPct: 0,
+    compProgressLabel: '',
+    compError: '',
+    compResult: null,
   };
 
   let clockTimer = null;
@@ -609,7 +691,15 @@ export function createToolsHubController({
   function renderWeatherPanel() {
     const w = toolState.weatherData;
     const current = w?.current;
-    const curDesc = current ? describeWeatherCode(current.weather_code, current.is_day) : null;
+    const curDesc = current
+      ? resolveAccurateWeatherCondition({
+          current,
+          hourly: w.hourly,
+          nowIso: current.time || new Date().toISOString(),
+          stationObs: w.stationObs,
+          manualCalibration: toolState.weatherCalibration === 'auto' ? '' : toolState.weatherCalibration,
+        })
+      : null;
 
     const hourlyItems = [];
     if (w?.hourly?.time && w?.hourly?.temperature_2m) {
@@ -617,11 +707,24 @@ export function createToolsHubController({
       for (let i = 0; i < w.hourly.time.length; i += 1) {
         const tMs = Date.parse(w.hourly.time[i]);
         if (tMs >= nowMs - 3600000 && hourlyItems.length < 12) {
+          const hourMm = Math.max(
+            Number(w.hourly.precipitation?.[i]) || 0,
+            Number(w.hourly.rain?.[i]) || 0,
+            Number(w.hourly.showers?.[i]) || 0
+          );
+          const hourCode = Number(w.hourly.weather_code?.[i] ?? 0);
+          const hourDesc =
+            hourMm >= 4.0 && hourCode < 65
+              ? describeWeatherCode(65, w.hourly.is_day?.[i] ?? 1)
+              : hourMm >= 1.5 && hourCode < 63
+              ? describeWeatherCode(63, w.hourly.is_day?.[i] ?? 1)
+              : describeWeatherCode(hourCode, w.hourly.is_day?.[i] ?? 1);
           hourlyItems.push({
             hour: String(w.hourly.time[i]).slice(11, 16),
             temp: Math.round(w.hourly.temperature_2m[i]),
             rain: w.hourly.precipitation_probability?.[i] ?? 0,
-            desc: describeWeatherCode(w.hourly.weather_code?.[i], w.hourly.is_day?.[i] ?? 1),
+            rainMm: Math.round(hourMm * 10) / 10,
+            desc: hourDesc,
           });
         }
       }
@@ -645,6 +748,14 @@ export function createToolsHubController({
       }
     }
 
+    const calModes = [
+      { id: 'auto', label: 'Otomatis (Multi-Sensor Radar)' },
+      { id: 'heavy-rain', label: 'Hujan Lebat Sekarang' },
+      { id: 'storm', label: 'Hujan Badai / Petir' },
+      { id: 'light-rain', label: 'Hujan Ringan / Gerimis' },
+      { id: 'clear', label: 'Cerah / Berawan' },
+    ];
+
     return `
       <div class="tool-panel" data-testid="weather-panel">
         ${renderLocationBar('weather')}
@@ -656,13 +767,13 @@ export function createToolsHubController({
               type="search"
               id="weather-city-search"
               class="search-input"
-              placeholder="Cari kota (contoh: Yogyakarta, Tokyo, Bali)..."
+              placeholder="Cari kelurahan, kecamatan, atau kota (cth: Coblong, Yogyakarta, Tokyo)..."
               value="${escapeHtml(toolState.weatherSearchQuery)}"
               aria-label="Cari kota prakiraan cuaca"
             />
           </div>
           <button type="button" class="btn btn-secondary btn-sm" id="weather-search-btn">
-            Cari Kota
+            Cari Lokasi
           </button>
         </div>
 
@@ -685,37 +796,69 @@ export function createToolsHubController({
 
         ${
           toolState.weatherLoading && !w
-            ? `<div class="tool-loading-box">Mengambil prakiraan cuaca real-time...</div>`
+            ? `<div class="tool-loading-box">Mengambil data radar curah hujan &amp; stasiun cuaca real-time...</div>`
             : toolState.weatherError && !w
             ? `<div class="form-error" role="alert">${escapeHtml(toolState.weatherError)}</div>`
-            : w && current
+            : w && current && curDesc
             ? `
               <div class="weather-hero-card tone-${escapeHtml(curDesc.tone)}">
                 <div class="weather-hero-main">
                   <div class="weather-icon-wrap">
                     ${getWeatherSvg(curDesc.iconKey)}
                   </div>
-                  <div>
-                    <span class="tool-kicker">${escapeHtml(formatDetailedLocationLabel(toolState.location || { city: w.cityLabel, region: w.regionLabel }))} · ${escapeHtml(w.timezone)}${w.offline ? ' · Cache Offline' : ''}</span>
+                  <div class="weather-hero-copy">
+                    <span class="tool-kicker">
+                      ${escapeHtml(formatDetailedLocationLabel(toolState.location || { city: w.cityLabel, region: w.regionLabel }))} · ${escapeHtml(w.timezone)}${w.offline ? ' · Cache Offline' : ' · Multi-Sensor Presisi'}
+                    </span>
                     <div class="weather-temp-row">
                       <strong class="weather-temp-big mono-num">${Math.round(current.temperature_2m)}°C</strong>
-                      <span class="weather-condition">${escapeHtml(curDesc.label)}</span>
+                      <span class="weather-condition" data-testid="weather-condition-label">${escapeHtml(curDesc.label)}</span>
                     </div>
-                    <p class="weather-sub">Terasa seperti ${Math.round(current.apparent_temperature)}°C</p>
+                    <p class="weather-sub">
+                      Terasa seperti ${Math.round(current.apparent_temperature)}°C
+                      ${curDesc.intensityText ? ` · <strong>${escapeHtml(curDesc.intensityText)}</strong>` : ''}
+                    </p>
                   </div>
                 </div>
-                <div class="weather-metrics-grid">
+
+                <div class="weather-metrics-grid weather-metrics-grid-4">
                   <div class="weather-metric">
-                    <span>Kelembapan</span>
+                    <span>Kelembapan Udara</span>
                     <strong class="mono-num">${Math.round(current.relative_humidity_2m)}%</strong>
                   </div>
                   <div class="weather-metric">
-                    <span>Kecepatan Angin</span>
-                    <strong class="mono-num">${Math.round(current.wind_speed_10m)} km/j</strong>
+                    <span>Angin &amp; Hembusan</span>
+                    <strong class="mono-num">${Math.round(current.wind_speed_10m)} km/j${curDesc.gustKmh > current.wind_speed_10m ? ` (Gust ${curDesc.gustKmh})` : ''}</strong>
                   </div>
                   <div class="weather-metric">
-                    <span>Curah Hujan</span>
-                    <strong class="mono-num">${current.precipitation ?? 0} mm</strong>
+                    <span>Intensitas Hujan</span>
+                    <strong class="mono-num">${curDesc.effectiveRainMm ?? (current.precipitation ?? 0)} mm/jam</strong>
+                  </div>
+                  <div class="weather-metric">
+                    <span>Peluang Hujan Jam Ini</span>
+                    <strong class="mono-num">${curDesc.rainProb ?? (hourlyItems[0]?.rain ?? 0)}%</strong>
+                  </div>
+                </div>
+
+                <div class="weather-calibration-bar" aria-label="Kalibrasi kondisi cuaca aktual di titik lokasi Anda">
+                  <div class="weather-cal-head">
+                    <span class="weather-cal-title">Kalibrasi Kondisi Aktual di Titik Anda:</span>
+                    <span class="weather-cal-hint">Sesuaikan jika hujan lokal mendadak berbeda dari satelit</span>
+                  </div>
+                  <div class="weather-cal-pills">
+                    ${calModes
+                      .map(
+                        (m) => `
+                      <button
+                        type="button"
+                        class="weather-cal-pill ${toolState.weatherCalibration === m.id ? 'is-active' : ''}"
+                        data-weather-cal="${escapeHtml(m.id)}"
+                      >
+                        ${escapeHtml(m.label)}
+                      </button>
+                    `
+                      )
+                      .join('')}
                   </div>
                 </div>
               </div>
@@ -724,7 +867,7 @@ export function createToolsHubController({
                 hourlyItems.length > 0
                   ? `
                 <div class="weather-block">
-                  <h3 class="tool-subhead">Prakiraan Per Jam</h3>
+                  <h3 class="tool-subhead">Prakiraan Per Jam &amp; Intensitas Hujan</h3>
                   <div class="weather-hourly-strip">
                     ${hourlyItems
                       .map(
@@ -733,7 +876,7 @@ export function createToolsHubController({
                         <span class="mono-num weather-hour-time">${escapeHtml(h.hour)}</span>
                         <span class="weather-hour-icon">${getWeatherSvg(h.desc.iconKey)}</span>
                         <strong class="mono-num weather-hour-temp">${h.temp}°</strong>
-                        <span class="weather-hour-rain mono-num">${h.rain}%</span>
+                        <span class="weather-hour-rain mono-num">${h.rain}%${h.rainMm > 0 ? ` · ${h.rainMm}mm` : ''}</span>
                       </div>
                     `
                       )
@@ -806,7 +949,6 @@ export function createToolsHubController({
 
     return `
       <div class="tool-panel" data-testid="worldclock-panel">
-        <!-- UTC Master + Indonesia Zones Strip -->
         <div class="world-master-grid">
           <div class="world-clock-card is-utc">
             <span class="tool-kicker">Standar Internasional</span>
@@ -828,7 +970,6 @@ export function createToolsHubController({
           }).join('')}
         </div>
 
-        <!-- Interactive Rotatable Globe + Time Converter Split -->
         <div class="world-workspace-grid">
           <div class="globe-card">
             <div class="globe-card-head">
@@ -909,7 +1050,6 @@ export function createToolsHubController({
             </div>
           </div>
 
-          <!-- Two-way Time Converter (Target + UTC + WIB/WITA/WIT) -->
           <div class="converter-card">
             <div class="converter-head">
               <div>
@@ -1187,30 +1327,52 @@ export function createToolsHubController({
 
   function renderDownloaderPanel() {
     const detected = detectDownloaderPlatform(toolState.dlUrl);
+    const contentMeta = detectDownloaderContentType(toolState.dlUrl);
     const res = toolState.dlResult;
     const platformLabels = {
-      tiktok: 'TikTok · No Watermark',
+      tiktok: 'TikTok · Video / Foto / Story',
       youtube: 'YouTube · Video & MP3',
-      instagram: 'Instagram · Reels / Post',
-      facebook: 'Facebook · HD & SD',
+      instagram: 'Instagram · Reels / Foto / Carousel / Story',
+      facebook: 'Facebook · Video / Foto / Story',
     };
-    const previewVideo = res?.links?.find((l) => !l.isAudio && l.ext === 'mp4') || null;
+    const previewVideo = res?.links?.find((l) => !l.isAudio && !l.isPhoto && l.ext === 'mp4') || null;
     const previewAudio = res?.links?.find((l) => l.isAudio) || null;
+    const photos = Array.isArray(res?.photos) ? res.photos : [];
+    const captionText = String(res?.caption || '').trim();
+
+    const mediaTypeBadge = res
+      ? res.isStory || res.mediaType === 'story'
+        ? 'Story Sosmed'
+        : photos.length > 1
+        ? `Slide Carousel (${photos.length} Foto)`
+        : photos.length === 1 && !previewVideo
+        ? 'Postingan Foto HD'
+        : 'Video HD No Watermark'
+      : '';
 
     return `
       <div class="tool-panel" data-testid="downloader-panel">
         <div class="dl-hero-card">
           <div class="dl-head">
             <div>
-              <span class="tool-kicker">Gratis · Tanpa Watermark</span>
-              <h3 class="tool-subhead">Download Video &amp; Audio Sosmed</h3>
-              <p class="tool-hint">Tempel tautan publik dari TikTok, YouTube, Instagram, atau Facebook.</p>
+              <span class="tool-kicker">Video · Foto · Multi-Slide · Story · Salin Caption</span>
+              <h3 class="tool-subhead">Downloader Media Sosial All-in-One</h3>
+              <p class="tool-hint">
+                Unduh Video HD, Postingan Foto, Slide Carousel (Banyak Foto), Story Sosmed, &amp; Salin Caption dari TikTok, Instagram, YouTube, dan Facebook.
+              </p>
             </div>
             <div class="dl-platform-pills" aria-label="Platform didukung">
               <span class="dl-plat-pill ${detected === 'tiktok' ? 'is-detected' : ''}">TikTok</span>
-              <span class="dl-plat-pill ${detected === 'youtube' ? 'is-detected' : ''}">YouTube</span>
               <span class="dl-plat-pill ${detected === 'instagram' ? 'is-detected' : ''}">Instagram</span>
+              <span class="dl-plat-pill ${detected === 'youtube' ? 'is-detected' : ''}">YouTube</span>
               <span class="dl-plat-pill ${detected === 'facebook' ? 'is-detected' : ''}">Facebook</span>
+              ${
+                contentMeta.isStory
+                  ? `<span class="dl-plat-pill is-detected">Mode Story</span>`
+                  : contentMeta.isPhotoPost
+                  ? `<span class="dl-plat-pill is-detected">Mode Foto/Carousel</span>`
+                  : ''
+              }
             </div>
           </div>
 
@@ -1221,9 +1383,9 @@ export function createToolsHubController({
                 type="url"
                 id="dl-url-input"
                 class="search-input"
-                placeholder="https://vt.tiktok.com/... atau link YouTube / IG / FB"
+                placeholder="Tempel link Video, Foto, Carousel, atau Story (TikTok / IG / YT / FB)..."
                 value="${escapeHtml(toolState.dlUrl)}"
-                aria-label="Tautan video TikTok, YouTube, Instagram, atau Facebook"
+                aria-label="Tautan video, foto, atau story TikTok, YouTube, Instagram, atau Facebook"
                 required
               />
             </div>
@@ -1232,7 +1394,7 @@ export function createToolsHubController({
                 Tempel
               </button>
               <button type="submit" class="btn btn-primary btn-sm" id="dl-submit-btn" ${toolState.dlLoading ? 'disabled' : ''}>
-                ${toolState.dlLoading ? 'Memproses...' : 'Ambil Video'}
+                ${toolState.dlLoading ? 'Memproses...' : 'Ambil Media'}
               </button>
               ${
                 toolState.dlUrl || res || toolState.dlError
@@ -1241,6 +1403,13 @@ export function createToolsHubController({
               }
             </div>
           </form>
+
+          <div class="dl-feature-chips" aria-label="Fitur downloader yang didukung">
+            <span class="dl-feature-chip">✓ Video HD Tanpa Watermark</span>
+            <span class="dl-feature-chip">✓ Postingan Foto &amp; Multi-Slide Carousel</span>
+            <span class="dl-feature-chip">✓ Story IG / TikTok / FB</span>
+            <span class="dl-feature-chip">✓ Salin Caption &amp; Hashtag 1-Klik</span>
+          </div>
 
           ${
             toolState.dlError
@@ -1251,7 +1420,7 @@ export function createToolsHubController({
 
         ${
           toolState.dlLoading
-            ? `<div class="tool-loading-box">Mengambil tautan media berkualitas HD tanpa watermark...</div>`
+            ? `<div class="tool-loading-box">Mengambil foto, slide carousel, story, caption, atau video HD tanpa watermark...</div>`
             : res
             ? `
               <div class="dl-result-card" data-testid="dl-result-card">
@@ -1259,6 +1428,8 @@ export function createToolsHubController({
                   ${
                     previewVideo
                       ? `<video class="dl-video-preview" controls playsinline preload="metadata" poster="${escapeHtml(res.thumbnail || '')}" src="${escapeHtml(previewVideo.url)}"></video>`
+                      : photos.length > 0
+                      ? `<img src="${escapeHtml(photos[0].url)}" alt="${escapeHtml(res.title)}" class="dl-thumb-img" />`
                       : res.thumbnail
                       ? `<img src="${escapeHtml(res.thumbnail)}" alt="" class="dl-thumb-img" />`
                       : `<div class="dl-thumb-fallback">Media Siap Diunduh</div>`
@@ -1268,6 +1439,11 @@ export function createToolsHubController({
                   <div class="dl-result-badges">
                     <span class="dl-plat-pill is-detected">${escapeHtml(platformLabels[res.platform] || res.platform)}</span>
                     ${
+                      mediaTypeBadge
+                        ? `<span class="dl-dur-pill">${escapeHtml(mediaTypeBadge)}</span>`
+                        : ''
+                    }
+                    ${
                       res.durationSec > 0
                         ? `<span class="mono-num dl-dur-pill">${Math.floor(res.durationSec / 60)}:${String(Math.floor(res.durationSec % 60)).padStart(2, '0')}</span>`
                         : ''
@@ -1275,6 +1451,61 @@ export function createToolsHubController({
                   </div>
                   <h4 class="dl-result-title">${escapeHtml(res.title)}</h4>
                   <p class="dl-result-author">${escapeHtml(res.author)}</p>
+
+                  ${
+                    captionText
+                      ? `
+                    <div class="dl-caption-box" data-testid="dl-caption-box">
+                      <div class="dl-caption-head">
+                        <span>Caption / Deskripsi Postingan</span>
+                        <button type="button" class="btn btn-secondary btn-sm" id="dl-copy-caption-btn" data-testid="dl-copy-caption-btn">
+                          Salin Caption
+                        </button>
+                      </div>
+                      <pre class="dl-caption-text">${escapeHtml(captionText)}</pre>
+                    </div>
+                  `
+                      : ''
+                  }
+
+                  ${
+                    photos.length > 0
+                      ? `
+                    <div class="dl-photo-gallery" data-testid="dl-photo-gallery">
+                      <div class="dl-photo-gallery-head">
+                        <strong>Galeri Foto (${photos.length} Slide HD)</strong>
+                        ${
+                          photos.length > 1
+                            ? `<button type="button" class="btn btn-primary btn-sm" id="dl-batch-photos-btn" ${toolState.dlBatchSaving ? 'disabled' : ''}>
+                                ${toolState.dlBatchSaving ? escapeHtml(toolState.dlBatchProgressText || 'Mengunduh Semua...') : `Unduh Semua Foto (${photos.length})`}
+                              </button>`
+                            : ''
+                        }
+                      </div>
+                      <div class="dl-photo-grid">
+                        ${photos
+                          .map(
+                            (p, pIdx) => `
+                          <div class="dl-photo-item">
+                            <img src="${escapeHtml(p.url)}" alt="${escapeHtml(p.label || `Foto ${pIdx + 1}`)}" class="dl-photo-thumb" loading="lazy" />
+                            <button
+                              type="button"
+                              class="btn btn-secondary btn-sm dl-photo-save-btn"
+                              data-dl-photo-url="${escapeHtml(p.url)}"
+                              data-dl-photo-ext="${escapeHtml(p.ext || 'jpg')}"
+                              data-dl-photo-idx="${pIdx}"
+                            >
+                              Unduh Foto #${pIdx + 1}
+                            </button>
+                          </div>
+                        `
+                          )
+                          .join('')}
+                      </div>
+                    </div>
+                  `
+                      : ''
+                  }
 
                   ${
                     previewAudio
@@ -1307,6 +1538,219 @@ export function createToolsHubController({
                 </div>
               </div>
             `
+            : ''
+        }
+      </div>
+    `;
+  }
+
+  function renderCompressorPanel() {
+    const inspect = toolState.compInspect;
+    const res = toolState.compResult;
+    const previewPlan = inspect
+      ? planMediaCompression({
+          mediaKind: inspect.mediaKind,
+          methodId: toolState.compMethodId,
+          presetId: toolState.compPresetId,
+          originalWidth: inspect.width,
+          originalHeight: inspect.height,
+          originalBytes: inspect.sizeBytes,
+          durationSec: inspect.durationSec,
+        })
+      : null;
+
+    return `
+      <div class="tool-panel" data-testid="compressor-panel">
+        <div class="compressor-hero-card">
+          <div class="compressor-head">
+            <div>
+              <span class="tool-kicker">Zero Quality Loss · Anti-Kompresi Sosmed</span>
+              <h3 class="tool-subhead">Kompres Foto &amp; Video HD Tanpa Mengurangi Kualitas</h3>
+              <p class="tool-hint">
+                Optimalkan ukuran berkas &amp; bitstream terlebih dahulu agar platform seperti <strong>TikTok, Instagram, dan WhatsApp</strong> tidak mengkompres paksa dan menurunkan ketajaman unggahan Anda.
+              </p>
+            </div>
+            <button type="button" class="btn btn-secondary btn-sm" id="comp-demo-sample-btn" data-testid="comp-demo-sample-btn">
+              Uji Sampel Foto HD
+            </button>
+          </div>
+
+          <!-- Step 1: Method Selector -->
+          <div class="comp-section-block">
+            <label class="comp-block-label">1. Pilih Metode Kompresi Zero-Loss (Tanpa Blur / Pecah):</label>
+            <div class="comp-methods-grid" role="radiogroup" aria-label="Metode kompresi tanpa kurangi kualitas">
+              ${COMPRESSION_METHODS.map((m) => {
+                const isSelected = toolState.compMethodId === m.id;
+                return `
+                  <button
+                    type="button"
+                    class="comp-method-card ${isSelected ? 'is-active' : ''}"
+                    data-comp-method="${escapeHtml(m.id)}"
+                    aria-pressed="${isSelected}"
+                  >
+                    <div class="comp-method-top">
+                      <strong>${escapeHtml(m.label)}</strong>
+                      <span class="comp-method-badge">${escapeHtml(m.badge)}</span>
+                    </div>
+                    <p class="comp-method-desc">${escapeHtml(m.description)}</p>
+                  </button>
+                `;
+              }).join('')}
+            </div>
+          </div>
+
+          <!-- Step 2: Target Platform Preset -->
+          <div class="comp-section-block">
+            <label class="comp-block-label">2. Pilih Standar Platform Tujuan (Anti-Recompress Guard):</label>
+            <div class="comp-presets-row" role="radiogroup" aria-label="Target platform media sosial">
+              ${COMPRESSION_PLATFORM_PRESETS.map((p) => {
+                const isSelected = toolState.compPresetId === p.id;
+                return `
+                  <button
+                    type="button"
+                    class="comp-preset-pill ${isSelected ? 'is-active' : ''}"
+                    data-comp-preset="${escapeHtml(p.id)}"
+                    aria-pressed="${isSelected}"
+                  >
+                    <strong>${escapeHtml(p.label)}</strong>
+                    <span>Maks ${p.maxDimension === 99999 ? 'Asli 1:1' : `${p.maxDimension}px`} · ${p.targetVideoMbps} Mbps</span>
+                  </button>
+                `;
+              }).join('')}
+            </div>
+          </div>
+
+          <!-- Step 3: File Dropzone -->
+          <div class="comp-dropzone" id="comp-dropzone">
+            <input
+              type="file"
+              id="comp-file-input"
+              class="visually-hidden-file"
+              accept="image/jpeg,image/png,image/webp,video/mp4,video/webm,video/quicktime"
+            />
+            <div class="comp-dropzone-inner">
+              <div class="comp-dropzone-icon">
+                <img src="./assets/icons/tool-compressor.svg" alt="" width="44" height="44" />
+              </div>
+              <div class="comp-dropzone-copy">
+                <strong>${inspect ? escapeHtml(inspect.name) : 'Pilih atau Tarik File Foto / Video ke Sini'}</strong>
+                <span>
+                  ${
+                    inspect
+                      ? `${inspect.mediaKind === 'video' ? 'Video' : 'Foto'} · ${inspect.width}×${inspect.height}px · ${formatBytes(inspect.sizeBytes)}${inspect.durationSec ? ` · ${inspect.durationSec}s` : ''}`
+                      : 'Mendukung Foto (JPG, PNG, WebP) & Video (MP4, MOV, WebM) — Diproses 100% aman di perangkat Anda'
+                  }
+                </span>
+              </div>
+              <div class="comp-dropzone-actions">
+                <label for="comp-file-input" class="btn btn-secondary btn-sm admin-file-trigger">
+                  Pilih Foto / Video
+                </label>
+                ${
+                  inspect
+                    ? `<button type="button" class="btn btn-primary btn-sm" id="comp-run-btn" data-testid="comp-run-btn" ${toolState.compLoading ? 'disabled' : ''}>
+                        ${toolState.compLoading ? 'Mengoptimalkan...' : 'Kompres Sekarang (Zero-Loss)'}
+                      </button>`
+                    : ''
+                }
+              </div>
+            </div>
+          </div>
+
+          ${
+            previewPlan && !res && !toolState.compLoading
+              ? `
+            <div class="comp-plan-preview">
+              <span>Rencana Optimasi: <strong>${escapeHtml(previewPlan.methodLabel)}</strong> (${escapeHtml(previewPlan.presetLabel)})</span>
+              <span class="mono-num">Resolusi: ${previewPlan.originalWidth}×${previewPlan.originalHeight} → ${previewPlan.targetWidth}×${previewPlan.targetHeight} · Estimasi ${previewPlan.estimatedSavedPercent}% lebih ringan tanpa blur</span>
+            </div>
+          `
+              : ''
+          }
+
+          ${
+            toolState.compLoading
+              ? `
+            <div class="admin-progress-box">
+              <div class="admin-progress-head">
+                <span class="admin-progress-label">${escapeHtml(toolState.compProgressLabel || 'Memproses media...')}</span>
+                <strong class="admin-progress-pct mono-num">${Math.round(toolState.compProgressPct)}%</strong>
+              </div>
+              <div class="admin-progress-track">
+                <div class="admin-progress-fill" style="width: ${Math.round(toolState.compProgressPct)}%"></div>
+              </div>
+            </div>
+          `
+              : ''
+          }
+
+          ${
+            toolState.compError
+              ? `<div class="form-error" role="alert">${escapeHtml(toolState.compError)}</div>`
+              : ''
+          }
+        </div>
+
+        ${
+          res
+            ? `
+          <div class="comp-result-card" data-testid="comp-result-card">
+            <div class="comp-result-preview">
+              ${
+                res.mediaKind === 'video'
+                  ? `<video class="dl-video-preview" controls playsinline src="${escapeHtml(res.outputUrl)}"></video>`
+                  : `<img src="${escapeHtml(res.outputUrl)}" alt="Hasil kompresi HD" class="dl-thumb-img" />`
+              }
+            </div>
+            <div class="comp-result-body">
+              <div class="dl-result-badges">
+                <span class="dl-plat-pill is-detected">${escapeHtml(res.qualityBadge)}</span>
+                <span class="dl-dur-pill">${escapeHtml(res.plan.methodLabel)}</span>
+                <span class="dl-dur-pill">${escapeHtml(res.plan.presetLabel)}</span>
+              </div>
+
+              <h4 class="dl-result-title">${escapeHtml(res.fileName)}</h4>
+
+              <div class="comp-stats-grid">
+                <div class="comp-stat-box">
+                  <span>Ukuran Awal</span>
+                  <strong class="mono-num">${escapeHtml(res.originalSizeLabel)}</strong>
+                  <small class="mono-num">${res.originalWidth}×${res.originalHeight}px</small>
+                </div>
+                <div class="comp-stat-box is-highlight">
+                  <span>Ukuran Hasil HD</span>
+                  <strong class="mono-num">${escapeHtml(res.compressedSizeLabel)}</strong>
+                  <small class="mono-num">${res.targetWidth}×${res.targetHeight}px</small>
+                </div>
+                <div class="comp-stat-box">
+                  <span>Penghematan &amp; Status</span>
+                  <strong class="mono-num">${res.savedBytes > 0 ? `-${res.savedPercent}% (${escapeHtml(res.savedBytesLabel)})` : 'Bit-Exact Optimal'}</strong>
+                  <small>Lolos batas kompresi sosmed</small>
+                </div>
+              </div>
+
+              <ul class="comp-guard-list">
+                ${(res.plan.guardrails || [])
+                  .map((g) => `<li>✓ ${escapeHtml(g)}</li>`)
+                  .join('')}
+              </ul>
+
+              <div class="comp-result-actions">
+                <a
+                  href="${escapeHtml(res.outputUrl)}"
+                  download="${escapeHtml(res.fileName)}"
+                  class="btn btn-primary btn-sm"
+                  data-testid="comp-download-btn"
+                >
+                  Unduh Hasil Kompres HD (${escapeHtml(res.compressedSizeLabel)})
+                </a>
+                <button type="button" class="btn btn-ghost btn-sm" id="comp-reset-btn">
+                  Kompres File Lain
+                </button>
+              </div>
+            </div>
+          </div>
+        `
             : ''
         }
       </div>
@@ -1416,6 +1860,48 @@ export function createToolsHubController({
     }
   }
 
+  async function handleSelectCompressorFile(file) {
+    if (!file) return;
+    toolState.compError = '';
+    toolState.compResult = null;
+    try {
+      const info = await inspectMediaFile(file);
+      toolState.compFile = file;
+      toolState.compInspect = info;
+      render();
+    } catch (err) {
+      toolState.compError = err?.message || 'File tidak dapat diproses.';
+      render();
+    }
+  }
+
+  async function runActiveCompression() {
+    if (!toolState.compFile || toolState.compLoading) return;
+    toolState.compLoading = true;
+    toolState.compError = '';
+    toolState.compProgressPct = 10;
+    toolState.compProgressLabel = 'Memulai analisis bitstream...';
+    render();
+
+    try {
+      const result = await compressMediaFile(toolState.compFile, {
+        methodId: toolState.compMethodId,
+        presetId: toolState.compPresetId,
+        onProgress: (p) => {
+          toolState.compProgressPct = p.percent || 50;
+          toolState.compProgressLabel = p.label || 'Memproses...';
+        },
+      });
+      toolState.compResult = result;
+      onToast(`Kompresi HD selesai! Kualitas terjaga 100%.`);
+    } catch (err) {
+      toolState.compError = err?.message || 'Gagal mengoptimalkan file media.';
+    } finally {
+      toolState.compLoading = false;
+      render();
+    }
+  }
+
   function bindToolEvents() {
     rootEl.querySelectorAll('[data-tool-subtab]').forEach((btn) => {
       btn.addEventListener('click', () => {
@@ -1445,7 +1931,7 @@ export function createToolsHubController({
       });
     });
 
-    // Prayer search (supports Kelurahan/Kecamatan & Kab/Kota)
+    // Prayer search
     const refreshPrayerSearchDom = () => {
       const slot = rootEl.querySelector('#prayer-search-results-slot');
       if (!slot) return;
@@ -1518,7 +2004,7 @@ export function createToolsHubController({
 
     bindPrayerSearchOptionHandlers();
 
-    // Weather search
+    // Weather search & real-time micro-climate calibration
     const weatherSearch = rootEl.querySelector('#weather-city-search');
     weatherSearch?.addEventListener('input', (e) => {
       toolState.weatherSearchQuery = e.target.value;
@@ -1546,6 +2032,20 @@ export function createToolsHubController({
         toolState.weatherSearchQuery = '';
         loadWeatherForCurrentLocation();
         loadPrayerForCurrentLocation();
+      });
+    });
+
+    rootEl.querySelectorAll('[data-weather-cal]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const mode = btn.getAttribute('data-weather-cal') || 'auto';
+        toolState.weatherCalibration = mode;
+        saveWeatherCalibration(mode);
+        render();
+        onToast(
+          mode === 'auto'
+            ? 'Mode sensor cuaca otomatis diaktifkan.'
+            : 'Kondisi cuaca aktual di titik lokasi Anda berhasil dikalibrasi.'
+        );
       });
     });
 
@@ -1712,6 +2212,7 @@ export function createToolsHubController({
         toolState.dlError = '';
         toolState.dlResult = null;
         toolState.dlSavingIdx = -1;
+        toolState.dlBatchSaving = false;
         render();
       });
 
@@ -1727,13 +2228,81 @@ export function createToolsHubController({
         try {
           const result = await fetchMediaDownload(url);
           toolState.dlResult = result;
-          onToast(`Berhasil! ${result.links.length} opsi unduhan siap.`);
+          const photoCount = result.photos?.length || 0;
+          onToast(
+            photoCount > 1
+              ? `Berhasil! ${photoCount} slide foto HD & caption siap diunduh.`
+              : `Berhasil! ${result.links.length} opsi unduhan siap.`
+          );
         } catch (err) {
           toolState.dlError = err?.message || 'Gagal mengambil tautan unduhan.';
         } finally {
           toolState.dlLoading = false;
           render();
         }
+      });
+
+      rootEl.querySelector('#dl-copy-caption-btn')?.addEventListener('click', async () => {
+        const cap = String(toolState.dlResult?.caption || toolState.dlResult?.title || '').trim();
+        if (!cap) return;
+        try {
+          await navigator.clipboard.writeText(cap);
+          onToast('Caption berhasil disalin ke clipboard!');
+        } catch {
+          const ta = document.createElement('textarea');
+          ta.value = cap;
+          document.body.appendChild(ta);
+          ta.select();
+          document.execCommand('copy');
+          ta.remove();
+          onToast('Caption berhasil disalin!');
+        }
+      });
+
+      rootEl.querySelector('#dl-batch-photos-btn')?.addEventListener('click', async () => {
+        const photos = toolState.dlResult?.photos || [];
+        if (photos.length === 0 || toolState.dlBatchSaving) return;
+        toolState.dlBatchSaving = true;
+        toolState.dlBatchProgressText = `Mengunduh 1/${photos.length}...`;
+        render();
+        try {
+          await triggerBatchPhotoDownload(
+            photos,
+            `${toolState.dlResult.platform}-${toolState.dlResult.title}`,
+            ({ current, total }) => {
+              toolState.dlBatchProgressText = `Mengunduh ${current}/${total}...`;
+              const btn = rootEl.querySelector('#dl-batch-photos-btn');
+              if (btn) btn.textContent = toolState.dlBatchProgressText;
+            }
+          );
+          onToast(`Berhasil mengunduh ${photos.length} foto HD!`);
+        } catch (err) {
+          toolState.dlError = err?.message || 'Sebagian foto gagal diunduh.';
+        } finally {
+          toolState.dlBatchSaving = false;
+          toolState.dlBatchProgressText = '';
+          render();
+        }
+      });
+
+      rootEl.querySelectorAll('[data-dl-photo-url]').forEach((btn) => {
+        btn.addEventListener('click', async () => {
+          const url = btn.getAttribute('data-dl-photo-url');
+          const ext = btn.getAttribute('data-dl-photo-ext') || 'jpg';
+          const idx = Number(btn.getAttribute('data-dl-photo-idx')) || 0;
+          if (!url) return;
+          try {
+            await triggerDirectMediaSave(
+              url,
+              `${toolState.dlResult?.platform || 'sosmed'}-foto-${idx + 1}`,
+              ext
+            );
+            onToast(`Mengunduh Foto #${idx + 1}...`);
+          } catch (err) {
+            toolState.dlError = err?.message || 'Gagal mengunduh foto.';
+            render();
+          }
+        });
       });
 
       rootEl.querySelectorAll('.dl-video-preview, .dl-audio-preview').forEach((mediaEl) => {
@@ -1770,6 +2339,73 @@ export function createToolsHubController({
             render();
           }
         });
+      });
+    }
+
+    if (toolState.activeSubTab === 'compressor') {
+      rootEl.querySelectorAll('[data-comp-method]').forEach((btn) => {
+        btn.addEventListener('click', () => {
+          const id = btn.getAttribute('data-comp-method');
+          if (!id) return;
+          toolState.compMethodId = id;
+          render();
+        });
+      });
+
+      rootEl.querySelectorAll('[data-comp-preset]').forEach((btn) => {
+        btn.addEventListener('click', () => {
+          const id = btn.getAttribute('data-comp-preset');
+          if (!id) return;
+          toolState.compPresetId = id;
+          render();
+        });
+      });
+
+      const fileInput = rootEl.querySelector('#comp-file-input');
+      fileInput?.addEventListener('change', (e) => {
+        const file = e.target.files?.[0];
+        if (file) handleSelectCompressorFile(file);
+      });
+
+      const dropzone = rootEl.querySelector('#comp-dropzone');
+      dropzone?.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        dropzone.classList.add('is-dragover');
+      });
+      dropzone?.addEventListener('dragleave', () => {
+        dropzone.classList.remove('is-dragover');
+      });
+      dropzone?.addEventListener('drop', (e) => {
+        e.preventDefault();
+        dropzone.classList.remove('is-dragover');
+        const file = e.dataTransfer?.files?.[0];
+        if (file) handleSelectCompressorFile(file);
+      });
+
+      rootEl.querySelector('#comp-run-btn')?.addEventListener('click', () => {
+        runActiveCompression();
+      });
+
+      rootEl.querySelector('#comp-reset-btn')?.addEventListener('click', () => {
+        toolState.compFile = null;
+        toolState.compInspect = null;
+        toolState.compResult = null;
+        toolState.compError = '';
+        render();
+      });
+
+      rootEl.querySelector('#comp-demo-sample-btn')?.addEventListener('click', async () => {
+        try {
+          const res = await fetch('./assets/hero-banner.jpg');
+          const blob = await res.blob();
+          const sampleFile = new File([blob], 'manifestudio-sample-hd.jpg', {
+            type: 'image/jpeg',
+          });
+          await handleSelectCompressorFile(sampleFile);
+          await runActiveCompression();
+        } catch {
+          onToast('Pilih foto atau video dari perangkat Anda.');
+        }
       });
     }
   }
@@ -1815,6 +2451,8 @@ export function createToolsHubController({
         ? renderWorldClockPanel()
         : toolState.activeSubTab === 'speedtest'
         ? renderSpeedtestPanel()
+        : toolState.activeSubTab === 'compressor'
+        ? renderCompressorPanel()
         : renderDownloaderPanel();
 
     rootEl.innerHTML = `
@@ -1870,6 +2508,16 @@ export function createToolsHubController({
             <img src="./assets/icons/tool-downloader.svg" alt="" width="28" height="28" class="tools-subtab-icon" />
             <span>Downloader</span>
           </button>
+          <button
+            type="button"
+            role="tab"
+            class="tools-subtab ${toolState.activeSubTab === 'compressor' ? 'is-active' : ''}"
+            data-tool-subtab="compressor"
+            aria-selected="${toolState.activeSubTab === 'compressor'}"
+          >
+            <img src="./assets/icons/tool-compressor.svg" alt="" width="28" height="28" class="tools-subtab-icon" />
+            <span>Kompresor HD</span>
+          </button>
         </div>
 
         ${activeTabHtml}
@@ -1888,7 +2536,8 @@ export function createToolsHubController({
         subTab === 'weather' ||
         subTab === 'worldclock' ||
         subTab === 'speedtest' ||
-        subTab === 'downloader'
+        subTab === 'downloader' ||
+        subTab === 'compressor'
       ) {
         toolState.activeSubTab = subTab;
       }

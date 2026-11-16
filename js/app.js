@@ -14,8 +14,10 @@ import {
   formatRupiah,
   generateOrderCode,
   getStartingPrice,
+  normalizeBanners,
   normalizeBrandConfig,
   removeFromCart,
+  resolveAbsoluteOgImageUrl,
   syncPaymentOptionsWithBrand,
   updateCartQty,
   validateOrderForm,
@@ -51,6 +53,10 @@ const state = {
 
 function getBrand() {
   return normalizeBrandConfig(state.catalog.brand || DEFAULT_BRAND);
+}
+
+function getBanners() {
+  return normalizeBanners(state.catalog.banners);
 }
 
 function getCategories() {
@@ -341,6 +347,90 @@ function renderCatalog() {
   });
 }
 
+let applyBannerSlideFn = null;
+
+function renderBanners() {
+  const track = document.getElementById('banner-track');
+  const dotsContainer = document.getElementById('banner-dots');
+  if (!track) return;
+
+  const banners = getBanners();
+  if (state.activeBannerSlide >= banners.length) {
+    state.activeBannerSlide = 0;
+  }
+
+  track.innerHTML = banners
+    .map((b, idx) => {
+      const scrimClass =
+        b.scrim && b.scrim !== 'default' ? `scrim-${escapeHtml(b.scrim)}` : '';
+      const hasImage = Boolean(String(b.image || '').trim());
+      const frameExtraClass = !hasImage
+        ? b.scrim === 'downloader'
+          ? 'banner-slide-downloader'
+          : 'banner-slide-gradient'
+        : '';
+      const isCatalogAnchor = b.href === '#katalog';
+      const btnClass = idx === 0 && isCatalogAnchor ? 'btn btn-primary btn-sm' : 'btn btn-outline-light btn-sm';
+
+      return `
+        <article
+          class="promo-banner-frame banner-slide ${frameExtraClass}"
+          data-slide-index="${idx}"
+          data-banner-id="${escapeHtml(b.id)}"
+          data-banner-href="${escapeHtml(b.href || '#katalog')}"
+          aria-hidden="${idx !== state.activeBannerSlide}"
+        >
+          ${
+            hasImage
+              ? `<img
+                  src="${escapeHtml(b.image)}"
+                  alt="${escapeHtml(b.heading)}"
+                  class="promo-banner-img"
+                  width="1200"
+                  height="400"
+                  ${idx === 0 ? 'fetchpriority="high"' : 'loading="lazy"'}
+                />`
+              : ''
+          }
+          <div class="promo-banner-scrim ${scrimClass}" aria-hidden="true"></div>
+          <div class="promo-banner-content">
+            <div class="promo-banner-copy">
+              <span class="promo-kicker">${escapeHtml(b.kicker)}</span>
+              <h2 class="promo-heading">${escapeHtml(b.heading)}</h2>
+              ${b.sub ? `<p class="promo-sub">${escapeHtml(b.sub)}</p>` : ''}
+            </div>
+            <div class="promo-banner-cta">
+              <a href="${escapeHtml(b.href || '#katalog')}" class="${btnClass}">
+                ${escapeHtml(b.ctaLabel || 'Selengkapnya')}
+              </a>
+            </div>
+          </div>
+        </article>
+      `;
+    })
+    .join('');
+
+  if (dotsContainer) {
+    dotsContainer.innerHTML = banners
+      .map(
+        (b, idx) => `
+        <button
+          type="button"
+          class="banner-dot ${idx === state.activeBannerSlide ? 'is-active' : ''}"
+          data-slide-dot="${idx}"
+          aria-label="Slide ${idx + 1}: ${escapeHtml(b.heading)}"
+          aria-selected="${idx === state.activeBannerSlide}"
+        ></button>
+      `
+      )
+      .join('');
+  }
+
+  if (typeof applyBannerSlideFn === 'function') {
+    applyBannerSlideFn(state.activeBannerSlide, { immediate: true });
+  }
+}
+
 function initBannerCarousel() {
   const carousel = document.getElementById('hero-carousel');
   const track = document.getElementById('banner-track');
@@ -348,10 +438,6 @@ function initBannerCarousel() {
   const nextBtn = document.getElementById('banner-next-btn');
   const dotsContainer = document.getElementById('banner-dots');
   if (!carousel || !track) return;
-
-  const slides = Array.from(track.querySelectorAll('.banner-slide'));
-  const totalSlides = slides.length;
-  if (totalSlides <= 1) return;
 
   let autoTimer = null;
   let isPointerDown = false;
@@ -364,7 +450,15 @@ function initBannerCarousel() {
 
   const prefersReducedMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
 
+  function getSlides() {
+    return Array.from(track.querySelectorAll('.banner-slide'));
+  }
+
   function applySlide(index, { immediate = false } = {}) {
+    const slides = getSlides();
+    const totalSlides = slides.length;
+    if (totalSlides === 0) return;
+
     const wrapped = ((index % totalSlides) + totalSlides) % totalSlides;
     state.activeBannerSlide = wrapped;
     track.style.transition = immediate ? 'none' : '';
@@ -382,11 +476,13 @@ function initBannerCarousel() {
     });
   }
 
+  applyBannerSlideFn = applySlide;
+
   function startAutoSlide() {
     if (prefersReducedMotion) return;
     stopAutoSlide();
     autoTimer = setInterval(() => {
-      if (!document.hidden && !isPointerDown) {
+      if (!document.hidden && !isPointerDown && getSlides().length > 1) {
         applySlide(state.activeBannerSlide + 1);
       }
     }, 6500);
@@ -421,15 +517,16 @@ function initBannerCarousel() {
     startAutoSlide();
   });
 
-  dotsContainer?.querySelectorAll('[data-slide-dot]').forEach((dot) => {
-    dot.addEventListener('click', () => {
-      const idx = Number(dot.getAttribute('data-slide-dot') || 0);
-      applySlide(idx);
-      startAutoSlide();
-    });
+  dotsContainer?.addEventListener('click', (e) => {
+    const dot = e.target.closest('[data-slide-dot]');
+    if (!dot) return;
+    const idx = Number(dot.getAttribute('data-slide-dot') || 0);
+    applySlide(idx);
+    startAutoSlide();
   });
 
   carousel.addEventListener('keydown', (e) => {
+    const slides = getSlides();
     if (e.key === 'ArrowLeft') {
       e.preventDefault();
       applySlide(state.activeBannerSlide - 1);
@@ -455,6 +552,7 @@ function initBannerCarousel() {
   carousel.addEventListener('pointerdown', (e) => {
     if (e.button !== 0 && e.pointerType === 'mouse') return;
     if (e.target.closest('button, a')) return;
+    const slides = getSlides();
     isPointerDown = true;
     hasMoved = false;
     dragStartX = e.clientX;
@@ -1367,6 +1465,29 @@ function renderBrandAndFooter() {
     footerCopyEl.textContent = brand.footerText;
   }
 
+  // Sync OpenGraph & Document Meta Tags dynamically
+  const og = brand.openGraph || {};
+  if (og.title) {
+    document.title = og.title;
+  }
+  const setMetaContent = (selector, value) => {
+    if (!value) return;
+    const el = document.querySelector(selector);
+    if (el) el.setAttribute('content', value);
+  };
+  const absOgImage = resolveAbsoluteOgImageUrl(og.image || './assets/og-manifestudio.jpg', window.location.origin);
+  setMetaContent('meta[name="description"]', og.description);
+  setMetaContent('meta[property="og:site_name"]', og.siteName || brand.name);
+  setMetaContent('meta[property="og:title"]', og.title);
+  setMetaContent('meta[property="og:description"]', og.description);
+  setMetaContent('meta[property="og:image"]', absOgImage);
+  setMetaContent('meta[property="og:image:secure_url"]', absOgImage);
+  setMetaContent('meta[property="og:image:alt"]', og.imageAlt);
+  setMetaContent('meta[name="twitter:title"]', og.title);
+  setMetaContent('meta[name="twitter:description"]', og.description);
+  setMetaContent('meta[name="twitter:image"]', absOgImage);
+  setMetaContent('meta[name="twitter:image:alt"]', og.imageAlt);
+
   const socialContainer = document.getElementById('footer-social-links');
   if (socialContainer) {
     const installBtn = socialContainer.querySelector('#footer-install-link');
@@ -1403,6 +1524,7 @@ function renderBrandAndFooter() {
 function renderAllStorefrontViews() {
   renderPreviewNotice();
   renderBrandAndFooter();
+  renderBanners();
   renderCategories();
   renderCatalog();
   renderFaq();

@@ -1,10 +1,13 @@
 /**
  * Client-side API adapters for No-Watermark Media Downloader
- * Supports TikTok (HD/SD/MP3 No Watermark), YouTube (Direct MP4/MP3 without 3P redirects),
- * Facebook (HD/SD), & Instagram (Reels/Post).
+ * Supports TikTok (HD/SD/MP3 No Watermark + Photo Carousel + Story),
+ * YouTube (Direct MP4/MP3 without 3P redirects),
+ * Facebook (HD/SD Video + Photo Post + Story),
+ * & Instagram (Reels, Single Photo, Multi-Photo Carousel, Story, & Copy Caption).
  */
 
 import {
+  detectDownloaderContentType,
   detectDownloaderPlatform,
   isBlockedRedirectDownloadUrl,
   normalizeDownloaderResult,
@@ -57,25 +60,26 @@ export async function fetchMediaDownload(rawUrl) {
     throw new Error('Link tidak dikenali. Gunakan tautan TikTok, YouTube, Instagram, atau Facebook.');
   }
 
+  const contentType = detectDownloaderContentType(cleanUrl);
   const encoded = encodeURIComponent(cleanUrl);
 
   if (platform === 'tiktok') {
-    // 1. Primary: TikWM HD No Watermark API
+    // 1. Primary: TikWM HD No Watermark API (supports Video, Story, and Photo Mode Carousels via d.images)
     try {
       const json = await fetchJsonWithTimeout(`https://www.tikwm.com/api/?url=${encoded}&hd=1`, 9500);
-      const normalized = normalizeDownloaderResult(json, 'tiktok');
-      if (normalized && normalized.links.length > 0) {
+      const normalized = normalizeDownloaderResult(json, 'tiktok', cleanUrl);
+      if (normalized && (normalized.links.length > 0 || normalized.photos?.length > 0)) {
         return normalized;
       }
     } catch {
       // Fall through
     }
 
-    // 2. Secondary: Cobalt direct stream
+    // 2. Secondary: Cobalt direct stream / picker (supports TikTok photo slideshows & stories)
     try {
-      const json = await fetchCobaltMedia(cleanUrl, { videoQuality: '720' }, 11000);
-      const normalized = normalizeDownloaderResult(json, 'tiktok');
-      if (normalized && normalized.links.length > 0) {
+      const json = await fetchCobaltMedia(cleanUrl, { videoQuality: '1080' }, 11000);
+      const normalized = normalizeDownloaderResult(json, 'tiktok', cleanUrl);
+      if (normalized && (normalized.links.length > 0 || normalized.photos?.length > 0)) {
         return normalized;
       }
     } catch {
@@ -88,15 +92,17 @@ export async function fetchMediaDownload(rawUrl) {
         `https://apis.davidcyriltech.my.id/download/tiktok?url=${encoded}`,
         11000
       );
-      const normalized = normalizeDownloaderResult(json, 'tiktok');
-      if (normalized && normalized.links.length > 0) {
+      const normalized = normalizeDownloaderResult(json, 'tiktok', cleanUrl);
+      if (normalized && (normalized.links.length > 0 || normalized.photos?.length > 0)) {
         return normalized;
       }
     } catch {
       // Handled below
     }
 
-    throw new Error('Gagal memproses video TikTok. Pastikan video bersifat publik lalu coba lagi.');
+    throw new Error(
+      'Gagal memproses postingan/story TikTok. Pastikan postingan bersifat publik lalu coba lagi.'
+    );
   }
 
   if (platform === 'youtube') {
@@ -135,7 +141,8 @@ export async function fetchMediaDownload(rawUrl) {
         tioo: tiooRes.status === 'fulfilled' ? tiooRes.value : null,
         mp4: mp4Fallback,
       },
-      'youtube'
+      'youtube',
+      cleanUrl
     );
 
     if (normalized && normalized.links.length > 0) {
@@ -145,11 +152,11 @@ export async function fetchMediaDownload(rawUrl) {
   }
 
   if (platform === 'facebook') {
-    // 1. Primary: Cobalt direct Facebook tunnel
+    // 1. Primary: Cobalt direct Facebook tunnel (supports video, photo posts, & stories)
     try {
-      const json = await fetchCobaltMedia(cleanUrl, { videoQuality: '720' }, 12000);
-      const normalized = normalizeDownloaderResult(json, 'facebook');
-      if (normalized && normalized.links.length > 0) {
+      const json = await fetchCobaltMedia(cleanUrl, { videoQuality: '1080' }, 12000);
+      const normalized = normalizeDownloaderResult(json, 'facebook', cleanUrl);
+      if (normalized && (normalized.links.length > 0 || normalized.photos?.length > 0)) {
         return normalized;
       }
     } catch {
@@ -159,8 +166,8 @@ export async function fetchMediaDownload(rawUrl) {
     // 2. Secondary: Tioo Facebook API
     try {
       const json = await fetchJsonWithTimeout(`https://backend1.tioo.eu.org/fbdown?url=${encoded}`, 11000);
-      const normalized = normalizeDownloaderResult(json, 'facebook');
-      if (normalized && normalized.links.length > 0) {
+      const normalized = normalizeDownloaderResult(json, 'facebook', cleanUrl);
+      if (normalized && (normalized.links.length > 0 || normalized.photos?.length > 0)) {
         return normalized;
       }
     } catch {
@@ -173,55 +180,74 @@ export async function fetchMediaDownload(rawUrl) {
         `https://apis.davidcyriltech.my.id/facebook?url=${encoded}`,
         11000
       );
-      const normalized = normalizeDownloaderResult(json, 'facebook');
-      if (normalized && normalized.links.length > 0) {
+      const normalized = normalizeDownloaderResult(json, 'facebook', cleanUrl);
+      if (normalized && (normalized.links.length > 0 || normalized.photos?.length > 0)) {
         return normalized;
       }
     } catch {
       // Handled below
     }
 
-    throw new Error('Video Facebook tidak ditemukan atau bersifat privat.');
+    throw new Error('Postingan/Story Facebook tidak ditemukan atau bersifat privat.');
   }
 
   if (platform === 'instagram') {
-    // 1. Primary: Tioo IG Downloader (direct RapidCDN stream)
-    try {
-      const json = await fetchJsonWithTimeout(`https://backend1.tioo.eu.org/igdl?url=${encoded}`, 22000);
-      const normalized = normalizeDownloaderResult(json, 'instagram');
-      if (normalized && normalized.links.length > 0) {
-        return normalized;
-      }
-    } catch {
-      // Fall through to Cobalt
+    // Run Tioo IG (supports single photo, carousel array, reels, & stories) and Cobalt in parallel for speed & resilience
+    const [tiooSettled, cobaltSettled, ryzenSettled] = await Promise.allSettled([
+      fetchJsonWithTimeout(`https://backend1.tioo.eu.org/igdl?url=${encoded}`, 16000),
+      fetchCobaltMedia(cleanUrl, { videoQuality: '1080' }, 12500),
+      fetchJsonWithTimeout(`https://api.ryzendesu.vip/api/downloader/igdl?url=${encoded}`, 12500),
+    ]);
+
+    const candidates = [];
+    if (tiooSettled.status === 'fulfilled' && tiooSettled.value) {
+      const norm = normalizeDownloaderResult(tiooSettled.value, 'instagram', cleanUrl);
+      if (norm && (norm.links.length > 0 || norm.photos?.length > 0)) candidates.push(norm);
+    }
+    if (cobaltSettled.status === 'fulfilled' && cobaltSettled.value) {
+      const norm = normalizeDownloaderResult(cobaltSettled.value, 'instagram', cleanUrl);
+      if (norm && (norm.links.length > 0 || norm.photos?.length > 0)) candidates.push(norm);
+    }
+    if (ryzenSettled.status === 'fulfilled' && ryzenSettled.value) {
+      const norm = normalizeDownloaderResult(ryzenSettled.value, 'instagram', cleanUrl);
+      if (norm && (norm.links.length > 0 || norm.photos?.length > 0)) candidates.push(norm);
     }
 
-    // 2. Secondary: Cobalt direct Instagram tunnel / picker
-    try {
-      const json = await fetchCobaltMedia(cleanUrl, { videoQuality: '720' }, 12000);
-      const normalized = normalizeDownloaderResult(json, 'instagram');
-      if (normalized && normalized.links.length > 0) {
-        return normalized;
+    if (candidates.length > 0) {
+      // Pick the candidate with the richest photo/link set + caption
+      candidates.sort((a, b) => {
+        const scoreA = (a.photos?.length || 0) * 3 + (a.links?.length || 0) * 2 + (a.caption ? 2 : 0);
+        const scoreB = (b.photos?.length || 0) * 3 + (b.links?.length || 0) * 2 + (b.caption ? 2 : 0);
+        return scoreB - scoreA;
+      });
+      const best = candidates[0];
+      // Merge caption if another candidate extracted a caption while best didn't
+      if (!best.caption) {
+        const withCaption = candidates.find((c) => Boolean(c.caption));
+        if (withCaption) best.caption = withCaption.caption;
       }
-    } catch {
-      // Fall through
+      return best;
     }
 
-    // 3. Last fallback: DavidCyril IG
+    // 4. Last fallback: DavidCyril IG
     try {
       const json = await fetchJsonWithTimeout(
         `https://apis.davidcyriltech.my.id/instagram?url=${encoded}`,
         11000
       );
-      const normalized = normalizeDownloaderResult(json, 'instagram');
-      if (normalized && normalized.links.length > 0) {
+      const normalized = normalizeDownloaderResult(json, 'instagram', cleanUrl);
+      if (normalized && (normalized.links.length > 0 || normalized.photos?.length > 0)) {
         return normalized;
       }
     } catch {
       // Never leak raw HTTP 500 error codes to user
     }
 
-    throw new Error('Reels / Post Instagram tidak tersedia atau akun bersifat privat.');
+    throw new Error(
+      contentType.isStory
+        ? 'Story Instagram tidak tersedia atau akun bersifat privat.'
+        : 'Postingan Foto / Carousel / Reels Instagram tidak tersedia atau akun bersifat privat.'
+    );
   }
 
   throw new Error('Platform belum didukung.');
@@ -277,4 +303,25 @@ export async function triggerDirectMediaSave(fileUrl, baseName = 'manifestudio-m
   a.click();
   a.remove();
   return false;
+}
+
+export async function triggerBatchPhotoDownload(photos = [], baseTitle = 'manifestudio-slide', onProgress = () => {}) {
+  const list = Array.isArray(photos) ? photos : [];
+  if (list.length === 0) return 0;
+
+  let completed = 0;
+  for (let i = 0; i < list.length; i += 1) {
+    const item = list[i];
+    onProgress({ current: i + 1, total: list.length });
+    await triggerDirectMediaSave(
+      item.url,
+      `${baseTitle}-foto-${i + 1}`,
+      item.ext || 'jpg'
+    );
+    completed += 1;
+    if (i < list.length - 1) {
+      await new Promise((r) => setTimeout(r, 380));
+    }
+  }
+  return completed;
 }

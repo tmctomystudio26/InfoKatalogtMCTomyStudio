@@ -13,6 +13,15 @@ export const BRAND = {
   payLaterSurchargeRate: 0.1,
   serviceFeeFlat: 0,
   serviceFeeLabel: 'Biaya Layanan',
+  openGraph: {
+    title: 'Manifestudio — Katalog Akun Premium & Menu Utilitas Digital',
+    description:
+      'Pesan Netflix, Canva Pro, YouTube, Spotify, Viu, Vidio, Alight Motion, WeTV & Prime Video instan. Dilengkapi Jadwal Sholat Kemenag RI, Prakiraan Cuaca, Jam Dunia UTC, Speedtest, Downloader & Kompres Media HD.',
+    tagline: 'Premium Account & Utilitas Digital by Tomy',
+    image: './assets/og-manifestudio.jpg',
+    imageAlt: 'Manifestudio — Katalog Akun Premium & Layanan Digital Terpercaya',
+    siteName: 'Manifestudio',
+  },
   socials: [
     {
       id: 'social-whatsapp',
@@ -40,6 +49,79 @@ export const BRAND = {
     },
   ],
 };
+
+export const BANNERS = [
+  {
+    id: 'banner-katalog',
+    kicker: 'Katalog Akun Premium · Harga Pelajar',
+    heading: 'Langganan Aplikasi Favorit, Aktif Dalam Hitungan Menit.',
+    sub: 'Pilih paket Sharing atau Privat bergaransi jelas. Checkout praktis langsung ke WhatsApp Admin.',
+    ctaLabel: 'Lihat Katalog',
+    href: '#katalog',
+    image: './assets/hero-banner.jpg',
+    scrim: 'default',
+  },
+  {
+    id: 'banner-prayer',
+    kicker: 'Menu Lainnya · Jadwal Sholat',
+    heading: 'Waktu Imsak & Sholat 5 Waktu Resmi Kemenag RI',
+    sub: 'Deteksi otomatis lokasi GPS/kecamatan kamu lengkap dengan hitung mundur waktu sholat berikutnya.',
+    ctaLabel: 'Buka Jadwal Sholat',
+    href: './tools.html?tab=prayer',
+    image: './assets/banner-prayer.jpg',
+    scrim: 'prayer',
+  },
+  {
+    id: 'banner-weather',
+    kicker: 'Menu Lainnya · Prakiraan Cuaca',
+    heading: 'Pantau Cuaca Real-Time & Prakiraan 7 Hari',
+    sub: 'Cek suhu, curah hujan aktual per jam, hembusan angin, dan prakiraan mingguan di kotamu.',
+    ctaLabel: 'Cek Cuaca',
+    href: './tools.html?tab=weather',
+    image: './assets/banner-weather.jpg',
+    scrim: 'weather',
+  },
+  {
+    id: 'banner-worldclock',
+    kicker: 'Menu Lainnya · Standar UTC',
+    heading: 'Putar Bola Dunia & Konversi WIB/WITA/WIT',
+    sub: 'Klik negara di globe interaktif untuk cek zona waktu & selisih jam Indonesia.',
+    ctaLabel: 'Putar Bola Dunia',
+    href: './tools.html?tab=worldclock',
+    image: './assets/banner-worldclock.jpg',
+    scrim: 'world',
+  },
+  {
+    id: 'banner-speedtest',
+    kicker: 'Menu Lainnya · Speedtest',
+    heading: 'Uji Kecepatan Internet & Ping Real-Time',
+    sub: 'Cek rata-rata download, upload, latensi, server, ISP, dan info perangkat dalam satu klik.',
+    ctaLabel: 'Mulai Speedtest',
+    href: './tools.html?tab=speedtest',
+    image: './assets/banner-speedtest.jpg',
+    scrim: 'weather',
+  },
+  {
+    id: 'banner-downloader',
+    kicker: 'Menu Lainnya · Downloader',
+    heading: 'Download Video, Foto, Story & Caption Sosmed Tanpa Watermark',
+    sub: 'Unduh video MP4 HD, slide foto TikTok/IG, Story, MP3, & salin caption otomatis.',
+    ctaLabel: 'Buka Downloader',
+    href: './tools.html?tab=downloader',
+    image: '',
+    scrim: 'downloader',
+  },
+  {
+    id: 'banner-compressor',
+    kicker: 'Menu Lainnya · Kompresor HD',
+    heading: 'Kompres Foto & Video Anti-Pecah untuk TikTok, IG & WA',
+    sub: 'Optimasi ukuran file tanpa mengurangi kualitas visual agar tidak dikompres ulang oleh sosmed.',
+    ctaLabel: 'Kompres Media HD',
+    href: './tools.html?tab=compressor',
+    image: '',
+    scrim: 'world',
+  },
+];
 
 export const CATEGORIES = [
   { id: 'all', label: 'Semua Layanan' },
@@ -313,6 +395,10 @@ function normalizeLoadedCatalog(fallback, rawCatalog = {}) {
   const mergedBrand = {
     ...fallback.brand,
     ...(rawCatalog.brand || {}),
+    openGraph: {
+      ...(fallback.brand.openGraph || {}),
+      ...(rawCatalog.brand?.openGraph || {}),
+    },
   };
   if (
     !mergedBrand.tagline ||
@@ -335,6 +421,10 @@ function normalizeLoadedCatalog(fallback, rawCatalog = {}) {
     ...fallback,
     ...rawCatalog,
     brand: mergedBrand,
+    banners:
+      Array.isArray(rawCatalog.banners) && rawCatalog.banners.length > 0
+        ? rawCatalog.banners.map((b) => ({ ...b }))
+        : (fallback.banners || []).map((b) => ({ ...b })),
     categories:
       Array.isArray(rawCatalog.categories) && rawCatalog.categories.length > 0
         ? rawCatalog.categories
@@ -351,8 +441,10 @@ export function getDefaultCatalogSnapshot() {
     brand: {
       ...BRAND,
       payLaterSurchargeRate: PAY_LATER_SURCHARGE_RATE,
+      openGraph: { ...(BRAND.openGraph || {}) },
       socials: (BRAND.socials || []).map((s) => ({ ...s })),
     },
+    banners: BANNERS.map((b) => ({ ...b })),
     categories: CATEGORIES.map((c) => ({ ...c })),
     paymentOptions: PAYMENT_OPTIONS.map((p) => ({ ...p })),
     vouchers: VOUCHERS.map((v) => ({ ...v })),

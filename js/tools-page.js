@@ -4,7 +4,7 @@ import { loadCatalogData } from './data.js';
 import { normalizeBrandConfig } from './store.js';
 
 const THEME_STORAGE_KEY = 'manifestudio_theme_v1';
-const VALID_TABS = new Set(['prayer', 'weather', 'worldclock', 'speedtest', 'downloader']);
+const VALID_TABS = new Set(['prayer', 'weather', 'worldclock', 'speedtest', 'downloader', 'compressor']);
 
 const TAB_META = {
   prayer: {
@@ -12,8 +12,8 @@ const TAB_META = {
     subtitle: 'Waktu Imsak hingga Isya resmi Kemenag RI sesuai lokasimu.',
   },
   weather: {
-    title: 'Prakiraan Cuaca',
-    subtitle: 'Suhu, kecepatan angin, dan peluang hujan per jam hingga 7 hari.',
+    title: 'Prakiraan Cuaca Presisi',
+    subtitle: 'Deteksi hujan lebat real-time, intensitas mm/jam, suhu, dan angin hingga 7 hari.',
   },
   worldclock: {
     title: 'Jam Dunia & Bola Dunia',
@@ -24,8 +24,12 @@ const TAB_META = {
     subtitle: 'Ukur ping, jitter, download, upload, server, ISP, dan info perangkat.',
   },
   downloader: {
-    title: 'Downloader Video Tanpa Watermark',
-    subtitle: 'Unduh video HD & audio dari TikTok, YouTube, Instagram, dan Facebook.',
+    title: 'Downloader Video, Foto, Carousel & Story',
+    subtitle: 'Unduh video HD, postingan foto, slide carousel, story, & salin caption dari TikTok, IG, YT, dan FB.',
+  },
+  compressor: {
+    title: 'Kompres Foto & Video HD (Anti-Pecah Sosmed)',
+    subtitle: 'Optimalkan ukuran & bitstream tanpa mengurangi kualitas sedikitpun agar unggahan TikTok, IG, & WA tetap jernih.',
   },
 };
 
@@ -44,7 +48,7 @@ function escapeHtml(str) {
 
 function readInitialTab() {
   const params = new URLSearchParams(window.location.search);
-  const tab = (params.get('tab') || '').toLowerCase();
+  const tab = (params.get('tab') || params.get('tool') || '').toLowerCase();
   return VALID_TABS.has(tab) ? tab : 'prayer';
 }
 

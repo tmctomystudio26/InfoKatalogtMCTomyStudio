@@ -6,8 +6,10 @@ import {
 import {
   MAX_HISTORY_LOGS,
   appendCatalogHistory,
+  applyOpenGraphToHtml,
   collectAllActiveUploadLogoPaths,
   collectOrphanedUploadLogos,
+  deleteBannerFromCatalog,
   deleteCategoryFromCatalog,
   deleteFaqFromCatalog,
   deleteSocialFromCatalog,
@@ -15,14 +17,18 @@ import {
   extractManagedUploadLogoPath,
   formatRupiah,
   getProductCardTone,
+  moveBannerInCatalog,
   moveProductInCatalog,
+  normalizeBanners,
   normalizeBrandConfig,
+  normalizeOpenGraphConfig,
   pruneCatalogHistory,
   reorderProductToIndex,
   slugifyId,
   summarizeCatalogDiff,
   syncPaymentOptionsWithBrand,
   toggleProductStockInCatalog,
+  upsertBannerInCatalog,
   upsertCategoryInCatalog,
   upsertFaqInCatalog,
   upsertProductInCatalog,
@@ -61,6 +67,24 @@ const SOCIAL_LOGO_PRESETS = [
   { value: './assets/icons/social-globe.svg', label: 'Website / Link Umum' },
 ];
 
+const BANNER_IMAGE_PRESETS = [
+  { value: './assets/hero-banner.jpg', label: 'Banner Katalog Default' },
+  { value: './assets/banner-prayer.jpg', label: 'Banner Jadwal Sholat' },
+  { value: './assets/banner-weather.jpg', label: 'Banner Prakiraan Cuaca' },
+  { value: './assets/banner-worldclock.jpg', label: 'Banner Jam Dunia' },
+  { value: './assets/banner-speedtest.jpg', label: 'Banner Speedtest' },
+  { value: '', label: 'Tanpa Gambar (Hanya Gradien Warna)' },
+];
+
+const BANNER_SCRIM_OPTIONS = [
+  { value: '', label: 'Biru Gelap Standar' },
+  { value: 'is-emerald', label: 'Hijau Emerald' },
+  { value: 'is-sky', label: 'Biru Langit Cerah' },
+  { value: 'is-indigo', label: 'Indigo / Ungu' },
+  { value: 'is-cyan', label: 'Cyan / Tosca' },
+  { value: 'is-violet', label: 'Violet / Magenta' },
+];
+
 const adminState = {
   theme: 'dark',
   unlocked: false,
@@ -74,6 +98,7 @@ const adminState = {
   dirty: false,
   confirmDeleteProductId: null,
   confirmDeleteCategoryId: null,
+  confirmDeleteBannerId: null,
   remoteSha: null,
   logoEditMode: {}, // { [prodId]: 'upload' | 'link' }
   pendingUploads: {}, // { [key]: { targetPath, base64Content, previewDataUrl, fileName } }
@@ -82,6 +107,7 @@ const adminState = {
   newProdPendingUpload: null,
   brandLogoMode: 'upload',
   newSocialPendingUpload: null,
+  newBannerPendingUpload: null,
   history: [],
   historySha: null,
   isPublishing: false,
@@ -137,9 +163,17 @@ function extractPublishedLogoEntries(catalog) {
   if (catalog?.brand?.logo) {
     items.push({ id: '__brand_logo__', logo: catalog.brand.logo });
   }
+  if (catalog?.brand?.openGraph?.image) {
+    items.push({ id: '__og_image__', logo: catalog.brand.openGraph.image });
+  }
   for (const soc of catalog?.brand?.socials || []) {
     if (soc?.logo) {
       items.push({ id: `__social__${soc.id}`, logo: soc.logo });
+    }
+  }
+  for (const ban of catalog?.banners || []) {
+    if (ban?.image) {
+      items.push({ id: `__banner__${ban.id}`, logo: ban.image });
     }
   }
   return items;
@@ -257,6 +291,74 @@ async function compressLogoFile(file) {
   const commaIdx = rawDataUrl.indexOf(',');
   const base64Content = commaIdx >= 0 ? rawDataUrl.slice(commaIdx + 1) : '';
   const ext = file.type.includes('jpeg') || file.type.includes('jpg') ? 'jpg' : file.type.includes('webp') ? 'webp' : 'png';
+  return {
+    ext,
+    base64Content,
+    previewDataUrl: rawDataUrl,
+  };
+}
+
+async function compressWideImageFile(file, { maxW = 1280, maxH = 720, quality = 0.9 } = {}) {
+  if (!file || !String(file.type || '').startsWith('image/')) {
+    throw new Error('Pilih file gambar yang valid (JPG, PNG, WebP, atau SVG).');
+  }
+
+  if (file.type === 'image/svg+xml') {
+    const text = await file.text();
+    const cleanedSvg = text.replace(/<script[\s\S]*?>[\s\S]*?<\/script>/gi, '');
+    const base64Content = encodeBase64Utf8(cleanedSvg);
+    return {
+      ext: 'svg',
+      base64Content,
+      previewDataUrl: `data:image/svg+xml;base64,${base64Content}`,
+    };
+  }
+
+  const rawDataUrl = await new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result || ''));
+    reader.onerror = () => reject(new Error('Gagal membaca file gambar.'));
+    reader.readAsDataURL(file);
+  });
+
+  try {
+    const img = await new Promise((resolve, reject) => {
+      const image = new Image();
+      image.onload = () => resolve(image);
+      image.onerror = () => reject(new Error('Format gambar tidak dapat dirender browser.'));
+      image.src = rawDataUrl;
+    });
+
+    const width = Math.max(1, img.naturalWidth || img.width || maxW);
+    const height = Math.max(1, img.naturalHeight || img.height || maxH);
+    const scale = Math.min(1, maxW / width, maxH / height);
+    const targetW = Math.max(1, Math.round(width * scale));
+    const targetH = Math.max(1, Math.round(height * scale));
+
+    const canvas = document.createElement('canvas');
+    canvas.width = targetW;
+    canvas.height = targetH;
+    const ctx = canvas.getContext('2d');
+    if (ctx) {
+      ctx.clearRect(0, 0, targetW, targetH);
+      ctx.drawImage(img, 0, 0, targetW, targetH);
+      const jpgDataUrl = canvas.toDataURL('image/jpeg', quality);
+      const base64Content = jpgDataUrl.split(',')[1] || '';
+      if (base64Content) {
+        return {
+          ext: 'jpg',
+          base64Content,
+          previewDataUrl: jpgDataUrl,
+        };
+      }
+    }
+  } catch {
+    // Fallback
+  }
+
+  const commaIdx = rawDataUrl.indexOf(',');
+  const base64Content = commaIdx >= 0 ? rawDataUrl.slice(commaIdx + 1) : '';
+  const ext = file.type.includes('png') ? 'png' : file.type.includes('webp') ? 'webp' : 'jpg';
   return {
     ext,
     base64Content,
@@ -395,6 +497,7 @@ async function openUnlockedDashboard() {
   const loaded = await loadCatalogData({ allowLocalPreview: true });
   adminState.catalog = loaded.data;
   adminState.catalog.brand = normalizeBrandConfig(adminState.catalog.brand || {});
+  adminState.catalog.banners = normalizeBanners(adminState.catalog.banners);
   adminState.catalog.paymentOptions = syncPaymentOptionsWithBrand(
     adminState.catalog.paymentOptions,
     adminState.catalog.brand
@@ -403,6 +506,7 @@ async function openUnlockedDashboard() {
 
   const baseLoaded = await loadCatalogData({ allowLocalPreview: false });
   baseLoaded.data.brand = normalizeBrandConfig(baseLoaded.data.brand || {});
+  baseLoaded.data.banners = normalizeBanners(baseLoaded.data.banners);
   adminState.baseCatalog = structuredClone(baseLoaded.data);
 
   if (loaded.source !== 'preview' || adminState.lastPublishedProducts.length === 0) {
@@ -413,6 +517,7 @@ async function openUnlockedDashboard() {
   renderTabs();
   renderCategoryOptions();
   renderCategoryList();
+  renderBannerList();
   renderBrandSettings();
   renderFaqList();
   renderProductList();
@@ -462,6 +567,7 @@ function renderTabs() {
     products: 'panel-products',
     add: 'panel-add',
     categories: 'panel-categories',
+    banners: 'panel-banners',
     brand: 'panel-brand',
     faq: 'panel-faq',
     vouchers: 'panel-vouchers',
@@ -598,6 +704,354 @@ function renderCategoryList() {
       showToast(`Kategori "${deletedCat?.label || catId}" dihapus.`);
     });
   });
+}
+
+function renderBannerList() {
+  if (!adminState.unlocked) return;
+  const container = document.getElementById('admin-banner-list');
+  if (!container) return;
+
+  adminState.catalog.banners = normalizeBanners(adminState.catalog.banners);
+  const banners = adminState.catalog.banners;
+
+  if (banners.length === 0) {
+    container.innerHTML = `<p class="admin-subtitle">Belum ada slide banner terdaftar.</p>`;
+    return;
+  }
+
+  container.innerHTML = banners
+    .map((ban, idx) => {
+      const isFirst = idx === 0;
+      const isLast = idx === banners.length - 1;
+      const pending = adminState.pendingUploads[`__banner__${ban.id}`];
+      const isConfirming = adminState.confirmDeleteBannerId === ban.id;
+
+      const presetOpts = BANNER_IMAGE_PRESETS.map(
+        (preset) =>
+          `<option value="${escapeHtml(preset.value)}" ${ban.image === preset.value ? 'selected' : ''}>${escapeHtml(preset.label)}</option>`
+      ).join('');
+
+      const scrimOpts = BANNER_SCRIM_OPTIONS.map(
+        (opt) =>
+          `<option value="${escapeHtml(opt.value)}" ${(ban.scrim || '') === opt.value ? 'selected' : ''}>${escapeHtml(opt.label)}</option>`
+      ).join('');
+
+      return `
+        <article class="admin-banner-card" data-banner-card="${escapeHtml(ban.id)}">
+          <div class="admin-banner-card-head">
+            <div class="admin-banner-preview-mini ${escapeHtml(ban.scrim || '')}">
+              ${
+                ban.image
+                  ? `<img src="${escapeHtml(ban.image)}" alt="" class="admin-banner-preview-img" data-banner-thumb="${escapeHtml(ban.id)}" />`
+                  : `<div class="admin-banner-preview-grad" data-banner-thumb-grad="${escapeHtml(ban.id)}"></div>`
+              }
+              <div class="admin-banner-preview-overlay">
+                <span class="admin-order-badge mono-num">Slide #${idx + 1}</span>
+                <strong data-banner-title-preview="${escapeHtml(ban.id)}">${escapeHtml(ban.heading || 'Slide Banner')}</strong>
+                <small data-banner-kicker-preview="${escapeHtml(ban.id)}">${escapeHtml(ban.kicker || '')}</small>
+              </div>
+            </div>
+
+            <div class="admin-order-controls">
+              <button
+                type="button"
+                class="btn btn-secondary btn-sm admin-order-btn"
+                data-move-banner="${escapeHtml(ban.id)}"
+                data-move-dir="up"
+                ${isFirst ? 'disabled' : ''}
+              >
+                ↑ Naik
+              </button>
+              <button
+                type="button"
+                class="btn btn-secondary btn-sm admin-order-btn"
+                data-move-banner="${escapeHtml(ban.id)}"
+                data-move-dir="down"
+                ${isLast ? 'disabled' : ''}
+              >
+                ↓ Turun
+              </button>
+              <button
+                type="button"
+                class="btn btn-ghost btn-sm ${isConfirming ? 'is-danger-confirm' : ''}"
+                data-delete-banner="${escapeHtml(ban.id)}"
+                ${banners.length <= 1 ? 'disabled' : ''}
+              >
+                ${isConfirming ? 'Konfirmasi Hapus' : 'Hapus Slide'}
+              </button>
+            </div>
+          </div>
+
+          <div class="admin-form-grid">
+            <div class="form-field">
+              <label for="ban-kicker-${escapeHtml(ban.id)}">Label Kicker (Teks Kecil Atas)</label>
+              <input
+                type="text"
+                id="ban-kicker-${escapeHtml(ban.id)}"
+                data-ban-id="${escapeHtml(ban.id)}"
+                data-ban-field="kicker"
+                value="${escapeHtml(ban.kicker || '')}"
+              />
+            </div>
+            <div class="form-field">
+              <label for="ban-heading-${escapeHtml(ban.id)}">Judul Utama Banner</label>
+              <input
+                type="text"
+                id="ban-heading-${escapeHtml(ban.id)}"
+                data-ban-id="${escapeHtml(ban.id)}"
+                data-ban-field="heading"
+                value="${escapeHtml(ban.heading || '')}"
+              />
+            </div>
+            <div class="form-field admin-sum-field">
+              <label for="ban-sub-${escapeHtml(ban.id)}">Deskripsi / Kalimat Penjelas Banner</label>
+              <input
+                type="text"
+                id="ban-sub-${escapeHtml(ban.id)}"
+                data-ban-id="${escapeHtml(ban.id)}"
+                data-ban-field="sub"
+                value="${escapeHtml(ban.sub || '')}"
+              />
+            </div>
+            <div class="form-field">
+              <label for="ban-cta-${escapeHtml(ban.id)}">Teks Tombol (CTA)</label>
+              <input
+                type="text"
+                id="ban-cta-${escapeHtml(ban.id)}"
+                data-ban-id="${escapeHtml(ban.id)}"
+                data-ban-field="ctaLabel"
+                value="${escapeHtml(ban.ctaLabel || '')}"
+              />
+            </div>
+            <div class="form-field">
+              <label for="ban-href-${escapeHtml(ban.id)}">Link Tujuan Saat Diklik</label>
+              <input
+                type="text"
+                id="ban-href-${escapeHtml(ban.id)}"
+                data-ban-id="${escapeHtml(ban.id)}"
+                data-ban-field="href"
+                value="${escapeHtml(ban.href || '#katalog')}"
+              />
+            </div>
+            <div class="form-field">
+              <label for="ban-scrim-${escapeHtml(ban.id)}">Tema Warna Latar / Overlay</label>
+              <select
+                id="ban-scrim-${escapeHtml(ban.id)}"
+                class="admin-select"
+                data-ban-id="${escapeHtml(ban.id)}"
+                data-ban-field="scrim"
+              >
+                ${scrimOpts}
+              </select>
+            </div>
+            <div class="form-field">
+              <label for="ban-preset-${escapeHtml(ban.id)}">Preset Gambar Banner</label>
+              <select
+                id="ban-preset-${escapeHtml(ban.id)}"
+                class="admin-select"
+                data-ban-preset="${escapeHtml(ban.id)}"
+              >
+                <option value="__custom__">— Pilih Preset Gambar / Gradien —</option>
+                ${presetOpts}
+              </select>
+            </div>
+            <div class="form-field admin-sum-field">
+              <label for="ban-img-${escapeHtml(ban.id)}">Path / URL Gambar Banner (Kosongkan untuk Tanpa Gambar / Gradien)</label>
+              <input
+                type="text"
+                id="ban-img-${escapeHtml(ban.id)}"
+                data-ban-id="${escapeHtml(ban.id)}"
+                data-ban-field="image"
+                value="${escapeHtml(String(ban.image || '').startsWith('data:') ? '' : ban.image || '')}"
+                placeholder="./assets/hero-banner.jpg atau https://... (kosongkan untuk gradien)"
+              />
+            </div>
+          </div>
+
+          <div class="admin-file-row">
+            <label
+              for="ban-file-${escapeHtml(ban.id)}"
+              class="btn btn-secondary btn-sm admin-file-trigger"
+            >
+              Upload Gambar Banner Baru
+            </label>
+            <input
+              type="file"
+              id="ban-file-${escapeHtml(ban.id)}"
+              class="visually-hidden-file"
+              accept="image/*"
+              data-ban-file="${escapeHtml(ban.id)}"
+            />
+            <span class="admin-prod-meta">
+              ${
+                pending
+                  ? `File baru siap diunggah: ${escapeHtml(pending.fileName)}`
+                  : ban.image
+                  ? `Gambar aktif: ${escapeHtml(String(ban.image).slice(0, 64))}`
+                  : 'Mode Gradien Warna Tanpa Foto'
+              }
+            </span>
+          </div>
+        </article>
+      `;
+    })
+    .join('');
+
+  container.querySelectorAll('[data-ban-id]').forEach((input) => {
+    const evtName = input.tagName === 'SELECT' ? 'change' : 'input';
+    input.addEventListener(evtName, (e) => {
+      const banId = input.getAttribute('data-ban-id');
+      const field = input.getAttribute('data-ban-field');
+      const target = (adminState.catalog.banners || []).find((b) => b.id === banId);
+      if (!target || !field) return;
+
+      if (field === 'image') {
+        const nextImg = e.target.value.trim();
+        queueManagedLogoForDeletion(target.image);
+        delete adminState.pendingUploads[`__banner__${banId}`];
+        target.image = nextImg;
+        const thumb = container.querySelector(`[data-banner-thumb="${banId}"]`);
+        if (thumb && nextImg) thumb.src = nextImg;
+      } else if (field === 'heading') {
+        target.heading = e.target.value;
+        const titlePreview = container.querySelector(`[data-banner-title-preview="${banId}"]`);
+        if (titlePreview) titlePreview.textContent = e.target.value || 'Slide Banner';
+      } else if (field === 'kicker') {
+        target.kicker = e.target.value;
+        const kickerPreview = container.querySelector(`[data-banner-kicker-preview="${banId}"]`);
+        if (kickerPreview) kickerPreview.textContent = e.target.value || '';
+      } else {
+        target[field] = e.target.value;
+      }
+      markDirty();
+    });
+  });
+
+  container.querySelectorAll('[data-ban-preset]').forEach((select) => {
+    select.addEventListener('change', (e) => {
+      const banId = select.getAttribute('data-ban-preset');
+      const val = e.target.value;
+      if (val === '__custom__') return;
+      const target = (adminState.catalog.banners || []).find((b) => b.id === banId);
+      if (!target) return;
+      queueManagedLogoForDeletion(target.image);
+      delete adminState.pendingUploads[`__banner__${banId}`];
+      target.image = val;
+      markDirty();
+      renderBannerList();
+      showToast(`Gambar banner "${target.heading}" diperbarui.`);
+    });
+  });
+
+  container.querySelectorAll('[data-ban-file]').forEach((fileInput) => {
+    fileInput.addEventListener('change', async (e) => {
+      const banId = fileInput.getAttribute('data-ban-file');
+      const file = e.target.files?.[0];
+      const target = (adminState.catalog.banners || []).find((b) => b.id === banId);
+      if (!file || !target) return;
+      try {
+        const result = await compressWideImageFile(file, { maxW: 1400, maxH: 640, quality: 0.9 });
+        queueManagedLogoForDeletion(target.image);
+        const safeSlug = slugifyId(banId);
+        const targetPath = `assets/logos/uploads/banner-${safeSlug}-${Date.now().toString(36)}.${result.ext}`;
+        adminState.pendingUploads[`__banner__${banId}`] = {
+          targetPath,
+          base64Content: result.base64Content,
+          previewDataUrl: result.previewDataUrl,
+          fileName: file.name,
+        };
+        target.image = result.previewDataUrl;
+        markDirty();
+        renderBannerList();
+        showToast(`Gambar banner "${target.heading}" siap diunggah saat Publikasi.`);
+      } catch (err) {
+        showToast(err.message || 'Gagal memproses gambar banner.');
+      }
+    });
+  });
+
+  container.querySelectorAll('[data-move-banner]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const banId = btn.getAttribute('data-move-banner');
+      const dir = btn.getAttribute('data-move-dir');
+      adminState.catalog = moveBannerInCatalog(adminState.catalog, banId, dir);
+      markDirty();
+      renderBannerList();
+      showToast('Urutan slide banner diperbarui.');
+    });
+  });
+
+  container.querySelectorAll('[data-delete-banner]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const banId = btn.getAttribute('data-delete-banner');
+      const bannersList = adminState.catalog.banners || [];
+      if (bannersList.length <= 1) {
+        showToast('Minimal harus ada 1 slide banner aktif.');
+        return;
+      }
+      if (adminState.confirmDeleteBannerId !== banId) {
+        adminState.confirmDeleteBannerId = banId;
+        renderBannerList();
+        return;
+      }
+      const deleted = bannersList.find((b) => b.id === banId);
+      if (deleted) {
+        queueManagedLogoForDeletion(deleted.image);
+        delete adminState.pendingUploads[`__banner__${banId}`];
+      }
+      adminState.catalog = deleteBannerFromCatalog(adminState.catalog, banId);
+      adminState.confirmDeleteBannerId = null;
+      markDirty();
+      renderBannerList();
+      showToast(`Banner "${deleted?.heading || banId}" dihapus.`);
+    });
+  });
+}
+
+function syncOpenGraphUi() {
+  adminState.catalog.brand = normalizeBrandConfig(adminState.catalog.brand || {});
+  const brand = adminState.catalog.brand;
+  const og = normalizeOpenGraphConfig(brand);
+  brand.openGraph = og;
+
+  const setVal = (id, val) => {
+    const el = document.getElementById(id);
+    if (el && document.activeElement !== el) {
+      el.value = String(val ?? '');
+    }
+  };
+
+  setVal('og-title-input', og.title);
+  setVal('og-tagline-input', og.tagline);
+  setVal('og-description-input', og.description);
+  setVal('og-sitename-input', og.siteName);
+  setVal('og-alt-input', og.imageAlt);
+  if (!String(og.image || '').startsWith('data:')) {
+    setVal('og-image-url', og.image || './assets/og-manifestudio.jpg');
+  }
+
+  const pending = adminState.pendingUploads['__og_image__'];
+  const statusEl = document.getElementById('og-image-status');
+  if (statusEl) {
+    if (pending) {
+      statusEl.textContent = `File gambar OpenGraph baru siap diunggah: ${pending.fileName}`;
+    } else if (extractManagedUploadLogoPath(og.image)) {
+      statusEl.textContent = `Tersimpan di repo: ${extractManagedUploadLogoPath(og.image)}`;
+    } else {
+      statusEl.textContent = `Aktif: ${og.image || './assets/og-manifestudio.jpg'}`;
+    }
+  }
+
+  const imgEl = document.getElementById('og-card-preview-img');
+  if (imgEl) imgEl.src = og.image || './assets/og-manifestudio.jpg';
+  const taglineEl = document.getElementById('og-card-preview-tagline');
+  if (taglineEl) taglineEl.textContent = og.tagline || brand.tagline || 'by Tomy';
+  const siteEl = document.getElementById('og-card-preview-site');
+  if (siteEl) siteEl.textContent = `${(og.siteName || brand.name || 'MANIFESTUDIO').toUpperCase()} · MANIFESTUDIO.MY.ID`;
+  const titleEl = document.getElementById('og-card-preview-title');
+  if (titleEl) titleEl.textContent = og.title;
+  const descEl = document.getElementById('og-card-preview-desc');
+  if (descEl) descEl.textContent = og.description;
 }
 
 function syncBrandLogoUi() {
@@ -861,6 +1315,7 @@ function renderBrandSettings() {
   setVal('brand-discount-amount-input', Number(brand.discountAmount ?? 2000));
 
   syncBrandLogoUi();
+  syncOpenGraphUi();
   renderSocialList();
 }
 
@@ -1753,6 +2208,7 @@ async function pullFromGitHub() {
       throw new Error('Format catalog.json tidak valid.');
     }
     parsed.brand = normalizeBrandConfig(parsed.brand || {});
+    parsed.banners = normalizeBanners(parsed.banners);
     parsed.paymentOptions = syncPaymentOptionsWithBrand(parsed.paymentOptions, parsed.brand);
     adminState.catalog = parsed;
     adminState.baseCatalog = structuredClone(parsed);
@@ -1764,6 +2220,7 @@ async function pullFromGitHub() {
     updateSourceBadge();
     renderCategoryOptions();
     renderCategoryList();
+    renderBannerList();
     renderBrandSettings();
     renderFaqList();
     renderProductList();
@@ -1974,6 +2431,7 @@ function renderHistoryList() {
 
       adminState.catalog = structuredClone(target.snapshot);
       adminState.catalog.brand = normalizeBrandConfig(adminState.catalog.brand || {});
+      adminState.catalog.banners = normalizeBanners(adminState.catalog.banners);
       adminState.catalog.paymentOptions = syncPaymentOptionsWithBrand(
         adminState.catalog.paymentOptions,
         adminState.catalog.brand
@@ -1989,6 +2447,7 @@ function renderHistoryList() {
       renderTabs();
       renderCategoryOptions();
       renderCategoryList();
+      renderBannerList();
       renderBrandSettings();
       renderFaqList();
       renderProductList();
@@ -2111,6 +2570,35 @@ async function syncHistoryToGitHub({ owner, repo, branch, token, logs }) {
   adminState.historySha = payload.content?.sha || sha;
 }
 
+async function syncOpenGraphIndexHtmlToGitHub({ owner, repo, branch, token, brand }) {
+  const endpoint = `https://api.github.com/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/contents/index.html`;
+  const getRes = await fetch(`${endpoint}?ref=${encodeURIComponent(branch)}`, {
+    headers: {
+      Accept: 'application/vnd.github+json',
+      Authorization: `Bearer ${token}`,
+    },
+    cache: 'no-store',
+  });
+  if (!getRes.ok) return false;
+  const meta = await getRes.json();
+  if (!meta?.content || !meta?.sha) return false;
+  const currentHtml = decodeBase64Utf8(meta.content);
+  const updatedHtml = applyOpenGraphToHtml(currentHtml, brand.openGraph, brand);
+  if (updatedHtml === currentHtml) return false;
+
+  await putGitHubFile({
+    owner,
+    repo,
+    branch,
+    token,
+    filePath: 'index.html',
+    base64Content: encodeBase64Utf8(updatedHtml),
+    message: 'chore(opengraph): update meta tag OpenGraph di index.html via Panel Admin',
+    sha: meta.sha,
+  });
+  return true;
+}
+
 function putGitHubFileWithProgress({
   owner,
   repo,
@@ -2178,11 +2666,12 @@ async function publishToGitHub() {
   if (publishBtn) publishBtn.disabled = true;
 
   const endpoint = `https://api.github.com/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/contents/data/catalog.json`;
-  setStatusBox('admin-status-box', 'Mengunggah perubahan & logo ke GitHub Pages...', 'info');
+  setStatusBox('admin-status-box', 'Mengunggah perubahan, banner, OpenGraph & logo ke GitHub Pages...', 'info');
 
   try {
     const nextCatalog = structuredClone(adminState.catalog);
     nextCatalog.brand = normalizeBrandConfig(nextCatalog.brand || {});
+    nextCatalog.banners = normalizeBanners(nextCatalog.banners);
     nextCatalog.paymentOptions = syncPaymentOptionsWithBrand(
       nextCatalog.paymentOptions,
       nextCatalog.brand
@@ -2214,6 +2703,17 @@ async function publishToGitHub() {
       });
     }
 
+    const ogPending = adminState.pendingUploads['__og_image__'];
+    if (ogPending && nextCatalog.brand.openGraph?.image === ogPending.previewDataUrl) {
+      uploadQueue.push({
+        label: 'gambar OpenGraph',
+        pending: ogPending,
+        applyPath: (relPath) => {
+          nextCatalog.brand.openGraph.image = relPath;
+        },
+      });
+    }
+
     for (const soc of nextCatalog.brand.socials || []) {
       const socPending = adminState.pendingUploads[`__social__${soc.id}`];
       if (socPending && soc.logo === socPending.previewDataUrl) {
@@ -2222,6 +2722,19 @@ async function publishToGitHub() {
           pending: socPending,
           applyPath: (relPath) => {
             soc.logo = relPath;
+          },
+        });
+      }
+    }
+
+    for (const ban of nextCatalog.banners || []) {
+      const banPending = adminState.pendingUploads[`__banner__${ban.id}`];
+      if (banPending && ban.image === banPending.previewDataUrl) {
+        uploadQueue.push({
+          label: `gambar banner ${ban.heading}`,
+          pending: banPending,
+          applyPath: (relPath) => {
+            ban.image = relPath;
           },
         });
       }
@@ -2245,6 +2758,7 @@ async function publishToGitHub() {
       uploadQueue.length * 1.2 +
       0.5 + // fetch remote SHA
       1.8 + // upload catalog.json
+      0.6 + // sync index.html OpenGraph
       plannedOrphans.length * 0.5 +
       0.8; // sync history log
     let completedWeight = 0;
@@ -2260,7 +2774,7 @@ async function publishToGitHub() {
 
     updateWeightedProgress(0.05, 'Memvalidasi data katalog & gambar...');
 
-    // 1. Upload pending compressed logo files directly to assets/logos/uploads/
+    // 1. Upload pending compressed logo/banner/OG files directly to assets/logos/uploads/
     let uploadedLogosCount = 0;
     for (let i = 0; i < uploadQueue.length; i += 1) {
       const job = uploadQueue[i];
@@ -2273,7 +2787,7 @@ async function publishToGitHub() {
         token,
         filePath: pending.targetPath,
         base64Content: pending.base64Content,
-        message: `chore(logo): upload ${job.label} via Panel Admin`,
+        message: `chore(assets): upload ${job.label} via Panel Admin`,
         onUploadProgress: (frac) => updateWeightedProgress(frac * 1.2, stepLabel),
       });
       job.applyPath(`./${pending.targetPath}`);
@@ -2322,6 +2836,21 @@ async function publishToGitHub() {
     });
     completedWeight += 1.8;
 
+    // 3b. Sync OpenGraph meta tags directly to index.html in GitHub repo
+    updateWeightedProgress(0.2, 'Menyinkronkan meta tag OpenGraph di index.html...');
+    try {
+      await syncOpenGraphIndexHtmlToGitHub({
+        owner,
+        repo,
+        branch,
+        token,
+        brand: nextCatalog.brand,
+      });
+    } catch {
+      // Non-fatal if index.html is unchanged
+    }
+    completedWeight += 0.6;
+
     // 4. Delete previous uploaded logo files that were replaced or removed
     const finalActiveSet = collectAllActiveUploadLogoPaths(nextCatalog);
     const allOrphansToDelete = [...new Set([...diffOrphans, ...adminState.deletedUploadPaths])].filter(
@@ -2333,7 +2862,7 @@ async function publishToGitHub() {
       const orphanPath = allOrphansToDelete[i];
       updateWeightedProgress(
         0.2,
-        `Membersihkan logo lama (${i + 1}/${allOrphansToDelete.length})...`
+        `Membersihkan file gambar lama (${i + 1}/${allOrphansToDelete.length})...`
       );
       const removed = await deleteGitHubFile({
         owner,
@@ -2341,7 +2870,7 @@ async function publishToGitHub() {
         branch,
         token,
         filePath: orphanPath,
-        message: `chore(logo): hapus file logo lama ${orphanPath}`,
+        message: `chore(assets): hapus file gambar lama ${orphanPath}`,
       });
       if (removed) deletedLogosCount += 1;
       completedWeight += 0.5;
@@ -2386,6 +2915,7 @@ async function publishToGitHub() {
     updateSourceBadge();
     renderCategoryOptions();
     renderCategoryList();
+    renderBannerList();
     renderBrandSettings();
     renderFaqList();
     renderProductList();
@@ -2398,9 +2928,9 @@ async function publishToGitHub() {
     });
 
     const cleanupNote =
-      deletedLogosCount > 0 ? ` (${deletedLogosCount} file logo lama otomatis dihapus)` : '';
+      deletedLogosCount > 0 ? ` (${deletedLogosCount} file gambar lama otomatis dihapus)` : '';
     const uploadNote =
-      uploadedLogosCount > 0 ? ` · ${uploadedLogosCount} logo baru diunggah` : '';
+      uploadedLogosCount > 0 ? ` · ${uploadedLogosCount} gambar baru diunggah` : '';
     setStatusBox(
       'admin-status-box',
       `Berhasil dipublikasikan ke GitHub!${uploadNote}${cleanupNote} (${changeSummary})`,
@@ -2543,6 +3073,7 @@ function bindEvents() {
     if (!adminState.unlocked) return;
     try {
       adminState.catalog.brand = normalizeBrandConfig(adminState.catalog.brand || {});
+      adminState.catalog.banners = normalizeBanners(adminState.catalog.banners);
       adminState.catalog.paymentOptions = syncPaymentOptionsWithBrand(
         adminState.catalog.paymentOptions,
         adminState.catalog.brand
@@ -2587,6 +3118,7 @@ function bindEvents() {
     clearPendingLogoOps();
     const fresh = await loadCatalogData({ allowLocalPreview: false });
     fresh.data.brand = normalizeBrandConfig(fresh.data.brand || {});
+    fresh.data.banners = normalizeBanners(fresh.data.banners);
     fresh.data.paymentOptions = syncPaymentOptionsWithBrand(
       fresh.data.paymentOptions,
       fresh.data.brand
@@ -2599,6 +3131,7 @@ function bindEvents() {
     updateSourceBadge();
     renderCategoryOptions();
     renderCategoryList();
+    renderBannerList();
     renderBrandSettings();
     renderFaqList();
     renderProductList();
@@ -2630,6 +3163,8 @@ function bindEvents() {
         renderHistoryList();
       } else if (adminState.activeTab === 'categories') {
         renderCategoryList();
+      } else if (adminState.activeTab === 'banners') {
+        renderBannerList();
       } else if (adminState.activeTab === 'brand') {
         renderBrandSettings();
       } else if (adminState.activeTab === 'faq') {
@@ -2767,6 +3302,120 @@ function bindEvents() {
     }
   });
 
+  // Banner Baru (Upload / Preset / Form Submit)
+  const newBanPresetEl = document.getElementById('new-banner-preset');
+  const newBanImgUrlEl = document.getElementById('new-banner-image-url');
+  const newBanPreviewEl = document.getElementById('new-banner-image-preview');
+  const newBanStatusEl = document.getElementById('new-banner-image-status');
+  const newBanFileEl = document.getElementById('new-banner-image-file');
+
+  newBanPresetEl?.addEventListener('change', () => {
+    if (!newBanImgUrlEl) return;
+    newBanImgUrlEl.value = newBanPresetEl.value;
+    adminState.newBannerPendingUpload = null;
+    if (newBanPreviewEl) {
+      newBanPreviewEl.src = newBanPresetEl.value || './assets/hero-banner.jpg';
+      newBanPreviewEl.hidden = !newBanPresetEl.value;
+    }
+    if (newBanStatusEl) {
+      newBanStatusEl.textContent = newBanPresetEl.value
+        ? `Preset dipilih: ${newBanPresetEl.value}`
+        : 'Mode Gradien Warna (Tanpa Foto)';
+    }
+  });
+
+  newBanImgUrlEl?.addEventListener('input', () => {
+    const val = newBanImgUrlEl.value.trim();
+    adminState.newBannerPendingUpload = null;
+    if (newBanPreviewEl) {
+      if (val) {
+        newBanPreviewEl.src = val;
+        newBanPreviewEl.hidden = false;
+      } else {
+        newBanPreviewEl.hidden = true;
+      }
+    }
+    if (newBanStatusEl) {
+      newBanStatusEl.textContent = val ? `Link gambar: ${val}` : 'Mode Gradien Warna (Tanpa Foto)';
+    }
+  });
+
+  newBanFileEl?.addEventListener('change', async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    try {
+      const result = await compressWideImageFile(file, { maxW: 1400, maxH: 640, quality: 0.9 });
+      adminState.newBannerPendingUpload = {
+        ...result,
+        fileName: file.name,
+      };
+      if (newBanPreviewEl) {
+        newBanPreviewEl.src = result.previewDataUrl;
+        newBanPreviewEl.hidden = false;
+      }
+      if (newBanStatusEl) {
+        newBanStatusEl.textContent = `File gambar banner siap: ${file.name}`;
+      }
+      showToast(`Gambar banner "${file.name}" siap ditambahkan.`);
+    } catch (err) {
+      showToast(err.message || 'Gagal memproses file gambar banner.');
+    }
+  });
+
+  document.getElementById('add-banner-form')?.addEventListener('submit', (e) => {
+    e.preventDefault();
+    if (!adminState.unlocked) return;
+    const kicker = document.getElementById('new-banner-kicker')?.value.trim() || 'Promo Spesial · Manifestudio';
+    const heading = document.getElementById('new-banner-heading')?.value.trim() || '';
+    const sub = document.getElementById('new-banner-sub')?.value.trim() || '';
+    const ctaLabel = document.getElementById('new-banner-cta')?.value.trim() || 'Lihat →';
+    const href = document.getElementById('new-banner-href')?.value.trim() || '#katalog';
+    const scrim = document.getElementById('new-banner-scrim')?.value || '';
+    const pendingUpload = adminState.newBannerPendingUpload;
+    const image = pendingUpload
+      ? pendingUpload.previewDataUrl
+      : newBanImgUrlEl?.value.trim() ?? './assets/hero-banner.jpg';
+
+    try {
+      const bannerId = `banner-${slugifyId(heading)}-${Date.now().toString(36).slice(-3)}`;
+      adminState.catalog = upsertBannerInCatalog(adminState.catalog, {
+        id: bannerId,
+        kicker,
+        heading,
+        sub,
+        ctaLabel,
+        href,
+        scrim,
+        image,
+      });
+
+      if (pendingUpload) {
+        adminState.pendingUploads[`__banner__${bannerId}`] = {
+          targetPath: `assets/logos/uploads/${bannerId}.${pendingUpload.ext}`,
+          base64Content: pendingUpload.base64Content,
+          previewDataUrl: pendingUpload.previewDataUrl,
+          fileName: pendingUpload.fileName,
+        };
+      }
+
+      markDirty();
+      e.target.reset();
+      adminState.newBannerPendingUpload = null;
+      if (newBanImgUrlEl) newBanImgUrlEl.value = './assets/hero-banner.jpg';
+      if (newBanPreviewEl) {
+        newBanPreviewEl.src = './assets/hero-banner.jpg';
+        newBanPreviewEl.hidden = false;
+      }
+      if (newBanStatusEl) {
+        newBanStatusEl.textContent = 'Rasio landscape 16:9 atau 21:9 direkomendasikan.';
+      }
+      renderBannerList();
+      showToast(`Slide banner "${heading}" berhasil ditambahkan.`);
+    } catch (err) {
+      showToast(err.message || 'Gagal menambah slide banner.');
+    }
+  });
+
   // Brand Logo Mode & Upload / Link / Reset
   document.querySelectorAll('[data-brand-logo-mode]').forEach((btn) => {
     btn.addEventListener('click', () => {
@@ -2823,6 +3472,70 @@ function bindEvents() {
     syncBrandLogoUi();
     showToast('Logo brand dikembalikan ke logo default Manifestudio.');
   });
+
+  // OpenGraph Image Upload, URL, Reset & Fields
+  document.getElementById('og-image-file')?.addEventListener('change', async (e) => {
+    const file = e.target.files?.[0];
+    if (!file || !adminState.unlocked) return;
+    try {
+      const result = await compressWideImageFile(file, { maxW: 1200, maxH: 630, quality: 0.92 });
+      adminState.catalog.brand = normalizeBrandConfig(adminState.catalog.brand || {});
+      queueManagedLogoForDeletion(adminState.catalog.brand.openGraph?.image);
+      const targetPath = `assets/logos/uploads/og-${Date.now().toString(36)}.${result.ext}`;
+      adminState.pendingUploads['__og_image__'] = {
+        targetPath,
+        base64Content: result.base64Content,
+        previewDataUrl: result.previewDataUrl,
+        fileName: file.name,
+      };
+      adminState.catalog.brand.openGraph.image = result.previewDataUrl;
+      markDirty();
+      syncOpenGraphUi();
+      showToast(`Gambar OpenGraph "${file.name}" siap diunggah saat Publikasi.`);
+    } catch (err) {
+      showToast(err.message || 'Gagal memproses file gambar OpenGraph.');
+    }
+  });
+
+  document.getElementById('og-image-url')?.addEventListener('input', (e) => {
+    if (!adminState.unlocked) return;
+    const nextUrl = e.target.value.trim();
+    if (!nextUrl) return;
+    adminState.catalog.brand = normalizeBrandConfig(adminState.catalog.brand || {});
+    queueManagedLogoForDeletion(adminState.catalog.brand.openGraph?.image);
+    delete adminState.pendingUploads['__og_image__'];
+    adminState.catalog.brand.openGraph.image = nextUrl;
+    markDirty();
+    syncOpenGraphUi();
+  });
+
+  document.getElementById('og-image-reset-btn')?.addEventListener('click', () => {
+    if (!adminState.unlocked) return;
+    adminState.catalog.brand = normalizeBrandConfig(adminState.catalog.brand || {});
+    queueManagedLogoForDeletion(adminState.catalog.brand.openGraph?.image);
+    delete adminState.pendingUploads['__og_image__'];
+    adminState.catalog.brand.openGraph.image = './assets/og-manifestudio.jpg';
+    markDirty();
+    syncOpenGraphUi();
+    showToast('Gambar OpenGraph dikembalikan ke gambar default.');
+  });
+
+  const bindOgField = (inputId, fieldKey) => {
+    document.getElementById(inputId)?.addEventListener('input', (e) => {
+      if (!adminState.unlocked) return;
+      adminState.catalog.brand = normalizeBrandConfig(adminState.catalog.brand || {});
+      adminState.catalog.brand.openGraph[fieldKey] = e.target.value.trim();
+      adminState.catalog.brand.openGraph = normalizeOpenGraphConfig(adminState.catalog.brand);
+      markDirty();
+      syncOpenGraphUi();
+    });
+  };
+
+  bindOgField('og-title-input', 'title');
+  bindOgField('og-tagline-input', 'tagline');
+  bindOgField('og-description-input', 'description');
+  bindOgField('og-sitename-input', 'siteName');
+  bindOgField('og-alt-input', 'imageAlt');
 
   // Brand Identity & Service Fee Live Inputs
   const bindBrandField = (inputId, applyFn) => {

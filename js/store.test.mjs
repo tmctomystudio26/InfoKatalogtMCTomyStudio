@@ -5,11 +5,13 @@ import {
   MAX_HISTORY_LOGS,
   addToCart,
   appendCatalogHistory,
+  applyOpenGraphToHtml,
   buildWhatsAppOrderCaption,
   buildWhatsAppOrderMessage,
   calculateCartTotals,
   collectOrphanedUploadLogos,
   createOrderSnapshot,
+  deleteBannerFromCatalog,
   deleteCategoryFromCatalog,
   deleteFaqFromCatalog,
   deleteSocialFromCatalog,
@@ -20,14 +22,18 @@ import {
   formatRupiah,
   getProductCardTone,
   getStartingPrice,
+  moveBannerInCatalog,
   moveProductInCatalog,
+  normalizeBanners,
   normalizeBrandConfig,
+  normalizeOpenGraphConfig,
   pruneCatalogHistory,
   removeFromCart,
   reorderProductToIndex,
   summarizeCatalogDiff,
   toggleProductStockInCatalog,
   updateCartQty,
+  upsertBannerInCatalog,
   upsertCategoryInCatalog,
   upsertFaqInCatalog,
   upsertProductInCatalog,
@@ -56,6 +62,8 @@ import {
   verifyGitHubTokenAccess,
 } from './vault.js';
 import {
+  COMPRESSION_METHODS,
+  COMPRESSION_PLATFORM_PRESETS,
   WORLD_LOCATIONS,
   calculatePingStats,
   computeMbps,
@@ -63,9 +71,11 @@ import {
   convertWorldTime,
   describeCloudflareColo,
   describeWeatherCode,
+  detectDownloaderContentType,
   detectDownloaderPlatform,
   evaluateConnectionQuality,
   findNearestLocationOnGlobe,
+  formatBytes,
   formatDetailedLocationLabel,
   getNextPrayerInfo,
   inverseOrthographic,
@@ -75,9 +85,16 @@ import {
   normalizeDownloaderResult,
   parseDeviceTelemetry,
   parseIndonesianAddressHierarchy,
+  planMediaCompression,
   projectOrthographic,
+  resolveAccurateWeatherCondition,
   speedToGaugeRatio,
 } from './tools-logic.js';
+import {
+  stripJpegExifLossless,
+  stripMp4AtomsLossless,
+  stripPngChunksLossless,
+} from './compressor.js';
 
 test('formatRupiah formats Indonesian currency accurately', () => {
   assert.equal(formatRupiah(22500), 'Rp22.500');
@@ -1055,6 +1072,230 @@ test('custom service fee, custom categories, social media logos, and FAQ helpers
   catalog = deleteSocialFromCatalog(catalog, addedSoc.id);
   assert.equal(catalog.brand.socials.some((s) => s.id === addedSoc.id), false);
 });
+
+test('OpenGraph config normalizes and applyOpenGraphToHtml updates title, og:image, og:description, and JSON-LD', () => {
+  const og = normalizeOpenGraphConfig({
+    openGraph: {
+      title: 'Manifestudio Official Store',
+      tagline: 'Premium Account by Tomy',
+      description: 'Beli akun Netflix, Canva, dan Spotify bergaransi penuh.',
+      image: './assets/logos/uploads/og-custom.jpg',
+      imageAlt: 'Banner OG Manifestudio',
+      siteName: 'Manifestudio ID',
+    },
+  });
+  assert.equal(og.title, 'Manifestudio Official Store');
+  assert.equal(og.tagline, 'Premium Account by Tomy');
+
+  const sampleHtml = `<!doctype html>
+<html>
+<head>
+  <title>Old Title</title>
+  <meta name="description" content="Old desc" />
+  <meta property="og:title" content="Old OG Title" />
+  <meta property="og:description" content="Old OG Desc" />
+  <meta property="og:image" content="https://manifestudio.my.id/assets/og-manifestudio.jpg?v=3" />
+  <meta property="og:image:secure_url" content="https://manifestudio.my.id/assets/og-manifestudio.jpg?v=3" />
+  <meta property="og:image:alt" content="Old Alt" />
+  <meta property="og:site_name" content="Manifestudio" />
+  <meta name="twitter:title" content="Old Tw" />
+  <meta name="twitter:description" content="Old Tw Desc" />
+  <meta name="twitter:image" content="https://manifestudio.my.id/assets/og-manifestudio.jpg?v=3" />
+  <script type="application/ld+json">{"description": "Old", "image": "https://old"}</script>
+</head>
+</html>`;
+
+  const updatedHtml = applyOpenGraphToHtml(sampleHtml, og, { name: 'Manifestudio' });
+  assert.equal(
+    updatedHtml.includes('<title>Manifestudio Official Store (Premium Account by Tomy)</title>'),
+    true
+  );
+  assert.equal(
+    updatedHtml.includes('https://manifestudio.my.id/assets/logos/uploads/og-custom.jpg'),
+    true
+  );
+  assert.equal(
+    updatedHtml.includes('Beli akun Netflix, Canva, dan Spotify bergaransi penuh.'),
+    true
+  );
+  assert.equal(updatedHtml.includes('content="Manifestudio ID"'), true);
+});
+
+test('Multi-banner carousel CRUD adds, edits, reorders, deletes, and logs banner & OpenGraph changes', () => {
+  let catalog = getDefaultCatalogSnapshot();
+  const initialCount = catalog.banners.length;
+  assert.ok(initialCount >= 6);
+
+  catalog = upsertBannerInCatalog(catalog, {
+    kicker: 'Promo Spesial',
+    heading: 'Diskon Bundling Streaming',
+    sub: 'Hemat hingga Rp10.000 untuk pembelian paket bundling.',
+    ctaLabel: 'Lihat Promo',
+    href: '#katalog',
+    image: './assets/logos/uploads/banner-promo.jpg',
+    scrim: 'scrim-katalog',
+  });
+  assert.equal(catalog.banners.length, initialCount + 1);
+  const addedBanner = catalog.banners[catalog.banners.length - 1];
+  assert.equal(addedBanner.heading, 'Diskon Bundling Streaming');
+
+  catalog = moveBannerInCatalog(catalog, addedBanner.id, 'up');
+  assert.equal(catalog.banners[catalog.banners.length - 2].id, addedBanner.id);
+
+  const prev = getDefaultCatalogSnapshot();
+  const diffDetails = describeCatalogChanges(prev, catalog);
+  assert.equal(
+    diffDetails.some((d) => d.includes('Menambah banner baru "Diskon Bundling Streaming"')),
+    true
+  );
+
+  catalog = deleteBannerFromCatalog(catalog, addedBanner.id);
+  assert.equal(catalog.banners.length, initialCount);
+  assert.ok(normalizeBanners([]).length >= 6);
+});
+
+test('resolveAccurateWeatherCondition detects heavy rain downpours, station rain, and manual calibration accurately', () => {
+  // Scenario 1: Open-Meteo weather_code says 61 (Hujan Ringan), but convective showers/hourly peak is 8.5 mm/h
+  const downpour = resolveAccurateWeatherCondition({
+    current: {
+      weather_code: 61,
+      is_day: 1,
+      precipitation: 1.2,
+      rain: 1.2,
+      showers: 6.8,
+      wind_speed_10m: 22,
+      wind_gusts_10m: 38,
+    },
+    hourly: {
+      time: ['2026-11-16T07:00', '2026-11-16T08:00'],
+      precipitation: [8.5, 4.2],
+      precipitation_probability: [92, 85],
+      weather_code: [65, 63],
+    },
+    nowIso: '2026-11-16T07:15',
+  });
+  assert.equal(downpour.code >= 65, true);
+  assert.equal(downpour.label.includes('Hujan Lebat'), true);
+  assert.equal(downpour.effectiveRainMm, 8.5);
+
+  // Scenario 2: Live nearby weather station reports heavy rain (16 mm) even if grid model was cloudy
+  const stationHeavy = resolveAccurateWeatherCondition({
+    current: { weather_code: 3, is_day: 1, precipitation: 0.4 },
+    stationObs: { precipMM: 16.2, weatherDesc: 'Heavy rain shower' },
+  });
+  assert.equal(stationHeavy.label.includes('Sangat Lebat'), true);
+
+  // Scenario 3: Manual user calibration override
+  const calibrated = resolveAccurateWeatherCondition({
+    current: { weather_code: 2, is_day: 1, precipitation: 0 },
+    manualCalibration: 'heavy-rain',
+  });
+  assert.equal(calibrated.isCalibrated, true);
+  assert.equal(calibrated.label.includes('Hujan Lebat'), true);
+});
+
+test('social media downloader normalizes single-photo posts, multi-photo carousels, stories, and captions', () => {
+  const storyType = detectDownloaderContentType('https://www.instagram.com/stories/tmctomystudio/35019283/');
+  assert.equal(storyType.platform, 'instagram');
+  assert.equal(storyType.isStory, true);
+
+  // TikTok Photo Mode Carousel (d.images) + Caption
+  const tiktokCarousel = normalizeDownloaderResult(
+    {
+      data: {
+        title: 'Slide Promo Akun Premium 2026 #manifestudio #fyp',
+        author: { nickname: 'tmctomystudio' },
+        images: [
+          'https://cdn.tikwm.com/photo1.jpeg',
+          'https://cdn.tikwm.com/photo2.jpeg',
+          'https://cdn.tikwm.com/photo3.jpeg',
+        ],
+        music: 'https://cdn.tikwm.com/bgm.mp3',
+      },
+    },
+    'tiktok',
+    'https://www.tiktok.com/@tmctomystudio/photo/74123456789'
+  );
+  assert.equal(tiktokCarousel.mediaType, 'carousel');
+  assert.equal(tiktokCarousel.photos.length, 3);
+  assert.equal(
+    tiktokCarousel.caption,
+    'Slide Promo Akun Premium 2026 #manifestudio #fyp'
+  );
+  assert.equal(
+    tiktokCarousel.links.some((l) => l.isImage && l.ext === 'jpg'),
+    true
+  );
+
+  // Instagram Story with photo & video
+  const igStory = normalizeDownloaderResult(
+    {
+      caption: 'Story Promo Hari Ini!',
+      username: 'tmctomystudio',
+      result: [
+        { url: 'https://scontent.cdninstagram.com/story-photo.jpg?stp=dst-jpg', type: 'image' },
+      ],
+    },
+    'instagram',
+    'https://www.instagram.com/stories/tmctomystudio/123456/'
+  );
+  assert.equal(igStory.isStory, true);
+  assert.equal(igStory.photos.length, 1);
+  assert.equal(igStory.caption, 'Story Promo Hari Ini!');
+});
+
+test('HD media compression planner & binary lossless strippers preserve bitstreams and plan optimal dimensions', () => {
+  assert.equal(COMPRESSION_METHODS.length, 4);
+  assert.equal(COMPRESSION_PLATFORM_PRESETS.length, 4);
+  assert.equal(formatBytes(1572864), '1.5 MB');
+
+  const plan = planMediaCompression({
+    mediaKind: 'image',
+    methodId: 'social-shield',
+    presetId: 'tiktok-hd',
+    originalWidth: 4000,
+    originalHeight: 3000,
+    originalBytes: 5_200_000,
+  });
+  assert.equal(plan.zeroVisualLoss, true);
+  assert.equal(plan.targetWidth, 1080);
+  assert.equal(plan.targetHeight, 810);
+  assert.equal(plan.resized, true);
+  assert.ok(plan.estimatedOutputBytes < 5_200_000);
+
+  // Binary JPEG EXIF stripper strips APP1 (0xFFE1) while keeping SOI (0xFFD8), APP0 (0xFFE0), and SOS (0xFFDA)
+  const fakeJpeg = new Uint8Array([
+    0xff, 0xd8, // SOI
+    0xff, 0xe0, 0x00, 0x04, 0x4a, 0x46, // APP0 (keep, 6 bytes)
+    0xff, 0xe1, 0x00, 0x06, 0x45, 0x78, 0x69, 0x66, // APP1 EXIF (strip, 8 bytes)
+    0xff, 0xda, 0x00, 0x04, 0x01, 0x02, 0xaa, 0xbb, 0xff, 0xd9, // SOS + entropy + EOI
+  ]);
+  const strippedJpeg = new Uint8Array(stripJpegExifLossless(fakeJpeg.buffer));
+  assert.equal(strippedJpeg.byteLength, fakeJpeg.byteLength - 8);
+  assert.equal(strippedJpeg[0], 0xff);
+  assert.equal(strippedJpeg[1], 0xd8);
+
+  // Binary MP4 `free` padding box stripper keeps `ftyp` and `mdat` untouched
+  const fakeMp4 = new Uint8Array([
+    0x00, 0x00, 0x00, 0x08, 0x66, 0x74, 0x79, 0x70, // ftyp (8 bytes)
+    0x00, 0x00, 0x00, 0x08, 0x66, 0x72, 0x65, 0x65, // free (8 bytes - stripped)
+    0x00, 0x00, 0x00, 0x18, 0x6d, 0x64, 0x61, 0x74, // mdat (24 bytes)
+    1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16,
+  ]);
+  const strippedMp4 = new Uint8Array(stripMp4AtomsLossless(fakeMp4.buffer));
+  assert.equal(strippedMp4.byteLength, fakeMp4.byteLength - 8);
+
+  // Binary PNG `tEXt` chunk stripper preserves PNG signature + IHDR + IEND
+  const fakePng = new Uint8Array([
+    0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, // sig
+    0x00, 0x00, 0x00, 0x00, 0x49, 0x48, 0x44, 0x52, 0x00, 0x00, 0x00, 0x00, // IHDR
+    0x00, 0x00, 0x00, 0x00, 0x74, 0x45, 0x58, 0x74, 0x00, 0x00, 0x00, 0x00, // tEXt (stripped)
+    0x00, 0x00, 0x00, 0x00, 0x49, 0x45, 0x4e, 0x44, 0x00, 0x00, 0x00, 0x00, // IEND
+  ]);
+  const strippedPng = new Uint8Array(stripPngChunksLossless(fakePng.buffer));
+  assert.equal(strippedPng.byteLength, fakePng.byteLength - 12);
+});
+
 
 
 

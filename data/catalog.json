@@ -39,8 +39,88 @@
         "url": "https://www.instagram.com/tmctomystudio",
         "logo": "./assets/icons/social-instagram.svg"
       }
-    ]
+    ],
+    "openGraph": {
+      "title": "Manifestudio — Katalog Layanan Digital & Utilitas",
+      "tagline": "by Tomy · Katalog Layanan Digital & Utilitas Terpadu",
+      "caption": "Katalog layanan digital resmi Manifestudio (Netflix, Spotify, YouTube, Canva, CapCut, ChatGPT, Vidio, Viu) dengan kalkulator harga otomatis, jadwal sholat, cuaca real-time, jam dunia, speedtest, downloader sosmed, & kompresor media HD.",
+      "image": "./assets/og-manifestudio.jpg",
+      "imageAlt": "Banner Katalog Layanan Digital & Utilitas Manifestudio",
+      "siteName": "Manifestudio"
+    }
   },
+  "banners": [
+    {
+      "id": "banner-katalog",
+      "kicker": "Promo Otomatis · Garansi Penuh",
+      "heading": "Layanan Digital Siap Pakai dalam Hitungan Menit",
+      "sub": "Potongan otomatis Rp2.000 untuk transaksi mulai Rp50.000, dukungan kode voucher, dan opsi Bayar Nanti setelah akun diterima.",
+      "ctaLabel": "Jelajahi Katalog →",
+      "href": "#katalog",
+      "image": "./assets/hero-banner.jpg",
+      "scrim": ""
+    },
+    {
+      "id": "banner-prayer",
+      "kicker": "Utilitas Muslim · 35+ Kota & GPS",
+      "heading": "Jadwal Sholat & Imsakiyah Real-Time",
+      "sub": "Hitung mundur waktu adzan berikutnya otomatis beserta jadwal Imsak, Subuh, Dzuhur, Ashar, Maghrib, dan Isya.",
+      "ctaLabel": "Buka Jadwal Sholat →",
+      "href": "./tools.html?tab=prayer",
+      "image": "./assets/banner-prayer.jpg",
+      "scrim": "is-emerald"
+    },
+    {
+      "id": "banner-weather",
+      "kicker": "Cuaca Akurat · Prakiraan 7 Hari",
+      "heading": "Pantau Cuaca, Suhu & Peluang Hujan",
+      "sub": "Data meteorologi presisi lengkap dengan kelembapan, indeks UV, kecepatan angin, dan prakiraan mingguan.",
+      "ctaLabel": "Cek Cuaca Sekarang →",
+      "href": "./tools.html?tab=weather",
+      "image": "./assets/banner-weather.jpg",
+      "scrim": "is-sky"
+    },
+    {
+      "id": "banner-worldclock",
+      "kicker": "3D Globe Interaktif · WIB / WITA / WIT",
+      "heading": "Jam Dunia & Konverter Zona Waktu",
+      "sub": "Putar bola dunia 3D ke negara mana pun untuk membandingkan waktu lokal dengan kota internasional secara instan.",
+      "ctaLabel": "Buka Jam Dunia →",
+      "href": "./tools.html?tab=worldclock",
+      "image": "./assets/banner-worldclock.jpg",
+      "scrim": "is-indigo"
+    },
+    {
+      "id": "banner-speedtest",
+      "kicker": "Uji Jaringan · Download, Upload & Ping",
+      "heading": "Speedtest Internet & Kualitas Streaming",
+      "sub": "Ukur kecepatan unduh, unggah, ping, jitter, dan kesiapan streaming 4K atau gaming kompetitif Anda.",
+      "ctaLabel": "Mulai Speedtest →",
+      "href": "./tools.html?tab=speedtest",
+      "image": "./assets/banner-speedtest.jpg",
+      "scrim": "is-cyan"
+    },
+    {
+      "id": "banner-downloader",
+      "kicker": "All-in-One · Tanpa Watermark",
+      "heading": "Downloader Video, Foto, Story & Audio Sosmed",
+      "sub": "Unduh video HD tanpa watermark, postingan foto & slide carousel, story sosmed, salin caption, atau ekstrak MP3.",
+      "ctaLabel": "Buka Downloader →",
+      "href": "./tools.html?tab=downloader",
+      "image": "./assets/banner-speedtest.jpg",
+      "scrim": "is-violet"
+    },
+    {
+      "id": "banner-compressor",
+      "kicker": "Zero Quality Loss · Anti-Pecah Sosmed",
+      "heading": "Kompres Foto & Video HD Tanpa Kurangi Kualitas",
+      "sub": "Optimalkan ukuran file dengan 4 metode lossless & pengunci bit-rate agar TikTok, IG, & WA tidak menurunkan ketajaman unggahan Anda.",
+      "ctaLabel": "Kompres Media HD →",
+      "href": "./tools.html?tab=compressor",
+      "image": "./assets/hero-banner.jpg",
+      "scrim": "is-emerald"
+    }
+  ],
   "categories": [
     {
       "id": "all",

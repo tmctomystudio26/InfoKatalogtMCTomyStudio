@@ -269,12 +269,22 @@
           <button
             type="button"
             role="tab"
+            id="tab-btn-banners"
+            class="cat-tab"
+            data-admin-tab="banners"
+            aria-selected="false"
+          >
+            Banner Promo
+          </button>
+          <button
+            type="button"
+            role="tab"
             id="tab-btn-brand"
             class="cat-tab"
             data-admin-tab="brand"
             aria-selected="false"
           >
-            Brand, Biaya &amp; Kontak
+            Brand, OpenGraph &amp; Kontak
           </button>
           <button
             type="button"
@@ -520,7 +530,127 @@
           </div>
         </section>
 
-        <!-- Panel Brand, Biaya Layanan & Kontak Sosmed -->
+        <!-- Panel Banner Promo Carousel -->
+        <section id="panel-banners" class="admin-panel" aria-labelledby="tab-btn-banners" hidden>
+          <div class="admin-card">
+            <h2 class="admin-section-title">Kelola Banner Carousel Halaman Utama</h2>
+            <p class="admin-subtitle">
+              Tambah, edit, urutkan, atau hapus slide banner di halaman depan toko. Anda bisa mengganti gambar latar banner (upload foto/gambar sendiri, pilih preset, atau gunakan gradien elegan) serta mengubah seluruh tulisan dan link tujuan pada setiap banner.
+            </p>
+
+            <div id="admin-banner-list" class="admin-banner-list"></div>
+
+            <form id="add-banner-form" class="admin-add-form">
+              <h3 class="admin-subhead">Tambah Slide Banner Baru</h3>
+              <div class="admin-form-grid">
+                <div class="form-field">
+                  <label for="new-banner-kicker">Label Kicker (Teks Kecil Atas)</label>
+                  <input
+                    type="text"
+                    id="new-banner-kicker"
+                    value="Promo Spesial · Manifestudio"
+                    placeholder="Contoh: Promo Spesial · Manifestudio"
+                  />
+                </div>
+                <div class="form-field">
+                  <label for="new-banner-heading">Judul Utama Banner <span class="req">*</span></label>
+                  <input
+                    type="text"
+                    id="new-banner-heading"
+                    placeholder="Contoh: Diskon Spesial Paket Bundling"
+                    required
+                  />
+                </div>
+                <div class="form-field admin-sum-field">
+                  <label for="new-banner-sub">Deskripsi / Kalimat Penjelas Banner</label>
+                  <input
+                    type="text"
+                    id="new-banner-sub"
+                    placeholder="Contoh: Dapatkan harga lebih hemat untuk pemesanan 2 layanan sekaligus."
+                  />
+                </div>
+                <div class="form-field">
+                  <label for="new-banner-cta">Teks Tombol (CTA)</label>
+                  <input
+                    type="text"
+                    id="new-banner-cta"
+                    value="Lihat Promo →"
+                    placeholder="Contoh: Lihat Promo →"
+                  />
+                </div>
+                <div class="form-field">
+                  <label for="new-banner-href">Link Tujuan Saat Diklik</label>
+                  <input
+                    type="text"
+                    id="new-banner-href"
+                    value="#katalog"
+                    placeholder="#katalog atau ./tools.html?tool=compressor"
+                  />
+                </div>
+                <div class="form-field">
+                  <label for="new-banner-scrim">Tema Warna Latar / Overlay</label>
+                  <select id="new-banner-scrim" class="admin-select">
+                    <option value="">Biru Gelap Standar</option>
+                    <option value="is-emerald">Hijau Emerald</option>
+                    <option value="is-sky">Biru Langit Cerah</option>
+                    <option value="is-indigo">Indigo / Ungu</option>
+                    <option value="is-cyan">Cyan / Tosca</option>
+                    <option value="is-violet">Violet / Magenta</option>
+                  </select>
+                </div>
+                <div class="form-field">
+                  <label for="new-banner-preset">Preset Gambar Banner</label>
+                  <select id="new-banner-preset" class="admin-select">
+                    <option value="./assets/hero-banner.jpg">Banner Katalog Default</option>
+                    <option value="./assets/banner-prayer.jpg">Banner Jadwal Sholat</option>
+                    <option value="./assets/banner-weather.jpg">Banner Prakiraan Cuaca</option>
+                    <option value="./assets/banner-worldclock.jpg">Banner Jam Dunia</option>
+                    <option value="./assets/banner-speedtest.jpg">Banner Speedtest</option>
+                    <option value="">Tanpa Gambar (Hanya Gradien Warna)</option>
+                  </select>
+                </div>
+                <div class="form-field admin-sum-field">
+                  <label for="new-banner-image-url">Path / URL Gambar Banner (Opsional)</label>
+                  <input
+                    type="text"
+                    id="new-banner-image-url"
+                    value="./assets/hero-banner.jpg"
+                    placeholder="./assets/hero-banner.jpg atau https://... (kosongkan untuk gradien)"
+                  />
+                </div>
+                <div class="form-field admin-sum-field">
+                  <div class="admin-file-row">
+                    <img
+                      src="./assets/hero-banner.jpg"
+                      alt="Pratinjau gambar banner baru"
+                      width="96"
+                      height="48"
+                      id="new-banner-image-preview"
+                      class="admin-banner-thumb"
+                    />
+                    <label for="new-banner-image-file" class="btn btn-secondary btn-sm admin-file-trigger">
+                      Upload Gambar Banner Baru
+                    </label>
+                    <input
+                      type="file"
+                      id="new-banner-image-file"
+                      class="visually-hidden-file"
+                      accept="image/*"
+                    />
+                    <span id="new-banner-image-status" class="admin-prod-meta">Rasio landscape 16:9 atau 21:9 direkomendasikan.</span>
+                  </div>
+                </div>
+              </div>
+              <div class="admin-action-bar">
+                <button type="submit" class="btn btn-primary btn-sm">
+                  + Tambah Slide Banner
+                </button>
+              </div>
+            </form>
+          </div>
+        </section>
+
+        <!-- Panel Brand, Biaya Layanan, OpenGraph & Kontak Sosmed -->
         <section id="panel-brand" class="admin-panel" aria-labelledby="tab-btn-brand" hidden>
           <!-- Card 1: Identitas & Logo Brand -->
           <div class="admin-card">
@@ -627,7 +757,114 @@
             </div>
           </div>
 
-          <!-- Card 2: Biaya Layanan & Diskon Otomatis -->
+          <!-- Card 2: Pengaturan OpenGraph & Social Share Preview -->
+          <div class="admin-card">
+            <h2 class="admin-section-title">Pengaturan OpenGraph &amp; Tampilan Share Link (WA / FB / IG / X / Telegram)</h2>
+            <p class="admin-subtitle">
+              Atur gambar pratinjau (thumbnail), judul kalimat, tagline, dan caption saat link website dibagikan di WhatsApp, Telegram, Facebook, Instagram, atau X. Saat Anda klik <strong>Simpan &amp; Publikasikan ke GitHub</strong>, sistem otomatis memperbarui meta tag di <code>index.html</code> dan <code>data/catalog.json</code>.
+            </p>
+
+            <div class="admin-og-preview-card" aria-label="Pratinjau Kartu Share Sosial Media">
+              <div class="admin-og-preview-media">
+                <img
+                  src="./assets/og-manifestudio.jpg"
+                  alt="Pratinjau gambar OpenGraph"
+                  id="og-card-preview-img"
+                  class="admin-og-preview-img"
+                />
+                <span id="og-card-preview-tagline" class="admin-og-preview-badge">by Tomy</span>
+              </div>
+              <div class="admin-og-preview-body">
+                <span id="og-card-preview-site" class="admin-og-preview-domain">MANIFESTUDIO.MY.ID</span>
+                <strong id="og-card-preview-title" class="admin-og-preview-title">Manifestudio — Katalog Layanan Digital &amp; Langganan</strong>
+                <p id="og-card-preview-desc" class="admin-og-preview-desc">
+                  Pesan layanan streaming, musik, desain, dan kebutuhan akun digital dengan proses cepat via WhatsApp.
+                </p>
+              </div>
+            </div>
+
+            <div class="admin-logo-manager">
+              <div class="admin-logo-head">
+                <div>
+                  <strong class="admin-logo-title">Gambar Thumbnail OpenGraph (Rasio 1200×630)</strong>
+                  <div id="og-image-status" class="admin-prod-meta">Aktif: ./assets/og-manifestudio.jpg</div>
+                </div>
+                <div class="admin-file-row">
+                  <label for="og-image-file" class="btn btn-secondary btn-sm admin-file-trigger">
+                    Upload Gambar OpenGraph
+                  </label>
+                  <input
+                    type="file"
+                    id="og-image-file"
+                    class="visually-hidden-file"
+                    accept="image/*"
+                  />
+                  <button type="button" id="og-image-reset-btn" class="btn btn-ghost btn-sm">
+                    Reset Gambar Default
+                  </button>
+                </div>
+              </div>
+              <div class="form-field">
+                <label for="og-image-url">Atau Path / URL Gambar OpenGraph</label>
+                <input
+                  type="text"
+                  id="og-image-url"
+                  value="./assets/og-manifestudio.jpg"
+                  placeholder="./assets/og-manifestudio.jpg atau https://..."
+                />
+              </div>
+            </div>
+
+            <div class="admin-form-grid">
+              <div class="form-field">
+                <label for="og-title-input">Judul OpenGraph (Kalimat Utama Share Link)</label>
+                <input
+                  type="text"
+                  id="og-title-input"
+                  value="Manifestudio — Katalog Layanan Digital &amp; Langganan"
+                  placeholder="Manifestudio — Katalog Layanan Digital &amp; Langganan"
+                />
+              </div>
+              <div class="form-field">
+                <label for="og-tagline-input">Tagline OpenGraph</label>
+                <input
+                  type="text"
+                  id="og-tagline-input"
+                  value="by Tomy"
+                  placeholder="Contoh: by Tomy · Cepat, Aman &amp; Bergaransi"
+                />
+              </div>
+              <div class="form-field admin-sum-field">
+                <label for="og-description-input">Caption / Deskripsi OpenGraph</label>
+                <textarea
+                  id="og-description-input"
+                  class="admin-textarea"
+                  rows="2"
+                  placeholder="Pesan layanan streaming, musik, desain, dan kebutuhan akun digital dengan proses cepat via WhatsApp."
+                >Pesan layanan streaming, musik, desain, dan kebutuhan akun digital dengan proses cepat via WhatsApp.</textarea>
+              </div>
+              <div class="form-field">
+                <label for="og-sitename-input">Nama Situs (og:site_name)</label>
+                <input
+                  type="text"
+                  id="og-sitename-input"
+                  value="Manifestudio"
+                  placeholder="Manifestudio"
+                />
+              </div>
+              <div class="form-field">
+                <label for="og-alt-input">Teks Alternatif Gambar (og:image:alt)</label>
+                <input
+                  type="text"
+                  id="og-alt-input"
+                  value="Pratinjau Katalog Layanan Digital Manifestudio"
+                  placeholder="Pratinjau Katalog Layanan Digital Manifestudio"
+                />
+              </div>
+            </div>
+          </div>
+
+          <!-- Card 3: Biaya Layanan & Diskon Otomatis -->
           <div class="admin-card">
             <h2 class="admin-section-title">Pengaturan Biaya Layanan &amp; Diskon Otomatis</h2>
             <p class="admin-subtitle">
@@ -697,7 +934,7 @@
             </div>
           </div>
 
-          <!-- Card 3: Kontak & Sosial Media Admin + Logo Sosmed -->
+          <!-- Card 4: Kontak & Sosial Media Admin + Logo Sosmed -->
           <div class="admin-card">
             <h2 class="admin-section-title">Kontak &amp; Sosial Media Admin (Beserta Logo Sosmed)</h2>
             <p class="admin-subtitle">

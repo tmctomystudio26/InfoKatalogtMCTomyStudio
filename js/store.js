@@ -419,6 +419,137 @@ export function normalizeBrandSocials(brand = {}) {
   return defaults;
 }
 
+export const DEFAULT_OPEN_GRAPH = {
+  title: 'Manifestudio — Katalog Akun Premium & Menu Utilitas Digital',
+  description:
+    'Pesan Netflix, Canva Pro, YouTube, Spotify, Viu, Vidio, Alight Motion, WeTV & Prime Video instan. Dilengkapi Jadwal Sholat Kemenag RI, Prakiraan Cuaca, Jam Dunia UTC, Speedtest, Downloader & Kompres Media HD.',
+  tagline: 'Premium Account & Utilitas Digital by Tomy',
+  image: './assets/og-manifestudio.jpg',
+  imageAlt: 'Manifestudio — Katalog Akun Premium & Layanan Digital Terpercaya',
+  siteName: 'Manifestudio',
+};
+
+export const DEFAULT_BANNERS = [
+  {
+    id: 'banner-katalog',
+    kicker: 'Katalog Akun Premium · Harga Pelajar',
+    heading: 'Langganan Aplikasi Favorit, Aktif Dalam Hitungan Menit.',
+    sub: 'Pilih paket Sharing atau Privat bergaransi jelas. Checkout praktis langsung ke WhatsApp Admin.',
+    ctaLabel: 'Lihat Katalog',
+    href: '#katalog',
+    image: './assets/hero-banner.jpg',
+    scrim: 'default',
+  },
+  {
+    id: 'banner-prayer',
+    kicker: 'Menu Lainnya · Jadwal Sholat',
+    heading: 'Waktu Imsak & Sholat 5 Waktu Resmi Kemenag RI',
+    sub: 'Deteksi otomatis lokasi GPS/kecamatan kamu lengkap dengan hitung mundur waktu sholat berikutnya.',
+    ctaLabel: 'Buka Jadwal Sholat',
+    href: './tools.html?tab=prayer',
+    image: './assets/banner-prayer.jpg',
+    scrim: 'prayer',
+  },
+  {
+    id: 'banner-weather',
+    kicker: 'Menu Lainnya · Prakiraan Cuaca',
+    heading: 'Pantau Cuaca Real-Time & Prakiraan 7 Hari',
+    sub: 'Cek suhu, curah hujan aktual per jam, hembusan angin, dan prakiraan mingguan di kotamu.',
+    ctaLabel: 'Cek Cuaca',
+    href: './tools.html?tab=weather',
+    image: './assets/banner-weather.jpg',
+    scrim: 'weather',
+  },
+  {
+    id: 'banner-worldclock',
+    kicker: 'Menu Lainnya · Standar UTC',
+    heading: 'Putar Bola Dunia & Konversi WIB/WITA/WIT',
+    sub: 'Klik negara di globe interaktif untuk cek zona waktu & selisih jam Indonesia.',
+    ctaLabel: 'Putar Bola Dunia',
+    href: './tools.html?tab=worldclock',
+    image: './assets/banner-worldclock.jpg',
+    scrim: 'world',
+  },
+  {
+    id: 'banner-speedtest',
+    kicker: 'Menu Lainnya · Speedtest',
+    heading: 'Uji Kecepatan Internet & Ping Real-Time',
+    sub: 'Cek rata-rata download, upload, latensi, server, ISP, dan info perangkat dalam satu klik.',
+    ctaLabel: 'Mulai Speedtest',
+    href: './tools.html?tab=speedtest',
+    image: './assets/banner-speedtest.jpg',
+    scrim: 'weather',
+  },
+  {
+    id: 'banner-downloader',
+    kicker: 'Menu Lainnya · Downloader',
+    heading: 'Download Video, Foto, Story & Caption Sosmed Tanpa Watermark',
+    sub: 'Unduh video MP4 HD, slide foto TikTok/IG, Story, MP3, & salin caption otomatis.',
+    ctaLabel: 'Buka Downloader',
+    href: './tools.html?tab=downloader',
+    image: '',
+    scrim: 'downloader',
+  },
+  {
+    id: 'banner-compressor',
+    kicker: 'Menu Lainnya · Kompresor HD',
+    heading: 'Kompres Foto & Video Anti-Pecah untuk TikTok, IG & WA',
+    sub: 'Optimasi ukuran file tanpa mengurangi kualitas visual agar tidak dikompres ulang oleh sosmed.',
+    ctaLabel: 'Kompres Media HD',
+    href: './tools.html?tab=compressor',
+    image: '',
+    scrim: 'world',
+  },
+];
+
+export function normalizeOpenGraphConfig(brand = {}) {
+  const rawOg =
+    brand?.openGraph && typeof brand.openGraph === 'object' ? brand.openGraph : {};
+  const brandName = String(brand?.name || 'Manifestudio').trim() || 'Manifestudio';
+  return {
+    title:
+      String(rawOg.title || DEFAULT_OPEN_GRAPH.title).trim() || DEFAULT_OPEN_GRAPH.title,
+    description:
+      String(rawOg.description || DEFAULT_OPEN_GRAPH.description).trim() ||
+      DEFAULT_OPEN_GRAPH.description,
+    tagline:
+      String(rawOg.tagline || DEFAULT_OPEN_GRAPH.tagline).trim() ||
+      DEFAULT_OPEN_GRAPH.tagline,
+    image:
+      String(rawOg.image || DEFAULT_OPEN_GRAPH.image).trim() || DEFAULT_OPEN_GRAPH.image,
+    imageAlt:
+      String(rawOg.imageAlt || DEFAULT_OPEN_GRAPH.imageAlt).trim() ||
+      DEFAULT_OPEN_GRAPH.imageAlt,
+    siteName: String(rawOg.siteName || brandName).trim() || brandName,
+  };
+}
+
+export function normalizeBanners(banners, fallbackBanners = DEFAULT_BANNERS) {
+  const source =
+    Array.isArray(banners) && banners.length > 0
+      ? banners
+      : Array.isArray(fallbackBanners) && fallbackBanners.length > 0
+      ? fallbackBanners
+      : DEFAULT_BANNERS;
+
+  return source
+    .filter((b) => b && (String(b.heading || '').trim() || String(b.kicker || '').trim()))
+    .map((b, idx) => ({
+      id: String(b.id || `banner-${idx + 1}`).trim(),
+      kicker: String(b.kicker || 'Promo & Info').trim(),
+      heading: String(b.heading || 'Manifestudio').trim(),
+      sub: String(b.sub || '').trim(),
+      ctaLabel: String(b.ctaLabel || 'Selengkapnya').trim() || 'Selengkapnya',
+      href: String(b.href || '#katalog').trim() || '#katalog',
+      image: String(b.image ?? '').trim(),
+      scrim: ['default', 'prayer', 'weather', 'world', 'downloader'].includes(
+        String(b.scrim || '').trim()
+      )
+        ? String(b.scrim).trim()
+        : 'default',
+    }));
+}
+
 export function normalizeBrandConfig(brand = {}) {
   const safe = brand && typeof brand === 'object' ? brand : {};
   const waNum = String(safe.whatsappNumber || '6285122936027').replace(/[^0-9]/g, '') || '6285122936027';
@@ -457,6 +588,7 @@ export function normalizeBrandConfig(brand = {}) {
       : 0,
     serviceFeeLabel: String(safe.serviceFeeLabel || 'Biaya Layanan').trim() || 'Biaya Layanan',
     socials: normalizeBrandSocials({ ...safe, whatsappNumber: waNum }),
+    openGraph: normalizeOpenGraphConfig(safe),
   };
 }
 
@@ -634,6 +766,143 @@ export function deleteSocialFromCatalog(catalog, socialId) {
   };
 }
 
+export function upsertBannerInCatalog(catalog, bannerInput = {}) {
+  const cleanHeading = String(bannerInput.heading || '').trim();
+  if (!cleanHeading) {
+    throw new Error('Judul utama (heading) banner wajib diisi.');
+  }
+  const cleanId = String(bannerInput.id || `banner-${slugifyId(cleanHeading)}`).trim();
+  const cleanKicker = String(bannerInput.kicker || 'Promo & Info').trim() || 'Promo & Info';
+  const cleanSub = String(bannerInput.sub || '').trim();
+  const cleanCta = String(bannerInput.ctaLabel || 'Selengkapnya').trim() || 'Selengkapnya';
+  const cleanHref = String(bannerInput.href || '#katalog').trim() || '#katalog';
+  const cleanImage = String(bannerInput.image ?? '').trim();
+  const cleanScrim = ['default', 'prayer', 'weather', 'world', 'downloader'].includes(
+    String(bannerInput.scrim || '').trim()
+  )
+    ? String(bannerInput.scrim).trim()
+    : 'default';
+
+  const currentBanners = normalizeBanners(catalog?.banners);
+  const existingIdx = currentBanners.findIndex((b) => b.id === cleanId);
+  const entry = {
+    id: cleanId,
+    kicker: cleanKicker,
+    heading: cleanHeading,
+    sub: cleanSub,
+    ctaLabel: cleanCta,
+    href: cleanHref,
+    image: cleanImage,
+    scrim: cleanScrim,
+  };
+
+  if (existingIdx >= 0) {
+    currentBanners[existingIdx] = entry;
+  } else {
+    currentBanners.push(entry);
+  }
+
+  return {
+    ...catalog,
+    banners: currentBanners,
+  };
+}
+
+export function deleteBannerFromCatalog(catalog, bannerId) {
+  const targetId = String(bannerId || '').trim();
+  const currentBanners = normalizeBanners(catalog?.banners);
+  if (currentBanners.length <= 1) {
+    return { ...catalog, banners: currentBanners };
+  }
+  return {
+    ...catalog,
+    banners: currentBanners.filter((b) => b.id !== targetId),
+  };
+}
+
+export function moveBannerInCatalog(catalog, bannerId, direction) {
+  const banners = normalizeBanners(catalog?.banners);
+  const index = banners.findIndex((b) => b.id === bannerId);
+  if (index < 0 || banners.length <= 1) return { ...catalog, banners };
+
+  let targetIndex = index;
+  if (direction === 'up') targetIndex = Math.max(0, index - 1);
+  else if (direction === 'down') targetIndex = Math.min(banners.length - 1, index + 1);
+  else if (direction === 'top') targetIndex = 0;
+  else if (direction === 'bottom') targetIndex = banners.length - 1;
+
+  if (targetIndex === index) return { ...catalog, banners };
+
+  const [moved] = banners.splice(index, 1);
+  banners.splice(targetIndex, 0, moved);
+  return { ...catalog, banners };
+}
+
+export function resolveAbsoluteOgImageUrl(imagePath, siteOrigin = 'https://manifestudio.my.id') {
+  const raw = String(imagePath || DEFAULT_OPEN_GRAPH.image).trim() || DEFAULT_OPEN_GRAPH.image;
+  if (/^https?:\/\//i.test(raw) || raw.startsWith('data:')) {
+    return raw;
+  }
+  const cleanOrigin = String(siteOrigin || 'https://manifestudio.my.id').replace(/\/+$/, '');
+  const cleanRel = raw.replace(/^\.\//, '').replace(/^\/+/, '');
+  return `${cleanOrigin}/${cleanRel}`;
+}
+
+export function applyOpenGraphToHtml(htmlString = '', openGraphInput = {}, brandInput = {}) {
+  const html = String(htmlString || '');
+  if (!html) return '';
+  const brand = normalizeBrandConfig({ ...brandInput, openGraph: openGraphInput });
+  const og = brand.openGraph;
+  const absImg = resolveAbsoluteOgImageUrl(og.image);
+
+  const escapeAttr = (val) =>
+    String(val ?? '')
+      .replaceAll('&', '&amp;')
+      .replaceAll('"', '&quot;')
+      .replaceAll('<', '&lt;')
+      .replaceAll('>', '&gt;');
+
+  const fullTitle = og.tagline ? `${og.title} (${og.tagline})` : og.title;
+  const safeTitle = escapeAttr(og.title);
+  const safeDesc = escapeAttr(og.description);
+  const safeAlt = escapeAttr(og.imageAlt || og.tagline || og.title);
+  const safeSite = escapeAttr(og.siteName || brand.name || 'Manifestudio');
+  const safeImg = escapeAttr(absImg);
+
+  let out = html;
+  out = out.replace(/<title>[\s\S]*?<\/title>/i, `<title>${escapeAttr(fullTitle)}</title>`);
+
+  const replaceMeta = (attrName, attrVal, newContent) => {
+    const re1 = new RegExp(
+      `(<meta\\s+[^>]*${attrName}=["']${attrVal}["'][^>]*content=["'])([^"']*)(["'][^>]*>)`,
+      'i'
+    );
+    const re2 = new RegExp(
+      `(<meta\\s+[^>]*content=["'])([^"']*)(["'][^>]*${attrName}=["']${attrVal}["'][^>]*>)`,
+      'i'
+    );
+    if (re1.test(out)) {
+      out = out.replace(re1, `$1${newContent}$3`);
+    } else if (re2.test(out)) {
+      out = out.replace(re2, `$1${newContent}$3`);
+    }
+  };
+
+  replaceMeta('name', 'description', safeDesc);
+  replaceMeta('property', 'og:title', safeTitle);
+  replaceMeta('property', 'og:description', safeDesc);
+  replaceMeta('property', 'og:image', safeImg);
+  replaceMeta('property', 'og:image:secure_url', safeImg);
+  replaceMeta('property', 'og:image:alt', safeAlt);
+  replaceMeta('property', 'og:site_name', safeSite);
+  replaceMeta('name', 'twitter:title', safeTitle);
+  replaceMeta('name', 'twitter:description', safeDesc);
+  replaceMeta('name', 'twitter:image', safeImg);
+  replaceMeta('name', 'twitter:image:alt', safeAlt);
+
+  return out;
+}
+
 export function toggleProductStockInCatalog(catalog, productId, outOfStock, restockMessage = 'Akan segera restock') {
   const nextProducts = (catalog.products || []).map((product) => {
     if (product.id !== productId) return product;
@@ -757,9 +1026,15 @@ export function collectAllActiveUploadLogoPaths(catalog = {}) {
   }
   const brandLogoPath = extractManagedUploadLogoPath(catalog?.brand?.logo);
   if (brandLogoPath) paths.add(brandLogoPath);
+  const ogImgPath = extractManagedUploadLogoPath(catalog?.brand?.openGraph?.image);
+  if (ogImgPath) paths.add(ogImgPath);
   for (const soc of Array.isArray(catalog?.brand?.socials) ? catalog.brand.socials : []) {
     const sp = extractManagedUploadLogoPath(soc?.logo);
     if (sp) paths.add(sp);
+  }
+  for (const ban of Array.isArray(catalog?.banners) ? catalog.banners : []) {
+    const bp = extractManagedUploadLogoPath(ban?.image);
+    if (bp) paths.add(bp);
   }
   return paths;
 }
@@ -805,6 +1080,9 @@ export function compactCatalogForHistory(catalog) {
   let compactBrand = safe.brand ? structuredClone(safe.brand) : undefined;
   if (compactBrand) {
     if (compactBrand.logo) compactBrand.logo = compactLogoStr(compactBrand.logo);
+    if (compactBrand.openGraph?.image) {
+      compactBrand.openGraph.image = compactLogoStr(compactBrand.openGraph.image);
+    }
     if (Array.isArray(compactBrand.socials)) {
       compactBrand.socials = compactBrand.socials.map((s) => ({
         ...s,
@@ -814,6 +1092,14 @@ export function compactCatalogForHistory(catalog) {
   }
   return {
     ...(compactBrand ? { brand: compactBrand } : {}),
+    ...(Array.isArray(safe.banners)
+      ? {
+          banners: safe.banners.map((b) => ({
+            ...structuredClone(b),
+            image: compactLogoStr(b?.image),
+          })),
+        }
+      : {}),
     ...(Array.isArray(safe.categories) ? { categories: structuredClone(safe.categories) } : {}),
     ...(Array.isArray(safe.paymentOptions) ? { paymentOptions: structuredClone(safe.paymentOptions) } : {}),
     ...(Array.isArray(safe.faqItems) ? { faqItems: structuredClone(safe.faqItems) } : {}),
@@ -1043,7 +1329,7 @@ export function describeCatalogChanges(prevCatalog, nextCatalog) {
     }
   }
 
-  // 6. Brand, Fees, Discount & Socials diff
+  // 6. Brand, Fees, Discount, OpenGraph & Socials diff
   const prevBrand = prevCatalog?.brand || {};
   const nextBrand = nextCatalog?.brand || {};
   if (prevCatalog?.brand && nextCatalog?.brand) {
@@ -1115,6 +1401,27 @@ export function describeCatalogChanges(prevCatalog, nextCatalog) {
       );
     }
 
+    // OpenGraph changes
+    if (prevBrand.openGraph || nextBrand.openGraph) {
+      const pOg = normalizeOpenGraphConfig(prevBrand);
+      const nOg = normalizeOpenGraphConfig(nextBrand);
+      if (pOg.image !== nOg.image) {
+        details.push('Mengubah gambar OpenGraph (Social Share Preview)');
+      }
+      if (pOg.title !== nOg.title) {
+        details.push(`Mengubah judul OpenGraph menjadi "${nOg.title}"`);
+      }
+      if (pOg.tagline !== nOg.tagline) {
+        details.push(`Mengubah tagline OpenGraph menjadi "${nOg.tagline}"`);
+      }
+      if (pOg.description !== nOg.description) {
+        details.push('Mengubah caption / deskripsi OpenGraph');
+      }
+      if (pOg.siteName !== nOg.siteName) {
+        details.push(`Mengubah nama situs OpenGraph menjadi "${nOg.siteName}"`);
+      }
+    }
+
     if (Array.isArray(prevBrand.socials) || Array.isArray(nextBrand.socials)) {
       const pSocials = normalizeBrandSocials(prevBrand);
       const nSocials = normalizeBrandSocials(nextBrand);
@@ -1145,7 +1452,45 @@ export function describeCatalogChanges(prevCatalog, nextCatalog) {
     }
   }
 
-  // 7. FAQ diff
+  // 7. Banners diff
+  if (Array.isArray(prevCatalog?.banners) || Array.isArray(nextCatalog?.banners)) {
+    const pBanners = normalizeBanners(prevCatalog?.banners);
+    const nBanners = normalizeBanners(nextCatalog?.banners);
+    const pBanMap = new Map(pBanners.map((b) => [b.id, b]));
+    const nBanMap = new Map(nBanners.map((b) => [b.id, b]));
+    for (const [bid, pb] of pBanMap.entries()) {
+      if (!nBanMap.has(bid)) {
+        details.push(`Menghapus banner "${pb.heading || pb.kicker || bid}"`);
+      }
+    }
+    for (const [bid, nb] of nBanMap.entries()) {
+      const pb = pBanMap.get(bid);
+      if (!pb) {
+        details.push(`Menambah banner baru "${nb.heading || nb.kicker || bid}"`);
+      } else {
+        if (String(pb.image || '') !== String(nb.image || '')) {
+          details.push(`Mengubah gambar banner "${nb.heading || pb.heading}"`);
+        }
+        if (String(pb.heading || '') !== String(nb.heading || '')) {
+          details.push(`Mengubah judul banner dari "${pb.heading}" menjadi "${nb.heading}"`);
+        } else if (
+          String(pb.kicker || '') !== String(nb.kicker || '') ||
+          String(pb.sub || '') !== String(nb.sub || '') ||
+          String(pb.ctaLabel || '') !== String(nb.ctaLabel || '') ||
+          String(pb.href || '') !== String(nb.href || '')
+        ) {
+          details.push(`Memperbarui tulisan/tautan pada banner "${nb.heading}"`);
+        }
+      }
+    }
+    const commonPrevBan = pBanners.map((b) => b.id).filter((id) => nBanMap.has(id));
+    const commonNextBan = nBanners.map((b) => b.id).filter((id) => pBanMap.has(id));
+    if (commonPrevBan.length > 1 && commonPrevBan.join('::') !== commonNextBan.join('::')) {
+      details.push('Mengubah urutan slide banner di beranda');
+    }
+  }
+
+  // 8. FAQ diff
   const prevFaq = Array.isArray(prevCatalog?.faqItems) ? prevCatalog.faqItems : [];
   const nextFaq = Array.isArray(nextCatalog?.faqItems) ? nextCatalog.faqItems : [];
   if (prevFaq.length > 0 || nextFaq.length > 0) {
