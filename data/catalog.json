@@ -2,7 +2,7 @@
   "brand": {
     "name": "Manifestudio",
     "tagline": "by Tomy",
-    "logo": "./assets/icons/brand-icon.svg",
+    "logo": "./assets/logos/uploads/brand-mwj42bno.png",
     "footerText": "Dikelola oleh Manifestudio by Tomy © 2026",
     "whatsappNumber": "6285122936027",
     "tiktokUrl": "https://www.tiktok.com/@tmctomystudio",
@@ -21,7 +21,7 @@
         "label": "WhatsApp Admin",
         "handle": "+62 851-2293-6027",
         "url": "https://wa.me/6285122936027",
-        "logo": "./assets/icons/social-whatsapp.svg"
+        "logo": "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcSV0QiU30wRrmwBKWXcXIlNuileOBuF9WGEPvqIEit2BANTgLH0HTAy0Tgb&s=10"
       },
       {
         "id": "social-tiktok",
