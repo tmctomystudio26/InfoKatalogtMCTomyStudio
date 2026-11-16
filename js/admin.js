@@ -848,7 +848,7 @@ function renderBrandSettings() {
   };
 
   setVal('brand-name-input', brand.name || 'Manifestudio');
-  setVal('brand-tagline-input', brand.tagline || 'Premium Account by Tomy');
+  setVal('brand-tagline-input', brand.tagline || 'by Tomy');
   setVal('brand-footer-input', brand.footerText || 'Dikelola oleh Manifestudio by Tomy © 2026');
   setVal(
     'brand-paylater-pct-input',
@@ -2842,7 +2842,7 @@ function bindEvents() {
     b.name = val.trim() || 'Manifestudio';
   });
   bindBrandField('brand-tagline-input', (b, val) => {
-    b.tagline = val.trim() || 'Premium Account by Tomy';
+    b.tagline = val.trim() || 'by Tomy';
   });
   bindBrandField('brand-footer-input', (b, val) => {
     b.footerText = val.trim() || 'Dikelola oleh Manifestudio by Tomy © 2026';

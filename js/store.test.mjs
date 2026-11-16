@@ -21,6 +21,7 @@ import {
   getProductCardTone,
   getStartingPrice,
   moveProductInCatalog,
+  normalizeBrandConfig,
   pruneCatalogHistory,
   removeFromCart,
   reorderProductToIndex,
@@ -953,7 +954,16 @@ test('describeCatalogChanges records itemized sub-product, price, logo, fee, cat
   next.brand.payLaterSurchargeRate = 0.05;
   next.brand.serviceFeeFlat = 1500;
 
+  // 6. Change tagline via Admin Panel
+  next.brand.tagline = 'Official Store by Tomy';
+
   const details = describeCatalogChanges(prev, next);
+  assert.equal(prev.brand.tagline, 'by Tomy');
+  assert.equal(normalizeBrandConfig(next.brand).tagline, 'Official Store by Tomy');
+  assert.equal(
+    details.includes('Mengubah tulisan tagline header menjadi "Official Store by Tomy"'),
+    true
+  );
   assert.equal(
     details.some((d) => d.includes('Menghapus sub produk Spotify Premium')),
     true

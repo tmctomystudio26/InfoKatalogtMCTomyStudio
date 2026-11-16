@@ -1,4 +1,5 @@
-import { PENDING_ORDER_STORAGE_KEY, formatRupiah } from './store.js';
+import { PENDING_ORDER_STORAGE_KEY, formatRupiah, normalizeBrandConfig } from './store.js';
+import { loadCatalogData } from './data.js';
 import { generateReceiptImage } from './receipt.js';
 import { initMusicPlayer } from './music.js';
 
@@ -314,6 +315,18 @@ async function initOrderPage() {
       }
     }
   });
+
+  loadCatalogData({ allowLocalPreview: true })
+    .then((loaded) => {
+      const brand = normalizeBrandConfig(loaded?.data?.brand || {});
+      const logoEl = document.getElementById('header-brand-logo');
+      if (logoEl && brand.logo) logoEl.src = brand.logo;
+      const nameEl = document.getElementById('header-brand-name');
+      if (nameEl && brand.name) nameEl.textContent = brand.name;
+      const taglineEl = document.getElementById('header-brand-tagline');
+      if (taglineEl && brand.tagline) taglineEl.textContent = brand.tagline;
+    })
+    .catch(() => {});
 
   initMusicPlayer();
 }

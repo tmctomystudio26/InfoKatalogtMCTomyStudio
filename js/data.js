@@ -1,6 +1,6 @@
 export const BRAND = {
   name: 'Manifestudio',
-  tagline: 'Premium Account by Tomy',
+  tagline: 'by Tomy',
   logo: './assets/icons/brand-icon.svg',
   footerText: 'Dikelola oleh Manifestudio by Tomy © 2026',
   whatsappNumber: '6285122936027',
@@ -319,7 +319,7 @@ function normalizeLoadedCatalog(fallback, rawCatalog = {}) {
     mergedBrand.tagline === 'Katalog & Utilitas' ||
     mergedBrand.tagline === 'Akun Premium & Layanan Digital Terpercaya'
   ) {
-    mergedBrand.tagline = 'Premium Account by Tomy';
+    mergedBrand.tagline = 'by Tomy';
   }
   if (!mergedBrand.footerText || String(mergedBrand.footerText).includes('tMC Tomy Studio')) {
     mergedBrand.footerText = 'Dikelola oleh Manifestudio by Tomy © 2026';

@@ -427,7 +427,7 @@ export function normalizeBrandConfig(brand = {}) {
     !rawTagline ||
     rawTagline === 'Katalog & Utilitas' ||
     rawTagline === 'Akun Premium & Layanan Digital Terpercaya'
-      ? 'Premium Account by Tomy'
+      ? 'by Tomy'
       : rawTagline;
 
   const rawFooter = String(safe.footerText || '').trim();
