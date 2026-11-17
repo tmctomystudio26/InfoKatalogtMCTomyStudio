@@ -180,9 +180,68 @@ export function tokenizeText(raw) {
     .filter((w) => w.length >= 2);
 }
 
+const DASH_SEPARATOR_RE = /\s+[-–—]\s+/;
+const PIPE_NOISE_SUFFIX_RE = /\s*\|\s*(?:official|lirik|lyrics?|audio|video|hd|hq|full|music).*$/i;
+const PAREN_NOISE_RE = /\([^)]*(?:official|music|video|mv|lyric|lyrics|lirik|audio|live|cover|remix|ver\.?|version|hd|hq|kbps|feat\.?|ft\.?)[^)]*\)|\[[^\]]*(?:official|music|video|mv|lyric|lyrics|lirik|audio|live|cover|remix|ver\.?|version|hd|hq|kbps|feat\.?|ft\.?)[^\]]*\]/gi;
+
 export function extractCoreSongTokens(title) {
   const tokens = tokenizeText(title).filter((w) => !SONG_NOISE_TOKENS.has(w));
   return [...new Set(tokens.length > 0 ? tokens : tokenizeText(title))];
+}
+
+function buildSongTitleHypotheses(rawTitle, rawArtist = '') {
+  const genericArtists = new Set(['artis', 'music', 'youtube', 'topic', 'viral', 'indonesia', 'indo']);
+  const baseArtistTokens = tokenizeText(rawArtist).filter((w) => !genericArtists.has(w));
+  const fullCore = extractCoreSongTokens(rawTitle);
+  const cleanedTitle = String(rawTitle || '')
+    .replace(PIPE_NOISE_SUFFIX_RE, '')
+    .replace(PAREN_NOISE_RE, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  if (DASH_SEPARATOR_RE.test(cleanedTitle)) {
+    const parts = cleanedTitle.split(DASH_SEPARATOR_RE).map((p) => p.trim()).filter(Boolean);
+    if (parts.length >= 2) {
+      const leftRaw = parts[0];
+      const rightRaw = parts.slice(1).join(' ');
+      const leftCore = extractCoreSongTokens(leftRaw);
+      const rightCore = extractCoreSongTokens(rightRaw);
+      if (leftCore.length > 0 && rightCore.length > 0) {
+        const artistSet = new Set(baseArtistTokens);
+        const leftHasArtist = leftCore.some((tok) => artistSet.has(tok));
+        const rightHasArtist = rightCore.some((tok) => artistSet.has(tok));
+
+        if (leftHasArtist && !rightHasArtist) {
+          return [
+            {
+              songTokens: rightCore,
+              artistTokens: [...new Set([...baseArtistTokens, ...leftCore])],
+            },
+          ];
+        }
+        if (rightHasArtist && !leftHasArtist) {
+          return [
+            {
+              songTokens: leftCore,
+              artistTokens: [...new Set([...baseArtistTokens, ...rightCore])],
+            },
+          ];
+        }
+        return [
+          {
+            songTokens: rightCore,
+            artistTokens: [...new Set([...baseArtistTokens, ...leftCore])],
+          },
+          {
+            songTokens: leftCore,
+            artistTokens: [...new Set([...baseArtistTokens, ...rightCore])],
+          },
+        ];
+      }
+    }
+  }
+
+  return [{ songTokens: fullCore, artistTokens: baseArtistTokens }];
 }
 
 export function isBlockedAudioWrapperUrl(rawUrl = '') {
@@ -264,41 +323,90 @@ export function isStrictSongMetadataMatch(targetTrack, candidateTrack) {
     return false;
   }
 
-  const targetCore = extractCoreSongTokens(targetTrack.title);
-  if (targetCore.length === 0) return false;
+  const hypotheses = buildSongTitleHypotheses(targetTrack.title, targetTrack.artist);
+  if (hypotheses.length === 0) return false;
 
   const candTitleWords = new Set(tokenizeText(candidateTrack.title));
   const candAllWords = new Set(tokenizeText(`${candidateTrack.title} ${candidateTrack.artist || ''}`));
 
-  let titleHits = 0;
-  for (const tok of targetCore) {
-    if (candTitleWords.has(tok)) {
-      titleHits += 1;
+  return hypotheses.some(({ songTokens, artistTokens }) => {
+    if (!songTokens || songTokens.length === 0) return false;
+    let titleHits = 0;
+    for (const tok of songTokens) {
+      if (candTitleWords.has(tok)) {
+        titleHits += 1;
+      }
+    }
+
+    // Must match whole-word song title tokens (for 1-2 word titles like "Mangu", "Stecu", "Tanpa Cinta", 100% must match)
+    const requiredTitleHits =
+      songTokens.length === 1
+        ? 1
+        : songTokens.length === 2
+        ? 2
+        : Math.max(2, Math.ceil(songTokens.length * 0.75));
+
+    if (titleHits < requiredTitleHits) return false;
+
+    if (artistTokens.length > 0) {
+      const artistMatched = artistTokens.some((tok) => candAllWords.has(tok));
+      // Require artist match unless distinct non-artist song title has >= 3 matched words
+      if (!artistMatched && titleHits < 3) {
+        return false;
+      }
+    }
+
+    return true;
+  });
+}
+
+/**
+ * Picks up to `maxAlts` unique strictly-matching alternate YouTube tracks for racing audio resolution.
+ */
+export function dedupeMatchingAltTracks(
+  targetTrack,
+  candidatePools = [],
+  { failedIds = new Set(), maxAlts = 4 } = {}
+) {
+  if (!targetTrack) return [];
+  const seenIds = new Set();
+  const matching = [];
+  for (const alt of candidatePools) {
+    if (
+      alt?.videoId &&
+      alt.videoId !== targetTrack.videoId &&
+      !seenIds.has(alt.videoId) &&
+      !failedIds.has(alt.videoId) &&
+      isStrictSongMetadataMatch(targetTrack, alt)
+    ) {
+      seenIds.add(alt.videoId);
+      matching.push(alt);
+      if (matching.length >= maxAlts) break;
     }
   }
+  return matching;
+}
 
-  // Must match whole-word song title tokens (for 1-word titles like "Mangu" or "Stecu", 100% must match title)
-  const requiredTitleHits =
-    targetCore.length === 1
-      ? 1
-      : targetCore.length === 2
-      ? 2
-      : Math.max(2, Math.ceil(targetCore.length * 0.75));
-
-  if (titleHits < requiredTitleHits) return false;
-
-  // Verify artist alignment if target artist is specific (avoid same-title different-artist collisions)
-  const genericArtists = new Set(['artis', 'music', 'youtube', 'topic', 'viral', 'indonesia', 'indo']);
-  const targetArtistTokens = tokenizeText(targetTrack.artist).filter((w) => !genericArtists.has(w));
-  if (targetArtistTokens.length > 0) {
-    const artistMatched = targetArtistTokens.some((tok) => candAllWords.has(tok));
-    // Require artist match unless target title has >= 3 distinct matched words
-    if (!artistMatched && titleHits < 3) {
-      return false;
-    }
-  }
-
-  return true;
+/**
+ * Determines whether the background silent-hold placeholder MUST stop and flip
+ * OS media notification playbackState to 'paused' so it never plays silent loops forever.
+ */
+export function shouldStopSilentHoldAndPauseNotification({
+  activeEngine = 'audio-el',
+  isSilentHold = false,
+  resolvedStreamUrl = '',
+  isHidden = false,
+  explicitPaused = false,
+  timedOutOrFailed = false,
+} = {}) {
+  return Boolean(
+    activeEngine === 'yt-iframe' &&
+      isSilentHold &&
+      !explicitPaused &&
+      isHidden &&
+      !resolvedStreamUrl &&
+      timedOutOrFailed
+  );
 }
 
 /**

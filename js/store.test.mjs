@@ -50,6 +50,7 @@ import {
   clampMusicFabPosition,
   computeSafeResumeSeconds,
   createUserPlaylist,
+  dedupeMatchingAltTracks,
   deleteUserPlaylist,
   extractYouTubeVideoId,
   extractStreamExpiryMs,
@@ -79,6 +80,7 @@ import {
   selectUmmyAudioStreamCandidates,
   shouldAutoSkipOnPlaybackError,
   shouldIgnoreTimeUpdateDuringPendingSeek,
+  shouldStopSilentHoldAndPauseNotification,
   shuffleTracksFisherYates,
   toggleTrackInWatchLater,
 } from './music-logic.js';
@@ -1977,4 +1979,108 @@ test('persistent stream cache validates googlevideo expiry, TTL, and prioritizes
     ['yt-cur1', 'yt-qnxt', 'yt-srch', 'yt-wl01', 'yt-pl01']
   );
 });
+
+test('Artist - Title parser matches genuine alternate uploads for same song while rejecting different songs', () => {
+  const targetOfficialMv = normalizeYtMusicTrack({
+    videoId: '93YDqv3KBUs',
+    title: 'Yovie Widianto, Tiara Andini - Tanpa Cinta (Official Music Video)',
+    artist: 'Yovie Widianto',
+    duration: 288,
+  });
+  const altLyricsTbl = normalizeYtMusicTrack({
+    videoId: 'mn7CK4ND3rU',
+    title: 'Yovie & Nuno - Tanpa Cinta (Lyrics)',
+    artist: 'TBL',
+    duration: 259,
+  });
+  const altReversedIndolirik = normalizeYtMusicTrack({
+    videoId: 'URTVIX6Q-2g',
+    title: 'Tanpa Cinta - Tiara Andini, Yovie Widianto | Lirik Lagu',
+    artist: 'Indolirik',
+    duration: 256,
+  });
+  const altTopic = normalizeYtMusicTrack({
+    videoId: 'SSNa3pW_Ht0',
+    title: 'Tanpa Cinta',
+    artist: 'Yovie Widianto',
+    duration: 251,
+  });
+  const wrongSongSameTitleDiffArtist = normalizeYtMusicTrack({
+    videoId: 'terry123456',
+    title: 'Tanpa Cinta - Terry',
+    artist: 'Sony Music',
+    duration: 245,
+  });
+  const wrongSongSameArtist = normalizeYtMusicTrack({
+    videoId: 'other000001',
+    title: 'Yovie Widianto - Tak Sebebas Merpati',
+    artist: 'Yovie Widianto',
+    duration: 260,
+  });
+
+  // Matches lyric / reupload / topic versions of the EXACT same song
+  assert.equal(isStrictSongMetadataMatch(targetOfficialMv, altLyricsTbl), true);
+  assert.equal(isStrictSongMetadataMatch(targetOfficialMv, altReversedIndolirik), true);
+  assert.equal(isStrictSongMetadataMatch(targetOfficialMv, altTopic), true);
+  assert.equal(isStrictSongMetadataMatch(altReversedIndolirik, targetOfficialMv), true);
+
+  // Strictly rejects different songs (same title by Terry, or different song by Yovie Widianto)
+  assert.equal(isStrictSongMetadataMatch(targetOfficialMv, wrongSongSameTitleDiffArtist), false);
+  assert.equal(isStrictSongMetadataMatch(targetOfficialMv, wrongSongSameArtist), false);
+
+  // Dedupe skips primary videoId and failedIds and caps cleanly at maxAlts=4
+  const alts = dedupeMatchingAltTracks(
+    targetOfficialMv,
+    [
+      targetOfficialMv,
+      altTopic,
+      altLyricsTbl,
+      altReversedIndolirik,
+      wrongSongSameTitleDiffArtist,
+      normalizeYtMusicTrack({ videoId: 'oVGH5liPPZM', title: 'Yovie & Nuno - Tanpa Cinta (Official Audio)', artist: 'Sony Music Entertainment Indonesia', duration: 258 }),
+      normalizeYtMusicTrack({ videoId: 'Q_EtDfSfWp8', title: 'Yovie Widianto, Tiara Andini - Tanpa Cinta (Official Lyric Video)', artist: 'Yovie Widianto', duration: 251 }),
+    ],
+    { failedIds: new Set(['SSNa3pW_Ht0']), maxAlts: 4 }
+  );
+  assert.equal(alts.length, 4);
+  assert.equal(alts.some((t) => t.videoId === 'SSNa3pW_Ht0'), false);
+  assert.equal(alts.some((t) => t.videoId === 'terry123456'), false);
+  assert.equal(alts.some((t) => t.videoId === 'mn7CK4ND3rU'), true);
+
+  // SilentHold notification guard flips playbackState to paused cleanly when hidden background resolve fails
+  assert.equal(
+    shouldStopSilentHoldAndPauseNotification({
+      activeEngine: 'yt-iframe',
+      isSilentHold: true,
+      resolvedStreamUrl: '',
+      isHidden: true,
+      explicitPaused: false,
+      timedOutOrFailed: true,
+    }),
+    true
+  );
+  assert.equal(
+    shouldStopSilentHoldAndPauseNotification({
+      activeEngine: 'yt-iframe',
+      isSilentHold: true,
+      resolvedStreamUrl: 'https://api.vidsnap.app/proxy?u=abc',
+      isHidden: true,
+      explicitPaused: false,
+      timedOutOrFailed: true,
+    }),
+    false
+  );
+  assert.equal(
+    shouldStopSilentHoldAndPauseNotification({
+      activeEngine: 'yt-iframe',
+      isSilentHold: true,
+      resolvedStreamUrl: '',
+      isHidden: false,
+      explicitPaused: false,
+      timedOutOrFailed: true,
+    }),
+    false
+  );
+});
+
 
