@@ -22,30 +22,30 @@ import {
   matchIndonesianCityQuery,
   planMediaCompression,
   resolveAccurateWeatherCondition,
-} from './tools-logic.js?v=34';
+} from './tools-logic.js?v=35';
 import {
   describeLocationSource,
   resolveUserLocation,
   searchCitiesOnline,
   setManualLocation,
-} from './location.js?v=34';
-import { createInteractiveGlobe } from './globe.js?v=34';
+} from './location.js?v=35';
+import { createInteractiveGlobe } from './globe.js?v=35';
 import {
   createSpeedometerGauge,
   fetchSpeedtestEnvironment,
   readClientDeviceTelemetry,
   runInternetSpeedtest,
-} from './speedtest.js?v=34';
+} from './speedtest.js?v=35';
 import {
   extractAudioFromVideoUrl,
   fetchMediaDownload,
   triggerBatchPhotoDownload,
   triggerDirectMediaSave,
-} from './downloader.js?v=34';
-import { compressMediaFile, inspectMediaFile } from './compressor.js?v=34';
-import { formatAudioTime, isTrackInWatchLater } from './music-logic.js?v=34';
-import { MUSIC_PRESET_CATEGORIES, getMusicController, initMusicPlayer } from './music.js?v=34';
-import { normalizeUtilityConfig } from './store.js?v=34';
+} from './downloader.js?v=35';
+import { compressMediaFile, inspectMediaFile } from './compressor.js?v=35';
+import { formatAudioTime, isTrackInWatchLater } from './music-logic.js?v=35';
+import { MUSIC_PRESET_CATEGORIES, getMusicController, initMusicPlayer } from './music.js?v=35';
+import { normalizeUtilityConfig } from './store.js?v=35';
 
 const PRAYER_CACHE_KEY = 'manifestudio_prayer_cache_v1';
 const MYQURAN_CITIES_KEY = 'manifestudio_myquran_cities_v1';
@@ -2300,7 +2300,7 @@ export function createToolsHubController({
           </div>
 
           <span class="ytm-bg-badge" title="Tetap memutar otomatis di latar belakang, layar mati & Gambar dalam Gambar">
-            <span class="ytm-bg-dot"></span>${mState.pipHeadsetMode ? '🎧 Mode Headset (Audio Latar Tanpa PiP)' : 'Latar Belakang, PiP &amp; Auto-Next Aktif'}
+            <span class="ytm-bg-dot"></span><span>${mState.pipHeadsetMode ? '🎧 Mode Headset (Tanpa PiP)' : 'Latar Belakang &amp; PiP Aktif'}</span>
           </span>
         </div>
 
@@ -3070,7 +3070,7 @@ export function createToolsHubController({
         </div>
 
         <div class="music-hub-grid">
-          <div class="tool-card music-hub-stage-wrap">
+          <div class="music-hub-stage-wrap">
             ${buildMusicHubStageHtml(mState)}
           </div>
 

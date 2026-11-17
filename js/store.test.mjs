@@ -2086,33 +2086,74 @@ test('Artist - Title parser matches genuine alternate uploads for same song whil
   );
 });
 
-test('music v34 normalizes instant Apple Music/iTunes direct streams, prioritizes non-gcr=id Ummy streams, and manages PiP + Headset mode state transitions', () => {
-  const itunesTrack = normalizeItunesTrack({
+test('music v35 blocks and strips 30-second Apple iTunes preview URLs, enforces full-length (>=75s) streams, prioritizes non-gcr=id Ummy streams, and manages PiP + Headset mode state transitions', () => {
+  const previewUrl =
+    'https://audio-ssl.itunes.apple.com/itunes-assets/AudioPreview221/v4/bc/89/94/mzaf_17584604111107113811.plus.aac.p.m4a';
+  const fullAudiusUrl = 'https://api.audius.co/v1/tracks/Nlzyaxp/stream?app_name=Manifestudio';
+
+  assert.equal(isInstantAudioPreviewUrl(previewUrl), true);
+  assert.equal(isBlockedAudioWrapperUrl(previewUrl), true);
+  assert.equal(isInstantAudioPreviewUrl(fullAudiusUrl), false);
+  assert.equal(isBlockedAudioWrapperUrl(fullAudiusUrl), false);
+
+  // Standalone 30-second iTunes preview without a full-length YouTube videoId is rejected
+  const standaloneItunes = normalizeItunesTrack({
     trackId: 1581234567,
     trackName: 'Tanpa Cinta',
     artistName: 'Yovie Widianto & Tiara Andini',
     trackTimeMillis: 251000,
-    artworkUrl100: 'https://is1-ssl.mzstatic.com/image/thumb/Music115/v4/ab/cd/ef/cover/100x100bb.jpg',
-    previewUrl: 'https://audio-ssl.itunes.apple.com/itunes-assets/AudioPreview221/v4/bc/89/94/mzaf_17584604111107113811.plus.aac.p.m4a',
-    primaryGenreName: 'Indo Pop',
+    previewUrl,
   });
-  assert.ok(itunesTrack);
-  assert.equal(itunesTrack.id, 'itn-1581234567');
-  assert.equal(itunesTrack.title, 'Tanpa Cinta');
-  assert.equal(itunesTrack.artist, 'Yovie Widianto & Tiara Andini');
-  assert.equal(itunesTrack.duration, 251);
-  assert.equal(itunesTrack.artwork.includes('480x480bb'), true);
-  assert.equal(isInstantAudioPreviewUrl(itunesTrack.streamUrl), true);
-  assert.equal(isInstantAudioPreviewUrl('https://api.audius.co/v1/tracks/Nlzyaxp/stream'), false);
+  assert.equal(standaloneItunes, null);
 
-  // Strict audio match between YT search item and normalized iTunes track
-  const ytTanpaCinta = normalizeYtMusicTrack({
-    videoId: 'SSNa3pW_Ht0',
-    title: 'Yovie Widianto, Tiara Andini - Tanpa Cinta (Official Music Video)',
-    artist: 'Yovie Widianto',
-    duration: 256,
+  // If a saved track in localStorage had a 30s preview streamUrl alongside a valid videoId,
+  // normalizeYtMusicTrack strips the 30s preview URL so full-length YouTube/Audius resolution takes over
+  const sanitizedTrack = normalizeYtMusicTrack({
+    videoId: '2e0BMACvymo',
+    title: 'Stecu Stecu',
+    artist: 'Faris Adam',
+    duration: 229,
+    streamUrl: previewUrl,
   });
-  assert.equal(isStrictAudioMatch(ytTanpaCinta, itunesTrack), true);
+  assert.ok(sanitizedTrack);
+  assert.equal(sanitizedTrack.videoId, '2e0BMACvymo');
+  assert.equal(sanitizedTrack.streamUrl, '');
+
+  // Stream cache sanitizer drops 30-second preview URLs while keeping full-length streams
+  const prunedCache = pruneAndSerializeStreamCache({
+    '2e0BMACvymo': { url: previewUrl, savedAt: Date.now() },
+    'En-EHqRk8yg': { url: fullAudiusUrl, savedAt: Date.now() },
+  });
+  assert.equal(Boolean(prunedCache['2e0BMACvymo']), false);
+  assert.equal(prunedCache['En-EHqRk8yg']?.url, fullAudiusUrl);
+  assert.equal(
+    getValidCachedStreamUrl({ '2e0BMACvymo': { url: previewUrl, savedAt: Date.now() } }, '2e0BMACvymo'),
+    ''
+  );
+
+  // Strict audio match rejects 30s preview candidates and accepts full-length Audius candidates
+  const targetTrack = normalizeYtMusicTrack({
+    videoId: 'En-EHqRk8yg',
+    title: 'Garam & Madu (Sakit Dadaku)',
+    artist: 'Tenxi, Naykilla & Jemsii',
+    duration: 251,
+  });
+  const fakePreviewCand = {
+    id: 'itn-1',
+    title: 'Garam & Madu (Sakit Dadaku)',
+    artist: 'Tenxi, Naykilla & Jemsii',
+    duration: 251,
+    streamUrl: previewUrl,
+  };
+  const validAudiusCand = normalizeYtMusicTrack({
+    id: 'aud-Nlzyaxp',
+    title: 'Garam & Madu (Sakit Dadaku)',
+    artist: 'Tenxi, Naykilla & Jemsii',
+    duration: 251,
+    streamUrl: fullAudiusUrl,
+  });
+  assert.equal(isStrictAudioMatch(targetTrack, fakePreviewCand), false);
+  assert.equal(isStrictAudioMatch(targetTrack, validAudiusCand), true);
 
   // Non-gcr=id Ummy candidate wins over gcr=id candidate
   const ummyCands = selectUmmyAudioStreamCandidates({
@@ -2167,4 +2208,22 @@ test('music v34 normalizes instant Apple Music/iTunes direct streams, prioritize
   assert.equal(bgWhenHeadset.isPipOpen, false);
   assert.equal(bgWhenHeadset.pipHeadsetMode, true);
   assert.equal(bgWhenHeadset.shouldKeepPlaying, true);
+
+  // Toggling Headset mode off and on when PiP is closed works cleanly
+  const toggledOff = resolvePipHeadsetStateTransition({
+    isPipOpen: false,
+    pipHeadsetMode: true,
+    isPlaying: true,
+    action: 'toggle-headset',
+  });
+  assert.equal(toggledOff.pipHeadsetMode, false);
+  assert.equal(toggledOff.isPipOpen, false);
+  const toggledOn = resolvePipHeadsetStateTransition({
+    isPipOpen: false,
+    pipHeadsetMode: false,
+    isPlaying: true,
+    action: 'toggle-headset',
+  });
+  assert.equal(toggledOn.pipHeadsetMode, true);
+  assert.equal(toggledOn.isPipOpen, false);
 });

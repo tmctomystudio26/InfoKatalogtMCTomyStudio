@@ -14,8 +14,8 @@ Dokumen teknis terpadu bagi **Tim IT, Human Developer, maupun AI Coding Agent** 
    - **Menu Utilitas (`tools.html`)**: Halaman terpisah untuk utilitas harian (`?tab=prayer | weather | worldclock | speedtest | downloader | compressor`) yang ditonjolkan melalui kartu aksen `#utilities-callout-card` (`assets/icons/menu-utilitas.svg`) di atas filter kategori, lengkap dengan tombol kembali ke katalog.
    - **Panel Admin (`admin.html`)**: Halaman *unlisted* (`noindex`) terenkripsi AES-256-GCM yang mempublikasikan perubahan katalog, aset upload, OpenGraph `index.html`, dan riwayat perubahan terperinci langsung via GitHub REST API.
 3. **Kualitas Pengalaman Mobile-First, Presisi Tinggi, & Ad-Free**:
-   - Semua kontrol responsif di layar HP (`360px–430px`) maupun desktop (`1440px`), menggunakan *Network-First Service Worker* (`manifestudio-cache-v25`) + query cache-busting `?v=24` agar pembaruan langsung muncul di perangkat mobile pengguna.
-   - Pemutar musik YT Music open-source bebas iklan dapat digeser bebas, memutar lagu viral Indonesia secara acak otomatis tiap kali tombol ditekan, dan dilengkapi Hub lengkap di Menu Utilitas.
+   - Semua kontrol responsif di layar HP (`360px–430px`) maupun desktop (`1440px`), menggunakan *Network-First Service Worker* (`manifestudio-cache-v35`) + query cache-busting `?v=35` agar pembaruan langsung muncul di perangkat mobile pengguna.
+   - Pemutar musik YT Music open-source bebas iklan dapat digeser bebas, memutar lagu viral Indonesia full-length (`>= 75 detik`, bebas preview 30 detik) secara acak otomatis tiap kali tombol ditekan, mendukung Gambar-dalam-Gambar (PiP) & Mode Headset, dan dilengkapi Hub lengkap di Menu Utilitas.
 
 ---
 
@@ -32,9 +32,9 @@ Dokumen teknis terpadu bagi **Tim IT, Human Developer, maupun AI Coding Agent** 
 | `js/speedtest.js` | Speedometer 60fps + ukur Ping/Jitter/DL/UL Cloudflare CDN (berbobot berkelanjutan) + telemetri perangkat | `tools-logic.js` |
 | `js/downloader.js` | Adapter paralel TikTok (4-node Tioo/TikWM/Cobalt/DavidCyril), YouTube (Cobalt + 4-node Tioo + Siputzx Ummy + vidsnap CORS proxy + Wave 2 audio retry + DavidCyril + ekstrak WAV client-side), IG (`Siputzx sssinstagram` + `Ummy` + Cobalt + Tioo + `fastdl`/`igram` fallback), FB + streaming download progress | `tools-logic.js` |
 | `js/compressor.js` | Kompresor Foto & Video HD Zero-Loss (binary EXIF/PNG/MP4 atom stripper & Social Shield encoder) | `tools-logic.js` |
-| `js/music.js` + `js/music-logic.js` | Floating dock minimalis modern draggable, YT Music API open-source (Piped `music_songs` + Siputzx), YouTube IFrame Audio Engine, Fisher-Yates auto-shuffle prioritas Viral Indonesia tiap tombol ditekan, sinkron 1:1 dengan Hub Utilitas | YouTube IFrame API / Piped API / Siputzx |
+| `js/music.js` + `js/music-logic.js` | Floating dock minimalis modern draggable, YT Music API open-source (Siputzx YT Search + Ummy + 26 full-length Audius streams), YouTube IFrame Audio Engine, pemblokir preview 30 detik, PiP + Mode Headset, Fisher-Yates auto-shuffle prioritas Viral Indonesia tiap tombol ditekan | YouTube IFrame API / Audius / Siputzx |
 | `data/catalog.json` & `data/catalog-history.json` | Single Source of Truth produk, brand, OpenGraph, banners, kategori, voucher usage limits, FAQ & 12 snapshot riwayat | Service Worker Network-First |
-| `sw.js` + `manifest.webmanifest` | Network-First code/data cache (`manifestudio-cache-v25`) & instalasi PWA | — |
+| `sw.js` + `manifest.webmanifest` | Network-First code/data cache (`manifestudio-cache-v35`) & instalasi PWA | — |
 | `CNAME` | Konfigurasi domain kustom resmi GitHub Pages (`manifestudio.my.id`) — jangan dihapus | Cloudflare DNS |
 
 ---
@@ -55,10 +55,10 @@ Semua integrasi pihak ketiga berjalan murni *client-side* tanpa API key rahasia:
 4. **Speedtest Internet**:
    - **CDN Info**: `https://speed.cloudflare.com/cdn-cgi/trace` & `https://speed.cloudflare.com/meta`.
    - **Bandwidth & Latency**: `https://speed.cloudflare.com/__down?bytes=...` & `https://speed.cloudflare.com/__up`.
-5. **Pemutar Musik YT Music API Komunitas Open-Source & Shuffled Viral Indonesia**:
-   - **Open-Source Community API**: `https://api.piped.private.coffee/search?filter=music_songs`, `https://pipedapi.ducks.party/search?filter=music_songs`, & `https://api.siputzx.my.id/api/s/youtube` (CORS-enabled).
-   - **Mesin Pemutar YouTube IFrame**: Berjalan langsung di browser klien tanpa iklan, bebas CORS, dan bebas throttled.
-   - **Pemutaran Acak Otomatis Tiap Klik Tombol**: Logika Fisher-Yates shuffle yang memprioritaskan lagu Indonesia viral setiap kali user menekan tombol apa pun di web, tanpa bergantung riwayat pencarian.
+5. **Pemutar Musik YT Music API Komunitas Open-Source & Shuffled Viral Indonesia Full-Length**:
+   - **Open-Source Community API**: `https://api.siputzx.my.id/api/s/youtube`, `https://api.siputzx.my.id/api/d/ummy`, & `https://api.audius.co/v1/tracks` (CORS-enabled, full-length `>= 75s`, memblokir preview singkat 30 detik).
+   - **Mesin Pemutar Hibrida Native `<audio>` + YouTube IFrame**: Memutar stream penuh di latar belakang/layar mati + fallback instan YouTube IFrame untuk video penuh.
+   - **Gambar-dalam-Gambar (PiP) & Mode Headset**: Jendela PiP mengambang dengan tombol 🎧 Mode Headset untuk menyembunyikan PiP sambil menjaga lagu tetap berputar.
    - **Dua Tampilan Tersinkron**: Panel lengkap informatif di Menu Utilitas (`tools.html?tab=music`) dan floating dock minimalis modern (`js/music.js`).
 6. **Sosmed Media Downloader All-in-One**:
    - **TikTok (Video No-WM/MP3/Photo Carousel)**: Failover paralel 4 node `https://backend1..4.tioo.eu.org/ttdl`, `https://www.tikwm.com/api/?url=...&hd=1`, `https://cobaltapi.cjs.nz/`, fallback `https://apis.davidcyriltech.my.id/download/tiktok`.
@@ -83,11 +83,12 @@ Semua integrasi pihak ketiga berjalan murni *client-side* tanpa API key rahasia:
 | `manifestudio_pwa_dismissed_v1` | `localStorage` | Timestamp penolakan banner PWA |
 | `manifestudio_user_location_v1` | `localStorage` | Lokasi terakhir (GPS / IP / manual) untuk Sholat & Cuaca |
 | `manifestudio_weather_cal_v1` | `localStorage` | Kalibrasi cuaca aktual lokal pengguna (auto-expire 3 jam) |
-| `manifestudio_music_prefs_v1` | `localStorage` | Riwayat pencarian, artist/genre weights, play count, & skip |
+| `manifestudio_music_library_v1` | `localStorage` | Daftar `watchLater` (Tonton Nanti) dan `playlists` pribadi pengguna |
+| `manifestudio_music_stream_cache_v2` | `localStorage` | Cache URL stream audio full-length terverifikasi (bebas preview 30 detik) |
+| `manifestudio_music_headset_v1` | `localStorage` | Status Mode Headset (`true` / `false`) untuk audio latar tanpa PiP |
 | `manifestudio_music_session_v1` | `sessionStorage` + `localStorage` | Status `explicitPaused`, `wasPlaying`, `lastTrackId`, & `currentTime` lintas halaman |
 | `manifestudio_music_clickplay_v1` | `localStorage` | Preferensi toggle Auto-Klik musik (`true` / `false`) |
-| `manifestudio_music_pos_v1` | `localStorage` | Koordinat `(x, y)` ikon musik hasil geser pengguna |
-| `manifestudio_music_mode_v1` | `localStorage` | Mode musik aktif: `'full-audio'`, `'soundcloud'`, `'spotify'` |
+| `manifestudio_music_pos_v2` | `localStorage` | Koordinat `(x, y)` ikon musik hasil geser pengguna |
 
 ---
 

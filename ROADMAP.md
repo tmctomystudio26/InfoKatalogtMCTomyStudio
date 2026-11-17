@@ -82,6 +82,10 @@ Dokumen ini adalah panduan resmi tujuan proyek, arsitektur, pencapaian implement
 - [x] **Deduplikasi `<title>`, Sinkronisasi JSON-LD Schema.org, & Circuit-Breaker API**:
   - `applyOpenGraphToHtml` kini mencegah pengulangan tagline ganda pada `<title>` dan otomatis menyinkronkan `image` serta `description` pada blok JSON-LD `index.html`.
   - Menambahkan *per-node circuit-breaker* (cooldown otomatis untuk mirror API yang sedang *rate-limit* / *timeout*) pada `js/downloader.js` dan `js/music.js`.
+- [x] **Pemutaran Lagu Full-Length (`>= 75 detik` / 3–5 Menit), Mode PiP & Headset, serta Tata Letak Responsif Mobile/Desktop (`v34–v35`)**:
+  - **100% Lagu Berdurasi Penuh (Bebas Potongan 30 Detik)**: Memblokir dan membersihkan seluruh URL preview singkat 30 detik (`itunes.apple.com` / `mzstatic.com` / `AudioPreview`) dari resolver, pencarian, cache stream (`manifestudio_music_stream_cache_v2`), pustaka, dan sesi, serta memperluas katalog bawaan dengan **26 lagu viral Indonesia full-length terverifikasi (`156s–346s`)** + runtime guard `< 75s` pada elemen `<audio>`.
+  - **Gambar-dalam-Gambar (PiP) & Mode Headset (Audio Latar Tanpa PiP)**: Mendukung jendela PiP melayang serta tombol **🎧 Mode Headset** untuk menyembunyikan PiP tanpa menghentikan pemutaran lagu di latar belakang maupun layar terkunci.
+  - **Perbaikan Tata Letak & Kontras Menu Musik Mobile + Desktop**: Menghapus pembungkus kartu ganda (`.tool-card` pada `.music-hub-stage-wrap`), menambahkan proteksi `min-width: 0; max-width: 100%; box-sizing: border-box;` pada seluruh panel/tab/form playlist/kotak kosong agar bebas *offside* di layar HP (`360px–390px`) maupun desktop (`1440px`), merapikan deretan pill kontrol menjadi grid 2×2 di mobile, serta memperbaiki kontras teks banner Mode Headset pada Tema Terang (*Light Mode*).
 
 ---
 

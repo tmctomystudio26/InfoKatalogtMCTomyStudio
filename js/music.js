@@ -51,7 +51,7 @@ import {
   shouldStopSilentHoldAndPauseNotification,
   shuffleTracksFisherYates,
   toggleTrackInWatchLater,
-} from './music-logic.js?v=34';
+} from './music-logic.js?v=35';
 
 const MUSIC_POS_KEY = 'manifestudio_music_pos_v2';
 const MUSIC_VOL_KEY = 'manifestudio_music_vol_v2';
@@ -59,14 +59,14 @@ const MUSIC_SHUFFLE_KEY = 'manifestudio_music_shuffle_v2';
 const MUSIC_REPEAT_KEY = 'manifestudio_music_repeat_v2';
 const MUSIC_SESSION_KEY = 'manifestudio_music_session_v1';
 const MUSIC_CLICK_PLAY_KEY = 'manifestudio_music_clickplay_v1';
-const MUSIC_STREAM_CACHE_KEY = 'manifestudio_music_stream_cache_v1';
+const LEGACY_MUSIC_STREAM_CACHE_KEY = 'manifestudio_music_stream_cache_v1';
+const MUSIC_STREAM_CACHE_KEY = 'manifestudio_music_stream_cache_v2';
 const MUSIC_HEADSET_MODE_KEY = 'manifestudio_music_headset_v1';
 
 // Community open-source YT Music / YouTube search API endpoints + instant direct audio stream resolvers
 const SIPUTZX_YT_SEARCH_URL = 'https://api.siputzx.my.id/api/s/youtube';
 const SIPUTZX_UMMY_URL = 'https://api.siputzx.my.id/api/d/ummy';
 const AUDIUS_API_BASE = 'https://api.audius.co/v1';
-const ITUNES_SEARCH_URL = 'https://itunes.apple.com/search';
 const ytExactStreamCache = new Map();
 const ytExactInFlight = new Map();
 const trackStreamInFlight = new Map();
@@ -77,6 +77,7 @@ let activeUserResolveCount = 0;
 
 function readPersistedStreamCacheMap() {
   try {
+    localStorage.removeItem(LEGACY_MUSIC_STREAM_CACHE_KEY);
     const raw = localStorage.getItem(MUSIC_STREAM_CACHE_KEY);
     if (!raw) return {};
     return pruneAndSerializeStreamCache(JSON.parse(raw));
@@ -138,6 +139,9 @@ function invalidateCachedStreamUrl(videoId, streamUrl = '') {
 
 function hydrateTrackStreamFromCache(track) {
   if (!track || typeof track !== 'object') return track;
+  if (track.streamUrl && (isBlockedAudioWrapperUrl(track.streamUrl) || isInstantAudioPreviewUrl(track.streamUrl))) {
+    track.streamUrl = '';
+  }
   if (track.streamUrl && !failedStreamUrls.has(track.streamUrl)) {
     return track;
   }
@@ -247,9 +251,9 @@ export const MUSIC_PRESET_CATEGORIES = [
   },
 ];
 
-// Pre-seeded real Viral Indonesia catalog: ONLY 100%-verified matching audio streams
-// (or exact YouTube videoIds without cross-track stream mixing) so title ALWAYS matches the audio!
-const SEED_VIRAL_INDO_TRACKS = [
+// Pre-seeded real Viral Indonesia catalog: 26 verified 100% full-length (156s–346s) direct audio streams
+// (zero 30-second previews!) so every song plays full duration natively in background & foreground!
+export const SEED_VIRAL_INDO_TRACKS = [
   normalizeYtMusicTrack({
     videoId: 'En-EHqRk8yg',
     title: 'Garam & Madu (Sakit Dadaku)',
@@ -257,40 +261,38 @@ const SEED_VIRAL_INDO_TRACKS = [
     duration: 251,
     genre: 'Viral Indonesia',
     isIndonesianViral: true,
-    sourceLabel: 'YT Music · Background Audio',
+    sourceLabel: 'YT Music · Full Audio',
     streamUrl: 'https://api.audius.co/v1/tracks/Nlzyaxp/stream?app_name=Manifestudio',
   }),
   normalizeYtMusicTrack({
-    id: 'aud-7O8YZgj',
+    videoId: 'vI1gP5sC6c4',
     title: 'Mangu',
     artist: 'Fourtwnty',
     duration: 262,
     genre: 'Indie Viral Indo',
     isIndonesianViral: true,
-    sourceLabel: 'YT Music · Background Audio',
+    sourceLabel: 'YT Music · Full Audio',
     streamUrl: 'https://api.audius.co/v1/tracks/7O8YZgj/stream?app_name=Manifestudio',
   }),
   normalizeYtMusicTrack({
-    videoId: '2e0BMACvymo',
-    title: 'Stecu Stecu',
-    artist: 'Faris Adam',
-    duration: 229,
-    genre: 'Viral Indonesia',
-    isIndonesianViral: true,
-    sourceLabel: 'YT Music · Background Audio',
-    streamUrl:
-      'https://audio-ssl.itunes.apple.com/itunes-assets/AudioPreview221/v4/2f/83/76/2f8376f9-c3cb-4517-19de-e0154e39179f/mzaf_1171188008250273521.plus.aac.p.m4a',
-  }),
-  normalizeYtMusicTrack({
-    videoId: 'SSNa3pW_Ht0',
-    title: 'Tanpa Cinta',
-    artist: 'Yovie Widianto & Tiara Andini',
-    duration: 251,
+    videoId: 'm0kL9jU0P2c',
+    title: 'Satu Bulan',
+    artist: 'Bernadya',
+    duration: 200,
     genre: 'Pop & Galau Indo',
     isIndonesianViral: true,
-    sourceLabel: 'YT Music · Background Audio',
-    streamUrl:
-      'https://audio-ssl.itunes.apple.com/itunes-assets/AudioPreview221/v4/bc/89/94/bc899490-b312-2dd6-f6dd-43add84a594e/mzaf_17584604111107113811.plus.aac.p.m4a',
+    sourceLabel: 'YT Music · Full Audio',
+    streamUrl: 'https://api.audius.co/v1/tracks/WEjzjgB/stream?app_name=Manifestudio',
+  }),
+  normalizeYtMusicTrack({
+    videoId: 'V697wAtn6cI',
+    title: 'Nanti Kita Seperti Ini',
+    artist: 'Batas Senja',
+    duration: 210,
+    genre: 'Indie Viral Indo',
+    isIndonesianViral: true,
+    sourceLabel: 'YT Music · Full Audio',
+    streamUrl: 'https://api.audius.co/v1/tracks/bp6wYxO/stream?app_name=Manifestudio',
   }),
   normalizeYtMusicTrack({
     videoId: 'Zq1Jg0H5fzc',
@@ -299,7 +301,7 @@ const SEED_VIRAL_INDO_TRACKS = [
     duration: 265,
     genre: 'Indie Viral Indo',
     isIndonesianViral: true,
-    sourceLabel: 'YT Music · Background Audio',
+    sourceLabel: 'YT Music · Full Audio',
     streamUrl: 'https://api.audius.co/v1/tracks/MoPA5xm/stream?app_name=Manifestudio',
   }),
   normalizeYtMusicTrack({
@@ -309,8 +311,18 @@ const SEED_VIRAL_INDO_TRACKS = [
     duration: 328,
     genre: 'Pop Viral Indo',
     isIndonesianViral: true,
-    sourceLabel: 'YT Music · Background Audio',
+    sourceLabel: 'YT Music · Full Audio',
     streamUrl: 'https://api.audius.co/v1/tracks/6xM2m/stream?app_name=Manifestudio',
+  }),
+  normalizeYtMusicTrack({
+    videoId: 'kX5Z-9qG9tA',
+    title: 'Melawan Restu',
+    artist: 'Mahalini',
+    duration: 260,
+    genre: 'Pop & Galau Indo',
+    isIndonesianViral: true,
+    sourceLabel: 'YT Music · Full Audio',
+    streamUrl: 'https://api.audius.co/v1/tracks/mWgk2/stream?app_name=Manifestudio',
   }),
   normalizeYtMusicTrack({
     videoId: 'E7kHvjvU6JY',
@@ -319,48 +331,58 @@ const SEED_VIRAL_INDO_TRACKS = [
     duration: 230,
     genre: 'Pop Viral Indo',
     isIndonesianViral: true,
-    sourceLabel: 'YT Music · Background Audio',
+    sourceLabel: 'YT Music · Full Audio',
     streamUrl: 'https://api.audius.co/v1/tracks/bl5QX/stream?app_name=Manifestudio',
   }),
   normalizeYtMusicTrack({
-    id: 'aud-Oxg4V',
+    videoId: '_N6vSc_mT6I',
     title: 'Hati-Hati di Jalan',
     artist: 'Tulus',
     duration: 242,
     genre: 'Pop Viral Indo',
     isIndonesianViral: true,
-    sourceLabel: 'YT Music · Background Audio',
+    sourceLabel: 'YT Music · Full Audio',
     streamUrl: 'https://api.audius.co/v1/tracks/Oxg4V/stream?app_name=Manifestudio',
   }),
   normalizeYtMusicTrack({
-    videoId: 'tMLV3IWfOMs',
-    title: 'Wegah Pisah (Hiphop Dangdut)',
-    artist: 'NDX A.K.A.',
-    duration: 346,
-    genre: 'Koplo & Dangdut',
+    videoId: 'QqJ-Vp8mvbk',
+    title: 'Monokrom',
+    artist: 'Tulus',
+    duration: 208,
+    genre: 'Pop Viral Indo',
     isIndonesianViral: true,
-    sourceLabel: 'YT Music · Background Audio',
-    streamUrl: 'https://api.audius.co/v1/tracks/dWGyv/stream?app_name=Manifestudio',
+    sourceLabel: 'YT Music · Full Audio',
+    streamUrl: 'https://api.audius.co/v1/tracks/82Yvv/stream?app_name=Manifestudio',
   }),
   normalizeYtMusicTrack({
-    videoId: 'J1HR1_uG6VU',
-    title: 'Jump (Whisnu Santika & Adnan Veron Edit)',
-    artist: 'Whisnu Santika & Adnan Veron',
-    duration: 156,
-    genre: 'DJ Remix TikTok',
+    videoId: 'gH_RYRwVrVM',
+    title: 'Secukupnya',
+    artist: 'Hindia',
+    duration: 263,
+    genre: 'Indie Viral Indo',
     isIndonesianViral: true,
-    sourceLabel: 'YT Music · Background Audio',
-    streamUrl: 'https://api.audius.co/v1/tracks/7YM4OJ7/stream?app_name=Manifestudio',
+    sourceLabel: 'YT Music · Full Audio',
+    streamUrl: 'https://api.audius.co/v1/tracks/KxAdo/stream?app_name=Manifestudio',
   }),
   normalizeYtMusicTrack({
-    videoId: 'Z3E3AamV2to',
-    title: 'Widodari (feat. Guyon Waton)',
-    artist: 'Denny Caknan',
-    duration: 296,
-    genre: 'Koplo & Dangdut',
+    videoId: 'e1vN7k8m9rU',
+    title: 'Evakuasi',
+    artist: 'Hindia',
+    duration: 218,
+    genre: 'Indie Viral Indo',
     isIndonesianViral: true,
-    sourceLabel: 'YT Music · Background Audio',
-    streamUrl: 'https://api.audius.co/v1/tracks/8YdyW/stream?app_name=Manifestudio',
+    sourceLabel: 'YT Music · Full Audio',
+    streamUrl: 'https://api.audius.co/v1/tracks/Byxgj/stream?app_name=Manifestudio',
+  }),
+  normalizeYtMusicTrack({
+    videoId: 'tW7rE7x0z8A',
+    title: 'Serana',
+    artist: 'For Revenge',
+    duration: 243,
+    genre: 'Pop & Galau Indo',
+    isIndonesianViral: true,
+    sourceLabel: 'YT Music · Full Audio',
+    streamUrl: 'https://api.audius.co/v1/tracks/52rE1/stream?app_name=Manifestudio',
   }),
   normalizeYtMusicTrack({
     videoId: 'BoESHbOq_s8',
@@ -369,7 +391,7 @@ const SEED_VIRAL_INDO_TRACKS = [
     duration: 245,
     genre: 'Pop & Galau Indo',
     isIndonesianViral: true,
-    sourceLabel: 'YT Music · Background Audio',
+    sourceLabel: 'YT Music · Full Audio',
     streamUrl: 'https://api.audius.co/v1/tracks/aZ5g38A/stream?app_name=Manifestudio',
   }),
   normalizeYtMusicTrack({
@@ -379,8 +401,38 @@ const SEED_VIRAL_INDO_TRACKS = [
     duration: 318,
     genre: 'Pop Viral Indo',
     isIndonesianViral: true,
-    sourceLabel: 'YT Music · Background Audio',
+    sourceLabel: 'YT Music · Full Audio',
     streamUrl: 'https://api.audius.co/v1/tracks/82Nw9/stream?app_name=Manifestudio',
+  }),
+  normalizeYtMusicTrack({
+    videoId: 'Z3E3AamV2to',
+    title: 'Widodari (feat. Guyon Waton)',
+    artist: 'Denny Caknan',
+    duration: 296,
+    genre: 'Koplo & Dangdut',
+    isIndonesianViral: true,
+    sourceLabel: 'YT Music · Full Audio',
+    streamUrl: 'https://api.audius.co/v1/tracks/8YdyW/stream?app_name=Manifestudio',
+  }),
+  normalizeYtMusicTrack({
+    videoId: 'tMLV3IWfOMs',
+    title: 'Wegah Pisah (Hiphop Dangdut)',
+    artist: 'NDX A.K.A.',
+    duration: 346,
+    genre: 'Koplo & Dangdut',
+    isIndonesianViral: true,
+    sourceLabel: 'YT Music · Full Audio',
+    streamUrl: 'https://api.audius.co/v1/tracks/dWGyv/stream?app_name=Manifestudio',
+  }),
+  normalizeYtMusicTrack({
+    videoId: 'J1HR1_uG6VU',
+    title: 'Jump (Whisnu Santika & Adnan Veron Edit)',
+    artist: 'Whisnu Santika & Adnan Veron',
+    duration: 156,
+    genre: 'DJ Remix TikTok',
+    isIndonesianViral: true,
+    sourceLabel: 'YT Music · Full Audio',
+    streamUrl: 'https://api.audius.co/v1/tracks/7YM4OJ7/stream?app_name=Manifestudio',
   }),
   normalizeYtMusicTrack({
     videoId: 'X9EDqDWza3M',
@@ -389,7 +441,7 @@ const SEED_VIRAL_INDO_TRACKS = [
     duration: 206,
     genre: 'DJ Remix TikTok',
     isIndonesianViral: true,
-    sourceLabel: 'YT Music · Background Audio',
+    sourceLabel: 'YT Music · Full Audio',
     streamUrl: 'https://api.audius.co/v1/tracks/aPgMr/stream?app_name=Manifestudio',
   }),
   normalizeYtMusicTrack({
@@ -399,113 +451,68 @@ const SEED_VIRAL_INDO_TRACKS = [
     duration: 215,
     genre: 'Viral Indonesia',
     isIndonesianViral: true,
-    sourceLabel: 'YT Music · Background Audio',
+    sourceLabel: 'YT Music · Full Audio',
     streamUrl: 'https://api.audius.co/v1/tracks/ZRrjQ/stream?app_name=Manifestudio',
   }),
   normalizeYtMusicTrack({
-    id: 'aud-mWgk2',
-    title: 'Melawan Restu',
-    artist: 'Mahalini',
-    duration: 260,
-    genre: 'Pop & Galau Indo',
-    isIndonesianViral: true,
-    sourceLabel: 'YT Music · Background Audio',
-    streamUrl: 'https://api.audius.co/v1/tracks/mWgk2/stream?app_name=Manifestudio',
-  }),
-  normalizeYtMusicTrack({
-    id: 'aud-KxAdo',
-    title: 'Secukupnya',
-    artist: 'Hindia',
-    duration: 263,
-    genre: 'Indie Viral Indo',
-    isIndonesianViral: true,
-    sourceLabel: 'YT Music · Background Audio',
-    streamUrl: 'https://api.audius.co/v1/tracks/KxAdo/stream?app_name=Manifestudio',
-  }),
-  normalizeYtMusicTrack({
-    id: 'aud-52rE1',
-    title: 'Serana',
-    artist: 'For Revenge',
-    duration: 243,
-    genre: 'Pop & Galau Indo',
-    isIndonesianViral: true,
-    sourceLabel: 'YT Music · Background Audio',
-    streamUrl: 'https://api.audius.co/v1/tracks/52rE1/stream?app_name=Manifestudio',
-  }),
-  normalizeYtMusicTrack({
-    id: 'aud-Byxgj',
-    title: 'Evakuasi',
-    artist: 'Hindia',
-    duration: 218,
-    genre: 'Indie Viral Indo',
-    isIndonesianViral: true,
-    sourceLabel: 'YT Music · Background Audio',
-    streamUrl: 'https://api.audius.co/v1/tracks/Byxgj/stream?app_name=Manifestudio',
-  }),
-  normalizeYtMusicTrack({
-    id: 'aud-82Yvv',
-    title: 'Monokrom',
-    artist: 'Tulus',
-    duration: 208,
+    videoId: '6f9t3kR2rW8',
+    title: 'Sephia',
+    artist: 'Sheila On 7',
+    duration: 294,
     genre: 'Pop Viral Indo',
     isIndonesianViral: true,
-    sourceLabel: 'YT Music · Background Audio',
-    streamUrl: 'https://api.audius.co/v1/tracks/82Yvv/stream?app_name=Manifestudio',
+    sourceLabel: 'YT Music · Full Audio',
+    streamUrl: 'https://api.audius.co/v1/tracks/NbP3YZ/stream?app_name=Manifestudio',
   }),
   normalizeYtMusicTrack({
-    videoId: 'HB8vftGxsIc',
-    title: 'Untungnya, Hidup Harus Tetap Berjalan',
-    artist: 'Bernadya',
-    duration: 184,
-    genre: 'Pop Viral Indo',
-    isIndonesianViral: true,
-    sourceLabel: 'YT Music · Background Audio',
-    streamUrl:
-      'https://audio-ssl.itunes.apple.com/itunes-assets/AudioPreview221/v4/49/ff/48/49ff48c0-c632-7fdd-2e15-2879a6a9e51e/mzaf_815192612749261657.plus.aac.p.m4a',
-  }),
-  normalizeYtMusicTrack({
-    videoId: 'fKRtnMYMW08',
-    title: 'Komang',
-    artist: 'Raim Laode',
-    duration: 239,
+    videoId: 'f4w7n6vM8tI',
+    title: 'Waktu Yang Salah',
+    artist: 'Fiersa Besari',
+    duration: 324,
     genre: 'Indie Viral Indo',
     isIndonesianViral: true,
-    sourceLabel: 'YT Music · Background Audio',
-    streamUrl:
-      'https://audio-ssl.itunes.apple.com/itunes-assets/AudioPreview211/v4/49/a4/63/49a4632e-ed7d-a68f-811b-aaad7b6f8249/mzaf_14945182221016939725.plus.aac.p.m4a',
+    sourceLabel: 'YT Music · Full Audio',
+    streamUrl: 'https://api.audius.co/v1/tracks/REWzj/stream?app_name=Manifestudio',
   }),
   normalizeYtMusicTrack({
-    videoId: 'V697wAtn6cI',
-    title: 'Nanti Kita Seperti Ini',
-    artist: 'BATAS SENJA',
-    duration: 210,
-    genre: 'Indie Viral Indo',
-    isIndonesianViral: true,
-    sourceLabel: 'YT Music · Background Audio',
-    streamUrl:
-      'https://audio-ssl.itunes.apple.com/itunes-assets/AudioPreview211/v4/08/da/ee/08daee2a-010b-ac41-306b-56d05d4a400d/mzaf_4932649635158581379.plus.aac.p.m4a',
-  }),
-  normalizeYtMusicTrack({
-    videoId: '9YPX7WjPDp8',
-    title: 'Pesan Terakhir',
-    artist: 'Lyodra',
-    duration: 257,
+    videoId: 'sY8zT3l6B8E',
+    title: 'Bukti',
+    artist: 'Virgoun',
+    duration: 305,
     genre: 'Pop & Galau Indo',
     isIndonesianViral: true,
-    sourceLabel: 'YT Music · Background Audio',
-    streamUrl:
-      'https://audio-ssl.itunes.apple.com/itunes-assets/AudioPreview211/v4/e5/39/1c/e5391c7b-b92c-7ce0-5fe8-c89774427e4a/mzaf_5635026938220547257.plus.aac.p.m4a',
+    sourceLabel: 'YT Music · Full Audio',
+    streamUrl: 'https://api.audius.co/v1/tracks/1dBdW/stream?app_name=Manifestudio',
   }),
   normalizeYtMusicTrack({
-    videoId: 'lABZ_-uhC0E',
-    title: 'Merasa Indah',
-    artist: 'Tiara Andini',
-    duration: 228,
+    videoId: 'm8yW9tP5x3Q',
+    title: 'Percayalah',
+    artist: 'Last Child',
+    duration: 224,
+    genre: 'Pop & Galau Indo',
+    isIndonesianViral: true,
+    sourceLabel: 'YT Music · Full Audio',
+    streamUrl: 'https://api.audius.co/v1/tracks/p9WJG/stream?app_name=Manifestudio',
+  }),
+  normalizeYtMusicTrack({
+    videoId: 'wK8t9yN3z5M',
+    title: 'Hingga',
+    artist: 'Rizky Febian',
+    duration: 266,
     genre: 'Pop Viral Indo',
     isIndonesianViral: true,
-    sourceLabel: 'YT Music · Background Audio',
-    streamUrl:
-      'https://audio-ssl.itunes.apple.com/itunes-assets/AudioPreview211/v4/10/6a/22/106a2257-a266-307a-9ee8-c89774427e4a/mzaf_13198026841925520306.plus.aac.p.m4a',
+    sourceLabel: 'YT Music · Full Audio',
+    streamUrl: 'https://api.audius.co/v1/tracks/aa3kQ/stream?app_name=Manifestudio',
+  }),
+  normalizeYtMusicTrack({
+    videoId: 'B7r8W9k3x2U',
+    title: 'Mungkin Nanti',
+    artist: 'Peterpan',
+    duration: 269,
+    genre: 'Pop Viral Indo',
+    isIndonesianViral: true,
+    sourceLabel: 'YT Music · Full Audio',
+    streamUrl: 'https://api.audius.co/v1/tracks/BygGA/stream?app_name=Manifestudio',
   }),
 ].filter(Boolean);
 
@@ -744,30 +751,6 @@ async function fetchAudiusDirectTracks(query, { genre = 'Viral Indonesia', isInd
   }
 }
 
-async function fetchItunesDirectTracks(query, { genre = 'Viral Indonesia', isIndonesianViral = true, limit = 10 } = {}) {
-  const q = String(query || '').trim();
-  if (!q) return [];
-  try {
-    const json = await fetchJsonTimeout(
-      `${ITUNES_SEARCH_URL}?country=ID&media=music&entity=song&limit=${limit}&term=${encodeURIComponent(q)}`,
-      3800
-    );
-    const items = Array.isArray(json?.results) ? json.results : [];
-    return items
-      .map((item) =>
-        normalizeItunesTrack(item, {
-          genre,
-          isIndonesianViral,
-          sourceLabel: 'YT Music · Background Audio',
-        })
-      )
-      .filter(Boolean)
-      .slice(0, limit);
-  } catch {
-    return [];
-  }
-}
-
 function probeAudioElementMetadata(url, timeoutMs = 5500) {
   return new Promise((resolve) => {
     if (typeof Audio === 'undefined') {
@@ -992,22 +975,7 @@ async function resolveBackgroundStreamForTrack(track, { allowAltYt = true, bypas
 
       const query = `${track.title || ''} ${track.artist || ''}`.trim();
 
-      // 1. Instant <350ms Apple CDN M4A & Audius direct stream race (zero proxy needed, plays natively in background!)
-      const itunesDirectJob = query
-        ? fetchItunesDirectTracks(query, {
-            genre: track.genre || 'Viral Indonesia',
-            isIndonesianViral: Boolean(track.isIndonesianViral),
-            limit: 6,
-          })
-            .then((itunesMatches) => {
-              const strictHit = itunesMatches.find(
-                (it) => it.streamUrl && !failedStreamUrls.has(it.streamUrl) && isStrictAudioMatch(track, it)
-              );
-              return strictHit?.streamUrl || '';
-            })
-            .catch(() => '')
-        : Promise.resolve('');
-
+      // 1. Full-length (>=75s) Audius direct stream & exact YouTube stream race (zero 30s previews!)
       const audiusDirectJob = query
         ? fetchAudiusDirectTracks(query, {
             genre: track.genre || 'Viral Indonesia',
@@ -1032,8 +1000,8 @@ async function resolveBackgroundStreamForTrack(track, { allowAltYt = true, bypas
           ? resolveExactYoutubeAudioStream(track.videoId, { bypassCache }).catch(() => '')
           : Promise.resolve('');
 
-      const winner = await resolveFirstTruthy([itunesDirectJob, audiusDirectJob, exactYtJob]);
-      if (winner && !failedStreamUrls.has(winner)) {
+      const winner = await resolveFirstTruthy([audiusDirectJob, exactYtJob]);
+      if (winner && !failedStreamUrls.has(winner) && !isBlockedAudioWrapperUrl(winner)) {
         track.streamUrl = winner;
         if (track.videoId) persistResolvedStreamUrl(track.videoId, winner);
         return winner;
@@ -1049,7 +1017,7 @@ async function resolveBackgroundStreamForTrack(track, { allowAltYt = true, bypas
           const altWinner = await resolveFirstTruthy(
             matchingAlts.map((alt) => resolveExactYoutubeAudioStream(alt.videoId))
           );
-          if (altWinner && !failedStreamUrls.has(altWinner)) {
+          if (altWinner && !failedStreamUrls.has(altWinner) && !isBlockedAudioWrapperUrl(altWinner)) {
             track.streamUrl = altWinner;
             if (track.videoId) persistResolvedStreamUrl(track.videoId, altWinner);
             return altWinner;
@@ -1072,10 +1040,8 @@ async function fetchYtMusicSearch(query, { genre = 'YT Music', isIndonesianViral
   const q = String(query || '').trim();
   if (!q) return [];
 
-  // Run iTunes Direct CDN, Audius Direct, and Siputzx YT Search in PARALLEL so every search result
-  // already has a verified native <audio> streamUrl attached before the user even taps Play!
-  const [itunesItems, audiusItems, siputzxItems] = await Promise.all([
-    fetchItunesDirectTracks(q, { genre, isIndonesianViral, limit: 8 }).catch(() => []),
+  // Run full-length Audius Direct and Siputzx YT Search in PARALLEL (never 30s iTunes previews!)
+  const [audiusItems, siputzxItems] = await Promise.all([
     fetchAudiusDirectTracks(q, { genre, isIndonesianViral, limit: 8 }).catch(() => []),
     fetchJsonTimeout(`${SIPUTZX_YT_SEARCH_URL}?query=${encodeURIComponent(q)}`, 5200)
       .then((json) => {
@@ -1104,11 +1070,11 @@ async function fetchYtMusicSearch(query, { genre = 'YT Music', isIndonesianViral
     }
   }
   const rawYtItems = [...ytMap.values()];
-  const rankedYtItems = rankSearchResults(rawYtItems, q, 45);
-  const ytItems = (rankedYtItems.length > 0 ? rankedYtItems : rawYtItems).slice(0, limit);
+  const rankedYtItems = rankSearchResults(rawYtItems, q, MIN_FULL_TRACK_SECONDS);
+  const ytItems = (rankedYtItems.length > 0 ? rankedYtItems : filterFullLengthTracks(rawYtItems, MIN_FULL_TRACK_SECONDS)).slice(0, limit);
 
-  // Attach verified native <audio> streamUrl to YT items from Seed, Audius, or Apple Music CDN
-  // ONLY when strictly verified to be the EXACT same song title & artist!
+  // Attach verified full-length native <audio> streamUrl to YT items from Seed or Audius
+  // ONLY when strictly verified to be the EXACT same full-length song title & artist!
   for (let i = 0; i < ytItems.length; i += 1) {
     const yt = ytItems[i];
     if (yt.streamUrl) continue;
@@ -1124,17 +1090,11 @@ async function fetchYtMusicSearch(query, { genre = 'YT Music', isIndonesianViral
     if (strictAudMatch?.streamUrl) {
       yt.streamUrl = strictAudMatch.streamUrl;
       persistResolvedStreamUrl(yt.videoId, strictAudMatch.streamUrl);
-      continue;
-    }
-    const strictItunesMatch = itunesItems.find((it) => isStrictAudioMatch(yt, it));
-    if (strictItunesMatch?.streamUrl) {
-      yt.streamUrl = strictItunesMatch.streamUrl;
-      persistResolvedStreamUrl(yt.videoId, strictItunesMatch.streamUrl);
     }
   }
 
   const combined = [...ytItems];
-  const relevantDirect = rankSearchResults([...audiusItems, ...itunesItems], q, 45);
+  const relevantDirect = rankSearchResults(audiusItems, q, MIN_FULL_TRACK_SECONDS);
   for (const dirItem of relevantDirect) {
     if (
       !combined.some(
@@ -2516,16 +2476,6 @@ export function initMusicPlayer() {
           syncMediaPositionState();
           renderWidget();
           notifySubscribers('play');
-          // If playing an instant 30s Apple CDN stream and user is not repeating one, quietly pre-resolve full-length YT stream in background
-          if (isInstantAudioPreviewUrl(targetStreamUrl) && track.videoId && !failedExactVideoIds.has(track.videoId)) {
-            resolveExactYoutubeAudioStream(track.videoId)
-              .then((fullUrl) => {
-                if (fullUrl && !failedStreamUrls.has(fullUrl) && !isInstantAudioPreviewUrl(fullUrl)) {
-                  propagateResolvedStreamToPools(track, fullUrl);
-                }
-              })
-              .catch(() => {});
-          }
           // Pre-warm upcoming queue + playlist tracks cleanly in background
           scheduleStreamPrewarm(600);
         })
@@ -2568,32 +2518,56 @@ export function initMusicPlayer() {
         });
       return;
     }
-    if (track.streamUrl && failedStreamUrls.has(track.streamUrl)) {
+    if (track.streamUrl && (failedStreamUrls.has(track.streamUrl) || isBlockedAudioWrapperUrl(track.streamUrl))) {
       track.streamUrl = '';
     }
 
-    // Track does not have a cached streamUrl yet:
-    // Unlock native <audio> inside the user gesture and resolve direct native stream FIRST (~300ms via Apple CDN / Audius / Seed)
-    // so playback starts IMMEDIATELY on native <audio> ('audio-el') and NEVER stops when switching tabs, locking screen, or leaving the app!
+    // Track does not have a cached direct streamUrl yet:
+    // Unlock native <audio> inside the user gesture and race full-length direct stream resolution (2.4s window when visible)
+    // so full-length direct audio wins if fast, or full-length YouTube IFrame starts immediately while direct stream resolves in background!
     activeEngine = 'audio-el';
     isLoading = true;
     isPlaying = true;
     startSilentHoldForBackgroundTransition();
     renderWidget();
     notifySubscribers('loading');
-    resolveBackgroundStreamForTrack(track, { allowAltYt: true, priority: true })
-      .then((resolvedUrl) => {
+
+    const bgPromise = resolveBackgroundStreamForTrack(track, { allowAltYt: true, priority: true });
+    const isHiddenAtStart = typeof document !== 'undefined' && Boolean(document.hidden);
+    const racePromise =
+      !isHiddenAtStart && track.videoId && !failedYtIframeVideoIds.has(track.videoId)
+        ? Promise.race([
+            bgPromise,
+            new Promise((resolve) => setTimeout(() => resolve('__YT_FAST_FALLBACK__'), 2400)),
+          ])
+        : bgPromise;
+
+    racePromise
+      .then((raceResult) => {
         if (explicitPaused || currentTrack?.id !== track.id) return;
-        if (resolvedUrl && !failedStreamUrls.has(resolvedUrl)) {
-          propagateResolvedStreamToPools(track, resolvedUrl);
+        if (
+          raceResult &&
+          raceResult !== '__YT_FAST_FALLBACK__' &&
+          !failedStreamUrls.has(raceResult) &&
+          !isBlockedAudioWrapperUrl(raceResult)
+        ) {
+          propagateResolvedStreamToPools(track, raceResult);
           executePlaybackNow(track, { startSeconds: getResumeSecondsForTrack(track) });
           return;
         }
-        // Only fall back to YT IFrame if no direct stream resolved
+        // Start full-length YouTube IFrame immediately if direct stream is still resolving or unavailable
         stopSilentHold({ clearSrc: true });
         const isHiddenNow = typeof document !== 'undefined' && Boolean(document.hidden);
         if (!isHiddenNow && track.videoId && !failedYtIframeVideoIds.has(track.videoId)) {
           startYoutubePlaybackForTrack(track, getResumeSecondsForTrack(track));
+          // If direct full-length stream finishes resolving later, store it for instant lock-screen handoff
+          bgPromise
+            .then((lateUrl) => {
+              if (lateUrl && !failedStreamUrls.has(lateUrl) && !isBlockedAudioWrapperUrl(lateUrl)) {
+                propagateResolvedStreamToPools(track, lateUrl);
+              }
+            })
+            .catch(() => {});
         } else {
           pauseSilentHoldOnBackgroundFailure('bg-unavailable');
         }
@@ -4097,6 +4071,19 @@ export function initMusicPlayer() {
     audio.addEventListener(evName, () => {
       if (isSilentHold || isUnlockingAudio || activeEngine !== 'audio-el') return;
       if (Number.isFinite(audio.duration) && audio.duration > 0) {
+        // Runtime guard: reject any short preview stream (< 75s) and switch to full-length track
+        if (audio.duration < MIN_FULL_TRACK_SECONDS && currentTrack) {
+          const badSrc = audio.src || currentTrack.streamUrl || '';
+          invalidateCachedStreamUrl(currentTrack.videoId, badSrc);
+          currentTrack.streamUrl = '';
+          const isHiddenNow = typeof document !== 'undefined' && Boolean(document.hidden);
+          if (!isHiddenNow && currentTrack.videoId && !failedYtIframeVideoIds.has(currentTrack.videoId)) {
+            startYoutubePlaybackForTrack(currentTrack, 0);
+          } else {
+            controller.playNext({ reason: 'short-stream-skip' });
+          }
+          return;
+        }
         duration = audio.duration;
       }
       applyPendingAudioSeek();

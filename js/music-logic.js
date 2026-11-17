@@ -58,7 +58,11 @@ export function normalizeYtMusicTrack(item, options = {}) {
     extractYouTubeVideoId(item.videoId) ||
     extractYouTubeVideoId(item.url) ||
     extractYouTubeVideoId(item.id);
-  const directStreamUrl = String(item.streamUrl || '').trim();
+  const rawStreamUrl = String(item.streamUrl || '').trim();
+  const directStreamUrl =
+    rawStreamUrl && !isBlockedAudioWrapperUrl(rawStreamUrl) && !isInstantAudioPreviewUrl(rawStreamUrl)
+      ? rawStreamUrl
+      : '';
   const customId = String(item.id || '').trim();
   if (!videoId && !directStreamUrl) return null;
 
@@ -244,12 +248,19 @@ function buildSongTitleHypotheses(rawTitle, rawArtist = '') {
   return [{ songTokens: fullCore, artistTokens: baseArtistTokens }];
 }
 
+export function isInstantAudioPreviewUrl(rawUrl = '') {
+  const s = String(rawUrl || '').trim();
+  if (!s) return false;
+  return /itunes\.apple\.com|mzstatic\.com|audiopreview|cdns-preview|dzcdn\.net\/stream/i.test(s);
+}
+
 export function isBlockedAudioWrapperUrl(rawUrl = '') {
   const s = String(rawUrl || '').trim();
   if (!s || !/^https?:\/\//i.test(s)) return true;
   if (/savetube\.vip|sf-converter\.com|ytshortdown\.com|y2mate\.com|ssyoutube\.com/i.test(s)) {
     return true;
   }
+  if (isInstantAudioPreviewUrl(s)) return true;
   if (/\.html(\?|#|$)/i.test(s)) return true;
   return false;
 }
@@ -421,6 +432,10 @@ export function shouldStopSilentHoldAndPauseNotification({
  */
 export function isStrictAudioMatch(targetTrack, candidateTrack) {
   if (!candidateTrack || !candidateTrack.streamUrl) return false;
+  if (isBlockedAudioWrapperUrl(candidateTrack.streamUrl) || isInstantAudioPreviewUrl(candidateTrack.streamUrl)) {
+    return false;
+  }
+  if (Number(candidateTrack.duration || 0) < MIN_FULL_TRACK_SECONDS) return false;
   return isStrictSongMetadataMatch(targetTrack, candidateTrack);
 }
 
@@ -1048,43 +1063,19 @@ export function pickPrewarmQueueCandidates({
   return out;
 }
 
-export function isInstantAudioPreviewUrl(rawUrl = '') {
-  const s = String(rawUrl || '').trim();
-  if (!s) return false;
-  return /itunes\.apple\.com|mzstatic\.com/i.test(s);
-}
-
+/**
+ * Deprecated/blocked 30-second preview normalizer:
+ * Apple iTunes Search API only returns ~29.7s preview clips (`AudioPreview...m4a`).
+ * To guarantee every song plays full-length (>= 75s), 30-second preview URLs are rejected.
+ */
 export function normalizeItunesTrack(item, options = {}) {
   if (!item || typeof item !== 'object') return null;
-  const previewUrl = String(item.previewUrl || '').trim();
-  const title = String(item.trackName || item.title || '').trim();
-  const artist = String(item.artistName || item.artist || '').trim();
-  if (!previewUrl || !title || !artist) return null;
-
-  const fullDurationSec = Math.max(
-    90,
-    Math.round(Number(item.trackTimeMillis || 0) / 1000) || Number(item.duration || 0) || 210
-  );
-  const rawArt = String(item.artworkUrl100 || item.artworkUrl60 || item.artwork || '').trim();
-  const hiResArt = rawArt
-    ? rawArt.replace(/\/\d+x\d+bb\./i, '/480x480bb.')
-    : './assets/icons/brand-icon.svg';
-  const trackId = item.trackId ? `itn-${item.trackId}` : `itn-${normalizeMatchString(`${title}-${artist}`).replace(/\s+/g, '-')}`;
-
-  return normalizeYtMusicTrack(
-    {
-      id: trackId,
-      title,
-      artist,
-      duration: fullDurationSec,
-      artwork: hiResArt,
-      streamUrl: previewUrl,
-      genre: options.genre || item.primaryGenreName || 'Viral Indonesia',
-      isIndonesianViral: options.isIndonesianViral ?? true,
-      sourceLabel: 'YT Music · Background Audio',
-    },
-    options
-  );
+  const videoId = extractYouTubeVideoId(item.videoId);
+  const previewUrl = String(item.previewUrl || item.streamUrl || '').trim();
+  if (isInstantAudioPreviewUrl(previewUrl) && !videoId) {
+    return null;
+  }
+  return normalizeYtMusicTrack(item, options);
 }
 
 /**
@@ -1105,6 +1096,18 @@ export function resolvePipHeadsetStateTransition({
       shouldKeepPlaying: Boolean(isPlaying),
       statusMessage:
         'Mode Headset aktif — Gambar-dalam-Gambar disembunyikan, musik tetap berputar di latar belakang.',
+    };
+  }
+  if (action === 'toggle-headset') {
+    const nextHeadset = !pipHeadsetMode;
+    return {
+      isPipOpen: false,
+      pipHeadsetMode: nextHeadset,
+      shouldExitNativePip: nextHeadset,
+      shouldKeepPlaying: Boolean(isPlaying),
+      statusMessage: nextHeadset
+        ? 'Mode Headset aktif — Gambar-dalam-Gambar disembunyikan, musik tetap berputar di latar belakang.'
+        : 'Mode Headset dinonaktifkan.',
     };
   }
   if (action === 'enter-pip') {
