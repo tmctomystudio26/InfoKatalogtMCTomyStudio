@@ -57,9 +57,9 @@
       "description": "Jadwal Sholat · Cuaca · Jam Dunia & Globe · Speedtest · Downloader (Video/Foto/Story/Caption) · Kompres HD · YT Music"
     },
     "musicHero": {
-      "icon": "./assets/icons/tool-music.svg",
-      "title": "YT Music Hub — Viral Indonesia & Pencarian Lengkap",
-      "subtitle": "Sumber resmi YT Music API komunitas open-source. Pemutaran acak otomatis memprioritaskan lagu Indonesia viral setiap kali tombol apa saja ditekan, tanpa bergantung pada riwayat pencarian."
+      "icon": "https://thumb.wikimedia.org/wikipedia/commons/thumb/6/6a/Youtube_Music_icon.svg/3840px-Youtube_Music_icon.svg.png?utm_source=commons.wikimedia.org&utm_campaign=index&utm_content=thumbnail",
+      "title": "YT Music Hub — YT Music Gratis Tanpa Iklan",
+      "subtitle": "Didukung YT Music API & API open-source."
     },
     "items": [
       {
@@ -106,10 +106,10 @@
       },
       {
         "id": "music",
-        "label": "Musik YT",
-        "icon": "./assets/icons/tool-music.svg",
-        "pageTitle": "YT Music Player — Viral Indonesia",
-        "pageSubtitle": "Pemutar YT Music API bebas iklan dengan daftar putar acak otomatis lagu Indonesia viral, pencarian lengkap, & sinkron dengan ikon mengambang."
+        "label": "YT Music",
+        "icon": "https://thumb.wikimedia.org/wikipedia/commons/thumb/6/6a/Youtube_Music_icon.svg/3840px-Youtube_Music_icon.svg.png?utm_source=commons.wikimedia.org&utm_campaign=index&utm_content=thumbnail",
+        "pageTitle": "YT Music Player — Gratis Tanpa Iklan",
+        "pageSubtitle": "Pemutar YT Music API gratis bebas iklan"
       }
     ]
   },
