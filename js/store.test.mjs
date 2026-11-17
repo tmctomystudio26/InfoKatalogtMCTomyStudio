@@ -66,6 +66,7 @@ import {
   hasPendingSeekSettled,
   isBlockedAudioWrapperUrl,
   isInstantAudioPreviewUrl,
+  isMobileTouchPlatform,
   isStrictAudioMatch,
   isStrictSongMetadataMatch,
   isTrackInWatchLater,
@@ -2529,6 +2530,97 @@ test('50. filterPresetCategoryTracks, buildAudiusLookupQueries, and pickBackgrou
     repeatMode: 'all',
   });
   assert.equal(hiddenPick?.id, 'bg-ready');
+});
+
+test('51. isMobileTouchPlatform & shouldStopSilentHoldAndPauseNotification never pause desktop/laptop background playback', () => {
+  assert.equal(
+    isMobileTouchPlatform(
+      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/130.0.0.0 Safari/537.36',
+      'Win32',
+      0
+    ),
+    false
+  );
+  assert.equal(
+    isMobileTouchPlatform(
+      'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 Chrome/130.0.0.0 Safari/537.36',
+      'MacIntel',
+      0
+    ),
+    false
+  );
+  assert.equal(
+    isMobileTouchPlatform(
+      'Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 Chrome/130.0.0.0 Mobile Safari/537.36',
+      'Linux armv8l',
+      5
+    ),
+    true
+  );
+  assert.equal(
+    isMobileTouchPlatform(
+      'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 Safari/605.1.15',
+      'MacIntel',
+      5
+    ),
+    true
+  );
+
+  // Desktop/laptop browsers MUST keep yt-iframe playing across tab switches & minimize
+  assert.equal(
+    shouldStopSilentHoldAndPauseNotification({
+      activeEngine: 'yt-iframe',
+      isSilentHold: true,
+      resolvedStreamUrl: '',
+      isHidden: true,
+      explicitPaused: false,
+      timedOutOrFailed: true,
+      isDesktopBrowser: true,
+      ytPlayerState: 1,
+    }),
+    false
+  );
+  assert.equal(
+    shouldStopSilentHoldAndPauseNotification({
+      activeEngine: 'yt-iframe',
+      isSilentHold: true,
+      resolvedStreamUrl: '',
+      isHidden: true,
+      explicitPaused: false,
+      timedOutOrFailed: true,
+      isDesktopBrowser: true,
+      ytPlayerState: -1,
+    }),
+    false
+  );
+
+  // Active YT player (state 1 or 3) should never be killed; stalled mobile yt-iframe cleanly stops silent hold
+  assert.equal(
+    shouldStopSilentHoldAndPauseNotification({
+      activeEngine: 'yt-iframe',
+      isSilentHold: true,
+      resolvedStreamUrl: '',
+      isHidden: true,
+      explicitPaused: false,
+      timedOutOrFailed: true,
+      isDesktopBrowser: false,
+      ytPlayerState: 1,
+    }),
+    false
+  );
+  assert.equal(
+    shouldStopSilentHoldAndPauseNotification({
+      activeEngine: 'yt-iframe',
+      isSilentHold: true,
+      resolvedStreamUrl: '',
+      isHidden: true,
+      explicitPaused: false,
+      timedOutOrFailed: true,
+      isDesktopBrowser: false,
+      ytPlayerState: 2,
+    }),
+    true
+  );
 });
 
 

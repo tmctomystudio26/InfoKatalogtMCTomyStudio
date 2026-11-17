@@ -32,6 +32,7 @@ import {
   hasPendingSeekSettled,
   isBlockedAudioWrapperUrl,
   isInstantAudioPreviewUrl,
+  isMobileTouchPlatform,
   isStrictAudioMatch,
   isStrictSongMetadataMatch,
   isTrackInWatchLater,
@@ -61,7 +62,7 @@ import {
   shouldStopSilentHoldAndPauseNotification,
   shuffleTracksFisherYates,
   toggleTrackInWatchLater,
-} from './music-logic.js?v=39';
+} from './music-logic.js?v=40';
 
 const MUSIC_POS_KEY = 'manifestudio_music_pos_v2';
 const MUSIC_VOL_KEY = 'manifestudio_music_vol_v2';
@@ -1577,6 +1578,21 @@ export function initMusicPlayer() {
   let lastFocusTransitionAt = 0;
   let autoResumeAttempts = 0;
 
+  const isDesktopBrowser =
+    typeof navigator !== 'undefined'
+      ? !isMobileTouchPlatform(navigator.userAgent, navigator.platform, navigator.maxTouchPoints)
+      : true;
+
+  function getYtPlayerStateSafe() {
+    if (!ytReady || !ytPlayer || typeof ytPlayer.getPlayerState !== 'function') return -1;
+    try {
+      const s = Number(ytPlayer.getPlayerState());
+      return Number.isFinite(s) ? s : -1;
+    } catch {
+      return -1;
+    }
+  }
+
   audio.volume = volume;
 
   function beginLoadingProgress(phase, label, initialPct = 22) {
@@ -1866,6 +1882,23 @@ export function initMusicPlayer() {
   }
 
   function pauseSilentHoldOnBackgroundFailure(reason = 'bg-unavailable') {
+    const ytState = getYtPlayerStateSafe();
+    if (isDesktopBrowser && activeEngine === 'yt-iframe' && (ytState === 1 || ytState === 3 || ytReady)) {
+      stopSilentHold({ clearSrc: true });
+      if (ytPlayer?.playVideo && ytState !== 1 && ytState !== 3 && !explicitPaused) {
+        try {
+          ytPlayer.playVideo();
+        } catch {
+          // Ignore
+        }
+      }
+      isPlaying = true;
+      isLoading = false;
+      startTimeTicker();
+      renderWidget();
+      notifySubscribers('play');
+      return;
+    }
     const resumeSec = getResumeSecondsForTrack(currentTrack);
     currentTime = resumeSec;
     recordGoodPosition(currentTrack, resumeSec);
@@ -2209,9 +2242,13 @@ export function initMusicPlayer() {
         const isHidden = typeof document !== 'undefined' && document.hidden;
         if (isHidden) {
           if (!hiddenTransitionAt) hiddenTransitionAt = Date.now();
+          const ytState = getYtPlayerStateSafe();
           if (
+            !isDesktopBrowser &&
             isSilentHold &&
             !backgroundHandoffInFlight &&
+            ytState !== 1 &&
+            ytState !== 3 &&
             Date.now() - hiddenTransitionAt > 20000
           ) {
             pauseSilentHoldOnBackgroundFailure('bg-timeout');
@@ -2422,6 +2459,8 @@ export function initMusicPlayer() {
             isHidden: isHiddenNow,
             explicitPaused,
             timedOutOrFailed: true,
+            isDesktopBrowser,
+            ytPlayerState: getYtPlayerStateSafe(),
           })
         ) {
           pauseSilentHoldOnBackgroundFailure('bg-unavailable');
@@ -2468,13 +2507,18 @@ export function initMusicPlayer() {
       try {
         await playProm;
       } catch (playErr) {
-        // If native <audio> play failed while still in foreground and yt-iframe was playing, keep yt-iframe alive
+        // If native <audio> play failed while yt-iframe can stay alive (foreground or desktop/laptop), keep yt-iframe alive
         const isHiddenNow = typeof document !== 'undefined' && Boolean(document.hidden);
-        if (!isHiddenNow && prevEngine === 'yt-iframe' && ytReady && ytPlayer) {
+        if ((isDesktopBrowser || !isHiddenNow) && prevEngine === 'yt-iframe' && ytReady && ytPlayer) {
           invalidateCachedStreamUrl(target.videoId, target.streamUrl);
           target.streamUrl = '';
           activeEngine = 'yt-iframe';
           startSilentHoldForBackgroundTransition({ force: true });
+          try {
+            if (getYtPlayerStateSafe() !== 1 && ytPlayer.playVideo) ytPlayer.playVideo();
+          } catch {
+            // Ignore
+          }
           return false;
         }
         throw playErr;
@@ -2513,6 +2557,8 @@ export function initMusicPlayer() {
           isHidden: isHiddenNow,
           explicitPaused,
           timedOutOrFailed: true,
+          isDesktopBrowser,
+          ytPlayerState: getYtPlayerStateSafe(),
         })
       ) {
         pauseSilentHoldOnBackgroundFailure('bg-unavailable');
@@ -2621,6 +2667,13 @@ export function initMusicPlayer() {
                   const isHiddenOrBlurred =
                     (typeof document !== 'undefined' && (document.hidden || !document.hasFocus?.())) ||
                     Date.now() - lastFocusTransitionAt < 5000;
+                  if (isDesktopBrowser && ytReady && ytPlayer?.playVideo) {
+                    try {
+                      ytPlayer.playVideo();
+                    } catch {
+                      // Ignore
+                    }
+                  }
                   if (isHiddenOrBlurred) {
                     handoffToBackgroundSafeAudio('yt-hidden-pause').then((switched) => {
                       if (
@@ -3022,7 +3075,7 @@ export function initMusicPlayer() {
     const bgPromise = resolveBackgroundStreamForTrack(track, { allowAltYt: true, priority: true });
     const isHiddenAtStart = typeof document !== 'undefined' && Boolean(document.hidden);
     const racePromise =
-      !isHiddenAtStart && track.videoId && !failedYtIframeVideoIds.has(track.videoId)
+      (isDesktopBrowser || !isHiddenAtStart) && track.videoId && !failedYtIframeVideoIds.has(track.videoId)
         ? Promise.race([
             bgPromise,
             new Promise((resolve) => setTimeout(() => resolve('__YT_FAST_FALLBACK__'), 3600)),
@@ -3044,7 +3097,7 @@ export function initMusicPlayer() {
           return;
         }
         const isHiddenNow = typeof document !== 'undefined' && Boolean(document.hidden);
-        if (raceResult === '__YT_FAST_FALLBACK__' && isHiddenNow) {
+        if (raceResult === '__YT_FAST_FALLBACK__' && isHiddenNow && !isDesktopBrowser) {
           bgPromise
             .then((lateUrl) => {
               if (explicitPaused || currentTrack?.id !== track.id) return;
@@ -3062,8 +3115,8 @@ export function initMusicPlayer() {
             });
           return;
         }
-        // Start full-length YouTube IFrame in foreground while keeping #music-audio-el silent-hold bridge alive!
-        if (!isHiddenNow && track.videoId && !failedYtIframeVideoIds.has(track.videoId)) {
+        // Start full-length YouTube IFrame (always allowed on desktop/laptop even in background tab, or foreground on mobile)
+        if ((isDesktopBrowser || !isHiddenNow) && track.videoId && !failedYtIframeVideoIds.has(track.videoId)) {
           startYoutubePlaybackForTrack(track, getResumeSecondsForTrack(track));
           bgPromise
             .then((lateUrl) => {
@@ -4335,7 +4388,7 @@ export function initMusicPlayer() {
         ensureTrackPool();
       }
 
-      const isHiddenNow = typeof document !== 'undefined' && Boolean(document.hidden);
+      const isHiddenNow = !isDesktopBrowser && typeof document !== 'undefined' && Boolean(document.hidden);
       const nextTrack = pickBackgroundSafeNextTrack({
         currentTrack,
         queue: activePool.length > 0 ? activePool : tracks.length > 0 ? tracks : SEED_VIRAL_INDO_TRACKS,
@@ -4856,7 +4909,7 @@ export function initMusicPlayer() {
     if (
       failedTrack?.videoId &&
       !failedYtIframeVideoIds.has(failedTrack.videoId) &&
-      (typeof document === 'undefined' || !document.hidden)
+      (isDesktopBrowser || typeof document === 'undefined' || !document.hidden)
     ) {
       startYoutubePlaybackForTrack(failedTrack, resumeSec);
       return;
@@ -4901,27 +4954,45 @@ export function initMusicPlayer() {
         applyPipHeadsetTransition('auto-pip-background');
       }
       if (activeEngine === 'yt-iframe') {
-        startSilentHoldForBackgroundTransition({ force: true });
-        if (currentTrack && backgroundAttemptDoneForTrackId === currentTrack.id && !currentTrack.streamUrl) {
-          if (trackSelectionSource !== 'user' && tracks.some((t) => Boolean(t.streamUrl) && !failedStreamUrls.has(t.streamUrl))) {
-            controller.playNext({ reason: 'bg-fallback' });
+        if (isDesktopBrowser) {
+          // On desktop/laptop browsers, YT IFrame keeps playing natively when minimized, tab-switched, or blurred.
+          // Only silently upgrade to <audio> if a verified streamUrl resolves; NEVER pause or swap away from YT IFrame!
+          const ytState = getYtPlayerStateSafe();
+          if (ytReady && ytPlayer && ytState !== 1 && ytState !== 3) {
+            try {
+              ytPlayer.playVideo?.();
+            } catch {
+              // Ignore
+            }
+          }
+          if (currentTrack?.streamUrl && !failedStreamUrls.has(currentTrack.streamUrl)) {
+            handoffToBackgroundSafeAudio(reason, resumeSec);
+          } else if (currentTrack && backgroundAttemptDoneForTrackId !== currentTrack.id) {
+            handoffToBackgroundSafeAudio(reason, resumeSec);
+          }
+        } else {
+          startSilentHoldForBackgroundTransition({ force: true });
+          if (currentTrack && backgroundAttemptDoneForTrackId === currentTrack.id && !currentTrack.streamUrl) {
+            if (trackSelectionSource !== 'user' && tracks.some((t) => Boolean(t.streamUrl) && !failedStreamUrls.has(t.streamUrl))) {
+              controller.playNext({ reason: 'bg-fallback' });
+              return;
+            }
+            pauseSilentHoldOnBackgroundFailure('bg-unavailable');
             return;
           }
-          pauseSilentHoldOnBackgroundFailure('bg-unavailable');
-          return;
+          // Resolve and hand off the EXACT user song to <audio>; ONLY auto-advance to another bgReady song if playback was automatic radio!
+          handoffToBackgroundSafeAudio(reason, resumeSec).then((ok) => {
+            if (
+              !ok &&
+              !explicitPaused &&
+              document.hidden &&
+              trackSelectionSource !== 'user' &&
+              tracks.some((t) => Boolean(t.streamUrl) && !failedStreamUrls.has(t.streamUrl))
+            ) {
+              controller.playNext({ reason: 'bg-fallback' });
+            }
+          });
         }
-        // Resolve and hand off the EXACT user song to <audio>; ONLY auto-advance to another bgReady song if playback was automatic radio!
-        handoffToBackgroundSafeAudio(reason, resumeSec).then((ok) => {
-          if (
-            !ok &&
-            !explicitPaused &&
-            document.hidden &&
-            trackSelectionSource !== 'user' &&
-            tracks.some((t) => Boolean(t.streamUrl) && !failedStreamUrls.has(t.streamUrl))
-          ) {
-            controller.playNext({ reason: 'bg-fallback' });
-          }
-        });
       } else if (audio.ended) {
         triggerSeamlessAutoNext('ended');
       } else if (audio.paused && audio.src && !isSwitchingSource) {
@@ -5027,8 +5098,15 @@ export function initMusicPlayer() {
         });
         ensureBackgroundAudioKeepAlive();
         if (activeEngine === 'yt-iframe') {
-          startSilentHoldForBackgroundTransition({ force: true });
-          handoffToBackgroundSafeAudio('window-blur', resumeSec);
+          if (isDesktopBrowser) {
+            // Switching desktop apps does not suspend YT IFrame; only upgrade seamlessly if streamUrl is already cached
+            if (currentTrack?.streamUrl && !failedStreamUrls.has(currentTrack.streamUrl)) {
+              handoffToBackgroundSafeAudio('window-blur', resumeSec);
+            }
+          } else {
+            startSilentHoldForBackgroundTransition({ force: true });
+            handoffToBackgroundSafeAudio('window-blur', resumeSec);
+          }
         } else if (activeEngine === 'audio-el') {
           if (audio.paused && !audio.ended && audio.src && !isSwitchingSource) {
             audio.play().catch(() => {});

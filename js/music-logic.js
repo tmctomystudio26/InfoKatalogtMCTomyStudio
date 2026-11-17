@@ -475,8 +475,22 @@ export function dedupeMatchingAltTracks(
 }
 
 /**
+ * Returns true on mobile touch platforms (Android/iOS/iPadOS) where OS backgrounding
+ * suspends cross-origin YouTube iframes, and false on desktop/laptop browsers.
+ */
+export function isMobileTouchPlatform(userAgent = '', platform = '', maxTouchPoints = 0) {
+  const ua = String(userAgent || '');
+  if (/Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(ua)) {
+    return true;
+  }
+  const plat = String(platform || '');
+  return plat === 'MacIntel' && Number(maxTouchPoints || 0) > 1;
+}
+
+/**
  * Determines whether the background silent-hold placeholder MUST stop and flip
- * OS media notification playbackState to 'paused' so it never plays silent loops forever.
+ * OS media notification playbackState to 'paused' so mobile OS never plays silent loops forever.
+ * Desktop/laptop browsers keep yt-iframe alive natively in background tabs & minimized windows.
  */
 export function shouldStopSilentHoldAndPauseNotification({
   activeEngine = 'audio-el',
@@ -485,7 +499,11 @@ export function shouldStopSilentHoldAndPauseNotification({
   isHidden = false,
   explicitPaused = false,
   timedOutOrFailed = false,
+  isDesktopBrowser = false,
+  ytPlayerState = -1,
 } = {}) {
+  if (isDesktopBrowser) return false;
+  if (Number(ytPlayerState) === 1 || Number(ytPlayerState) === 3) return false;
   return Boolean(
     activeEngine === 'yt-iframe' &&
       isSilentHold &&
