@@ -52,7 +52,7 @@ export function initPwaManager() {
   if ('serviceWorker' in navigator) {
     window.addEventListener('load', () => {
       navigator.serviceWorker
-        .register('./sw.js?v=31')
+        .register('./sw.js?v=32')
         .then((reg) => reg.update())
         .catch(() => {
           // Silent fallback if SW registration is blocked in private mode

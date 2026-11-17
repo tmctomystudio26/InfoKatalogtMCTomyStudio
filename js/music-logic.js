@@ -788,3 +788,150 @@ export function removeTrackFromPlaylist(library, playlistId, trackId, nowIso = n
     removed,
   };
 }
+
+/**
+ * Extracts YouTube googlevideo `expire` unix timestamp in milliseconds (checks raw and ?u= proxy URLs).
+ */
+export function extractStreamExpiryMs(rawUrl = '') {
+  const s = String(rawUrl || '').trim();
+  if (!s) return 0;
+  const decodeLoop = [s];
+  try {
+    const parsed = new URL(s);
+    const proxied = parsed.searchParams.get('u');
+    if (proxied) decodeLoop.push(proxied);
+  } catch {
+    // Ignore malformed URL
+  }
+  for (const candidate of decodeLoop) {
+    const match = String(candidate).match(/[?&]expire=(\d{9,12})(?:&|$)/i);
+    if (match) {
+      const sec = Number(match[1]);
+      if (Number.isFinite(sec) && sec > 1000000000) {
+        return sec * 1000;
+      }
+    }
+  }
+  return 0;
+}
+
+export function getValidCachedStreamUrl(
+  cacheObj = {},
+  videoId = '',
+  { now = Date.now(), ttlMs = 5400000 } = {}
+) {
+  const key = extractYouTubeVideoId(videoId) || String(videoId || '').trim();
+  if (!key || !cacheObj || typeof cacheObj !== 'object') return '';
+  const entry = cacheObj[key];
+  const url = typeof entry === 'string' ? entry : String(entry?.url || '').trim();
+  if (!url || isBlockedAudioWrapperUrl(url)) return '';
+  const savedAt = Number(entry?.savedAt || 0);
+  if (savedAt > 0 && now - savedAt > ttlMs) return '';
+  const expiresAt = Number(entry?.expiresAt || 0) || extractStreamExpiryMs(url);
+  // Require at least 3 minutes remaining before signed googlevideo URL expires
+  if (expiresAt > 0 && expiresAt - now < 180000) return '';
+  return url;
+}
+
+export function pruneAndSerializeStreamCache(
+  entries = [],
+  { now = Date.now(), maxEntries = 60, ttlMs = 5400000 } = {}
+) {
+  const clean = {};
+  const list = Array.isArray(entries)
+    ? entries
+    : entries && typeof entries === 'object'
+    ? Object.entries(entries).map(([k, v]) => ({
+        videoId: k,
+        url: typeof v === 'string' ? v : v?.url,
+        savedAt: v?.savedAt,
+        expiresAt: v?.expiresAt,
+      }))
+    : [];
+
+  const kept = [];
+  for (const item of list) {
+    const vid = extractYouTubeVideoId(item?.videoId) || String(item?.videoId || '').trim();
+    const url = String(item?.url || '').trim();
+    if (!vid || !url || isBlockedAudioWrapperUrl(url)) continue;
+    const savedAt = Number(item?.savedAt || now);
+    if (now - savedAt > ttlMs) continue;
+    const expiresAt = Number(item?.expiresAt || 0) || extractStreamExpiryMs(url);
+    if (expiresAt > 0 && expiresAt - now < 180000) continue;
+    kept.push({ vid, url, savedAt, expiresAt });
+  }
+
+  kept.sort((a, b) => b.savedAt - a.savedAt);
+  for (const row of kept.slice(0, maxEntries)) {
+    clean[row.vid] = {
+      url: row.url,
+      savedAt: row.savedAt,
+      ...(row.expiresAt > 0 ? { expiresAt: row.expiresAt } : {}),
+    };
+  }
+  return clean;
+}
+
+/**
+ * Picks up to `limit` tracks lacking verified direct streamUrl in priority order:
+ * current track -> upcoming queue -> top search hits -> watch later & playlists -> seed queue.
+ */
+export function pickPrewarmQueueCandidates({
+  currentTrack = null,
+  activeQueue = [],
+  searchResults = [],
+  watchLater = [],
+  playlists = [],
+  seedTracks = [],
+  failedIds = new Set(),
+  failedUrls = new Set(),
+  limit = 14,
+} = {}) {
+  const out = [];
+  const seen = new Set();
+
+  const pushIfNeeded = (track) => {
+    if (!track || out.length >= limit) return;
+    const key = track.videoId ? `yt-${track.videoId}` : track.id;
+    if (!key || seen.has(key)) return;
+    seen.add(key);
+    if (track.videoId && failedIds.has(track.videoId)) return;
+    if (track.streamUrl && !failedUrls.has(track.streamUrl)) return;
+    if (!track.videoId && !track.title) return;
+    out.push(track);
+  };
+
+  pushIfNeeded(currentTrack);
+
+  if (Array.isArray(activeQueue) && activeQueue.length > 0) {
+    const idx = currentTrack
+      ? activeQueue.findIndex(
+          (t) => t && (t.id === currentTrack.id || (currentTrack.videoId && t.videoId === currentTrack.videoId))
+        )
+      : -1;
+    const start = idx >= 0 ? idx + 1 : 0;
+    for (let offset = 0; offset < Math.min(3, activeQueue.length); offset += 1) {
+      pushIfNeeded(activeQueue[(start + offset) % activeQueue.length]);
+    }
+  }
+
+  if (Array.isArray(searchResults)) {
+    searchResults.slice(0, 5).forEach(pushIfNeeded);
+  }
+  if (Array.isArray(watchLater)) {
+    watchLater.slice(0, 6).forEach(pushIfNeeded);
+  }
+  if (Array.isArray(playlists)) {
+    for (const pl of playlists) {
+      if (Array.isArray(pl?.tracks)) {
+        pl.tracks.slice(0, 6).forEach(pushIfNeeded);
+      }
+    }
+  }
+  if (Array.isArray(seedTracks)) {
+    seedTracks.forEach(pushIfNeeded);
+  }
+
+  return out;
+}
+

@@ -52,9 +52,11 @@ import {
   createUserPlaylist,
   deleteUserPlaylist,
   extractYouTubeVideoId,
+  extractStreamExpiryMs,
   filterFullLengthTracks,
   formatAudioTime,
   getPopoverAnchorClasses,
+  getValidCachedStreamUrl,
   hasPendingSeekSettled,
   isBlockedAudioWrapperUrl,
   isStrictAudioMatch,
@@ -67,7 +69,9 @@ import {
   normalizeYtMusicTrack,
   parseDurationSeconds,
   parseSavedVolume,
+  pickPrewarmQueueCandidates,
   pickShuffledViralTrack,
+  pruneAndSerializeStreamCache,
   rankSearchResults,
   removeTrackFromPlaylist,
   renameUserPlaylist,
@@ -1912,3 +1916,65 @@ test('computeSafeResumeSeconds & pending seek guards preserve timestamp across N
   assert.equal(hasPendingSeekSettled({ pendingSeekSeconds: 45, reportedTime: 44.1 }), true);
   assert.equal(hasPendingSeekSettled({ pendingSeekSeconds: 0, reportedTime: 0 }), true);
 });
+
+test('persistent stream cache validates googlevideo expiry, TTL, and prioritizes background pre-warm targets cleanly', () => {
+  const now = 1_794_900_000_000; // ~2026-11-17
+  const validExpSec = Math.floor((now + 3_600_000) / 1000); // +60m
+  const soonExpSec = Math.floor((now + 60_000) / 1000); // +1m (<3m safety margin)
+
+  const proxiedValidUrl = `https://api.vidsnap.app/proxy?u=${encodeURIComponent(
+    `https://rr2.googlevideo.com/videoplayback?expire=${validExpSec}&itag=140`
+  )}`;
+  const proxiedSoonUrl = `https://api.vidsnap.app/proxy?u=${encodeURIComponent(
+    `https://rr2.googlevideo.com/videoplayback?expire=${soonExpSec}&itag=140`
+  )}`;
+  const rawExpSec = Math.floor((now + 7_200_000) / 1000);
+  const directRawUrl = `https://rr3.googlevideo.com/videoplayback?expire=${rawExpSec}&itag=251`;
+
+  assert.equal(extractStreamExpiryMs(proxiedValidUrl), validExpSec * 1000);
+  assert.equal(extractStreamExpiryMs(directRawUrl), rawExpSec * 1000);
+  assert.equal(extractStreamExpiryMs('https://api.audius.co/v1/tracks/abc/stream'), 0);
+
+  const cache = pruneAndSerializeStreamCache(
+    [
+      { videoId: 'nhRLD-9XJJs', url: proxiedValidUrl, savedAt: now - 300_000 },
+      { videoId: 'soonExpired1', url: proxiedSoonUrl, savedAt: now - 10_000 },
+      { videoId: 'staleTtl0001', url: directRawUrl, savedAt: now - 6_000_000 },
+      { videoId: 'blockedWrap1', url: 'https://du.sf-converter.com/dl/abc', savedAt: now },
+      { videoId: 'audiusKeep11', url: directRawUrl, savedAt: now - 5_000 },
+    ],
+    { now, maxEntries: 60, ttlMs: 5_400_000 }
+  );
+
+  assert.equal(getValidCachedStreamUrl(cache, 'nhRLD-9XJJs', { now }), proxiedValidUrl);
+  assert.equal(getValidCachedStreamUrl(cache, 'audiusKeep11', { now }), directRawUrl);
+  assert.equal(getValidCachedStreamUrl(cache, 'soonExpired1', { now }), '');
+  assert.equal(getValidCachedStreamUrl(cache, 'staleTtl0001', { now }), '');
+  assert.equal(getValidCachedStreamUrl(cache, 'blockedWrap1', { now }), '');
+
+  const currentTrack = { id: 'yt-cur1', videoId: 'cur10000001', title: 'Lagu Sekarang', streamUrl: '' };
+  const qNext = { id: 'yt-qnxt', videoId: 'qnxt0000002', title: 'Antrean Berikutnya', streamUrl: '' };
+  const qAlreadyReady = { id: 'yt-qok', videoId: 'qok00000003', title: 'Sudah Siap', streamUrl: directRawUrl };
+  const searchHit = { id: 'yt-srch', videoId: 'srch0000004', title: 'Hasil Pencarian', streamUrl: '' };
+  const wlTrack = { id: 'yt-wl01', videoId: 'wl010000005', title: 'Tonton Nanti', streamUrl: '' };
+  const plTrack = { id: 'yt-pl01', videoId: 'pl010000006', title: 'Playlist User', streamUrl: '' };
+  const failedTrack = { id: 'yt-fail', videoId: 'fail0000007', title: 'Gagal Sebelumnya', streamUrl: '' };
+
+  const ordered = pickPrewarmQueueCandidates({
+    currentTrack,
+    activeQueue: [currentTrack, qNext, qAlreadyReady],
+    searchResults: [searchHit, failedTrack],
+    watchLater: [wlTrack],
+    playlists: [{ id: 'pl-1', name: 'P1', tracks: [plTrack] }],
+    seedTracks: [qAlreadyReady],
+    failedIds: new Set(['fail0000007']),
+    failedUrls: new Set(),
+    limit: 10,
+  });
+
+  assert.deepEqual(
+    ordered.map((t) => t.id),
+    ['yt-cur1', 'yt-qnxt', 'yt-srch', 'yt-wl01', 'yt-pl01']
+  );
+});
+

@@ -22,6 +22,7 @@ import {
   filterFullLengthTracks,
   formatAudioTime,
   getPopoverAnchorClasses,
+  getValidCachedStreamUrl,
   hasPendingSeekSettled,
   isBlockedAudioWrapperUrl,
   isStrictAudioMatch,
@@ -32,7 +33,9 @@ import {
   normalizeRepeatMode,
   normalizeYtMusicTrack,
   parseSavedVolume,
+  pickPrewarmQueueCandidates,
   pickShuffledViralTrack,
+  pruneAndSerializeStreamCache,
   rankSearchResults,
   removeTrackFromPlaylist,
   renameUserPlaylist,
@@ -43,7 +46,7 @@ import {
   shouldIgnoreTimeUpdateDuringPendingSeek,
   shuffleTracksFisherYates,
   toggleTrackInWatchLater,
-} from './music-logic.js?v=31';
+} from './music-logic.js?v=32';
 
 const MUSIC_POS_KEY = 'manifestudio_music_pos_v2';
 const MUSIC_VOL_KEY = 'manifestudio_music_vol_v2';
@@ -51,6 +54,7 @@ const MUSIC_SHUFFLE_KEY = 'manifestudio_music_shuffle_v2';
 const MUSIC_REPEAT_KEY = 'manifestudio_music_repeat_v2';
 const MUSIC_SESSION_KEY = 'manifestudio_music_session_v1';
 const MUSIC_CLICK_PLAY_KEY = 'manifestudio_music_clickplay_v1';
+const MUSIC_STREAM_CACHE_KEY = 'manifestudio_music_stream_cache_v1';
 
 // Community open-source YT Music / YouTube search API endpoints + direct audio stream resolvers
 const PIPED_API_HOSTS = [
@@ -71,6 +75,82 @@ const trackStreamInFlight = new Map();
 const failedExactVideoIds = new Set();
 const failedStreamUrls = new Set();
 const failedYtIframeVideoIds = new Set();
+let activeUserResolveCount = 0;
+
+function readPersistedStreamCacheMap() {
+  try {
+    const raw = localStorage.getItem(MUSIC_STREAM_CACHE_KEY);
+    if (!raw) return {};
+    return pruneAndSerializeStreamCache(JSON.parse(raw));
+  } catch {
+    return {};
+  }
+}
+
+function writePersistedStreamCacheMap(mapObj) {
+  try {
+    const pruned = pruneAndSerializeStreamCache(mapObj);
+    localStorage.setItem(MUSIC_STREAM_CACHE_KEY, JSON.stringify(pruned));
+    return pruned;
+  } catch {
+    return mapObj || {};
+  }
+}
+
+function getCachedStreamUrl(videoId) {
+  const cleanId = extractYouTubeVideoId(videoId);
+  if (!cleanId) return '';
+  if (ytExactStreamCache.has(cleanId)) {
+    const memUrl = ytExactStreamCache.get(cleanId) || '';
+    const validMem = getValidCachedStreamUrl({ [cleanId]: { url: memUrl, savedAt: Date.now() } }, cleanId);
+    if (validMem && !failedStreamUrls.has(validMem)) return validMem;
+    ytExactStreamCache.delete(cleanId);
+  }
+  const persisted = readPersistedStreamCacheMap();
+  const validPersisted = getValidCachedStreamUrl(persisted, cleanId);
+  if (validPersisted && !failedStreamUrls.has(validPersisted)) {
+    ytExactStreamCache.set(cleanId, validPersisted);
+    return validPersisted;
+  }
+  return '';
+}
+
+function persistResolvedStreamUrl(videoId, streamUrl) {
+  const cleanId = extractYouTubeVideoId(videoId);
+  const url = String(streamUrl || '').trim();
+  if (!cleanId || !url || failedStreamUrls.has(url) || isBlockedAudioWrapperUrl(url)) return;
+  ytExactStreamCache.set(cleanId, url);
+  const persisted = readPersistedStreamCacheMap();
+  persisted[cleanId] = { url, savedAt: Date.now() };
+  writePersistedStreamCacheMap(persisted);
+}
+
+function invalidateCachedStreamUrl(videoId, streamUrl = '') {
+  const cleanId = extractYouTubeVideoId(videoId);
+  if (streamUrl) failedStreamUrls.add(streamUrl);
+  if (cleanId && (!streamUrl || ytExactStreamCache.get(cleanId) === streamUrl)) {
+    ytExactStreamCache.delete(cleanId);
+    const persisted = readPersistedStreamCacheMap();
+    if (persisted[cleanId]) {
+      delete persisted[cleanId];
+      writePersistedStreamCacheMap(persisted);
+    }
+  }
+}
+
+function hydrateTrackStreamFromCache(track) {
+  if (!track || typeof track !== 'object') return track;
+  if (track.streamUrl && !failedStreamUrls.has(track.streamUrl)) {
+    return track;
+  }
+  if (track.videoId) {
+    const cached = getCachedStreamUrl(track.videoId);
+    if (cached) {
+      track.streamUrl = cached;
+    }
+  }
+  return track;
+}
 
 const MUSIC_NODE_COOLDOWN_MS = 180000;
 const musicNodeCircuit = new Map();
@@ -785,32 +865,37 @@ async function resolveSiputzxUmmyAudioStream(ytUrl) {
     const data = await fetchJsonTimeout(`${SIPUTZX_UMMY_URL}?url=${encodeURIComponent(ytUrl)}`, 18000);
     const allCandidates = selectUmmyAudioStreamCandidates(data);
     if (allCandidates.length === 0) return '';
-    // Pick up to 4 diverse format candidates (e.g. m4a + opus + progressive mp4) in 1 RTT
+    // Pick up to 4 diverse format/client candidates (m4a + mp4 + opus + mobile/visionos client) and return FIRST playable one
     const diverse = [];
     const seenTypes = new Set();
     for (const c of allCandidates) {
       const dec = decodeURIComponent(c);
       const bucket = /itag=140|mime=audio\/mp4/i.test(dec)
         ? 'm4a'
-        : /mime=audio\/webm|itag=251/i.test(dec)
-        ? 'opus'
         : /mime=video\/mp4|itag=18/i.test(dec)
         ? 'mp4'
+        : /mime=audio\/webm|itag=251/i.test(dec)
+        ? 'opus'
         : `other-${diverse.length}`;
       if (!seenTypes.has(bucket)) {
         seenTypes.add(bucket);
         diverse.push(c);
       }
-      if (diverse.length >= 4) break;
+      if (diverse.length >= 3) break;
     }
-    const candidates = diverse.length > 0 ? diverse : allCandidates.slice(0, 4);
-    const checks = await Promise.all(
-      candidates.map((cand) => probePlayableAudioStream(cand, 5500).catch(() => false))
+    const nonWebCand = allCandidates.find(
+      (c) => !diverse.includes(c) && /[?&]c=(VISIONOS|IOS|ANDROID)/i.test(decodeURIComponent(c))
     );
-    const winnerIdx = checks.findIndex(Boolean);
-    if (winnerIdx !== -1) {
-      return candidates[winnerIdx];
-    }
+    if (nonWebCand) diverse.push(nonWebCand);
+    const candidates = diverse.length > 0 ? diverse : allCandidates.slice(0, 4);
+    const winner = await resolveFirstTruthy(
+      candidates.map((cand) =>
+        probePlayableAudioStream(cand, 5000)
+          .then((ok) => (ok ? cand : ''))
+          .catch(() => '')
+      )
+    );
+    if (winner) return winner;
   } catch {
     // Ummy unavailable or timed out
   }
@@ -821,12 +906,9 @@ async function resolveExactYoutubeAudioStream(videoId, { bypassCache = false } =
   const cleanId = extractYouTubeVideoId(videoId);
   if (!cleanId) return '';
   if (!bypassCache && failedExactVideoIds.has(cleanId)) return '';
-  if (!bypassCache && ytExactStreamCache.has(cleanId)) {
-    const cached = ytExactStreamCache.get(cleanId) || '';
-    if (cached && !failedStreamUrls.has(cached)) {
-      return cached;
-    }
-    ytExactStreamCache.delete(cleanId);
+  if (!bypassCache) {
+    const cached = getCachedStreamUrl(cleanId);
+    if (cached) return cached;
   }
   if (!bypassCache && ytExactInFlight.has(cleanId)) {
     return ytExactInFlight.get(cleanId);
@@ -843,7 +925,7 @@ async function resolveExactYoutubeAudioStream(videoId, { bypassCache = false } =
         resolveFirstTruthy(
           TIOO_AUDIO_BACKENDS.map(async (host) => {
             try {
-              const data = await fetchJsonTimeout(`${host}/youtube?url=${encoded}`, 4000);
+              const data = await fetchJsonTimeout(`${host}/youtube?url=${encoded}`, 2500);
               const cand = String(data?.mp3 || data?.mp4 || '').trim();
               if (cand && !isBlockedAudioWrapperUrl(cand) && (await probePlayableAudioStream(cand, 3500))) {
                 return cand;
@@ -858,7 +940,7 @@ async function resolveExactYoutubeAudioStream(videoId, { bypassCache = false } =
 
       if (winner && !failedStreamUrls.has(winner)) {
         failedExactVideoIds.delete(cleanId);
-        ytExactStreamCache.set(cleanId, winner);
+        persistResolvedStreamUrl(cleanId, winner);
         return winner;
       }
       failedExactVideoIds.add(cleanId);
@@ -899,7 +981,7 @@ async function fetchRawYoutubeCandidates(query, limit = 10) {
       try {
         const json = await fetchJsonTimeout(
           `${host}/search?q=${encodeURIComponent(q)}&filter=music_songs`,
-          5000
+          4500
         );
         const items = Array.isArray(json?.items) ? json.items : [];
         items.slice(0, limit).forEach(pushItem);
@@ -912,10 +994,11 @@ async function fetchRawYoutubeCandidates(query, limit = 10) {
   return results;
 }
 
-async function resolveBackgroundStreamForTrack(track, { allowAltYt = true, bypassCache = false } = {}) {
+async function resolveBackgroundStreamForTrack(track, { allowAltYt = true, bypassCache = false, priority = false } = {}) {
   if (!track) return '';
-  if (!bypassCache && track.streamUrl) {
-    if (!failedStreamUrls.has(track.streamUrl)) {
+  if (!bypassCache) {
+    hydrateTrackStreamFromCache(track);
+    if (track.streamUrl && !failedStreamUrls.has(track.streamUrl)) {
       return track.streamUrl;
     }
     track.streamUrl = '';
@@ -926,6 +1009,7 @@ async function resolveBackgroundStreamForTrack(track, { allowAltYt = true, bypas
     return trackStreamInFlight.get(inflightKey);
   }
 
+  if (priority) activeUserResolveCount += 1;
   const job = (async () => {
     try {
       const seedMatch = SEED_VIRAL_INDO_TRACKS.find(
@@ -936,74 +1020,82 @@ async function resolveBackgroundStreamForTrack(track, { allowAltYt = true, bypas
       );
       if (seedMatch?.streamUrl) {
         track.streamUrl = seedMatch.streamUrl;
+        if (track.videoId) persistResolvedStreamUrl(track.videoId, seedMatch.streamUrl);
         return track.streamUrl;
       }
 
       const query = `${track.title || ''} ${track.artist || ''}`.trim();
-      // Start fetching alternate YT uploads in parallel immediately with primary stream resolution
       const altCandidatesPromise =
         allowAltYt && query ? fetchRawYoutubeCandidates(query, 8).catch(() => []) : Promise.resolve([]);
 
-      if (track.videoId && (bypassCache || !failedExactVideoIds.has(track.videoId))) {
-        const exactYtStream = await resolveExactYoutubeAudioStream(track.videoId, { bypassCache });
-        if (exactYtStream && !failedStreamUrls.has(exactYtStream)) {
-          track.streamUrl = exactYtStream;
-          return track.streamUrl;
-        }
-      }
+      // Race exact YouTube resolution and Audius direct-stream search IN PARALLEL immediately!
+      const audiusDirectJob = query
+        ? fetchAudiusDirectTracks(query, {
+            genre: track.genre || 'Viral Indonesia',
+            isIndonesianViral: Boolean(track.isIndonesianViral),
+            limit: 6,
+          })
+            .then((audiusMatches) => {
+              const strictHit = audiusMatches.find(
+                (a) => a.streamUrl && !failedStreamUrls.has(a.streamUrl) && isStrictAudioMatch(track, a)
+              );
+              return strictHit?.streamUrl || '';
+            })
+            .catch(() => '')
+        : Promise.resolve('');
 
-      if (query) {
-        const audiusMatches = await fetchAudiusDirectTracks(query, {
-          genre: track.genre || 'Viral Indonesia',
-          isIndonesianViral: Boolean(track.isIndonesianViral),
-          limit: 6,
-        });
-        const strictAudiusHit = audiusMatches.find(
-          (a) => a.streamUrl && !failedStreamUrls.has(a.streamUrl) && isStrictAudioMatch(track, a)
-        );
-        if (strictAudiusHit?.streamUrl) {
-          track.streamUrl = strictAudiusHit.streamUrl;
-          return track.streamUrl;
-        }
-      }
+      const exactYtJob =
+        track.videoId && (bypassCache || !failedExactVideoIds.has(track.videoId))
+          ? resolveExactYoutubeAudioStream(track.videoId, { bypassCache }).catch(() => '')
+          : Promise.resolve('');
 
-      // If primary YouTube videoId is IP-locked / login-gated, race known seed + alternate YouTube uploads
-      // that STRICTLY match the exact same song title & artist (keeping displayed metadata untouched).
-      if (allowAltYt && query) {
-        const fetchedAlts = await altCandidatesPromise;
-        const combinedPool = [...SEED_VIRAL_INDO_TRACKS, ...fetchedAlts];
-        const seenAltIds = new Set();
-        const matchingAlts = [];
-        for (const alt of combinedPool) {
-          if (
-            alt?.videoId &&
-            alt.videoId !== track.videoId &&
-            !seenAltIds.has(alt.videoId) &&
-            !failedExactVideoIds.has(alt.videoId) &&
-            isStrictSongMetadataMatch(track, alt)
-          ) {
-            seenAltIds.add(alt.videoId);
-            matchingAlts.push(alt);
-            if (matchingAlts.length >= 4) break;
-          }
-        }
+      let primaryResolved = false;
+      const primaryWinnerPromise = resolveFirstTruthy([exactYtJob, audiusDirectJob]).then((res) => {
+        if (res) primaryResolved = true;
+        return res;
+      });
 
-        if (matchingAlts.length > 0) {
-          const altStream = await resolveFirstTruthy(
-            matchingAlts.map((alt) => resolveExactYoutubeAudioStream(alt.videoId))
-          );
-          if (altStream && !failedStreamUrls.has(altStream)) {
-            track.streamUrl = altStream;
-            if (track.videoId) {
-              ytExactStreamCache.set(track.videoId, altStream);
-            }
-            return track.streamUrl;
-          }
-        }
+      // Stagger strictly-matching alternate YouTube uploads after a short 2.5s head-start
+      // (instead of waiting 15+ seconds sequentially when the primary videoId is IP-locked 403!)
+      const staggeredAltJob =
+        allowAltYt && query
+          ? (async () => {
+              const fetchedAlts = await altCandidatesPromise;
+              if (!primaryResolved) {
+                await new Promise((r) => setTimeout(r, 2500));
+              }
+              if (primaryResolved) return '';
+              const combinedPool = [...SEED_VIRAL_INDO_TRACKS, ...fetchedAlts];
+              const seenAltIds = new Set();
+              const matchingAlts = [];
+              for (const alt of combinedPool) {
+                if (
+                  alt?.videoId &&
+                  alt.videoId !== track.videoId &&
+                  !seenAltIds.has(alt.videoId) &&
+                  !failedExactVideoIds.has(alt.videoId) &&
+                  isStrictSongMetadataMatch(track, alt)
+                ) {
+                  seenAltIds.add(alt.videoId);
+                  matchingAlts.push(alt);
+                  if (matchingAlts.length >= 2) break;
+                }
+              }
+              if (matchingAlts.length === 0) return '';
+              return resolveFirstTruthy(matchingAlts.map((alt) => resolveExactYoutubeAudioStream(alt.videoId)));
+            })().catch(() => '')
+          : Promise.resolve('');
+
+      const winner = await resolveFirstTruthy([primaryWinnerPromise, staggeredAltJob]);
+      if (winner && !failedStreamUrls.has(winner)) {
+        track.streamUrl = winner;
+        if (track.videoId) persistResolvedStreamUrl(track.videoId, winner);
+        return winner;
       }
 
       return '';
     } finally {
+      if (priority) activeUserResolveCount = Math.max(0, activeUserResolveCount - 1);
       trackStreamInFlight.delete(inflightKey);
     }
   })();
@@ -1016,63 +1108,63 @@ async function fetchYtMusicSearch(query, { genre = 'YT Music', isIndonesianViral
   const q = String(query || '').trim();
   if (!q) return [];
 
-  // Run Audius direct-stream search & Piped/Siputzx YT Music search in parallel
-  const audiusPromise = fetchAudiusDirectTracks(q, { genre, isIndonesianViral, limit: 8 }).catch(() => []);
+  // Run Audius, Siputzx YT Search, and Piped in PARALLEL so slow/down Piped hosts NEVER stall search!
+  const [audiusItems, siputzxItems, pipedItems] = await Promise.all([
+    fetchAudiusDirectTracks(q, { genre, isIndonesianViral, limit: 8 }).catch(() => []),
+    fetchJsonTimeout(`${SIPUTZX_YT_SEARCH_URL}?query=${encodeURIComponent(q)}`, 5500)
+      .then((json) => {
+        const items = Array.isArray(json?.data) ? json.data : [];
+        const normalized = items
+          .map((item) =>
+            normalizeYtMusicTrack(item, {
+              genre,
+              isIndonesianViral,
+              sourceLabel: 'YT Community API',
+            })
+          )
+          .filter(Boolean);
+        const full = filterFullLengthTracks(normalized, MIN_FULL_TRACK_SECONDS);
+        return (full.length > 0 ? full : normalized).slice(0, limit);
+      })
+      .catch(() => []),
+    resolveFirstTruthy(
+      PIPED_API_HOSTS.map(async (host) => {
+        try {
+          const json = await fetchJsonTimeout(
+            `${host}/search?q=${encodeURIComponent(q)}&filter=music_songs`,
+            4500
+          );
+          const items = Array.isArray(json?.items) ? json.items : [];
+          const normalized = items
+            .map((item) =>
+              normalizeYtMusicTrack(item, {
+                genre,
+                isIndonesianViral,
+                sourceLabel: 'YT Music API',
+              })
+            )
+            .filter(Boolean);
+          const full = filterFullLengthTracks(normalized, MIN_FULL_TRACK_SECONDS);
+          const chosen = full.length > 0 ? full : normalized;
+          return chosen.length > 0 ? chosen.slice(0, limit) : null;
+        } catch {
+          return null;
+        }
+      })
+    ).then((res) => (Array.isArray(res) ? res : [])),
+  ]);
 
-  let ytItems = [];
-  // 1. Primary: TeamPiped Community Open-Source YT Music `music_songs` API
-  for (const host of PIPED_API_HOSTS) {
-    try {
-      const json = await fetchJsonTimeout(
-        `${host}/search?q=${encodeURIComponent(q)}&filter=music_songs`,
-        5000
-      );
-      const items = Array.isArray(json?.items) ? json.items : [];
-      const normalized = items
-        .map((item) =>
-          normalizeYtMusicTrack(item, {
-            genre,
-            isIndonesianViral,
-            sourceLabel: 'YT Music API',
-          })
-        )
-        .filter(Boolean);
-      const full = filterFullLengthTracks(normalized, MIN_FULL_TRACK_SECONDS);
-      if (full.length > 0) {
-        ytItems = full.slice(0, limit);
-        break;
-      }
-      if (normalized.length > 0) {
-        ytItems = normalized.slice(0, limit);
-        break;
-      }
-    } catch {
-      // Try next open-source host
+  // Prefer Piped `music_songs` if populated cleanly, otherwise Siputzx YT Community results
+  const ytMap = new Map();
+  for (const item of [...pipedItems, ...siputzxItems]) {
+    const key = item?.videoId ? `yt-${item.videoId}` : item?.id;
+    if (key && !ytMap.has(key)) {
+      hydrateTrackStreamFromCache(item);
+      ytMap.set(key, item);
     }
   }
+  const ytItems = [...ytMap.values()].slice(0, limit);
 
-  // 2. Failover: Siputzx Community YouTube Search API
-  if (ytItems.length === 0) {
-    try {
-      const json = await fetchJsonTimeout(`${SIPUTZX_YT_SEARCH_URL}?query=${encodeURIComponent(q)}`, 5500);
-      const items = Array.isArray(json?.data) ? json.data : [];
-      const normalized = items
-        .map((item) =>
-          normalizeYtMusicTrack(item, {
-            genre,
-            isIndonesianViral,
-            sourceLabel: 'YT Community API',
-          })
-        )
-        .filter(Boolean);
-      const full = filterFullLengthTracks(normalized, MIN_FULL_TRACK_SECONDS);
-      ytItems = (full.length > 0 ? full : normalized).slice(0, limit);
-    } catch {
-      // Ignore
-    }
-  }
-
-  const audiusItems = await audiusPromise;
   // ONLY attach `streamUrl` when strictly verified to be the EXACT same song title & artist!
   // Never assign another song's streamUrl by index or hash fallback!
   for (let i = 0; i < ytItems.length; i += 1) {
@@ -1186,6 +1278,11 @@ export function initMusicPlayer() {
 
   const initialSession = readMusicSession();
   let musicLibrary = readSavedMusicLibrary();
+  SEED_VIRAL_INDO_TRACKS.forEach(hydrateTrackStreamFromCache);
+  musicLibrary.watchLater.forEach(hydrateTrackStreamFromCache);
+  musicLibrary.playlists.forEach((pl) => {
+    if (Array.isArray(pl.tracks)) pl.tracks.forEach(hydrateTrackStreamFromCache);
+  });
   let tracks = shuffleTracksFisherYates(SEED_VIRAL_INDO_TRACKS);
   let poolLoaded = false;
   let poolPromise = null;
@@ -1208,6 +1305,7 @@ export function initMusicPlayer() {
         streamUrl: initialSession.lastTrack?.streamUrl || restoredPoolMatch.streamUrl || '',
       }
     : initialSession.lastTrack || null;
+  if (currentTrack) hydrateTrackStreamFromCache(currentTrack);
   let trackSelectionSource = currentTrack && initialSession.trackSelectionSource === 'user' ? 'user' : 'auto';
   let isPlaying = false;
   let isLoading = false;
@@ -1266,9 +1364,9 @@ export function initMusicPlayer() {
   function getSilentHoldWavUrl() {
     if (silentWavUrl) return silentWavUrl;
     try {
-      // Build a 1-second 8kHz mono 8-bit PCM silent WAV (value 128 = zero amplitude)
+      // Build a 10-second 8kHz mono 8-bit PCM pure digital silence WAV (value 128 = zero amplitude)
       const sampleRate = 8000;
-      const numSamples = 8000;
+      const numSamples = 80000;
       const buffer = new ArrayBuffer(44 + numSamples);
       const view = new DataView(buffer);
       const writeStr = (offset, s) => {
@@ -1391,7 +1489,7 @@ export function initMusicPlayer() {
       audio.removeAttribute('crossorigin');
       audio.loop = true;
       audio.muted = false;
-      audio.volume = 0.01;
+      audio.volume = isMuted ? 0 : 0.05;
       const holdUrl = getSilentHoldWavUrl();
       if (audio.src !== holdUrl) {
         audio.src = holdUrl;
@@ -1535,6 +1633,13 @@ export function initMusicPlayer() {
     if (bgWatchdogTimer) return;
     bgWatchdogTimer = setInterval(() => {
       if (explicitPaused || (!isPlaying && !isLoading)) return;
+      if (activeEngine === 'yt-iframe') {
+        const isHidden = typeof document !== 'undefined' && document.hidden;
+        if (isHidden && !backgroundHandoffInFlight && currentTrack) {
+          handoffToBackgroundSafeAudio('bg-watchdog-upgrade');
+        }
+        return;
+      }
       if (activeEngine === 'audio-el' && !isSilentHold) {
         const dur =
           Number.isFinite(audio.duration) && audio.duration > 0
@@ -1995,8 +2100,83 @@ export function initMusicPlayer() {
     }
   }
 
+  let prewarmLoopRunning = false;
+  let prewarmPendingTrigger = false;
+
+  function propagateResolvedStreamToPools(targetTrack, resolvedUrl) {
+    if (!targetTrack || !resolvedUrl || failedStreamUrls.has(resolvedUrl)) return;
+    targetTrack.streamUrl = resolvedUrl;
+    if (targetTrack.videoId) {
+      persistResolvedStreamUrl(targetTrack.videoId, resolvedUrl);
+    }
+    const patchList = (list) => {
+      if (!Array.isArray(list)) return;
+      for (const item of list) {
+        if (
+          item &&
+          (item.id === targetTrack.id || (targetTrack.videoId && item.videoId === targetTrack.videoId)) &&
+          !item.streamUrl
+        ) {
+          item.streamUrl = resolvedUrl;
+        }
+      }
+    };
+    patchList(tracks);
+    patchList(searchResults);
+    patchList(SEED_VIRAL_INDO_TRACKS);
+  }
+
+  function scheduleStreamPrewarm(delayMs = 350) {
+    prewarmPendingTrigger = true;
+    if (prewarmLoopRunning) return;
+    setTimeout(async () => {
+      if (prewarmLoopRunning) return;
+      prewarmLoopRunning = true;
+      try {
+        while (prewarmPendingTrigger) {
+          prewarmPendingTrigger = false;
+          const candidates = pickPrewarmQueueCandidates({
+            currentTrack,
+            activeQueue: getActiveQueueList(),
+            searchResults,
+            watchLater: musicLibrary.watchLater,
+            playlists: musicLibrary.playlists,
+            seedTracks: tracks,
+            failedIds: failedExactVideoIds,
+            failedUrls: failedStreamUrls,
+            limit: 12,
+          });
+          for (const cand of candidates) {
+            if (activeUserResolveCount > 0) {
+              // Yield immediately whenever user clicks a track so active playback gets 100% bandwidth
+              prewarmPendingTrigger = true;
+              await new Promise((r) => setTimeout(r, 1800));
+              continue;
+            }
+            hydrateTrackStreamFromCache(cand);
+            if (cand.streamUrl && !failedStreamUrls.has(cand.streamUrl)) {
+              propagateResolvedStreamToPools(cand, cand.streamUrl);
+              continue;
+            }
+            const resolved = await resolveBackgroundStreamForTrack(cand, {
+              allowAltYt: true,
+              priority: false,
+            }).catch(() => '');
+            if (resolved) {
+              propagateResolvedStreamToPools(cand, resolved);
+            }
+            await new Promise((r) => setTimeout(r, 250));
+          }
+        }
+      } finally {
+        prewarmLoopRunning = false;
+      }
+    }, delayMs);
+  }
+
   function executePlaybackNow(track, { startSeconds = 0 } = {}) {
     if (!track) return;
+    hydrateTrackStreamFromCache(track);
     const isSameTrackRestart = currentTrack?.id === track.id;
     const targetStart = Math.max(0, Number(startSeconds) || 0);
     currentTrack = track;
@@ -2025,6 +2205,7 @@ export function initMusicPlayer() {
     if (track.streamUrl && !failedStreamUrls.has(track.streamUrl)) {
       activeEngine = 'audio-el';
       pendingPlayTrack = null;
+      pendingPlayStartSeconds = 0;
       isLoading = true;
       isPlaying = true;
       startTimeTicker();
@@ -2063,6 +2244,8 @@ export function initMusicPlayer() {
           syncMediaPositionState();
           renderWidget();
           notifySubscribers('play');
+          // Pre-warm upcoming queue + playlist tracks cleanly in background
+          scheduleStreamPrewarm(600);
         })
         .catch((err) => {
           if (explicitPaused || currentTrack?.id !== track.id) return;
@@ -2077,9 +2260,8 @@ export function initMusicPlayer() {
             notifySubscribers('pause');
             return;
           }
-          failedStreamUrls.add(targetStreamUrl);
-          if (track.videoId && ytExactStreamCache.get(track.videoId) === targetStreamUrl) {
-            ytExactStreamCache.delete(track.videoId);
+          invalidateCachedStreamUrl(track.videoId, targetStreamUrl);
+          if (track.videoId) {
             failedExactVideoIds.add(track.videoId);
           }
           // Clear broken streamUrl on this track and fall back to the EXACT same song via YT IFrame
@@ -2112,8 +2294,11 @@ export function initMusicPlayer() {
     activeEngine = 'yt-iframe';
     startSilentHoldForBackgroundTransition();
     startYoutubePlaybackForTrack(track, currentTime);
-    resolveBackgroundStreamForTrack(track, { allowAltYt: true })
+    resolveBackgroundStreamForTrack(track, { allowAltYt: true, priority: true })
       .then((resolvedUrl) => {
+        if (resolvedUrl) {
+          propagateResolvedStreamToPools(track, resolvedUrl);
+        }
         if (
           resolvedUrl &&
           !failedStreamUrls.has(resolvedUrl) &&
@@ -2123,6 +2308,7 @@ export function initMusicPlayer() {
         ) {
           handoffToBackgroundSafeAudio('foreground-stream-upgrade');
         }
+        scheduleStreamPrewarm(800);
       })
       .catch(() => {});
   }
@@ -2138,18 +2324,21 @@ export function initMusicPlayer() {
           )
         );
         const settled = await Promise.all(jobs);
-        const merged = new Map(SEED_VIRAL_INDO_TRACKS.map((t) => [t.id, t]));
+        const merged = new Map(
+          SEED_VIRAL_INDO_TRACKS.map((t) => [t.id, hydrateTrackStreamFromCache(t)])
+        );
         for (const group of settled) {
           for (const item of group) {
             const key = item?.videoId ? `yt-${item.videoId}` : item?.id;
             if (key && (!item.videoId || !blockedVideoIds.has(item.videoId)) && !merged.has(key)) {
-              merged.set(key, item);
+              merged.set(key, hydrateTrackStreamFromCache(item));
             }
           }
         }
         tracks = shuffleTracksFisherYates([...merged.values()]);
         poolLoaded = true;
         notifySubscribers('pool');
+        scheduleStreamPrewarm(700);
       } catch {
         poolLoaded = true;
       }
@@ -2830,16 +3019,20 @@ export function initMusicPlayer() {
     toggleWatchLater(track = currentTrack) {
       const target = track || currentTrack;
       if (!target) return false;
+      hydrateTrackStreamFromCache(target);
       const res = toggleTrackInWatchLater(musicLibrary, target);
       musicLibrary = saveMusicLibrary(res.library);
+      if (res.added) scheduleStreamPrewarm(200);
       renderWidget();
       notifySubscribers('library');
       return res.added;
     },
 
     createPlaylist(name, initialTrack = null) {
+      if (initialTrack) hydrateTrackStreamFromCache(initialTrack);
       const res = createUserPlaylist(musicLibrary, name, initialTrack);
       musicLibrary = saveMusicLibrary(res.library);
+      if (initialTrack) scheduleStreamPrewarm(200);
       renderWidget();
       notifySubscribers('library');
       return res.playlist;
@@ -2864,8 +3057,10 @@ export function initMusicPlayer() {
     addTrackToPlaylist(playlistId, track = currentTrack) {
       const target = track || currentTrack;
       if (!playlistId || !target) return false;
+      hydrateTrackStreamFromCache(target);
       const res = addTrackToPlaylist(musicLibrary, playlistId, target);
       musicLibrary = saveMusicLibrary(res.library);
+      if (res.added) scheduleStreamPrewarm(200);
       renderWidget();
       notifySubscribers('library');
       return res.added;
@@ -3281,6 +3476,7 @@ export function initMusicPlayer() {
         }
         const combined = [...merged.values()];
         if (combined.length > 0) {
+          combined.forEach(hydrateTrackStreamFromCache);
           tracks = shuffleTracksFisherYates(combined);
         }
       } catch {
@@ -3289,6 +3485,7 @@ export function initMusicPlayer() {
       isSearching = false;
       renderWidget();
       notifySubscribers('pool');
+      scheduleStreamPrewarm(300);
     },
 
     async search(term, { autoPlayFirst = false } = {}) {
@@ -3354,6 +3551,7 @@ export function initMusicPlayer() {
         searchResults = finalResults;
 
         if (finalResults.length > 0) {
+          finalResults.forEach(hydrateTrackStreamFromCache);
           // Merge into tracks so next/shuffle can access them while prioritizing Viral Indo
           const allMap = new Map(tracks.map((t) => [t.id, t]));
           for (const item of finalResults) {
@@ -3361,10 +3559,8 @@ export function initMusicPlayer() {
           }
           tracks = [...allMap.values()];
           searchFeedback = '';
-          // Non-blocking prefetch of exact background-safe audio stream for the top search hit (never skips current song)
-          Promise.allSettled(
-            finalResults.slice(0, 1).map((hit) => resolveBackgroundStreamForTrack(hit, { allowAltYt: true }))
-          ).catch(() => {});
+          // Non-blocking background pre-warm of top search results so user taps play instantaneously
+          scheduleStreamPrewarm(120);
           if (autoPlayFirst) {
             this.playTrack(finalResults[0], { selectionSource: 'user' });
           }
@@ -3809,6 +4005,8 @@ export function initMusicPlayer() {
       }
     }, 180);
   }
+
+  scheduleStreamPrewarm(1500);
 
   return controller;
 }
