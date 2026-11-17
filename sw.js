@@ -1,4 +1,4 @@
-const CACHE_NAME = 'manifestudio-cache-v30';
+const CACHE_NAME = 'manifestudio-cache-v31';
 
 const PRECACHE_ASSETS = [
   './',

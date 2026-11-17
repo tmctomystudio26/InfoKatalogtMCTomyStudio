@@ -15,16 +15,19 @@ import {
   MUSIC_LIBRARY_STORAGE_KEY,
   addTrackToPlaylist,
   clampMusicFabPosition,
+  computeSafeResumeSeconds,
   createUserPlaylist,
   deleteUserPlaylist,
   extractYouTubeVideoId,
   filterFullLengthTracks,
   formatAudioTime,
   getPopoverAnchorClasses,
+  hasPendingSeekSettled,
   isBlockedAudioWrapperUrl,
   isStrictAudioMatch,
   isStrictSongMetadataMatch,
   isTrackInWatchLater,
+  needsCorsAnonymousAudio,
   normalizeMusicLibraryState,
   normalizeRepeatMode,
   normalizeYtMusicTrack,
@@ -35,10 +38,12 @@ import {
   renameUserPlaylist,
   scoreSearchRelevance,
   selectUmmyAudioStreamCandidates,
+  serializeMusicTrack,
   shouldAutoSkipOnPlaybackError,
+  shouldIgnoreTimeUpdateDuringPendingSeek,
   shuffleTracksFisherYates,
   toggleTrackInWatchLater,
-} from './music-logic.js?v=30';
+} from './music-logic.js?v=31';
 
 const MUSIC_POS_KEY = 'manifestudio_music_pos_v2';
 const MUSIC_VOL_KEY = 'manifestudio_music_vol_v2';
@@ -57,10 +62,8 @@ const SIPUTZX_UMMY_URL = 'https://api.siputzx.my.id/api/d/ummy';
 const COBALT_AUDIO_ENDPOINT = 'https://cobaltapi.cjs.nz/';
 const AUDIUS_API_BASE = 'https://api.audius.co/v1';
 const TIOO_AUDIO_BACKENDS = [
-  'https://backend3.tioo.eu.org',
-  'https://backend4.tioo.eu.org',
   'https://backend1.tioo.eu.org',
-  'https://backend2.tioo.eu.org',
+  'https://backend3.tioo.eu.org',
 ];
 const ytExactStreamCache = new Map();
 const ytExactInFlight = new Map();
@@ -512,10 +515,12 @@ function readMusicSession() {
     try {
       const parsed = JSON.parse(raw);
       if (parsed && typeof parsed === 'object') {
+        const restoredTrack = parsed.lastTrack ? normalizeYtMusicTrack(parsed.lastTrack) : null;
         return {
           explicitPaused: Boolean(parsed.explicitPaused),
           wasPlaying: Boolean(parsed.wasPlaying),
-          lastTrackId: String(parsed.lastTrackId || ''),
+          lastTrackId: String(parsed.lastTrackId || restoredTrack?.id || ''),
+          lastTrack: restoredTrack,
           currentTime: Math.max(0, Number(parsed.currentTime) || 0),
           trackSelectionSource: parsed.trackSelectionSource === 'user' ? 'user' : 'auto',
           updatedAt: Number(parsed.updatedAt) || 0,
@@ -529,6 +534,7 @@ function readMusicSession() {
     explicitPaused: false,
     wasPlaying: false,
     lastTrackId: '',
+    lastTrack: null,
     currentTime: 0,
     trackSelectionSource: 'auto',
     updatedAt: 0,
@@ -542,6 +548,9 @@ function saveMusicSession(partial = {}) {
     ...partial,
     updatedAt: Date.now(),
   };
+  if (partial.lastTrack) {
+    next.lastTrack = serializeMusicTrack(partial.lastTrack) || prev.lastTrack || null;
+  }
   const payload = JSON.stringify(next);
   try {
     sessionStorage.setItem(MUSIC_SESSION_KEY, payload);
@@ -619,10 +628,60 @@ async function fetchAudiusDirectTracks(query, { genre = 'Viral Indonesia', isInd
   }
 }
 
-async function probePlayableAudioStream(url, timeoutMs = 4500) {
+function probeAudioElementMetadata(url, timeoutMs = 5500) {
+  return new Promise((resolve) => {
+    if (typeof Audio === 'undefined') {
+      resolve(false);
+      return;
+    }
+    let settled = false;
+    const probe = new Audio();
+    probe.preload = 'metadata';
+    probe.muted = true;
+    if (needsCorsAnonymousAudio(url)) {
+      probe.crossOrigin = 'anonymous';
+    }
+    const cleanup = () => {
+      probe.onloadedmetadata = null;
+      probe.oncanplay = null;
+      probe.onerror = null;
+      try {
+        probe.pause();
+        probe.removeAttribute('src');
+        probe.load();
+      } catch {
+        // Ignore cleanup errors
+      }
+    };
+    const finish = (ok, markFailed = false) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      if (!ok && markFailed) {
+        failedStreamUrls.add(url);
+      }
+      cleanup();
+      resolve(ok);
+    };
+    const timer = setTimeout(() => finish(false, false), timeoutMs);
+    probe.onloadedmetadata = () => finish(true, false);
+    probe.oncanplay = () => finish(true, false);
+    probe.onerror = () => finish(false, true);
+    try {
+      probe.src = url;
+    } catch {
+      finish(false, true);
+    }
+  });
+}
+
+async function probePlayableAudioStream(url, timeoutMs = 5500) {
   const clean = String(url || '').trim();
   if (!clean || isBlockedAudioWrapperUrl(clean) || failedStreamUrls.has(clean)) {
     return false;
+  }
+  if (needsCorsAnonymousAudio(clean)) {
+    return probeAudioElementMetadata(clean, timeoutMs);
   }
   const ac = new AbortController();
   const timer = setTimeout(() => ac.abort(), timeoutMs);
@@ -723,11 +782,34 @@ async function resolveCobaltAudioStream(ytUrl) {
 
 async function resolveSiputzxUmmyAudioStream(ytUrl) {
   try {
-    const data = await fetchJsonTimeout(`${SIPUTZX_UMMY_URL}?url=${encodeURIComponent(ytUrl)}`, 15000);
-    const candidates = selectUmmyAudioStreamCandidates(data);
-    for (const cand of candidates.slice(0, 4)) {
-      const ok = await probePlayableAudioStream(cand, 4500);
-      if (ok) return cand;
+    const data = await fetchJsonTimeout(`${SIPUTZX_UMMY_URL}?url=${encodeURIComponent(ytUrl)}`, 18000);
+    const allCandidates = selectUmmyAudioStreamCandidates(data);
+    if (allCandidates.length === 0) return '';
+    // Pick up to 4 diverse format candidates (e.g. m4a + opus + progressive mp4) in 1 RTT
+    const diverse = [];
+    const seenTypes = new Set();
+    for (const c of allCandidates) {
+      const dec = decodeURIComponent(c);
+      const bucket = /itag=140|mime=audio\/mp4/i.test(dec)
+        ? 'm4a'
+        : /mime=audio\/webm|itag=251/i.test(dec)
+        ? 'opus'
+        : /mime=video\/mp4|itag=18/i.test(dec)
+        ? 'mp4'
+        : `other-${diverse.length}`;
+      if (!seenTypes.has(bucket)) {
+        seenTypes.add(bucket);
+        diverse.push(c);
+      }
+      if (diverse.length >= 4) break;
+    }
+    const candidates = diverse.length > 0 ? diverse : allCandidates.slice(0, 4);
+    const checks = await Promise.all(
+      candidates.map((cand) => probePlayableAudioStream(cand, 5500).catch(() => false))
+    );
+    const winnerIdx = checks.findIndex(Boolean);
+    if (winnerIdx !== -1) {
+      return candidates[winnerIdx];
     }
   } catch {
     // Ummy unavailable or timed out
@@ -758,20 +840,20 @@ async function resolveExactYoutubeAudioStream(videoId, { bypassCache = false } =
       const winner = await resolveFirstTruthy([
         resolveCobaltAudioStream(ytUrl),
         resolveSiputzxUmmyAudioStream(ytUrl),
-        (async () => {
-          for (const host of TIOO_AUDIO_BACKENDS) {
+        resolveFirstTruthy(
+          TIOO_AUDIO_BACKENDS.map(async (host) => {
             try {
-              const data = await fetchJsonTimeout(`${host}/youtube?url=${encoded}`, 7500);
+              const data = await fetchJsonTimeout(`${host}/youtube?url=${encoded}`, 4000);
               const cand = String(data?.mp3 || data?.mp4 || '').trim();
-              if (cand && !isBlockedAudioWrapperUrl(cand) && (await probePlayableAudioStream(cand, 4000))) {
+              if (cand && !isBlockedAudioWrapperUrl(cand) && (await probePlayableAudioStream(cand, 3500))) {
                 return cand;
               }
             } catch {
-              // Try next mirror
+              // Ignore mirror failure
             }
-          }
-          return '';
-        })(),
+            return '';
+          })
+        ),
       ]);
 
       if (winner && !failedStreamUrls.has(winner)) {
@@ -857,6 +939,11 @@ async function resolveBackgroundStreamForTrack(track, { allowAltYt = true, bypas
         return track.streamUrl;
       }
 
+      const query = `${track.title || ''} ${track.artist || ''}`.trim();
+      // Start fetching alternate YT uploads in parallel immediately with primary stream resolution
+      const altCandidatesPromise =
+        allowAltYt && query ? fetchRawYoutubeCandidates(query, 8).catch(() => []) : Promise.resolve([]);
+
       if (track.videoId && (bypassCache || !failedExactVideoIds.has(track.videoId))) {
         const exactYtStream = await resolveExactYoutubeAudioStream(track.videoId, { bypassCache });
         if (exactYtStream && !failedStreamUrls.has(exactYtStream)) {
@@ -865,7 +952,6 @@ async function resolveBackgroundStreamForTrack(track, { allowAltYt = true, bypas
         }
       }
 
-      const query = `${track.title || ''} ${track.artist || ''}`.trim();
       if (query) {
         const audiusMatches = await fetchAudiusDirectTracks(query, {
           genre: track.genre || 'Viral Indonesia',
@@ -881,22 +967,31 @@ async function resolveBackgroundStreamForTrack(track, { allowAltYt = true, bypas
         }
       }
 
-      // If primary YouTube videoId is IP-locked / login-gated, resolve an alternate YouTube upload
-      // that STRICTLY matches the exact same song title & artist (keeping displayed metadata untouched).
+      // If primary YouTube videoId is IP-locked / login-gated, race known seed + alternate YouTube uploads
+      // that STRICTLY match the exact same song title & artist (keeping displayed metadata untouched).
       if (allowAltYt && query) {
-        const altCandidates = await fetchRawYoutubeCandidates(query, 10);
-        const matchingAlts = altCandidates
-          .filter(
-            (alt) =>
-              alt.videoId &&
-              alt.videoId !== track.videoId &&
-              !failedExactVideoIds.has(alt.videoId) &&
-              isStrictSongMetadataMatch(track, alt)
-          )
-          .slice(0, 3);
+        const fetchedAlts = await altCandidatesPromise;
+        const combinedPool = [...SEED_VIRAL_INDO_TRACKS, ...fetchedAlts];
+        const seenAltIds = new Set();
+        const matchingAlts = [];
+        for (const alt of combinedPool) {
+          if (
+            alt?.videoId &&
+            alt.videoId !== track.videoId &&
+            !seenAltIds.has(alt.videoId) &&
+            !failedExactVideoIds.has(alt.videoId) &&
+            isStrictSongMetadataMatch(track, alt)
+          ) {
+            seenAltIds.add(alt.videoId);
+            matchingAlts.push(alt);
+            if (matchingAlts.length >= 4) break;
+          }
+        }
 
-        for (const alt of matchingAlts) {
-          const altStream = await resolveExactYoutubeAudioStream(alt.videoId);
+        if (matchingAlts.length > 0) {
+          const altStream = await resolveFirstTruthy(
+            matchingAlts.map((alt) => resolveExactYoutubeAudioStream(alt.videoId))
+          );
           if (altStream && !failedStreamUrls.has(altStream)) {
             track.streamUrl = altStream;
             if (track.videoId) {
@@ -1101,12 +1196,18 @@ export function initMusicPlayer() {
     ...musicLibrary.watchLater,
     ...musicLibrary.playlists.flatMap((pl) => pl.tracks || []),
   ];
-  let currentTrack =
+  const restoredPoolMatch =
     (initialSession.lastTrackId &&
       [...SEED_VIRAL_INDO_TRACKS, ...restoredLibraryTracks].find(
         (t) => t.id === initialSession.lastTrackId || t.videoId === initialSession.lastTrackId
       )) ||
     null;
+  let currentTrack = restoredPoolMatch
+    ? {
+        ...restoredPoolMatch,
+        streamUrl: initialSession.lastTrack?.streamUrl || restoredPoolMatch.streamUrl || '',
+      }
+    : initialSession.lastTrack || null;
   let trackSelectionSource = currentTrack && initialSession.trackSelectionSource === 'user' ? 'user' : 'auto';
   let isPlaying = false;
   let isLoading = false;
@@ -1126,6 +1227,7 @@ export function initMusicPlayer() {
   let searchFeedback = '';
   let isSeeking = false;
   let isSwitchingSource = false;
+  let isSilentHold = false;
   let audioElUnlocked = false;
   let isUnlockingAudio = false;
   let suppressNextFabClick = false;
@@ -1133,7 +1235,13 @@ export function initMusicPlayer() {
   let consecutiveErrors = 0;
   let currentTime = Number(initialSession.currentTime) || 0;
   let duration = currentTrack?.duration || 0;
+  let pendingSeekSeconds = 0;
+  let pendingYtSeekSeconds = 0;
+  let lastGoodTrackId = currentTrack?.id || '';
+  let lastGoodPositionSec = Math.max(0, Number(initialSession.currentTime) || 0);
+  let lastSessionSaveAt = 0;
   let pendingPlayTrack = null;
+  let pendingPlayStartSeconds = 0;
   let activeEngine = 'audio-el';
   let requestSerial = 0;
   let backgroundHandoffInFlight = false;
@@ -1148,11 +1256,103 @@ export function initMusicPlayer() {
   let bgWatchdogTimer = null;
   let silentAudioCtx = null;
   let silentOscillator = null;
+  let silentWavUrl = '';
   let lastAutoNextAt = 0;
   let lastFocusTransitionAt = 0;
   let autoResumeAttempts = 0;
 
   audio.volume = volume;
+
+  function getSilentHoldWavUrl() {
+    if (silentWavUrl) return silentWavUrl;
+    try {
+      // Build a 1-second 8kHz mono 8-bit PCM silent WAV (value 128 = zero amplitude)
+      const sampleRate = 8000;
+      const numSamples = 8000;
+      const buffer = new ArrayBuffer(44 + numSamples);
+      const view = new DataView(buffer);
+      const writeStr = (offset, s) => {
+        for (let i = 0; i < s.length; i += 1) view.setUint8(offset + i, s.charCodeAt(i));
+      };
+      writeStr(0, 'RIFF');
+      view.setUint32(4, 36 + numSamples, true);
+      writeStr(8, 'WAVE');
+      writeStr(12, 'fmt ');
+      view.setUint32(16, 16, true);
+      view.setUint16(20, 1, true);
+      view.setUint16(22, 1, true);
+      view.setUint32(24, sampleRate, true);
+      view.setUint32(28, sampleRate, true);
+      view.setUint16(32, 1, true);
+      view.setUint16(34, 8, true);
+      writeStr(36, 'data');
+      view.setUint32(40, numSamples, true);
+      new Uint8Array(buffer, 44).fill(128);
+      silentWavUrl = URL.createObjectURL(new Blob([buffer], { type: 'audio/wav' }));
+      return silentWavUrl;
+    } catch {
+      return 'data:audio/wav;base64,UklGRigAAABXQVZFZm10IBIAAAABAAEARKwAAIhYAQACABAAAABkYXRhAgAAAAEA';
+    }
+  }
+
+  function configureAudioCors(url) {
+    if (needsCorsAnonymousAudio(url)) {
+      audio.crossOrigin = 'anonymous';
+    } else {
+      audio.removeAttribute('crossorigin');
+    }
+  }
+
+  function recordGoodPosition(track, sec, { force = false } = {}) {
+    if (!track?.id) return;
+    const val = Math.max(0, Number(sec) || 0);
+    if (force || track.id !== lastGoodTrackId) {
+      lastGoodTrackId = track.id;
+      lastGoodPositionSec = val;
+    } else if (val > 0.5) {
+      lastGoodPositionSec = val;
+    }
+  }
+
+  function getResumeSecondsForTrack(track = currentTrack) {
+    if (!track?.id) return 0;
+    const saved = readMusicSession();
+    const sameSaved =
+      saved.lastTrackId === track.id || (Boolean(track.videoId) && saved.lastTrack?.videoId === track.videoId);
+    const sameGood = lastGoodTrackId === track.id;
+    return computeSafeResumeSeconds({
+      currentTime,
+      sessionTime: sameSaved ? saved.currentTime : 0,
+      lastGoodTime: sameGood ? lastGoodPositionSec : 0,
+      sameTrack: true,
+      duration: duration || track.duration || 0,
+    });
+  }
+
+  function applyPendingAudioSeek() {
+    if (isSilentHold || activeEngine !== 'audio-el' || pendingSeekSeconds <= 0.5) return;
+    if (audio.readyState < 1) return;
+    const dur =
+      Number.isFinite(audio.duration) && audio.duration > 4
+        ? audio.duration
+        : duration || currentTrack?.duration || 0;
+    const target = dur > 4 ? Math.min(pendingSeekSeconds, Math.max(0, dur - 1.5)) : pendingSeekSeconds;
+    if (target <= 0.5) {
+      pendingSeekSeconds = 0;
+      return;
+    }
+    if (Math.abs((audio.currentTime || 0) - target) <= 2.5) {
+      pendingSeekSeconds = 0;
+      return;
+    }
+    try {
+      audio.currentTime = target;
+      currentTime = target;
+      recordGoodPosition(currentTrack, target);
+    } catch {
+      // Retry when loadedmetadata/canplay/durationchange fires
+    }
+  }
 
   function ensureBackgroundAudioKeepAlive() {
     if (typeof window === 'undefined') return;
@@ -1183,37 +1383,38 @@ export function initMusicPlayer() {
     }
   }
 
-  function unlockNativeAudioElement() {
-    if (audioElUnlocked || isUnlockingAudio || activeEngine === 'audio-el') return;
-    audioElUnlocked = true;
-    isUnlockingAudio = true;
+  function startSilentHoldForBackgroundTransition() {
+    if (explicitPaused || activeEngine === 'audio-el') return;
     try {
-      // Tiny silent WAV (~45ms) played once inside user gesture to bless #music-audio-el for mobile background playback
-      const prevSrc = audio.getAttribute('src') || '';
-      if (!prevSrc) {
-        audio.src =
-          'data:audio/wav;base64,UklGRigAAABXQVZFZm10IBIAAAABAAEARKwAAIhYAQACABAAAABkYXRhAgAAAAEA';
-        const p = audio.play();
-        if (p && typeof p.then === 'function') {
-          p.then(() => {
-            if (isUnlockingAudio) {
-              audio.pause();
-              audio.removeAttribute('src');
-            }
-          })
-            .catch(() => {
-              audioElUnlocked = false;
-            })
-            .finally(() => {
-              isUnlockingAudio = false;
-            });
-          return;
-        }
+      isSilentHold = true;
+      audioElUnlocked = true;
+      audio.removeAttribute('crossorigin');
+      audio.loop = true;
+      audio.muted = false;
+      audio.volume = 0.01;
+      const holdUrl = getSilentHoldWavUrl();
+      if (audio.src !== holdUrl) {
+        audio.src = holdUrl;
+      }
+      const p = audio.play();
+      if (p && typeof p.catch === 'function') {
+        p.catch(() => {
+          if (isSilentHold) {
+            isSilentHold = false;
+            audioElUnlocked = false;
+          }
+        });
       }
     } catch {
+      isSilentHold = false;
       audioElUnlocked = false;
     }
-    isUnlockingAudio = false;
+  }
+
+  function stopSilentHold() {
+    if (!isSilentHold) return;
+    isSilentHold = false;
+    audio.loop = false;
   }
 
   function pushRecentId(id) {
@@ -1334,7 +1535,7 @@ export function initMusicPlayer() {
     if (bgWatchdogTimer) return;
     bgWatchdogTimer = setInterval(() => {
       if (explicitPaused || (!isPlaying && !isLoading)) return;
-      if (activeEngine === 'audio-el') {
+      if (activeEngine === 'audio-el' && !isSilentHold) {
         const dur =
           Number.isFinite(audio.duration) && audio.duration > 0
             ? audio.duration
@@ -1345,6 +1546,7 @@ export function initMusicPlayer() {
         }
         if (audio.paused && !audio.ended && audio.src && !isSwitchingSource) {
           ensureBackgroundAudioKeepAlive();
+          applyPendingAudioSeek();
           audio.play().catch(() => {});
         }
         syncMediaPositionState();
@@ -1367,13 +1569,46 @@ export function initMusicPlayer() {
       let cur = currentTime;
       let dur = duration || currentTrack?.duration || 0;
       if (activeEngine === 'audio-el') {
-        cur = Number.isFinite(audio.currentTime) ? audio.currentTime : cur;
+        if (isSilentHold || isSwitchingSource) return;
+        const rawCur = Number.isFinite(audio.currentTime) ? audio.currentTime : cur;
+        if (shouldIgnoreTimeUpdateDuringPendingSeek({ pendingSeekSeconds, reportedTime: rawCur })) {
+          applyPendingAudioSeek();
+          return;
+        }
+        if (hasPendingSeekSettled({ pendingSeekSeconds, reportedTime: rawCur })) {
+          pendingSeekSeconds = 0;
+        }
+        // Protect against accidental 0 clobber while audio buffer reloads after background transition
+        if (
+          rawCur < 0.8 &&
+          lastGoodTrackId === currentTrack?.id &&
+          lastGoodPositionSec > 3 &&
+          Date.now() - lastFocusTransitionAt < 5000
+        ) {
+          pendingSeekSeconds = lastGoodPositionSec;
+          applyPendingAudioSeek();
+          return;
+        }
+        cur = rawCur;
         if (Number.isFinite(audio.duration) && audio.duration > 0) dur = audio.duration;
       } else if (ytReady && ytPlayer) {
         try {
           const ytCur = ytPlayer.getCurrentTime?.();
           const ytDur = ytPlayer.getDuration?.();
-          if (Number.isFinite(ytCur) && ytCur >= 0) cur = ytCur;
+          if (pendingYtSeekSeconds > 1.5) {
+            if (Number.isFinite(ytCur) && Math.abs(ytCur - pendingYtSeekSeconds) <= 3) {
+              pendingYtSeekSeconds = 0;
+              cur = ytCur;
+            } else {
+              return;
+            }
+          } else if (Number.isFinite(ytCur)) {
+            // Never overwrite valid saved progress with 0 if iframe paused/reset during focus transition
+            if (ytCur < 0.8 && lastGoodTrackId === currentTrack?.id && lastGoodPositionSec > 2.5) {
+              return;
+            }
+            if (ytCur >= 0) cur = ytCur;
+          }
           if (Number.isFinite(ytDur) && ytDur > 0) dur = ytDur;
         } catch {
           // Ignore YT read error
@@ -1382,10 +1617,12 @@ export function initMusicPlayer() {
       if (Math.abs(cur - currentTime) >= 0.25 || Math.abs(dur - duration) >= 1) {
         currentTime = cur;
         duration = dur;
+        recordGoodPosition(currentTrack, cur);
         saveMusicSession({
           explicitPaused,
           wasPlaying: isPlaying,
           lastTrackId: currentTrack?.id || '',
+          lastTrack: currentTrack,
           currentTime,
         });
         syncMediaPositionState();
@@ -1435,7 +1672,7 @@ export function initMusicPlayer() {
     }
   }
 
-  async function handoffToBackgroundSafeAudio(reason = 'background') {
+  async function handoffToBackgroundSafeAudio(reason = 'background', explicitResumeSec = null) {
     if (explicitPaused || backgroundHandoffInFlight) return false;
     backgroundHandoffInFlight = true;
     try {
@@ -1458,11 +1695,16 @@ export function initMusicPlayer() {
         return false;
       }
 
-      let liveSec = currentTime;
+      let liveSec =
+        explicitResumeSec !== null && Number.isFinite(Number(explicitResumeSec))
+          ? Math.max(0, Number(explicitResumeSec))
+          : getResumeSecondsForTrack(target);
       if (activeEngine === 'yt-iframe' && ytReady && ytPlayer?.getCurrentTime) {
         try {
           const ytSec = ytPlayer.getCurrentTime();
-          if (Number.isFinite(ytSec) && ytSec > 0) liveSec = ytSec;
+          if (Number.isFinite(ytSec) && ytSec > 0.8) {
+            liveSec = Math.max(liveSec, ytSec);
+          }
         } catch {
           // Ignore YT read error
         }
@@ -1470,6 +1712,9 @@ export function initMusicPlayer() {
       const resumeSec = liveSec > 1 ? liveSec : 0;
       currentTrack = target;
       currentTime = resumeSec;
+      pendingSeekSeconds = resumeSec > 1 ? resumeSec : 0;
+      pendingYtSeekSeconds = 0;
+      recordGoodPosition(target, resumeSec, { force: true });
       activeEngine = 'audio-el';
       try {
         if (ytReady && ytPlayer?.pauseVideo) ytPlayer.pauseVideo();
@@ -1477,6 +1722,9 @@ export function initMusicPlayer() {
         // Ignore
       }
       isSwitchingSource = true;
+      stopSilentHold();
+      audio.loop = false;
+      configureAudioCors(target.streamUrl);
       if (audio.src !== target.streamUrl) {
         audio.src = target.streamUrl;
       }
@@ -1486,13 +1734,7 @@ export function initMusicPlayer() {
       const playProm = audio.play();
       isSwitchingSource = false;
       await playProm;
-      if (resumeSec > 1 && Number.isFinite(audio.duration) && resumeSec < audio.duration - 2) {
-        try {
-          audio.currentTime = resumeSec;
-        } catch {
-          // Ignore seek before metadata
-        }
-      }
+      applyPendingAudioSeek();
       isPlaying = true;
       isLoading = false;
       lastError = '';
@@ -1503,6 +1745,7 @@ export function initMusicPlayer() {
         explicitPaused: false,
         wasPlaying: true,
         lastTrackId: target.id,
+        lastTrack: target,
         currentTime: resumeSec,
         trackSelectionSource,
       });
@@ -1549,8 +1792,13 @@ export function initMusicPlayer() {
               }
               if (pendingPlayTrack && !explicitPaused) {
                 const target = pendingPlayTrack;
+                const startSec =
+                  pendingPlayStartSeconds > 0
+                    ? pendingPlayStartSeconds
+                    : getResumeSecondsForTrack(target);
                 pendingPlayTrack = null;
-                executePlaybackNow(target);
+                pendingPlayStartSeconds = 0;
+                executePlaybackNow(target, { startSeconds: startSec });
               }
               notifySubscribers('engine-ready');
             },
@@ -1565,6 +1813,17 @@ export function initMusicPlayer() {
               };
               if (state === YTState.PLAYING) {
                 if (activeEngine !== 'yt-iframe') return;
+                if (pendingYtSeekSeconds > 2) {
+                  try {
+                    const ytCurNow = Number(ytPlayer.getCurrentTime?.() || 0);
+                    if (ytCurNow < Math.max(1.5, pendingYtSeekSeconds - 4)) {
+                      ytPlayer.seekTo?.(pendingYtSeekSeconds, true);
+                    }
+                  } catch {
+                    // Ignore YT seek error
+                  }
+                  pendingYtSeekSeconds = 0;
+                }
                 isPlaying = true;
                 isLoading = false;
                 lastError = '';
@@ -1579,6 +1838,7 @@ export function initMusicPlayer() {
                   explicitPaused: false,
                   wasPlaying: true,
                   lastTrackId: currentTrack?.id || '',
+                  lastTrack: currentTrack,
                   currentTime,
                   trackSelectionSource,
                 });
@@ -1666,7 +1926,9 @@ export function initMusicPlayer() {
                   currentTrack?.id === failedTrack.id &&
                   !explicitPaused
                 ) {
-                  executePlaybackNow(failedTrack, { startSeconds: currentTime });
+                  executePlaybackNow(failedTrack, {
+                    startSeconds: getResumeSecondsForTrack(failedTrack),
+                  });
                   return;
                 }
               }
@@ -1703,10 +1965,13 @@ export function initMusicPlayer() {
 
   function startYoutubePlaybackForTrack(track, startSec = 0) {
     activeEngine = 'yt-iframe';
-    if (!audio.paused) audio.pause();
+    const targetSec = Math.max(0, Number(startSec) || 0);
+    pendingYtSeekSeconds = targetSec > 1.5 ? targetSec : 0;
+    if (!isSilentHold && !audio.paused) audio.pause();
     if (!track?.videoId) return;
     if (ytReady && ytPlayer?.loadVideoById) {
       pendingPlayTrack = null;
+      pendingPlayStartSeconds = 0;
       isLoading = true;
       renderWidget();
       notifySubscribers('loading');
@@ -1714,7 +1979,7 @@ export function initMusicPlayer() {
         if (isMuted) ytPlayer.mute?.();
         else ytPlayer.unMute?.();
         ytPlayer.setVolume?.(Math.round(volume * 100));
-        ytPlayer.loadVideoById({ videoId: track.videoId, startSeconds: Math.max(0, startSec) });
+        ytPlayer.loadVideoById({ videoId: track.videoId, startSeconds: targetSec });
         startTimeTicker();
       } catch {
         isLoading = false;
@@ -1723,6 +1988,7 @@ export function initMusicPlayer() {
       }
     } else {
       pendingPlayTrack = track;
+      pendingPlayStartSeconds = targetSec;
       isLoading = true;
       renderWidget();
       notifySubscribers('loading');
@@ -1731,9 +1997,14 @@ export function initMusicPlayer() {
 
   function executePlaybackNow(track, { startSeconds = 0 } = {}) {
     if (!track) return;
+    const isSameTrackRestart = currentTrack?.id === track.id;
+    const targetStart = Math.max(0, Number(startSeconds) || 0);
     currentTrack = track;
-    currentTime = Math.max(0, Number(startSeconds) || 0);
+    currentTime = targetStart;
     duration = Number(track.duration || 0);
+    pendingSeekSeconds = targetStart > 1 ? targetStart : 0;
+    pendingYtSeekSeconds = targetStart > 1.5 ? targetStart : 0;
+    recordGoodPosition(track, targetStart, { force: true });
     autoResumeAttempts = 0;
     lastError = '';
     pushRecentId(track.id);
@@ -1744,6 +2015,7 @@ export function initMusicPlayer() {
       explicitPaused: false,
       wasPlaying: true,
       lastTrackId: track.id,
+      lastTrack: track,
       currentTime,
       trackSelectionSource,
     });
@@ -1763,8 +2035,17 @@ export function initMusicPlayer() {
       }
       const targetStreamUrl = track.streamUrl;
       isSwitchingSource = true;
-      if (audio.src !== targetStreamUrl) {
+      stopSilentHold();
+      audio.loop = false;
+      configureAudioCors(targetStreamUrl);
+      const alreadyLoadedSameStream =
+        isSameTrackRestart && audio.src === targetStreamUrl && !audio.error && audio.readyState >= 1;
+      if (!alreadyLoadedSameStream) {
         audio.src = targetStreamUrl;
+      } else if (targetStart >= 0 && Math.abs((audio.currentTime || 0) - targetStart) > 2) {
+        pendingSeekSeconds = targetStart;
+      } else {
+        pendingSeekSeconds = 0;
       }
       audio.muted = isMuted;
       audio.volume = volume;
@@ -1774,13 +2055,7 @@ export function initMusicPlayer() {
       isSwitchingSource = false;
       playPromise
         .then(() => {
-          if (currentTime > 1 && Number.isFinite(audio.duration) && currentTime < audio.duration - 2) {
-            try {
-              audio.currentTime = currentTime;
-            } catch {
-              // Ignore
-            }
-          }
+          applyPendingAudioSeek();
           isPlaying = true;
           isLoading = false;
           consecutiveErrors = 0;
@@ -1789,8 +2064,19 @@ export function initMusicPlayer() {
           renderWidget();
           notifySubscribers('play');
         })
-        .catch(() => {
+        .catch((err) => {
           if (explicitPaused || currentTrack?.id !== track.id) return;
+          const fallbackResumeSec = getResumeSecondsForTrack(track);
+          if (err?.name === 'NotAllowedError') {
+            // Browser autoplay policy blocked unattended playback before a user tap:
+            // keep the valid streamUrl and saved position intact so the first tap resumes it cleanly!
+            isPlaying = false;
+            isLoading = false;
+            pendingSeekSeconds = fallbackResumeSec > 0.5 ? fallbackResumeSec : 0;
+            renderWidget();
+            notifySubscribers('pause');
+            return;
+          }
           failedStreamUrls.add(targetStreamUrl);
           if (track.videoId && ytExactStreamCache.get(track.videoId) === targetStreamUrl) {
             ytExactStreamCache.delete(track.videoId);
@@ -1800,7 +2086,7 @@ export function initMusicPlayer() {
           track.streamUrl = '';
           const isTabHidden = typeof document !== 'undefined' && document.hidden;
           if (track.videoId && !failedYtIframeVideoIds.has(track.videoId) && !isTabHidden) {
-            startYoutubePlaybackForTrack(track, currentTime);
+            startYoutubePlaybackForTrack(track, fallbackResumeSec);
           } else {
             consecutiveErrors += 1;
             if (shouldAutoSkipOnPlaybackError({ trackSelectionSource, consecutiveErrors }) && tracks.length > 0) {
@@ -1820,10 +2106,11 @@ export function initMusicPlayer() {
       track.streamUrl = '';
     }
 
-    // Track only has videoId: bless native <audio> for background handoff, start YT IFrame,
-    // and upgrade seamlessly to background-safe <audio> the moment exact stream resolution completes!
+    // Track only has videoId: start continuous silent hold inside user gesture so Android/Chrome
+    // grants background audio focus to #music-audio-el, start YT IFrame in foreground, and
+    // seamlessly swap to the resolved <audio> stream (even if user already locked screen or left tab!).
     activeEngine = 'yt-iframe';
-    unlockNativeAudioElement();
+    startSilentHoldForBackgroundTransition();
     startYoutubePlaybackForTrack(track, currentTime);
     resolveBackgroundStreamForTrack(track, { allowAltYt: true })
       .then((resolvedUrl) => {
@@ -2632,27 +2919,42 @@ export function initMusicPlayer() {
 
     play() {
       explicitPaused = false;
-      saveMusicSession({
-        explicitPaused: false,
-        wasPlaying: true,
-        lastTrackId: currentTrack?.id || '',
-        currentTime,
-        trackSelectionSource,
-      });
       if (!currentTrack) {
         this.playNext({ userInitiated: true });
         return;
       }
+      const resumeSec = getResumeSecondsForTrack(currentTrack);
+      currentTime = resumeSec;
+      saveMusicSession({
+        explicitPaused: false,
+        wasPlaying: true,
+        lastTrackId: currentTrack?.id || '',
+        lastTrack: currentTrack,
+        currentTime: resumeSec,
+        trackSelectionSource,
+      });
       ensureBackgroundAudioKeepAlive();
       if (activeEngine === 'audio-el' || currentTrack.streamUrl) {
         activeEngine = 'audio-el';
         isSwitchingSource = true;
-        if (currentTrack.streamUrl && audio.src !== currentTrack.streamUrl) {
-          audio.src = currentTrack.streamUrl;
+        stopSilentHold();
+        audio.loop = false;
+        if (currentTrack.streamUrl) {
+          configureAudioCors(currentTrack.streamUrl);
+          if (audio.src !== currentTrack.streamUrl || audio.error) {
+            audio.src = currentTrack.streamUrl;
+          }
+        }
+        audio.muted = isMuted;
+        audio.volume = volume;
+        if (resumeSec > 1 && Math.abs((audio.currentTime || 0) - resumeSec) > 2.5) {
+          pendingSeekSeconds = resumeSec;
+          applyPendingAudioSeek();
         }
         const p = audio.play();
         isSwitchingSource = false;
         p.then(() => {
+          applyPendingAudioSeek();
           isPlaying = true;
           isLoading = false;
           startTimeTicker();
@@ -2661,15 +2963,21 @@ export function initMusicPlayer() {
           notifySubscribers('play');
         }).catch(() =>
           this.playTrack(currentTrack, {
-            startSeconds: currentTime,
+            startSeconds: resumeSec,
             selectionSource: trackSelectionSource,
           })
         );
       } else if (ytReady && ytPlayer?.playVideo) {
         try {
+          startSilentHoldForBackgroundTransition();
           if (isMuted) ytPlayer.mute?.();
           else ytPlayer.unMute?.();
           ytPlayer.setVolume?.(Math.round(volume * 100));
+          const ytCur = Number(ytPlayer.getCurrentTime?.() || 0);
+          if (resumeSec > 2 && ytCur < Math.max(1.5, resumeSec - 4)) {
+            pendingYtSeekSeconds = resumeSec;
+            ytPlayer.seekTo?.(resumeSec, true);
+          }
           ytPlayer.playVideo();
           isPlaying = true;
           startTimeTicker();
@@ -2678,13 +2986,13 @@ export function initMusicPlayer() {
           notifySubscribers('play');
         } catch {
           this.playTrack(currentTrack, {
-            startSeconds: currentTime,
+            startSeconds: resumeSec,
             selectionSource: trackSelectionSource,
           });
         }
       } else {
         this.playTrack(currentTrack, {
-          startSeconds: currentTime,
+          startSeconds: resumeSec,
           selectionSource: trackSelectionSource,
         });
       }
@@ -2693,6 +3001,9 @@ export function initMusicPlayer() {
     pause({ external = false } = {}) {
       explicitPaused = true;
       pendingPlayTrack = null;
+      stopSilentHold();
+      const preservedSec = getResumeSecondsForTrack(currentTrack);
+      currentTime = preservedSec;
       if (!audio.paused) audio.pause();
       if (ytReady && ytPlayer?.pauseVideo) {
         try {
@@ -2711,7 +3022,8 @@ export function initMusicPlayer() {
         explicitPaused: true,
         wasPlaying: false,
         lastTrackId: currentTrack?.id || '',
-        currentTime,
+        lastTrack: currentTrack,
+        currentTime: preservedSec,
         trackSelectionSource,
       });
       syncMediaPositionState();
@@ -2846,12 +3158,18 @@ export function initMusicPlayer() {
       const dur = duration || currentTrack?.duration || 180;
       const targetSec = Math.max(0, Math.min(dur, Number(sec) || 0));
       currentTime = targetSec;
+      recordGoodPosition(currentTrack, targetSec, { force: true });
       if (activeEngine === 'audio-el') {
-        if (Number.isFinite(audio.duration) && audio.duration > 0) {
+        if (Number.isFinite(audio.duration) && audio.duration > 0 && audio.readyState >= 1) {
           audio.currentTime = targetSec;
+          pendingSeekSeconds = 0;
+        } else {
+          pendingSeekSeconds = targetSec;
+          applyPendingAudioSeek();
         }
       } else if (ytReady && ytPlayer?.seekTo) {
         try {
+          pendingYtSeekSeconds = targetSec;
           ytPlayer.seekTo(targetSec, true);
         } catch {
           // Ignore seek error
@@ -2861,6 +3179,7 @@ export function initMusicPlayer() {
         explicitPaused,
         wasPlaying: isPlaying,
         lastTrackId: currentTrack?.id || '',
+        lastTrack: currentTrack,
         currentTime: targetSec,
       });
       syncMediaPositionState();
@@ -3015,10 +3334,17 @@ export function initMusicPlayer() {
 
         if (mySerial !== requestSerial) return;
 
-        // Combine live API results with local pool matches ranked cleanly
-        const poolMatches = rankSearchResults([...tracks, ...SEED_VIRAL_INDO_TRACKS], q, 45);
+        // Combine live API results with verified local pool matches ranked cleanly;
+        // prioritize already-streamable exact matches first so user selections start reliably in background!
+        const poolMatches = rankSearchResults([...SEED_VIRAL_INDO_TRACKS, ...tracks], q, 45);
+        const exactReadyPoolMatches = poolMatches.filter(
+          (r) =>
+            r &&
+            (Boolean(r.streamUrl) || SEED_VIRAL_INDO_TRACKS.some((s) => s.id === r.id)) &&
+            scoreSearchRelevance(r, q) >= 50
+        );
         const byId = new Map();
-        for (const r of [...fetched, ...poolMatches]) {
+        for (const r of [...exactReadyPoolMatches, ...fetched, ...poolMatches]) {
           const key = r?.videoId ? `yt-${r.videoId}` : r?.id;
           if (key && (!r.videoId || !blockedVideoIds.has(r.videoId)) && !byId.has(key)) {
             byId.set(key, r);
@@ -3035,9 +3361,9 @@ export function initMusicPlayer() {
           }
           tracks = [...allMap.values()];
           searchFeedback = '';
-          // Non-blocking prefetch of exact background-safe audio streams for top search hits (never skips current song)
+          // Non-blocking prefetch of exact background-safe audio stream for the top search hit (never skips current song)
           Promise.allSettled(
-            finalResults.slice(0, 3).map((hit) => resolveBackgroundStreamForTrack(hit, { allowAltYt: true }))
+            finalResults.slice(0, 1).map((hit) => resolveBackgroundStreamForTrack(hit, { allowAltYt: true }))
           ).catch(() => {});
           if (autoPlayFirst) {
             this.playTrack(finalResults[0], { selectionSource: 'user' });
@@ -3093,28 +3419,54 @@ export function initMusicPlayer() {
   }
 
   // Native HTML5 <audio> lifecycle listeners (continues playing & auto-advancing when screen is off or tab is hidden!)
+  ['loadedmetadata', 'durationchange', 'canplay'].forEach((evName) => {
+    audio.addEventListener(evName, () => {
+      if (isSilentHold || isUnlockingAudio || activeEngine !== 'audio-el') return;
+      if (Number.isFinite(audio.duration) && audio.duration > 0) {
+        duration = audio.duration;
+      }
+      applyPendingAudioSeek();
+    });
+  });
+
   audio.addEventListener('play', () => {
-    if (isUnlockingAudio || activeEngine !== 'audio-el') return;
+    if (isSilentHold || isUnlockingAudio || activeEngine !== 'audio-el') return;
     audioElUnlocked = true;
     autoResumeAttempts = 0;
     isPlaying = true;
     isLoading = false;
     ensureBackgroundAudioKeepAlive();
+    applyPendingAudioSeek();
     startTimeTicker();
     syncMediaPositionState();
     renderWidget();
     notifySubscribers('play');
   });
 
+  audio.addEventListener('playing', () => {
+    if (isSilentHold || isUnlockingAudio || activeEngine !== 'audio-el') return;
+    applyPendingAudioSeek();
+  });
+
   // Native timeupdate fires even when setInterval is throttled in background tabs or locked screens!
   // We also trigger auto-next 0.8s before track end so mobile OS audio focus never drops between tracks.
   audio.addEventListener('timeupdate', () => {
-    if (isUnlockingAudio || activeEngine !== 'audio-el' || isSeeking) return;
+    if (isSilentHold || isUnlockingAudio || activeEngine !== 'audio-el' || isSeeking || isSwitchingSource) {
+      return;
+    }
     const cur = Number.isFinite(audio.currentTime) ? audio.currentTime : currentTime;
     const dur =
       Number.isFinite(audio.duration) && audio.duration > 0
         ? audio.duration
         : duration || currentTrack?.duration || 0;
+
+    if (shouldIgnoreTimeUpdateDuringPendingSeek({ pendingSeekSeconds, reportedTime: cur })) {
+      applyPendingAudioSeek();
+      return;
+    }
+    if (hasPendingSeekSettled({ pendingSeekSeconds, reportedTime: cur })) {
+      pendingSeekSeconds = 0;
+    }
 
     if (dur > 10 && cur >= dur - 0.8 && !explicitPaused) {
       triggerSeamlessAutoNext('ended');
@@ -3124,6 +3476,19 @@ export function initMusicPlayer() {
     if (Math.abs(cur - currentTime) >= 0.35 || Math.abs(dur - duration) >= 1) {
       currentTime = cur;
       if (dur > 0) duration = dur;
+      recordGoodPosition(currentTrack, cur);
+      const now = Date.now();
+      if (now - lastSessionSaveAt >= 1800) {
+        lastSessionSaveAt = now;
+        saveMusicSession({
+          explicitPaused,
+          wasPlaying: true,
+          lastTrackId: currentTrack?.id || '',
+          lastTrack: currentTrack,
+          currentTime: cur,
+          trackSelectionSource,
+        });
+      }
       syncMediaPositionState();
       syncPopoverProgressDom();
       notifySubscribers('time');
@@ -3131,7 +3496,7 @@ export function initMusicPlayer() {
   });
 
   audio.addEventListener('pause', () => {
-    if (isUnlockingAudio || activeEngine !== 'audio-el' || isSwitchingSource) return;
+    if (isSilentHold || isUnlockingAudio || activeEngine !== 'audio-el' || isSwitchingSource) return;
     const dur = Number.isFinite(audio.duration) && audio.duration > 0 ? audio.duration : duration || 0;
     // If paused right at the end of track while in background, advance immediately
     if (!explicitPaused && (audio.ended || (dur > 10 && audio.currentTime >= dur - 1.2))) {
@@ -3154,7 +3519,7 @@ export function initMusicPlayer() {
         }
       });
       setTimeout(() => {
-        if (!explicitPaused && activeEngine === 'audio-el' && audio.paused && !audio.ended && audio.src && !isSwitchingSource) {
+        if (!explicitPaused && activeEngine === 'audio-el' && !isSilentHold && audio.paused && !audio.ended && audio.src && !isSwitchingSource) {
           ensureBackgroundAudioKeepAlive();
           audio.play().catch(() => {});
         }
@@ -3169,12 +3534,12 @@ export function initMusicPlayer() {
   });
 
   audio.addEventListener('ended', () => {
-    if (isUnlockingAudio || activeEngine !== 'audio-el') return;
+    if (isSilentHold || isUnlockingAudio || activeEngine !== 'audio-el') return;
     triggerSeamlessAutoNext('ended');
   });
 
   audio.addEventListener('stalled', () => {
-    if (isUnlockingAudio || activeEngine !== 'audio-el' || explicitPaused) return;
+    if (isSilentHold || isUnlockingAudio || activeEngine !== 'audio-el' || explicitPaused) return;
     ensureBackgroundAudioKeepAlive();
     if (audio.paused && isPlaying) {
       audio.play().catch(() => {});
@@ -3182,8 +3547,9 @@ export function initMusicPlayer() {
   });
 
   audio.addEventListener('error', async () => {
-    if (isUnlockingAudio || activeEngine !== 'audio-el' || explicitPaused) return;
+    if (isSilentHold || isUnlockingAudio || activeEngine !== 'audio-el' || explicitPaused) return;
     const failedTrack = currentTrack;
+    const resumeSec = getResumeSecondsForTrack(failedTrack);
     const failedSrc = failedTrack?.streamUrl || audio.currentSrc || audio.src || '';
     if (failedSrc) {
       failedStreamUrls.add(failedSrc);
@@ -3204,7 +3570,7 @@ export function initMusicPlayer() {
         allowAltYt: true,
       }).catch(() => '');
       if (altResolved && !failedStreamUrls.has(altResolved) && currentTrack?.id === failedTrack.id && !explicitPaused) {
-        executePlaybackNow(failedTrack, { startSeconds: currentTime });
+        executePlaybackNow(failedTrack, { startSeconds: resumeSec });
         return;
       }
     }
@@ -3213,7 +3579,7 @@ export function initMusicPlayer() {
       !failedYtIframeVideoIds.has(failedTrack.videoId) &&
       (typeof document === 'undefined' || !document.hidden)
     ) {
-      startYoutubePlaybackForTrack(failedTrack, currentTime);
+      startYoutubePlaybackForTrack(failedTrack, resumeSec);
       return;
     }
     if (failedTrack?.videoId && trackSelectionSource !== 'user') {
@@ -3241,15 +3607,69 @@ export function initMusicPlayer() {
     if (explicitPaused) return;
     ensureBackgroundAudioKeepAlive();
     if (isPlaying || isLoading) {
+      const resumeSec = getResumeSecondsForTrack(currentTrack);
+      saveMusicSession({
+        explicitPaused: false,
+        wasPlaying: true,
+        lastTrackId: currentTrack?.id || '',
+        lastTrack: currentTrack,
+        currentTime: resumeSec,
+        trackSelectionSource,
+      });
       if (activeEngine === 'yt-iframe') {
         // Resolve and hand off the EXACT user song to <audio>; NEVER overwrite it with a random song!
-        handoffToBackgroundSafeAudio(reason);
+        handoffToBackgroundSafeAudio(reason, resumeSec);
       } else if (audio.ended) {
         triggerSeamlessAutoNext('ended');
       } else if (audio.paused && audio.src && !isSwitchingSource) {
-        audio.play().catch(() => {});
+        if (audio.currentTime < 1.5 && resumeSec > 2) {
+          pendingSeekSeconds = resumeSec;
+          applyPendingAudioSeek();
+        }
+        audio.play().then(() => applyPendingAudioSeek()).catch(() => {});
       }
       syncMediaPositionState();
+    }
+  }
+
+  function resumePlaybackOnForegroundReturn(reason = 'return-visible') {
+    lastFocusTransitionAt = Date.now();
+    const saved = readMusicSession();
+    if (explicitPaused || (!saved.wasPlaying && !isPlaying && !isLoading) || !currentTrack) return;
+    const resumeSec = getResumeSecondsForTrack(currentTrack);
+    if (activeEngine === 'audio-el') {
+      if (audio.ended) {
+        triggerSeamlessAutoNext('ended');
+      } else if (audio.error || !audio.src) {
+        executePlaybackNow(currentTrack, { startSeconds: resumeSec });
+      } else {
+        if (audio.currentTime < 1.5 && resumeSec > 2) {
+          pendingSeekSeconds = resumeSec;
+          applyPendingAudioSeek();
+        }
+        if (audio.paused && !isSwitchingSource) {
+          ensureBackgroundAudioKeepAlive();
+          audio
+            .play()
+            .then(() => applyPendingAudioSeek())
+            .catch(() => executePlaybackNow(currentTrack, { startSeconds: resumeSec }));
+        }
+      }
+    } else if (activeEngine === 'yt-iframe') {
+      handoffToBackgroundSafeAudio(reason, resumeSec).then((switched) => {
+        if (!switched && !explicitPaused && activeEngine === 'yt-iframe' && ytReady && ytPlayer?.playVideo) {
+          try {
+            const ytCur = Number(ytPlayer.getCurrentTime?.() || 0);
+            if (resumeSec > 2 && ytCur < Math.max(1.5, resumeSec - 4)) {
+              pendingYtSeekSeconds = resumeSec;
+              ytPlayer.seekTo?.(resumeSec, true);
+            }
+            ytPlayer.playVideo();
+          } catch {
+            // Ignore YT resume error
+          }
+        }
+      });
     }
   }
 
@@ -3259,53 +3679,47 @@ export function initMusicPlayer() {
       if (document.hidden) {
         keepAudioAliveOnLifecycle('visibility-hidden');
       } else {
-        const saved = readMusicSession();
-        if (!explicitPaused && (saved.wasPlaying || isPlaying) && currentTrack) {
-          if (activeEngine === 'audio-el') {
-            if (audio.ended) {
-              triggerSeamlessAutoNext('ended');
-            } else if (audio.paused && audio.src && !isSwitchingSource) {
-              ensureBackgroundAudioKeepAlive();
-              audio.play().catch(() => {});
-            }
-          } else if (activeEngine === 'yt-iframe') {
-            handoffToBackgroundSafeAudio('return-visible').then((switched) => {
-              if (!switched && !explicitPaused && activeEngine === 'yt-iframe' && ytReady && ytPlayer?.playVideo) {
-                try {
-                  ytPlayer.playVideo();
-                } catch {
-                  // Ignore YT resume error
-                }
-              }
-            });
-          }
-        }
+        resumePlaybackOnForegroundReturn('return-visible');
       }
     });
 
-    document.addEventListener('resume', () => keepAudioAliveOnLifecycle('page-resume'));
+    document.addEventListener('resume', () => resumePlaybackOnForegroundReturn('page-resume'));
   }
 
   if (typeof window !== 'undefined') {
     window.addEventListener('blur', () => {
       lastFocusTransitionAt = Date.now();
-      if (!explicitPaused && (isPlaying || isLoading) && activeEngine === 'audio-el') {
-        ensureBackgroundAudioKeepAlive();
-        if (audio.paused && !audio.ended && audio.src && !isSwitchingSource) {
-          audio.play().catch(() => {});
+      if (!explicitPaused && (isPlaying || isLoading)) {
+        const resumeSec = getResumeSecondsForTrack(currentTrack);
+        saveMusicSession({
+          explicitPaused: false,
+          wasPlaying: true,
+          lastTrackId: currentTrack?.id || '',
+          lastTrack: currentTrack,
+          currentTime: resumeSec,
+          trackSelectionSource,
+        });
+        if (activeEngine === 'audio-el') {
+          ensureBackgroundAudioKeepAlive();
+          if (audio.paused && !audio.ended && audio.src && !isSwitchingSource) {
+            audio.play().catch(() => {});
+          }
         }
       }
     });
 
-    window.addEventListener('pageshow', () => keepAudioAliveOnLifecycle('pageshow'));
+    window.addEventListener('pageshow', () => resumePlaybackOnForegroundReturn('pageshow'));
 
     window.addEventListener('pagehide', () => {
       lastFocusTransitionAt = Date.now();
+      const resumeSec = getResumeSecondsForTrack(currentTrack);
       saveMusicSession({
         explicitPaused,
         wasPlaying: isPlaying,
         lastTrackId: currentTrack?.id || '',
-        currentTime,
+        lastTrack: currentTrack,
+        currentTime: resumeSec,
+        trackSelectionSource,
       });
       if (!explicitPaused && isPlaying && activeEngine === 'audio-el' && audio.paused && !audio.ended && audio.src) {
         audio.play().catch(() => {});
@@ -3355,11 +3769,9 @@ export function initMusicPlayer() {
       );
       if (externalMediaPlaying) return;
       if (!isPlaying && !isLoading) {
-        if (currentTrack && currentTime > 0) {
-          controller.playTrack(currentTrack, {
-            startSeconds: currentTime,
-            selectionSource: trackSelectionSource,
-          });
+        const resumeSec = getResumeSecondsForTrack(currentTrack);
+        if (currentTrack && (resumeSec > 0 || trackSelectionSource === 'user')) {
+          controller.play();
         } else {
           controller.playNext({ reason: 'any-button-click' });
         }
@@ -3392,7 +3804,8 @@ export function initMusicPlayer() {
   if (!explicitPaused && initialSession.wasPlaying && currentTrack) {
     setTimeout(() => {
       if (!explicitPaused && !isPlaying && !isLoading && currentTrack) {
-        executePlaybackNow(currentTrack, { startSeconds: initialSession.currentTime || 0 });
+        const resumeSec = getResumeSecondsForTrack(currentTrack);
+        executePlaybackNow(currentTrack, { startSeconds: resumeSec });
       }
     }, 180);
   }

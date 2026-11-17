@@ -320,6 +320,60 @@ export function shouldAutoSkipOnPlaybackError({
   return Number(consecutiveErrors || 0) <= Number(maxSkips || 5);
 }
 
+/**
+ * Returns true when an HTML5 <audio> element MUST send CORS headers (`crossOrigin='anonymous'`)
+ * so proxy hosts like api.vidsnap.app do not reject hotlink playback with HTTP 403.
+ */
+export function needsCorsAnonymousAudio(rawUrl = '') {
+  const s = String(rawUrl || '').trim();
+  if (!s) return false;
+  return /^https?:\/\/(?:[^/]+\.)?vidsnap\.app\//i.test(s);
+}
+
+/**
+ * Computes the safest resume position in seconds across memory state, persisted session,
+ * and last known good playback time without failing when media duration is NaN/Infinity.
+ */
+export function computeSafeResumeSeconds({
+  currentTime = 0,
+  sessionTime = 0,
+  lastGoodTime = 0,
+  sameTrack = true,
+  duration = 0,
+} = {}) {
+  if (!sameTrack) return 0;
+  const raw = Math.max(
+    0,
+    Number(currentTime) || 0,
+    Number(sessionTime) || 0,
+    Number(lastGoodTime) || 0
+  );
+  if (raw <= 0) return 0;
+  const dur = Number(duration);
+  if (Number.isFinite(dur) && dur > 4) {
+    return Math.min(raw, Math.max(0, dur - 1.5));
+  }
+  return raw;
+}
+
+export function shouldIgnoreTimeUpdateDuringPendingSeek({
+  pendingSeekSeconds = 0,
+  reportedTime = 0,
+} = {}) {
+  const target = Number(pendingSeekSeconds) || 0;
+  const cur = Number(reportedTime) || 0;
+  return target > 1 && Math.abs(cur - target) > 2.5;
+}
+
+export function hasPendingSeekSettled({
+  pendingSeekSeconds = 0,
+  reportedTime = 0,
+} = {}) {
+  const target = Number(pendingSeekSeconds) || 0;
+  const cur = Number(reportedTime) || 0;
+  return target <= 0 || Math.abs(cur - target) <= 2.5;
+}
+
 export function shuffleTracksFisherYates(tracks = [], rng = Math.random) {
   if (!Array.isArray(tracks)) return [];
   const copy = [...tracks];

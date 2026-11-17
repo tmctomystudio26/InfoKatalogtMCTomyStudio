@@ -48,16 +48,19 @@ import {
   MUSIC_LIBRARY_STORAGE_KEY,
   addTrackToPlaylist,
   clampMusicFabPosition,
+  computeSafeResumeSeconds,
   createUserPlaylist,
   deleteUserPlaylist,
   extractYouTubeVideoId,
   filterFullLengthTracks,
   formatAudioTime,
   getPopoverAnchorClasses,
+  hasPendingSeekSettled,
   isBlockedAudioWrapperUrl,
   isStrictAudioMatch,
   isStrictSongMetadataMatch,
   isTrackInWatchLater,
+  needsCorsAnonymousAudio,
   normalizeMusicLibraryState,
   normalizeMusicMode,
   normalizeRepeatMode,
@@ -71,6 +74,7 @@ import {
   scoreSearchRelevance,
   selectUmmyAudioStreamCandidates,
   shouldAutoSkipOnPlaybackError,
+  shouldIgnoreTimeUpdateDuringPendingSeek,
   shuffleTracksFisherYates,
   toggleTrackInWatchLater,
 } from './music-logic.js';
@@ -1871,4 +1875,40 @@ test('isStrictSongMetadataMatch aligns alternate YT uploads for the same song an
   );
 });
 
+test('needsCorsAnonymousAudio detects vidsnap proxy URLs while leaving third-party streams untouched', () => {
+  assert.equal(needsCorsAnonymousAudio('https://api.vidsnap.app/proxy?u=abc'), true);
+  assert.equal(needsCorsAnonymousAudio('http://vidsnap.app/proxy?u=abc'), true);
+  assert.equal(needsCorsAnonymousAudio('https://api.audius.co/v1/tracks/Nlzyaxp/stream'), false);
+  assert.equal(needsCorsAnonymousAudio(''), false);
+});
 
+test('computeSafeResumeSeconds & pending seek guards preserve timestamp across NaN duration and foreground return', () => {
+  // Different track always resets cleanly to 0
+  assert.equal(
+    computeSafeResumeSeconds({ currentTime: 48, sessionTime: 52, lastGoodTime: 50, sameTrack: false, duration: 220 }),
+    0
+  );
+
+  // Handles NaN / Infinity duration during initial audio metadata load without dropping resume timestamp
+  assert.equal(
+    computeSafeResumeSeconds({ currentTime: 0, sessionTime: 42.5, lastGoodTime: 44, sameTrack: true, duration: Number.NaN }),
+    44
+  );
+  assert.equal(
+    computeSafeResumeSeconds({ currentTime: 18, sessionTime: 0, lastGoodTime: 0, sameTrack: true, duration: Infinity }),
+    18
+  );
+
+  // Clamps within finite duration minus end margin
+  assert.equal(
+    computeSafeResumeSeconds({ currentTime: 229, sessionTime: 225, lastGoodTime: 228, sameTrack: true, duration: 230 }),
+    228.5
+  );
+
+  // Pending seek guard ignores initial 0-clobber timeupdate events until seek settles within tolerance
+  assert.equal(shouldIgnoreTimeUpdateDuringPendingSeek({ pendingSeekSeconds: 45, reportedTime: 0.2 }), true);
+  assert.equal(shouldIgnoreTimeUpdateDuringPendingSeek({ pendingSeekSeconds: 45, reportedTime: 44.1 }), false);
+  assert.equal(hasPendingSeekSettled({ pendingSeekSeconds: 45, reportedTime: 0.2 }), false);
+  assert.equal(hasPendingSeekSettled({ pendingSeekSeconds: 45, reportedTime: 44.1 }), true);
+  assert.equal(hasPendingSeekSettled({ pendingSeekSeconds: 0, reportedTime: 0 }), true);
+});
