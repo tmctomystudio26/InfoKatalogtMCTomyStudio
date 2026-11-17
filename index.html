@@ -88,11 +88,11 @@ Dilengkapi Jadwal Sholat, Prakiraan Cuaca, Jam Dunia, Speedtest, Social Media Do
     />
 
     <!-- Styles -->
-    <link rel="stylesheet" href="./css/tokens.css?v=25" />
-    <link rel="stylesheet" href="./css/styles.css?v=25" />
+    <link rel="stylesheet" href="./css/tokens.css?v=26" />
+    <link rel="stylesheet" href="./css/styles.css?v=26" />
     <script>
       (function () {
-        var CURRENT_CACHE = 'manifestudio-cache-v25';
+        var CURRENT_CACHE = 'manifestudio-cache-v26';
         if ('caches' in window) {
           caches.keys().then(function (keys) {
             keys.forEach(function (k) {
@@ -101,7 +101,7 @@ Dilengkapi Jadwal Sholat, Prakiraan Cuaca, Jam Dunia, Speedtest, Social Media Do
           });
         }
         if ('serviceWorker' in navigator) {
-          navigator.serviceWorker.register('./sw.js?v=25').then(function (reg) {
+          navigator.serviceWorker.register('./sw.js?v=26').then(function (reg) {
             reg.update();
           }).catch(function () {});
         }
@@ -509,6 +509,6 @@ Dilengkapi Jadwal Sholat, Prakiraan Cuaca, Jam Dunia, Speedtest, Social Media Do
     <div id="cart-drawer-root" class="drawer-root" hidden></div>
     <div id="toast-notification" class="toast-notification" role="status" aria-live="polite" hidden></div>
 
-    <script type="module" src="./js/app.js?v=25"></script>
+    <script type="module" src="./js/app.js?v=26"></script>
   </body>
 </html>

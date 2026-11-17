@@ -1,45 +1,31 @@
-import { createToolsHubController } from './tools-ui.js?v=25';
-import { initMusicPlayer } from './music.js?v=25';
-import { loadCatalogData } from './data.js?v=25';
-import { normalizeBrandConfig } from './store.js?v=25';
+import { createToolsHubController } from './tools-ui.js?v=26';
+import { initMusicPlayer } from './music.js?v=26';
+import { loadCatalogData } from './data.js?v=26';
+import { normalizeBrandConfig, normalizeUtilityConfig } from './store.js?v=26';
 
 const THEME_STORAGE_KEY = 'manifestudio_theme_v1';
 const VALID_TABS = new Set(['prayer', 'weather', 'worldclock', 'speedtest', 'downloader', 'compressor', 'music']);
 
-const TAB_META = {
-  prayer: {
-    title: 'Jadwal Sholat Indonesia',
-    subtitle: 'Waktu Imsak hingga Isya resmi Kemenag RI sesuai lokasimu.',
-  },
-  weather: {
-    title: 'Prakiraan Cuaca Presisi',
-    subtitle: 'Deteksi hujan lebat real-time, intensitas mm/jam, suhu, dan angin hingga 7 hari.',
-  },
-  worldclock: {
-    title: 'Jam Dunia & Bola Dunia',
-    subtitle: 'Standar UTC internasional, konversi WIB/WITA/WIT, dan globe interaktif.',
-  },
-  speedtest: {
-    title: 'Speedtest Internet',
-    subtitle: 'Ukur ping, jitter, download, upload, server, ISP, dan info perangkat.',
-  },
-  downloader: {
-    title: 'Downloader Video, Foto, Carousel & Story',
-    subtitle: 'Unduh video HD, postingan foto, slide carousel, story, & salin caption dari TikTok, IG, YT, dan FB.',
-  },
-  compressor: {
-    title: 'Kompres Foto & Video HD (Anti-Pecah Sosmed)',
-    subtitle: 'Optimalkan ukuran & bitstream tanpa mengurangi kualitas sedikitpun agar unggahan TikTok, IG, & WA tetap jernih.',
-  },
-  music: {
-    title: 'YT Music Player — Viral Indonesia',
-    subtitle: 'Pemutar YT Music API bebas iklan dengan daftar putar acak otomatis lagu Indonesia viral, pencarian lengkap, & sinkron dengan ikon mengambang.',
-  },
-};
-
 let currentTheme = 'dark';
 let toolsHub = null;
 let toastTimer = null;
+let activeUtilities = normalizeUtilityConfig();
+
+function getTabMeta(tab) {
+  const safeTab = VALID_TABS.has(tab) ? tab : 'prayer';
+  const item =
+    (activeUtilities.items || []).find((it) => it.id === safeTab) ||
+    activeUtilities.items?.[0] || {
+      label: 'Jadwal Sholat',
+      pageTitle: 'Jadwal Sholat Indonesia',
+      pageSubtitle: 'Waktu Imsak hingga Isya resmi Kemenag RI sesuai lokasimu.',
+    };
+  return {
+    label: item.label,
+    title: item.pageTitle,
+    subtitle: item.pageSubtitle,
+  };
+}
 
 function escapeHtml(str) {
   return String(str || '')
@@ -99,15 +85,27 @@ function applyTheme() {
   toolsHub?.redrawTheme();
 }
 
+function syncHeaderNavLabels() {
+  document.querySelectorAll('[data-tools-nav]').forEach((btn) => {
+    const target = btn.getAttribute('data-tools-nav');
+    const item = (activeUtilities.items || []).find((it) => it.id === target);
+    if (item && item.label) {
+      btn.textContent = item.label;
+    }
+  });
+}
+
 function syncActiveTabChrome(tab) {
   const safeTab = VALID_TABS.has(tab) ? tab : 'prayer';
-  const meta = TAB_META[safeTab] || TAB_META.prayer;
+  const meta = getTabMeta(safeTab);
 
   const titleEl = document.getElementById('tools-page-title');
   const subEl = document.getElementById('tools-page-subtitle');
   if (titleEl) titleEl.textContent = meta.title;
   if (subEl) subEl.textContent = meta.subtitle;
   document.title = `${meta.title} — Manifestudio`;
+
+  syncHeaderNavLabels();
 
   document.querySelectorAll('[data-tools-nav]').forEach((btn) => {
     const target = btn.getAttribute('data-tools-nav');
@@ -166,25 +164,28 @@ async function bootstrap() {
   loadTheme();
   applyTheme();
 
-  const initialTab = readInitialTab();
+  let currentTab = readInitialTab();
   const root = document.getElementById('tools-hub-root');
 
   if (root) {
     toolsHub = createToolsHubController({
       rootEl: root,
+      utilitiesConfig: activeUtilities,
       onToast: showToast,
       onSubTabChange: (nextTab) => {
-        syncActiveTabChrome(nextTab);
+        currentTab = VALID_TABS.has(nextTab) ? nextTab : 'prayer';
+        syncActiveTabChrome(currentTab);
       },
     });
-    toolsHub.mount(initialTab);
-    syncActiveTabChrome(initialTab);
+    toolsHub.mount(currentTab);
+    syncActiveTabChrome(currentTab);
   }
 
   document.querySelectorAll('[data-tools-nav]').forEach((btn) => {
     btn.addEventListener('click', () => {
       const next = btn.getAttribute('data-tools-nav');
       if (!next || !VALID_TABS.has(next)) return;
+      currentTab = next;
       toolsHub?.mount(next);
       syncActiveTabChrome(next);
     });
@@ -207,10 +208,16 @@ async function bootstrap() {
     if (loaded?.data?.brand) {
       applyBrandToToolsPage(loaded.data.brand);
     }
+    if (loaded?.data?.utilities) {
+      activeUtilities = normalizeUtilityConfig(loaded.data.utilities);
+      toolsHub?.setUtilitiesConfig?.(activeUtilities);
+      syncActiveTabChrome(currentTab);
+    }
   } catch {
     // Ignore
   }
 }
 
 bootstrap();
+
 

@@ -19,11 +19,11 @@
       rel="stylesheet"
     />
 
-    <link rel="stylesheet" href="./css/tokens.css?v=25" />
-    <link rel="stylesheet" href="./css/styles.css?v=25" />
+    <link rel="stylesheet" href="./css/tokens.css?v=26" />
+    <link rel="stylesheet" href="./css/styles.css?v=26" />
     <script>
       (function () {
-        var CURRENT_CACHE = 'manifestudio-cache-v25';
+        var CURRENT_CACHE = 'manifestudio-cache-v26';
         if ('caches' in window) {
           caches.keys().then(function (keys) {
             keys.forEach(function (k) {
@@ -32,7 +32,7 @@
           });
         }
         if ('serviceWorker' in navigator) {
-          navigator.serviceWorker.register('./sw.js?v=25').then(function (reg) {
+          navigator.serviceWorker.register('./sw.js?v=26').then(function (reg) {
             reg.update();
           }).catch(function () {});
         }
@@ -302,6 +302,16 @@
             aria-selected="false"
           >
             Brand, OpenGraph &amp; Kontak
+          </button>
+          <button
+            type="button"
+            role="tab"
+            id="tab-btn-utilities"
+            class="cat-tab"
+            data-admin-tab="utilities"
+            aria-selected="false"
+          >
+            Menu Utilitas
           </button>
           <button
             type="button"
@@ -1032,6 +1042,25 @@
           </div>
         </section>
 
+        <!-- Panel Menu Utilitas (Ikon, Nama Tombol, Judul Atas & Hero YT Music) -->
+        <section id="panel-utilities" class="admin-panel" aria-labelledby="tab-btn-utilities" hidden>
+          <div class="admin-card">
+            <div class="admin-card-head">
+              <div>
+                <h2 class="admin-section-title">Kelola Menu Utilitas, Judul Halaman &amp; Kartu YT Music Hub</h2>
+                <p class="admin-subtitle">
+                  Ubah ikon/gambar, nama tombol sub-menu, judul &amp; deskripsi atas pada setiap halaman utilitas (Jadwal Sholat, Prakiraan Cuaca, Jam Dunia &amp; Globe, Speedtest, Downloader, Kompresor HD, Musik YT), serta kartu hero YT Music Hub dan kartu pintasan di beranda toko.
+                </p>
+              </div>
+              <button type="button" id="utilities-reset-default-btn" class="btn btn-ghost btn-sm">
+                Reset Semua Utilitas ke Default
+              </button>
+            </div>
+
+            <div id="admin-utilities-editor" class="admin-utilities-editor"></div>
+          </div>
+        </section>
+
         <!-- Panel Pertanyaan Umum (FAQ) -->
         <section id="panel-faq" class="admin-panel" aria-labelledby="tab-btn-faq" hidden>
           <div class="admin-card">
@@ -1150,6 +1179,6 @@
 
     <div id="toast-notification" class="toast-notification" role="status" aria-live="polite" hidden></div>
 
-    <script type="module" src="./js/admin.js?v=25"></script>
+    <script type="module" src="./js/admin.js?v=26"></script>
   </body>
 </html>

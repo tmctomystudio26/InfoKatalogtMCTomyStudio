@@ -604,6 +604,161 @@ export function normalizeBanners(banners, fallbackBanners = DEFAULT_BANNERS) {
     }));
 }
 
+export const DEFAULT_UTILITY_CONFIG = {
+  callout: {
+    icon: './assets/icons/menu-utilitas.svg',
+    title: 'Menu Utilitas',
+    badge: '7 Fitur Gratis',
+    description:
+      'Jadwal Sholat · Cuaca · Jam Dunia & Globe · Speedtest · Downloader (Video/Foto/Story/Caption) · Kompres HD · YT Music',
+  },
+  musicHero: {
+    icon: './assets/icons/tool-music.svg',
+    title: 'YT Music Hub — Viral Indonesia & Pencarian Lengkap',
+    subtitle:
+      'Sumber resmi YT Music API komunitas open-source. Pemutaran acak otomatis memprioritaskan lagu Indonesia viral setiap kali tombol apa saja ditekan, tanpa bergantung pada riwayat pencarian.',
+  },
+  items: [
+    {
+      id: 'prayer',
+      label: 'Jadwal Sholat',
+      icon: './assets/icons/tool-prayer.svg',
+      pageTitle: 'Jadwal Sholat & Imsakiyah',
+      pageSubtitle:
+        'Waktu sholat resmi Kemenag RI (WIB/WITA/WIT) lengkap dengan hitung mundur waktu sholat berikutnya.',
+    },
+    {
+      id: 'weather',
+      label: 'Prakiraan Cuaca',
+      icon: './assets/icons/tool-weather.svg',
+      pageTitle: 'Prakiraan Cuaca Real-Time',
+      pageSubtitle:
+        'Kondisi cuaca saat ini, curah hujan presisi per jam, kelembapan, UV, angin, & prakiraan 7 hari ke depan.',
+    },
+    {
+      id: 'worldclock',
+      label: 'Jam Dunia & Globe',
+      icon: './assets/icons/tool-world.svg',
+      pageTitle: 'Jam Dunia UTC & Bola Dunia',
+      pageSubtitle:
+        'Standar waktu internasional UTC/GMT, WIB, WITA, WIT, serta konversi waktu lintas negara.',
+    },
+    {
+      id: 'speedtest',
+      label: 'Speedtest',
+      icon: './assets/icons/tool-speed.svg',
+      pageTitle: 'Speedtest Internet Real-Time',
+      pageSubtitle:
+        'Uji kecepatan rata-rata download, upload, ping, jitter, lokasi server, ISP, dan perangkat Anda.',
+    },
+    {
+      id: 'downloader',
+      label: 'Downloader',
+      icon: './assets/icons/tool-downloader.svg',
+      pageTitle: 'Downloader Video, Foto, Carousel & Story',
+      pageSubtitle:
+        'Unduh video HD, postingan foto, slide carousel, story, & salin caption dari TikTok, IG, YT, dan FB.',
+    },
+    {
+      id: 'compressor',
+      label: 'Kompresor HD',
+      icon: './assets/icons/tool-compressor.svg',
+      pageTitle: 'Kompresor Foto & Video HD (Anti-Pecah Sosmed)',
+      pageSubtitle:
+        '4 metode kompresi ukuran file tanpa menurunkan ketajaman visual agar lolos kompresi ulang TikTok, IG, & WA.',
+    },
+    {
+      id: 'music',
+      label: 'Musik YT',
+      icon: './assets/icons/tool-music.svg',
+      pageTitle: 'YT Music Player — Viral Indonesia',
+      pageSubtitle:
+        'Pemutar YT Music API bebas iklan dengan daftar putar acak otomatis lagu Indonesia viral, pencarian lengkap, & sinkron dengan ikon mengambang.',
+    },
+  ],
+};
+
+export function normalizeUtilityConfig(utilities = {}) {
+  const safe = utilities && typeof utilities === 'object' ? utilities : {};
+  const rawCallout = safe.callout && typeof safe.callout === 'object' ? safe.callout : {};
+  const rawMusicHero = safe.musicHero && typeof safe.musicHero === 'object' ? safe.musicHero : {};
+  const rawItems = Array.isArray(safe.items) ? safe.items : [];
+  const rawItemMap = new Map(
+    rawItems
+      .filter((it) => it && typeof it === 'object' && it.id)
+      .map((it) => [String(it.id).trim(), it])
+  );
+
+  const items = DEFAULT_UTILITY_CONFIG.items.map((defItem) => {
+    const custom = rawItemMap.get(defItem.id) || {};
+    return {
+      id: defItem.id,
+      label: String(custom.label || defItem.label).trim() || defItem.label,
+      icon: String(custom.icon || defItem.icon).trim() || defItem.icon,
+      pageTitle: String(custom.pageTitle || defItem.pageTitle).trim() || defItem.pageTitle,
+      pageSubtitle: String(custom.pageSubtitle || defItem.pageSubtitle).trim() || defItem.pageSubtitle,
+    };
+  });
+
+  return {
+    callout: {
+      icon:
+        String(rawCallout.icon || DEFAULT_UTILITY_CONFIG.callout.icon).trim() ||
+        DEFAULT_UTILITY_CONFIG.callout.icon,
+      title:
+        String(rawCallout.title || DEFAULT_UTILITY_CONFIG.callout.title).trim() ||
+        DEFAULT_UTILITY_CONFIG.callout.title,
+      badge:
+        String(rawCallout.badge || DEFAULT_UTILITY_CONFIG.callout.badge).trim() ||
+        DEFAULT_UTILITY_CONFIG.callout.badge,
+      description:
+        String(rawCallout.description || rawCallout.subtitle || DEFAULT_UTILITY_CONFIG.callout.description).trim() ||
+        DEFAULT_UTILITY_CONFIG.callout.description,
+    },
+    musicHero: {
+      icon:
+        String(rawMusicHero.icon || DEFAULT_UTILITY_CONFIG.musicHero.icon).trim() ||
+        DEFAULT_UTILITY_CONFIG.musicHero.icon,
+      title:
+        String(rawMusicHero.title || DEFAULT_UTILITY_CONFIG.musicHero.title).trim() ||
+        DEFAULT_UTILITY_CONFIG.musicHero.title,
+      subtitle:
+        String(rawMusicHero.subtitle || DEFAULT_UTILITY_CONFIG.musicHero.subtitle).trim() ||
+        DEFAULT_UTILITY_CONFIG.musicHero.subtitle,
+    },
+    items,
+  };
+}
+
+export function upsertUtilityItemInCatalog(catalog, itemInput = {}) {
+  const cleanId = String(itemInput.id || '').trim();
+  if (!cleanId) {
+    throw new Error('ID item utilitas wajib diisi.');
+  }
+  const currentUtil = normalizeUtilityConfig(catalog?.utilities);
+  const items = currentUtil.items.map((it) => {
+    if (it.id !== cleanId) return it;
+    return {
+      ...it,
+      label: itemInput.label !== undefined ? String(itemInput.label).trim() || it.label : it.label,
+      icon: itemInput.icon !== undefined ? String(itemInput.icon).trim() || it.icon : it.icon,
+      pageTitle:
+        itemInput.pageTitle !== undefined ? String(itemInput.pageTitle).trim() || it.pageTitle : it.pageTitle,
+      pageSubtitle:
+        itemInput.pageSubtitle !== undefined
+          ? String(itemInput.pageSubtitle).trim() || it.pageSubtitle
+          : it.pageSubtitle,
+    };
+  });
+  return {
+    ...catalog,
+    utilities: {
+      ...currentUtil,
+      items,
+    },
+  };
+}
+
 export function normalizeBrandConfig(brand = {}) {
   const safe = brand && typeof brand === 'object' ? brand : {};
   const waNum = String(safe.whatsappNumber || '6285122936027').replace(/[^0-9]/g, '') || '6285122936027';
@@ -1117,6 +1272,14 @@ export function collectAllActiveUploadLogoPaths(catalog = {}) {
     const bp = extractManagedUploadLogoPath(ban?.image);
     if (bp) paths.add(bp);
   }
+  const utilCalloutPath = extractManagedUploadLogoPath(catalog?.utilities?.callout?.icon);
+  if (utilCalloutPath) paths.add(utilCalloutPath);
+  const utilHeroPath = extractManagedUploadLogoPath(catalog?.utilities?.musicHero?.icon);
+  if (utilHeroPath) paths.add(utilHeroPath);
+  for (const uit of Array.isArray(catalog?.utilities?.items) ? catalog.utilities.items : []) {
+    const up = extractManagedUploadLogoPath(uit?.icon);
+    if (up) paths.add(up);
+  }
   return paths;
 }
 
@@ -1171,8 +1334,26 @@ export function compactCatalogForHistory(catalog) {
       }));
     }
   }
+  let compactUtilities = safe.utilities ? normalizeUtilityConfig(safe.utilities) : undefined;
+  if (compactUtilities) {
+    compactUtilities = {
+      callout: {
+        ...compactUtilities.callout,
+        icon: compactLogoStr(compactUtilities.callout.icon),
+      },
+      musicHero: {
+        ...compactUtilities.musicHero,
+        icon: compactLogoStr(compactUtilities.musicHero.icon),
+      },
+      items: compactUtilities.items.map((it) => ({
+        ...it,
+        icon: compactLogoStr(it.icon),
+      })),
+    };
+  }
   return {
     ...(compactBrand ? { brand: compactBrand } : {}),
+    ...(compactUtilities ? { utilities: compactUtilities } : {}),
     ...(Array.isArray(safe.banners)
       ? {
           banners: safe.banners.map((b) => ({
@@ -1597,6 +1778,51 @@ export function describeCatalogChanges(prevCatalog, nextCatalog) {
         details.push(`Menambah pertanyaan umum: "${q}"`);
       } else if (String(pf.answer || '').trim() !== String(nf.answer || '').trim()) {
         details.push(`Mengubah jawaban pertanyaan umum: "${q}"`);
+      }
+    }
+  }
+
+  // 9. Utilities diff (Menu Utilitas callout, Music Hero card, & 7 Utility Tab Items)
+  if (prevCatalog?.utilities || nextCatalog?.utilities) {
+    const pUtil = normalizeUtilityConfig(prevCatalog?.utilities);
+    const nUtil = normalizeUtilityConfig(nextCatalog?.utilities);
+
+    if (pUtil.callout.icon !== nUtil.callout.icon) {
+      details.push('Mengubah ikon kartu Menu Utilitas di beranda');
+    }
+    if (
+      pUtil.callout.title !== nUtil.callout.title ||
+      pUtil.callout.badge !== nUtil.callout.badge ||
+      pUtil.callout.description !== nUtil.callout.description
+    ) {
+      details.push(`Memperbarui teks kartu Menu Utilitas ("${nUtil.callout.title}")`);
+    }
+
+    if (pUtil.musicHero.icon !== nUtil.musicHero.icon) {
+      details.push('Mengubah ikon kartu YT Music Hub');
+    }
+    if (pUtil.musicHero.title !== nUtil.musicHero.title) {
+      details.push(`Mengubah judul kartu YT Music Hub menjadi "${nUtil.musicHero.title}"`);
+    }
+    if (pUtil.musicHero.subtitle !== nUtil.musicHero.subtitle) {
+      details.push('Memperbarui deskripsi kartu YT Music Hub');
+    }
+
+    const pItemMap = new Map(pUtil.items.map((it) => [it.id, it]));
+    for (const nIt of nUtil.items) {
+      const pIt = pItemMap.get(nIt.id);
+      if (!pIt) continue;
+      if (pIt.icon !== nIt.icon) {
+        details.push(`Mengubah ikon menu utilitas "${nIt.label}"`);
+      }
+      if (pIt.label !== nIt.label) {
+        details.push(`Mengubah nama menu utilitas "${pIt.label}" menjadi "${nIt.label}"`);
+      }
+      if (pIt.pageTitle !== nIt.pageTitle) {
+        details.push(`Mengubah judul halaman utilitas "${nIt.label}" menjadi "${nIt.pageTitle}"`);
+      }
+      if (pIt.pageSubtitle !== nIt.pageSubtitle) {
+        details.push(`Memperbarui subjudul halaman utilitas "${nIt.label}"`);
       }
     }
   }

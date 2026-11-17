@@ -22,29 +22,30 @@ import {
   matchIndonesianCityQuery,
   planMediaCompression,
   resolveAccurateWeatherCondition,
-} from './tools-logic.js?v=25';
+} from './tools-logic.js?v=26';
 import {
   describeLocationSource,
   resolveUserLocation,
   searchCitiesOnline,
   setManualLocation,
-} from './location.js?v=25';
-import { createInteractiveGlobe } from './globe.js?v=25';
+} from './location.js?v=26';
+import { createInteractiveGlobe } from './globe.js?v=26';
 import {
   createSpeedometerGauge,
   fetchSpeedtestEnvironment,
   readClientDeviceTelemetry,
   runInternetSpeedtest,
-} from './speedtest.js?v=25';
+} from './speedtest.js?v=26';
 import {
   extractAudioFromVideoUrl,
   fetchMediaDownload,
   triggerBatchPhotoDownload,
   triggerDirectMediaSave,
-} from './downloader.js?v=25';
-import { compressMediaFile, inspectMediaFile } from './compressor.js?v=25';
-import { formatAudioTime } from './music-logic.js?v=25';
-import { MUSIC_PRESET_CATEGORIES, getMusicController, initMusicPlayer } from './music.js?v=25';
+} from './downloader.js?v=26';
+import { compressMediaFile, inspectMediaFile } from './compressor.js?v=26';
+import { formatAudioTime } from './music-logic.js?v=26';
+import { MUSIC_PRESET_CATEGORIES, getMusicController, initMusicPlayer } from './music.js?v=26';
+import { normalizeUtilityConfig } from './store.js?v=26';
 
 const PRAYER_CACHE_KEY = 'manifestudio_prayer_cache_v1';
 const MYQURAN_CITIES_KEY = 'manifestudio_myquran_cities_v1';
@@ -358,6 +359,7 @@ function saveWeatherCalibration(mode) {
 
 export function createToolsHubController({
   rootEl,
+  utilitiesConfig = null,
   onToast = () => {},
   onSubTabChange = () => {},
 }) {
@@ -365,7 +367,8 @@ export function createToolsHubController({
   const initialClock = getZoneTimeParts(new Date(), 'Asia/Jakarta');
 
   const toolState = {
-    activeSubTab: 'prayer', // 'prayer' | 'weather' | 'worldclock' | 'speedtest' | 'downloader' | 'compressor'
+    activeSubTab: 'prayer', // 'prayer' | 'weather' | 'worldclock' | 'speedtest' | 'downloader' | 'compressor' | 'music'
+    utilities: normalizeUtilityConfig(utilitiesConfig),
     location: null,
     locationLoading: false,
     prayerData: null,
@@ -1978,74 +1981,86 @@ export function createToolsHubController({
     const posNum = mState.queueIndex >= 0 ? mState.queueIndex + 1 : 1;
     const totalNum = activeList.length || 1;
     const statusLabel = mState.isLoading
-      ? 'Menghubungkan Stream YT Music...'
+      ? 'Memuat Stream...'
       : mState.isPlaying
       ? 'Sedang Diputar'
       : mState.currentTrack
       ? 'Dijeda'
-      : 'Siap Putar Acak';
+      : 'Siap Putar';
 
     return `
-      <div class="music-hub-stage-card ${mState.isPlaying ? 'is-playing' : ''}" id="music-hub-stage-slot">
-        <div class="music-hub-now-row">
-          <div class="music-hub-art-box ${mState.isPlaying ? 'is-playing' : ''}">
+      <div class="ytm-stage-card ${mState.isPlaying ? 'is-playing' : ''}" id="music-hub-stage-slot">
+        <div class="ytm-stage-topbar">
+          <div class="ytm-brand-pill">
+            <span class="ytm-logo-circle" aria-hidden="true">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="12" r="10" fill="none" stroke="currentColor" stroke-width="2"/><polygon points="10,8 16,12 10,16"/></svg>
+            </span>
+            <span>Music</span>
+            <span class="ytm-live-dot ${mState.isPlaying ? 'is-live' : ''}">${escapeHtml(statusLabel)}</span>
+          </div>
+
+          <div class="ytm-topbar-actions">
+            <button
+              type="button"
+              id="music-hub-autoclick-btn"
+              class="ytm-chip-btn ${mState.autoClickPlayEnabled !== false ? 'is-active' : ''}"
+              data-music-control="true"
+              aria-pressed="${mState.autoClickPlayEnabled !== false}"
+              title="Otomatis putar lagu saat menekan tombol di web"
+            >
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2 3 14h9l-1 8 10-12h-9l1-8z"/></svg>
+              <span>${mState.autoClickPlayEnabled !== false ? 'Auto-Klik ON' : 'Auto-Klik OFF'}</span>
+            </button>
+            <button
+              type="button"
+              id="music-hub-random-viral-btn"
+              class="ytm-chip-btn"
+              data-music-control="true"
+              title="Putar lagu viral acak berikutnya"
+            >
+              <span>Acak Viral</span>
+            </button>
+          </div>
+        </div>
+
+        <div class="ytm-artwork-showcase">
+          <div class="ytm-art-frame ${mState.isPlaying ? 'is-playing' : ''}">
             ${
               active?.artwork
-                ? `<img src="${escapeHtml(active.artwork)}" alt="${escapeHtml(active.title)}" width="132" height="132" class="music-hub-art-img" onerror="this.src='${escapeHtml(active.artworkFallback || '')}'" />`
-                : `<span class="music-hub-art-fallback" aria-hidden="true">♪</span>`
+                ? `<img src="${escapeHtml(active.artwork)}" alt="${escapeHtml(active.title)}" width="240" height="240" class="ytm-art-img" onerror="this.src='${escapeHtml(active.artworkFallback || '')}'" />`
+                : `<span class="ytm-art-fallback" aria-hidden="true">♪</span>`
             }
-            <div class="music-hub-eq-badge" aria-hidden="true">
+            <div class="ytm-eq-pill" aria-hidden="true">
               <span></span><span></span><span></span><span></span>
             </div>
           </div>
 
-          <div class="music-hub-now-meta">
-            <div class="music-hub-kicker-row">
-              <span class="music-hub-kicker">${escapeHtml(active?.isIndonesianViral ? 'YT MUSIC API · PRIORITAS VIRAL INDONESIA' : 'YT MUSIC COMMUNITY API')}</span>
-              <span class="music-hub-status-dot ${mState.isPlaying ? 'is-live' : ''}">${escapeHtml(statusLabel)}</span>
+          <div class="ytm-track-header">
+            <div class="ytm-track-titles">
+              <h3 class="ytm-track-title" id="music-hub-track-title">
+                ${escapeHtml(active?.title || 'Pilih atau Putar Lagu Viral Indonesia')}
+              </h3>
+              <p class="ytm-track-artist" id="music-hub-track-artist">
+                ${escapeHtml(active?.artist || 'Artis YT Music')} • <span>${escapeHtml(active?.genre || 'Viral Indonesia')}</span>
+              </p>
             </div>
-
-            <h3 class="music-hub-track-title" id="music-hub-track-title">
-              ${escapeHtml(active?.title || 'Pilih atau Putar Lagu Viral Indonesia')}
-            </h3>
-            <p class="music-hub-track-artist" id="music-hub-track-artist">
-              ${escapeHtml(active?.artist || 'Artis YT Music')} · <span class="music-hub-genre-inline">${escapeHtml(active?.genre || 'Viral Indonesia')}</span>
-            </p>
-
-            <div class="music-hub-info-grid">
-              <div class="music-hub-info-cell">
-                <span>Sumber</span>
-                <strong>${escapeHtml(active?.sourceLabel || 'YT Music API')}</strong>
-              </div>
-              <div class="music-hub-info-cell">
-                <span>Antrian</span>
-                <strong class="mono-num">${posNum} / ${totalNum}</strong>
-              </div>
-              <div class="music-hub-info-cell">
-                <span>Mode Putar</span>
-                <strong>${mState.shuffleEnabled ? 'Acak Aktif' : 'Berurutan'} · ${escapeHtml(getRepeatLabel(mState.repeatMode))}</strong>
-              </div>
-              <div class="music-hub-info-cell">
-                <span>Tautan Asli</span>
-                ${
-                  active?.watchUrl
-                    ? `<a href="${escapeHtml(active.watchUrl)}" target="_blank" rel="noopener noreferrer" class="music-hub-ext-link">YT Music ↗</a>`
-                    : `<strong>-</strong>`
-                }
-              </div>
+            <div class="ytm-track-badges">
+              <span class="ytm-queue-pill mono-num">${posNum} / ${totalNum}</span>
+              ${
+                active?.watchUrl
+                  ? `<a href="${escapeHtml(active.watchUrl)}" target="_blank" rel="noopener noreferrer" class="ytm-watch-pill" title="Buka di YouTube Music">YT ↗</a>`
+                  : ''
+              }
             </div>
           </div>
         </div>
 
-        <div class="music-hub-timeline">
-          <div class="music-hub-time-row mono-num">
-            <span id="music-hub-cur-time">${formatAudioTime(cur)}</span>
-            <span id="music-hub-dur-time">${formatAudioTime(dur)}</span>
-          </div>
+        <div class="ytm-scrubber-wrap">
           <input
             type="range"
             id="music-hub-seek-slider"
-            class="music-hub-seek-slider"
+            class="ytm-scrubber"
+            style="--ytm-progress: ${pct}%"
             data-music-control="true"
             min="0"
             max="100"
@@ -2053,114 +2068,109 @@ export function createToolsHubController({
             value="${pct}"
             aria-label="Geser posisi waktu lagu"
           />
+          <div class="ytm-time-row mono-num">
+            <span id="music-hub-cur-time">${formatAudioTime(cur)}</span>
+            <span id="music-hub-dur-time">${formatAudioTime(dur)}</span>
+          </div>
         </div>
 
-        <div class="music-hub-deck-controls">
+        <div class="ytm-transport-toolbar" role="toolbar" aria-label="Kontrol Pemutar YouTube Music">
           <button
             type="button"
             id="music-hub-shuffle-btn"
-            class="btn btn-secondary btn-sm music-hub-mode-btn ${mState.shuffleEnabled ? 'is-active' : ''}"
+            class="ytm-icon-btn ${mState.shuffleEnabled ? 'is-active' : ''}"
             data-music-control="true"
             aria-pressed="${mState.shuffleEnabled}"
-            title="Mode Putar Acak Viral Indonesia"
+            aria-label="Mode Putar Acak"
+            title="${mState.shuffleEnabled ? 'Acak: Aktif' : 'Acak: Nonaktif'}"
           >
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="16 3 21 3 21 8"/><line x1="4" y1="20" x2="21" y2="3"/><polyline points="21 16 21 21 16 21"/><line x1="15" y1="15" x2="21" y2="21"/><line x1="4" y1="4" x2="9" y2="9"/></svg>
-            <span>Acak</span>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="16 3 21 3 21 8"/><line x1="4" y1="20" x2="21" y2="3"/><polyline points="21 16 21 21 16 21"/><line x1="15" y1="15" x2="21" y2="21"/><line x1="4" y1="4" x2="9" y2="9"/></svg>
           </button>
 
           <button
             type="button"
             id="music-hub-prev-btn"
-            class="btn btn-secondary btn-sm"
+            class="ytm-icon-btn ytm-step-btn"
             data-music-control="true"
             aria-label="Putar lagu sebelumnya"
+            title="Lagu Sebelumnya"
           >
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="19 20 9 12 19 4 19 20"/><line x1="5" y1="19" x2="5" y2="5"/></svg>
-            <span>Prev</span>
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M6 6h2v12H6zm3.5 6 8.5 6V6z"/></svg>
           </button>
 
           <button
             type="button"
             id="music-hub-play-btn"
-            class="btn btn-primary music-hub-play-btn"
+            class="ytm-play-fab ${mState.isPlaying ? 'is-playing' : ''}"
             data-music-control="true"
             aria-label="${mState.isPlaying ? 'Jeda lagu' : 'Putar lagu'}"
+            title="${mState.isPlaying ? 'Jeda' : 'Putar'}"
           >
             ${
-              mState.isPlaying
-                ? `<svg width="17" height="17" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="6" y="4" width="4" height="16" rx="1.2"/><rect x="14" y="4" width="4" height="16" rx="1.2"/></svg><span>Jeda</span>`
-                : `<svg width="17" height="17" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><polygon points="6,4 20,12 6,20"/></svg><span>${mState.isLoading ? 'Memuat...' : 'Putar Musik'}</span>`
+              mState.isLoading
+                ? `<svg class="ytm-spin" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M12 2v4"/><path d="m16.2 7.8 2.9-2.9"/><path d="M18 12h4"/><path d="M4.9 19.1 7.8 16.2"/><path d="M2 12h4"/></svg>`
+                : mState.isPlaying
+                ? `<svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="6" y="4" width="4.5" height="16" rx="1.2"/><rect x="13.5" y="4" width="4.5" height="16" rx="1.2"/></svg>`
+                : `<svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><polygon points="7,4 20,12 7,20"/></svg>`
             }
           </button>
 
           <button
             type="button"
             id="music-hub-next-btn"
-            class="btn btn-secondary btn-sm"
+            class="ytm-icon-btn ytm-step-btn"
             data-music-control="true"
             aria-label="Putar lagu berikutnya"
+            title="Lagu Berikutnya"
           >
-            <span>Next</span>
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="5 4 15 12 5 20 5 4"/><line x1="19" y1="5" x2="19" y2="19"/></svg>
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="m6 18 8.5-6L6 6v12zM16 6v12h2V6h-2z"/></svg>
           </button>
 
           <button
             type="button"
             id="music-hub-repeat-btn"
-            class="btn btn-secondary btn-sm music-hub-mode-btn ${mState.repeatMode !== 'off' ? 'is-active' : ''}"
+            class="ytm-icon-btn ${mState.repeatMode !== 'off' ? 'is-active' : ''}"
             data-music-control="true"
-            title="Ubah mode pengulangan"
+            aria-label="${escapeHtml(getRepeatLabel(mState.repeatMode))}"
+            title="${escapeHtml(getRepeatLabel(mState.repeatMode))}"
           >
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>
-            <span>${escapeHtml(getRepeatLabel(mState.repeatMode))}</span>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>
+            ${mState.repeatMode === 'one' ? `<span class="ytm-repeat-one-badge">1</span>` : ''}
           </button>
         </div>
 
-        <div class="music-hub-volume-row">
-          <button
-            type="button"
-            id="music-hub-mute-btn"
-            class="music-hub-mute-btn ${mState.isMuted ? 'is-muted' : ''}"
-            data-music-control="true"
-            aria-label="${mState.isMuted ? 'Nyalakan suara' : 'Bisukan suara'}"
-          >
-            ${
-              mState.isMuted || volPct === 0
-                ? `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><line x1="22" y1="9" x2="16" y2="15"/><line x1="16" y1="9" x2="22" y2="15"/></svg>`
-                : `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/></svg>`
-            }
-          </button>
-          <input
-            type="range"
-            id="music-hub-volume-slider"
-            class="music-hub-volume-slider"
-            data-music-control="true"
-            min="0"
-            max="100"
-            step="1"
-            value="${volPct}"
-            aria-label="Atur volume pemutar musik"
-          />
-          <span class="music-hub-vol-pct mono-num" id="music-hub-vol-pct">${volPct}%</span>
+        <div class="ytm-bottom-toolbar">
+          <div class="ytm-volume-group">
+            <button
+              type="button"
+              id="music-hub-mute-btn"
+              class="ytm-icon-btn ytm-mute-btn ${mState.isMuted ? 'is-muted' : ''}"
+              data-music-control="true"
+              aria-label="${mState.isMuted ? 'Nyalakan suara' : 'Bisukan suara'}"
+            >
+              ${
+                mState.isMuted || volPct === 0
+                  ? `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><line x1="22" y1="9" x2="16" y2="15"/><line x1="16" y1="9" x2="22" y2="15"/></svg>`
+                  : `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/></svg>`
+              }
+            </button>
+            <input
+              type="range"
+              id="music-hub-volume-slider"
+              class="ytm-volume-slider"
+              data-music-control="true"
+              min="0"
+              max="100"
+              step="1"
+              value="${volPct}"
+              aria-label="Atur volume pemutar musik"
+            />
+            <span class="ytm-vol-pct mono-num" id="music-hub-vol-pct">${volPct}%</span>
+          </div>
 
-          <button
-            type="button"
-            id="music-hub-autoclick-btn"
-            class="btn btn-secondary btn-sm music-hub-mode-btn ${mState.autoClickPlayEnabled !== false ? 'is-active' : ''}"
-            data-music-control="true"
-            aria-pressed="${mState.autoClickPlayEnabled !== false}"
-            title="Otomatis putar lagu saat menekan tombol di web"
-          >
-            <span>${mState.autoClickPlayEnabled !== false ? 'Auto-Klik: ON' : 'Auto-Klik: OFF'}</span>
-          </button>
-          <button
-            type="button"
-            id="music-hub-random-viral-btn"
-            class="btn btn-secondary btn-sm music-hub-random-btn"
-            data-music-control="true"
-          >
-            Putar Acak Viral Indo
-          </button>
+          <span class="ytm-bg-badge" title="Tetap memutar otomatis di latar belakang & saat layar terkunci">
+            <span class="ytm-bg-dot"></span>Latar Belakang &amp; Auto-Next Aktif
+          </span>
         </div>
 
         ${
@@ -2184,15 +2194,18 @@ export function createToolsHubController({
       MUSIC_PRESET_CATEGORIES.find((c) => c.id === mState.activeCategory) || MUSIC_PRESET_CATEGORIES[0];
 
     return `
-      <div class="music-hub-queue-inner" id="music-hub-queue-slot">
-        <div class="music-hub-queue-head">
-          <strong>${
-            isSearchView
-              ? `Hasil Pencarian "${escapeHtml(mState.searchQuery)}"`
-              : `Daftar Putar: ${escapeHtml(activeCat.label)}`
-          }</strong>
-          <span class="mono-num">${
-            mState.isSearching ? 'Memuat YT Music API...' : `${list.length} lagu tersedia`
+      <div class="ytm-queue-panel" id="music-hub-queue-slot">
+        <div class="ytm-queue-tabs-head">
+          <div class="ytm-queue-tab-title">
+            <span class="ytm-queue-tab-indicator"></span>
+            <strong>${
+              isSearchView
+                ? `HASIL PENCARIAN "${escapeHtml(mState.searchQuery)}"`
+                : `BERIKUTNYA · ${escapeHtml(activeCat.label.toUpperCase())}`
+            }</strong>
+          </div>
+          <span class="ytm-queue-count mono-num">${
+            mState.isSearching ? 'Memuat...' : `${list.length} lagu`
           }</span>
         </div>
 
@@ -2202,12 +2215,12 @@ export function createToolsHubController({
             : ''
         }
 
-        <div class="music-hub-tracklist" role="listbox" aria-label="Daftar lagu YT Music">
+        <div class="ytm-tracklist" role="listbox" aria-label="Daftar putar YouTube Music">
           ${
             list.length === 0
               ? `<div class="music-hub-empty">${
                   mState.isSearching
-                    ? 'Sedang mengambil daftar lagu terbaru dari YT Music API...'
+                    ? 'Sedang mengambil daftar lagu terbaru dari YT Music...'
                     : 'Belum ada lagu yang cocok. Coba kata kunci atau kategori lain.'
                 }</div>`
               : list
@@ -2216,27 +2229,29 @@ export function createToolsHubController({
                     return `
                       <button
                         type="button"
-                        class="music-hub-row ${isCurrent ? 'is-active' : ''}"
+                        class="ytm-track-row ${isCurrent ? 'is-active' : ''}"
                         data-hub-music-pick="${escapeHtml(track.id)}"
                         data-music-control="true"
                       >
-                        <span class="music-hub-row-num mono-num">${
-                          isCurrent && mState.isPlaying ? '▶' : idx + 1
-                        }</span>
-                        <img
-                          src="${escapeHtml(track.artwork)}"
-                          alt=""
-                          width="42"
-                          height="42"
-                          loading="lazy"
-                          class="music-hub-row-thumb"
-                          onerror="this.src='${escapeHtml(track.artworkFallback || '')}'"
-                        />
-                        <span class="music-hub-row-info">
-                          <span class="music-hub-row-title">${escapeHtml(track.title)}</span>
-                          <span class="music-hub-row-sub">${escapeHtml(track.artist)} · ${escapeHtml(track.genre)}</span>
+                        <div class="ytm-row-thumb-wrap">
+                          <img
+                            src="${escapeHtml(track.artwork)}"
+                            alt=""
+                            width="46"
+                            height="46"
+                            loading="lazy"
+                            class="ytm-row-thumb"
+                            onerror="this.src='${escapeHtml(track.artworkFallback || '')}'"
+                          />
+                          <span class="ytm-row-overlay-icon" aria-hidden="true">
+                            ${isCurrent && mState.isPlaying ? '❚❚' : '▶'}
+                          </span>
+                        </div>
+                        <span class="ytm-row-info">
+                          <span class="ytm-row-title">${escapeHtml(track.title)}</span>
+                          <span class="ytm-row-sub">${escapeHtml(track.artist)} • ${escapeHtml(track.genre)}</span>
                         </span>
-                        <span class="music-hub-row-dur mono-num">${formatAudioTime(track.duration)}</span>
+                        <span class="ytm-row-dur mono-num">${formatAudioTime(track.duration)}</span>
                       </button>
                     `;
                   })
@@ -2255,7 +2270,10 @@ export function createToolsHubController({
     const slider = rootEl.querySelector('#music-hub-seek-slider');
     const curEl = rootEl.querySelector('#music-hub-cur-time');
     const durEl = rootEl.querySelector('#music-hub-dur-time');
-    if (slider) slider.value = String(pct);
+    if (slider) {
+      slider.value = String(pct);
+      slider.style.setProperty('--ytm-progress', `${pct}%`);
+    }
     if (curEl) curEl.textContent = formatAudioTime(cur);
     if (durEl) durEl.textContent = formatAudioTime(dur);
   }
@@ -2305,7 +2323,9 @@ export function createToolsHubController({
       isHubSeeking = true;
       const snap = ctrl.getState();
       const dur = snap.duration || snap.currentTrack?.duration || 180;
-      const targetSec = (Number(seekSlider.value) / 100) * dur;
+      const pctVal = Number(seekSlider.value) || 0;
+      const targetSec = (pctVal / 100) * dur;
+      seekSlider.style.setProperty('--ytm-progress', `${pctVal}%`);
       const curEl = rootEl.querySelector('#music-hub-cur-time');
       if (curEl) curEl.textContent = formatAudioTime(targetSec);
     });
@@ -2345,16 +2365,21 @@ export function createToolsHubController({
       duration: 180,
     };
 
+    const musicHero = toolState.utilities?.musicHero || {
+      icon: './assets/icons/tool-music.svg',
+      title: 'YT Music Hub — Viral Indonesia & Pencarian Lengkap',
+      subtitle:
+        'Sumber resmi YT Music API komunitas open-source. Pemutaran acak otomatis memprioritaskan lagu Indonesia viral setiap kali tombol apa saja ditekan, tanpa bergantung pada riwayat pencarian.',
+    };
+
     return `
       <section class="tool-panel music-hub-panel" data-testid="music-hub-panel">
-        <div class="music-hub-hero-card">
+        <div class="music-hub-hero-card" id="music-hub-hero-card">
           <div class="music-hub-hero-head">
-            <img src="./assets/icons/tool-music.svg" alt="" width="44" height="44" class="music-hub-hero-icon" />
+            <img src="${escapeHtml(musicHero.icon || './assets/icons/tool-music.svg')}" alt="" width="44" height="44" class="music-hub-hero-icon" id="music-hub-hero-icon" />
             <div>
-              <h2 class="music-hub-hero-title">YT Music Hub — Viral Indonesia &amp; Pencarian Lengkap</h2>
-              <p class="music-hub-hero-sub">
-                Sumber resmi YT Music API komunitas open-source. Pemutaran acak otomatis memprioritaskan lagu Indonesia viral setiap kali tombol apa saja ditekan, tanpa bergantung pada riwayat pencarian.
-              </p>
+              <h2 class="music-hub-hero-title" id="music-hub-hero-title">${escapeHtml(musicHero.title)}</h2>
+              <p class="music-hub-hero-sub" id="music-hub-hero-sub">${escapeHtml(musicHero.subtitle)}</p>
             </div>
           </div>
         </div>
@@ -3088,79 +3113,27 @@ export function createToolsHubController({
         ? renderMusicPanel()
         : renderDownloaderPanel();
 
+    const subnavButtonsHtml = (toolState.utilities?.items || [])
+      .map(
+        (item) => `
+          <button
+            type="button"
+            role="tab"
+            class="tools-subtab ${toolState.activeSubTab === item.id ? 'is-active' : ''}"
+            data-tool-subtab="${escapeHtml(item.id)}"
+            aria-selected="${toolState.activeSubTab === item.id}"
+          >
+            <img src="${escapeHtml(item.icon || `./assets/icons/tool-${item.id}.svg`)}" alt="" width="28" height="28" class="tools-subtab-icon" />
+            <span>${escapeHtml(item.label)}</span>
+          </button>
+        `
+      )
+      .join('');
+
     rootEl.innerHTML = `
       <div class="tools-hub">
         <div class="tools-subnav" role="tablist" aria-label="Menu Tambahan">
-          <button
-            type="button"
-            role="tab"
-            class="tools-subtab ${toolState.activeSubTab === 'prayer' ? 'is-active' : ''}"
-            data-tool-subtab="prayer"
-            aria-selected="${toolState.activeSubTab === 'prayer'}"
-          >
-            <img src="./assets/icons/tool-prayer.svg" alt="" width="28" height="28" class="tools-subtab-icon" />
-            <span>Jadwal Sholat</span>
-          </button>
-          <button
-            type="button"
-            role="tab"
-            class="tools-subtab ${toolState.activeSubTab === 'weather' ? 'is-active' : ''}"
-            data-tool-subtab="weather"
-            aria-selected="${toolState.activeSubTab === 'weather'}"
-          >
-            <img src="./assets/icons/tool-weather.svg" alt="" width="28" height="28" class="tools-subtab-icon" />
-            <span>Prakiraan Cuaca</span>
-          </button>
-          <button
-            type="button"
-            role="tab"
-            class="tools-subtab ${toolState.activeSubTab === 'worldclock' ? 'is-active' : ''}"
-            data-tool-subtab="worldclock"
-            aria-selected="${toolState.activeSubTab === 'worldclock'}"
-          >
-            <img src="./assets/icons/tool-world.svg" alt="" width="28" height="28" class="tools-subtab-icon" />
-            <span>Jam Dunia &amp; Globe</span>
-          </button>
-          <button
-            type="button"
-            role="tab"
-            class="tools-subtab ${toolState.activeSubTab === 'speedtest' ? 'is-active' : ''}"
-            data-tool-subtab="speedtest"
-            aria-selected="${toolState.activeSubTab === 'speedtest'}"
-          >
-            <img src="./assets/icons/tool-speed.svg" alt="" width="28" height="28" class="tools-subtab-icon" />
-            <span>Speedtest</span>
-          </button>
-          <button
-            type="button"
-            role="tab"
-            class="tools-subtab ${toolState.activeSubTab === 'downloader' ? 'is-active' : ''}"
-            data-tool-subtab="downloader"
-            aria-selected="${toolState.activeSubTab === 'downloader'}"
-          >
-            <img src="./assets/icons/tool-downloader.svg" alt="" width="28" height="28" class="tools-subtab-icon" />
-            <span>Downloader</span>
-          </button>
-          <button
-            type="button"
-            role="tab"
-            class="tools-subtab ${toolState.activeSubTab === 'compressor' ? 'is-active' : ''}"
-            data-tool-subtab="compressor"
-            aria-selected="${toolState.activeSubTab === 'compressor'}"
-          >
-            <img src="./assets/icons/tool-compressor.svg" alt="" width="28" height="28" class="tools-subtab-icon" />
-            <span>Kompresor HD</span>
-          </button>
-          <button
-            type="button"
-            role="tab"
-            class="tools-subtab ${toolState.activeSubTab === 'music' ? 'is-active' : ''}"
-            data-tool-subtab="music"
-            aria-selected="${toolState.activeSubTab === 'music'}"
-          >
-            <img src="./assets/icons/tool-music.svg" alt="" width="28" height="28" class="tools-subtab-icon" />
-            <span>Musik YT</span>
-          </button>
+          ${subnavButtonsHtml}
         </div>
 
         ${activeTabHtml}
@@ -3197,6 +3170,12 @@ export function createToolsHubController({
       }
       if (toolState.activeSubTab === 'speedtest') {
         ensureSpeedtestEnv();
+      }
+    },
+    setUtilitiesConfig(nextUtilities) {
+      toolState.utilities = normalizeUtilityConfig(nextUtilities);
+      if (mounted && !toolState.dlLoading && !toolState.compLoading && !toolState.speedRunning) {
+        render();
       }
     },
     unmount() {

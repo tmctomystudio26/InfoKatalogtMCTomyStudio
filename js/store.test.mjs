@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { getDefaultCatalogSnapshot, PRODUCTS, VOUCHERS } from './data.js';
 import {
+  DEFAULT_UTILITY_CONFIG,
   MAX_HISTORY_LOGS,
   addToCart,
   appendCatalogHistory,
@@ -27,6 +28,7 @@ import {
   normalizeBanners,
   normalizeBrandConfig,
   normalizeOpenGraphConfig,
+  normalizeUtilityConfig,
   pruneCatalogHistory,
   removeFromCart,
   reorderProductToIndex,
@@ -38,6 +40,7 @@ import {
   upsertFaqInCatalog,
   upsertProductInCatalog,
   upsertSocialInCatalog,
+  upsertUtilityItemInCatalog,
   validateOrderForm,
 } from './store.js';
 import {
@@ -1613,3 +1616,49 @@ test('normalizeYtMusicTrack supports hybrid tracks with both videoId and backgro
   assert.equal(directOnly.videoId, '');
   assert.equal(directOnly.streamUrl, 'https://api.audius.co/v1/tracks/WEjzjgB/stream?app_name=Manifestudio');
 });
+
+test('normalizeUtilityConfig, upsertUtilityItemInCatalog, and describeCatalogChanges manage utility icons, labels, page headers, and YT Music hero card', () => {
+  const base = getDefaultCatalogSnapshot();
+  const util = normalizeUtilityConfig(base.utilities);
+  assert.equal(util.items.length, 7);
+  assert.equal(util.items.some((i) => i.id === 'downloader' && i.label === 'Downloader'), true);
+  assert.equal(util.musicHero.icon, './assets/icons/tool-music.svg');
+  assert.ok(DEFAULT_UTILITY_CONFIG.items.length === 7);
+
+  let next = upsertUtilityItemInCatalog(base, {
+    id: 'downloader',
+    label: 'Unduh Sosmed',
+    icon: './assets/logos/uploads/util-downloader-custom.png',
+    pageTitle: 'Downloader All-in-One Pro',
+    pageSubtitle: 'Unduh video TikTok, IG, YT & FB lebih cepat.',
+  });
+  next.utilities.musicHero.title = 'YouTube Music Pro — Lagu Viral Indonesia';
+  next.utilities.musicHero.icon = './assets/logos/uploads/util-music-hero.png';
+
+  const dlItem = next.utilities.items.find((i) => i.id === 'downloader');
+  assert.equal(dlItem.label, 'Unduh Sosmed');
+  assert.equal(dlItem.pageTitle, 'Downloader All-in-One Pro');
+
+  const diff = describeCatalogChanges(base, next);
+  assert.equal(
+    diff.some((d) => d.includes('Mengubah nama menu utilitas "Downloader" menjadi "Unduh Sosmed"')),
+    true
+  );
+  assert.equal(
+    diff.some((d) => d.includes('Mengubah ikon menu utilitas "Unduh Sosmed"')),
+    true
+  );
+  assert.equal(
+    diff.some((d) => d.includes('Mengubah judul halaman utilitas "Unduh Sosmed" menjadi "Downloader All-in-One Pro"')),
+    true
+  );
+  assert.equal(
+    diff.some((d) => d.includes('Mengubah judul kartu YT Music Hub menjadi "YouTube Music Pro — Lagu Viral Indonesia"')),
+    true
+  );
+  assert.equal(
+    diff.some((d) => d.includes('Mengubah ikon kartu YT Music Hub')),
+    true
+  );
+});
+

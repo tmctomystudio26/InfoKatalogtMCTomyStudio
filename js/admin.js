@@ -2,8 +2,9 @@ import {
   CATALOG_PREVIEW_STORAGE_KEY,
   getDefaultCatalogSnapshot,
   loadCatalogData,
-} from './data.js?v=25';
+} from './data.js?v=26';
 import {
+  DEFAULT_UTILITY_CONFIG,
   MAX_HISTORY_LOGS,
   appendCatalogHistory,
   applyOpenGraphToHtml,
@@ -22,6 +23,7 @@ import {
   normalizeBanners,
   normalizeBrandConfig,
   normalizeOpenGraphConfig,
+  normalizeUtilityConfig,
   normalizeVoucherUsageConfig,
   pruneCatalogHistory,
   reorderProductToIndex,
@@ -34,12 +36,13 @@ import {
   upsertFaqInCatalog,
   upsertProductInCatalog,
   upsertSocialInCatalog,
-} from './store.js?v=25';
+  upsertUtilityItemInCatalog,
+} from './store.js?v=26';
 import {
   decryptVault,
   encryptVault,
   verifyGitHubTokenAccess,
-} from './vault.js?v=25';
+} from './vault.js?v=26';
 
 const THEME_STORAGE_KEY = 'manifestudio_theme_v1';
 const ADMIN_VAULT_STORAGE_KEY = 'manifestudio_admin_vault_v1';
@@ -84,6 +87,17 @@ const BANNER_SCRIM_OPTIONS = [
   { value: 'is-indigo', label: 'Indigo / Ungu' },
   { value: 'is-cyan', label: 'Cyan / Tosca' },
   { value: 'is-violet', label: 'Violet / Magenta' },
+];
+
+const UTILITY_ICON_PRESETS = [
+  { value: './assets/icons/menu-utilitas.svg', label: 'Ikon Utilitas Umum' },
+  { value: './assets/icons/tool-prayer.svg', label: 'Ikon Jadwal Sholat' },
+  { value: './assets/icons/tool-weather.svg', label: 'Ikon Prakiraan Cuaca' },
+  { value: './assets/icons/tool-world.svg', label: 'Ikon Jam Dunia & Globe' },
+  { value: './assets/icons/tool-speed.svg', label: 'Ikon Speedtest' },
+  { value: './assets/icons/tool-downloader.svg', label: 'Ikon Downloader' },
+  { value: './assets/icons/tool-compressor.svg', label: 'Ikon Kompresor HD' },
+  { value: './assets/icons/tool-music.svg', label: 'Ikon Musik YT' },
 ];
 
 const adminState = {
@@ -175,6 +189,17 @@ function extractPublishedLogoEntries(catalog) {
   for (const ban of catalog?.banners || []) {
     if (ban?.image) {
       items.push({ id: `__banner__${ban.id}`, logo: ban.image });
+    }
+  }
+  if (catalog?.utilities?.callout?.icon) {
+    items.push({ id: '__util_callout__', logo: catalog.utilities.callout.icon });
+  }
+  if (catalog?.utilities?.musicHero?.icon) {
+    items.push({ id: '__util_music_hero__', logo: catalog.utilities.musicHero.icon });
+  }
+  for (const u of catalog?.utilities?.items || []) {
+    if (u?.icon) {
+      items.push({ id: `__util_tab__${u.id}`, logo: u.icon });
     }
   }
   return items;
@@ -499,6 +524,7 @@ async function openUnlockedDashboard() {
   adminState.catalog = loaded.data;
   adminState.catalog.brand = normalizeBrandConfig(adminState.catalog.brand || {});
   adminState.catalog.banners = normalizeBanners(adminState.catalog.banners);
+  adminState.catalog.utilities = normalizeUtilityConfig(adminState.catalog.utilities || {});
   adminState.catalog.paymentOptions = syncPaymentOptionsWithBrand(
     adminState.catalog.paymentOptions,
     adminState.catalog.brand
@@ -508,6 +534,7 @@ async function openUnlockedDashboard() {
   const baseLoaded = await loadCatalogData({ allowLocalPreview: false });
   baseLoaded.data.brand = normalizeBrandConfig(baseLoaded.data.brand || {});
   baseLoaded.data.banners = normalizeBanners(baseLoaded.data.banners);
+  baseLoaded.data.utilities = normalizeUtilityConfig(baseLoaded.data.utilities || {});
   adminState.baseCatalog = structuredClone(baseLoaded.data);
 
   if (loaded.source !== 'preview' || adminState.lastPublishedProducts.length === 0) {
@@ -520,6 +547,7 @@ async function openUnlockedDashboard() {
   renderCategoryList();
   renderBannerList();
   renderBrandSettings();
+  renderUtilitiesSettings();
   renderFaqList();
   renderProductList();
   renderVoucherList();
@@ -570,6 +598,7 @@ function renderTabs() {
     categories: 'panel-categories',
     banners: 'panel-banners',
     brand: 'panel-brand',
+    utilities: 'panel-utilities',
     faq: 'panel-faq',
     vouchers: 'panel-vouchers',
     history: 'panel-history',
@@ -2279,6 +2308,7 @@ async function pullFromGitHub() {
     }
     parsed.brand = normalizeBrandConfig(parsed.brand || {});
     parsed.banners = normalizeBanners(parsed.banners);
+    parsed.utilities = normalizeUtilityConfig(parsed.utilities || {});
     parsed.paymentOptions = syncPaymentOptionsWithBrand(parsed.paymentOptions, parsed.brand);
     adminState.catalog = parsed;
     adminState.baseCatalog = structuredClone(parsed);
@@ -2292,6 +2322,7 @@ async function pullFromGitHub() {
     renderCategoryList();
     renderBannerList();
     renderBrandSettings();
+    renderUtilitiesSettings();
     renderFaqList();
     renderProductList();
     renderVoucherList();
@@ -2502,6 +2533,7 @@ function renderHistoryList() {
       adminState.catalog = structuredClone(target.snapshot);
       adminState.catalog.brand = normalizeBrandConfig(adminState.catalog.brand || {});
       adminState.catalog.banners = normalizeBanners(adminState.catalog.banners);
+      adminState.catalog.utilities = normalizeUtilityConfig(adminState.catalog.utilities || {});
       adminState.catalog.paymentOptions = syncPaymentOptionsWithBrand(
         adminState.catalog.paymentOptions,
         adminState.catalog.brand
@@ -2519,6 +2551,7 @@ function renderHistoryList() {
       renderCategoryList();
       renderBannerList();
       renderBrandSettings();
+      renderUtilitiesSettings();
       renderFaqList();
       renderProductList();
       renderVoucherList();
@@ -2742,6 +2775,7 @@ async function publishToGitHub() {
     const nextCatalog = structuredClone(adminState.catalog);
     nextCatalog.brand = normalizeBrandConfig(nextCatalog.brand || {});
     nextCatalog.banners = normalizeBanners(nextCatalog.banners);
+    nextCatalog.utilities = normalizeUtilityConfig(nextCatalog.utilities || {});
     nextCatalog.paymentOptions = syncPaymentOptionsWithBrand(
       nextCatalog.paymentOptions,
       nextCatalog.brand
@@ -2805,6 +2839,41 @@ async function publishToGitHub() {
           pending: banPending,
           applyPath: (relPath) => {
             ban.image = relPath;
+          },
+        });
+      }
+    }
+
+    const utilCalloutPending = adminState.pendingUploads['__util_callout__'];
+    if (utilCalloutPending && nextCatalog.utilities?.callout?.icon === utilCalloutPending.previewDataUrl) {
+      uploadQueue.push({
+        label: 'ikon pintasan Menu Utilitas',
+        pending: utilCalloutPending,
+        applyPath: (relPath) => {
+          nextCatalog.utilities.callout.icon = relPath;
+        },
+      });
+    }
+
+    const utilMusicHeroPending = adminState.pendingUploads['__util_music_hero__'];
+    if (utilMusicHeroPending && nextCatalog.utilities?.musicHero?.icon === utilMusicHeroPending.previewDataUrl) {
+      uploadQueue.push({
+        label: 'ikon kartu hero YT Music Hub',
+        pending: utilMusicHeroPending,
+        applyPath: (relPath) => {
+          nextCatalog.utilities.musicHero.icon = relPath;
+        },
+      });
+    }
+
+    for (const utilItem of nextCatalog.utilities?.items || []) {
+      const utilPending = adminState.pendingUploads[`__util_tab__${utilItem.id}`];
+      if (utilPending && utilItem.icon === utilPending.previewDataUrl) {
+        uploadQueue.push({
+          label: `ikon menu utilitas ${utilItem.label}`,
+          pending: utilPending,
+          applyPath: (relPath) => {
+            utilItem.icon = relPath;
           },
         });
       }
@@ -2987,6 +3056,7 @@ async function publishToGitHub() {
     renderCategoryList();
     renderBannerList();
     renderBrandSettings();
+    renderUtilitiesSettings();
     renderFaqList();
     renderProductList();
     renderHistoryList();
@@ -3144,6 +3214,7 @@ function bindEvents() {
     try {
       adminState.catalog.brand = normalizeBrandConfig(adminState.catalog.brand || {});
       adminState.catalog.banners = normalizeBanners(adminState.catalog.banners);
+      adminState.catalog.utilities = normalizeUtilityConfig(adminState.catalog.utilities || {});
       adminState.catalog.paymentOptions = syncPaymentOptionsWithBrand(
         adminState.catalog.paymentOptions,
         adminState.catalog.brand
@@ -3189,6 +3260,7 @@ function bindEvents() {
     const fresh = await loadCatalogData({ allowLocalPreview: false });
     fresh.data.brand = normalizeBrandConfig(fresh.data.brand || {});
     fresh.data.banners = normalizeBanners(fresh.data.banners);
+    fresh.data.utilities = normalizeUtilityConfig(fresh.data.utilities || {});
     fresh.data.paymentOptions = syncPaymentOptionsWithBrand(
       fresh.data.paymentOptions,
       fresh.data.brand
@@ -3203,6 +3275,7 @@ function bindEvents() {
     renderCategoryList();
     renderBannerList();
     renderBrandSettings();
+    renderUtilitiesSettings();
     renderFaqList();
     renderProductList();
     renderVoucherList();
@@ -3237,6 +3310,8 @@ function bindEvents() {
         renderBannerList();
       } else if (adminState.activeTab === 'brand') {
         renderBrandSettings();
+      } else if (adminState.activeTab === 'utilities') {
+        renderUtilitiesSettings();
       } else if (adminState.activeTab === 'faq') {
         renderFaqList();
       }
@@ -3810,6 +3885,468 @@ function bindEvents() {
     syncNewVoucherUsageField();
     renderVoucherList();
     showToast(`Voucher ${code} ditambahkan.`);
+  });
+
+  document.getElementById('utilities-reset-default-btn')?.addEventListener('click', () => {
+    if (!adminState.unlocked) return;
+    const prevUtil = normalizeUtilityConfig(adminState.catalog.utilities || {});
+    queueManagedLogoForDeletion(prevUtil.callout?.icon);
+    queueManagedLogoForDeletion(prevUtil.musicHero?.icon);
+    for (const item of prevUtil.items || []) {
+      queueManagedLogoForDeletion(item.icon);
+      delete adminState.pendingUploads[`__util_tab__${item.id}`];
+    }
+    delete adminState.pendingUploads['__util_callout__'];
+    delete adminState.pendingUploads['__util_music_hero__'];
+    adminState.catalog.utilities = structuredClone(DEFAULT_UTILITY_CONFIG);
+    markDirty();
+    renderUtilitiesSettings();
+    showToast('Seluruh ikon & teks Menu Utilitas dikembalikan ke default.');
+  });
+}
+
+function renderUtilitiesSettings() {
+  if (!adminState.unlocked) return;
+  const container = document.getElementById('admin-utilities-editor');
+  if (!container) return;
+
+  adminState.catalog.utilities = normalizeUtilityConfig(adminState.catalog.utilities || {});
+  const util = adminState.catalog.utilities;
+
+  const buildPresetOptions = (currentVal) =>
+    UTILITY_ICON_PRESETS.map(
+      (p) =>
+        `<option value="${escapeHtml(p.value)}" ${currentVal === p.value ? 'selected' : ''}>${escapeHtml(p.label)}</option>`
+    ).join('');
+
+  const calloutPending = adminState.pendingUploads['__util_callout__'];
+  const musicHeroPending = adminState.pendingUploads['__util_music_hero__'];
+
+  container.innerHTML = `
+    <div class="admin-utilities-sections">
+      <!-- 1. Kartu Hero YT Music Hub -->
+      <article class="admin-banner-card">
+        <div class="admin-social-top">
+          <div class="admin-social-brand">
+            <img
+              src="${escapeHtml(util.musicHero.icon)}"
+              alt="Ikon YT Music Hub"
+              width="48"
+              height="48"
+              class="modal-logo admin-logo-thumb"
+              data-util-hero-thumb="musicHero"
+            />
+            <div>
+              <strong class="admin-social-title">Kartu Hero YT Music Hub (Halaman Musik YT)</strong>
+              <div class="admin-prod-meta">
+                ${musicHeroPending ? `File baru siap: ${escapeHtml(musicHeroPending.fileName)}` : `Ikon aktif: ${escapeHtml(String(util.musicHero.icon).slice(0, 60))}`}
+              </div>
+            </div>
+          </div>
+          <span class="admin-badge is-ok">tools.html?tab=music</span>
+        </div>
+
+        <div class="admin-form-grid">
+          <div class="form-field admin-sum-field">
+            <label for="util-music-hero-title">Judul Utama Kartu YT Music Hub</label>
+            <input
+              type="text"
+              id="util-music-hero-title"
+              data-util-section="musicHero"
+              data-util-field="title"
+              value="${escapeHtml(util.musicHero.title || '')}"
+            />
+          </div>
+          <div class="form-field admin-sum-field">
+            <label for="util-music-hero-sub">Deskripsi / Penjelasan Kartu YT Music Hub</label>
+            <textarea
+              id="util-music-hero-sub"
+              class="admin-textarea"
+              rows="2"
+              data-util-section="musicHero"
+              data-util-field="subtitle"
+            >${escapeHtml(util.musicHero.subtitle || '')}</textarea>
+          </div>
+          <div class="form-field">
+            <label for="util-music-hero-preset">Preset Ikon YT Music Hub</label>
+            <select id="util-music-hero-preset" class="admin-select" data-util-preset="musicHero">
+              <option value="__custom__">— Pilih Preset Ikon —</option>
+              ${buildPresetOptions(util.musicHero.icon)}
+            </select>
+          </div>
+          <div class="form-field">
+            <label for="util-music-hero-icon">Atau Path / URL Gambar Ikon</label>
+            <input
+              type="text"
+              id="util-music-hero-icon"
+              data-util-section="musicHero"
+              data-util-field="icon"
+              value="${escapeHtml(String(util.musicHero.icon || '').startsWith('data:') ? '' : util.musicHero.icon || '')}"
+              placeholder="./assets/icons/tool-music.svg atau https://..."
+            />
+          </div>
+        </div>
+
+        <div class="admin-file-row">
+          <label for="util-music-hero-file" class="btn btn-secondary btn-sm admin-file-trigger">
+            Upload Gambar / Ikon Kartu YT Music
+          </label>
+          <input
+            type="file"
+            id="util-music-hero-file"
+            class="visually-hidden-file"
+            accept="image/*"
+            data-util-file="musicHero"
+          />
+          <span class="admin-prod-meta">Mendukung SVG, PNG, JPG, atau WebP (otomatis dikompres ke repo).</span>
+        </div>
+      </article>
+
+      <!-- 2. Daftar 7 Tombol Sub-Menu & Judul Halaman Utilitas -->
+      <div class="admin-utilities-items-list">
+        ${util.items
+          .map((item, idx) => {
+            const pending = adminState.pendingUploads[`__util_tab__${item.id}`];
+            return `
+              <article class="admin-banner-card" data-util-item-card="${escapeHtml(item.id)}">
+                <div class="admin-social-top">
+                  <div class="admin-social-brand">
+                    <img
+                      src="${escapeHtml(item.icon)}"
+                      alt="Ikon ${escapeHtml(item.label)}"
+                      width="44"
+                      height="44"
+                      class="modal-logo admin-logo-thumb"
+                      data-util-item-thumb="${escapeHtml(item.id)}"
+                    />
+                    <div>
+                      <strong class="admin-social-title" data-util-item-heading="${escapeHtml(item.id)}">#${idx + 1} · ${escapeHtml(item.label)}</strong>
+                      <div class="admin-prod-meta">
+                        ${pending ? `File baru siap: ${escapeHtml(pending.fileName)}` : `Tab ID: ${escapeHtml(item.id)} · ./tools.html?tab=${escapeHtml(item.id)}`}
+                      </div>
+                    </div>
+                  </div>
+                  <span class="admin-badge">Sub-Menu #${idx + 1}</span>
+                </div>
+
+                <div class="admin-form-grid">
+                  <div class="form-field">
+                    <label for="util-label-${escapeHtml(item.id)}">Nama Tombol Menu (Navigasi)</label>
+                    <input
+                      type="text"
+                      id="util-label-${escapeHtml(item.id)}"
+                      data-util-item-id="${escapeHtml(item.id)}"
+                      data-util-item-field="label"
+                      value="${escapeHtml(item.label || '')}"
+                    />
+                  </div>
+                  <div class="form-field">
+                    <label for="util-preset-${escapeHtml(item.id)}">Preset Ikon Tombol</label>
+                    <select
+                      id="util-preset-${escapeHtml(item.id)}"
+                      class="admin-select"
+                      data-util-item-preset="${escapeHtml(item.id)}"
+                    >
+                      <option value="__custom__">— Pilih Preset Ikon —</option>
+                      ${buildPresetOptions(item.icon)}
+                    </select>
+                  </div>
+                  <div class="form-field admin-sum-field">
+                    <label for="util-icon-${escapeHtml(item.id)}">Path / URL Gambar Ikon Tombol</label>
+                    <input
+                      type="text"
+                      id="util-icon-${escapeHtml(item.id)}"
+                      data-util-item-id="${escapeHtml(item.id)}"
+                      data-util-item-field="icon"
+                      value="${escapeHtml(String(item.icon || '').startsWith('data:') ? '' : item.icon || '')}"
+                      placeholder="./assets/icons/tool-${escapeHtml(item.id)}.svg atau https://..."
+                    />
+                  </div>
+                  <div class="form-field admin-sum-field">
+                    <label for="util-pagetitle-${escapeHtml(item.id)}">Judul Besar Atas Halaman Saat Tab Ini Dibuka</label>
+                    <input
+                      type="text"
+                      id="util-pagetitle-${escapeHtml(item.id)}"
+                      data-util-item-id="${escapeHtml(item.id)}"
+                      data-util-item-field="pageTitle"
+                      value="${escapeHtml(item.pageTitle || '')}"
+                    />
+                  </div>
+                  <div class="form-field admin-sum-field">
+                    <label for="util-pagesub-${escapeHtml(item.id)}">Sub-Judul / Deskripsi Atas Halaman Saat Tab Ini Dibuka</label>
+                    <input
+                      type="text"
+                      id="util-pagesub-${escapeHtml(item.id)}"
+                      data-util-item-id="${escapeHtml(item.id)}"
+                      data-util-item-field="pageSubtitle"
+                      value="${escapeHtml(item.pageSubtitle || '')}"
+                    />
+                  </div>
+                </div>
+
+                <div class="admin-file-row">
+                  <label for="util-file-${escapeHtml(item.id)}" class="btn btn-secondary btn-sm admin-file-trigger">
+                    Upload Gambar Ikon ${escapeHtml(item.label)}
+                  </label>
+                  <input
+                    type="file"
+                    id="util-file-${escapeHtml(item.id)}"
+                    class="visually-hidden-file"
+                    accept="image/*"
+                    data-util-item-file="${escapeHtml(item.id)}"
+                  />
+                  <span class="admin-prod-meta">
+                    ${pending ? `File siap diunggah: ${escapeHtml(pending.fileName)}` : `Ikon aktif: ${escapeHtml(String(item.icon).slice(0, 64))}`}
+                  </span>
+                </div>
+              </article>
+            `;
+          })
+          .join('')}
+      </div>
+
+      <!-- 3. Kartu Pintasan Menu Utilitas di Halaman Depan Toko -->
+      <article class="admin-banner-card">
+        <div class="admin-social-top">
+          <div class="admin-social-brand">
+            <img
+              src="${escapeHtml(util.callout.icon)}"
+              alt="Ikon Kartu Pintasan Utilitas"
+              width="44"
+              height="44"
+              class="modal-logo admin-logo-thumb"
+              data-util-hero-thumb="callout"
+            />
+            <div>
+              <strong class="admin-social-title">Kartu Pintasan Menu Utilitas di Beranda Toko</strong>
+              <div class="admin-prod-meta">
+                ${calloutPending ? `File baru siap: ${escapeHtml(calloutPending.fileName)}` : `Tampil di halaman utama toko (index.html)`}
+              </div>
+            </div>
+          </div>
+          <span class="admin-badge">Beranda Toko</span>
+        </div>
+
+        <div class="admin-form-grid">
+          <div class="form-field">
+            <label for="util-callout-title">Judul Kartu Pintasan</label>
+            <input
+              type="text"
+              id="util-callout-title"
+              data-util-section="callout"
+              data-util-field="title"
+              value="${escapeHtml(util.callout.title || '')}"
+            />
+          </div>
+          <div class="form-field">
+            <label for="util-callout-badge">Label Badge Kecil</label>
+            <input
+              type="text"
+              id="util-callout-badge"
+              data-util-section="callout"
+              data-util-field="badge"
+              value="${escapeHtml(util.callout.badge || '')}"
+            />
+          </div>
+          <div class="form-field admin-sum-field">
+            <label for="util-callout-sub">Deskripsi Kartu Pintasan</label>
+            <input
+              type="text"
+              id="util-callout-sub"
+              data-util-section="callout"
+              data-util-field="description"
+              value="${escapeHtml(util.callout.description || util.callout.subtitle || '')}"
+            />
+          </div>
+          <div class="form-field">
+            <label for="util-callout-preset">Preset Ikon Pintasan</label>
+            <select id="util-callout-preset" class="admin-select" data-util-preset="callout">
+              <option value="__custom__">— Pilih Preset Ikon —</option>
+              ${buildPresetOptions(util.callout.icon)}
+            </select>
+          </div>
+          <div class="form-field">
+            <label for="util-callout-icon">Atau Path / URL Ikon Pintasan</label>
+            <input
+              type="text"
+              id="util-callout-icon"
+              data-util-section="callout"
+              data-util-field="icon"
+              value="${escapeHtml(String(util.callout.icon || '').startsWith('data:') ? '' : util.callout.icon || '')}"
+              placeholder="./assets/icons/menu-utilitas.svg atau https://..."
+            />
+          </div>
+        </div>
+
+        <div class="admin-file-row">
+          <label for="util-callout-file" class="btn btn-secondary btn-sm admin-file-trigger">
+            Upload Gambar Ikon Pintasan
+          </label>
+          <input
+            type="file"
+            id="util-callout-file"
+            class="visually-hidden-file"
+            accept="image/*"
+            data-util-file="callout"
+          />
+          <span class="admin-prod-meta">Ikon tampil pada kartu Menu Utilitas di bawah daftar produk.</span>
+        </div>
+      </article>
+    </div>
+  `;
+
+  // Bind section inputs (musicHero & callout)
+  container.querySelectorAll('[data-util-section]').forEach((input) => {
+    input.addEventListener('input', (e) => {
+      const section = input.getAttribute('data-util-section');
+      const field = input.getAttribute('data-util-field');
+      if (!section || !field) return;
+      adminState.catalog.utilities = normalizeUtilityConfig(adminState.catalog.utilities || {});
+      const targetObj = adminState.catalog.utilities[section];
+      if (!targetObj) return;
+
+      if (field === 'icon') {
+        const nextIcon = e.target.value.trim();
+        if (!nextIcon) return;
+        const pendingKey = section === 'musicHero' ? '__util_music_hero__' : '__util_callout__';
+        queueManagedLogoForDeletion(targetObj.icon);
+        delete adminState.pendingUploads[pendingKey];
+        targetObj.icon = nextIcon;
+        const thumb = container.querySelector(`[data-util-hero-thumb="${section}"]`);
+        if (thumb) thumb.src = nextIcon;
+      } else {
+        targetObj[field] = e.target.value;
+      }
+      markDirty();
+    });
+  });
+
+  // Bind preset selects for musicHero & callout
+  container.querySelectorAll('[data-util-preset]').forEach((select) => {
+    select.addEventListener('change', (e) => {
+      const section = select.getAttribute('data-util-preset');
+      const val = e.target.value;
+      if (!section || val === '__custom__') return;
+      adminState.catalog.utilities = normalizeUtilityConfig(adminState.catalog.utilities || {});
+      const targetObj = adminState.catalog.utilities[section];
+      if (!targetObj) return;
+      const pendingKey = section === 'musicHero' ? '__util_music_hero__' : '__util_callout__';
+      queueManagedLogoForDeletion(targetObj.icon);
+      delete adminState.pendingUploads[pendingKey];
+      targetObj.icon = val;
+      markDirty();
+      renderUtilitiesSettings();
+      showToast('Ikon berhasil diperbarui.');
+    });
+  });
+
+  // Bind file uploads for musicHero & callout
+  container.querySelectorAll('[data-util-file]').forEach((fileInput) => {
+    fileInput.addEventListener('change', async (e) => {
+      const section = fileInput.getAttribute('data-util-file');
+      const file = e.target.files?.[0];
+      if (!section || !file) return;
+      try {
+        const result = await compressLogoFile(file);
+        adminState.catalog.utilities = normalizeUtilityConfig(adminState.catalog.utilities || {});
+        const targetObj = adminState.catalog.utilities[section];
+        if (!targetObj) return;
+        const pendingKey = section === 'musicHero' ? '__util_music_hero__' : '__util_callout__';
+        const prefix = section === 'musicHero' ? 'util-music-hero' : 'util-callout';
+        queueManagedLogoForDeletion(targetObj.icon);
+        adminState.pendingUploads[pendingKey] = {
+          targetPath: `assets/logos/uploads/${prefix}-${Date.now().toString(36)}.${result.ext}`,
+          base64Content: result.base64Content,
+          previewDataUrl: result.previewDataUrl,
+          fileName: file.name,
+        };
+        targetObj.icon = result.previewDataUrl;
+        markDirty();
+        renderUtilitiesSettings();
+        showToast(`Gambar "${file.name}" siap diunggah saat Publikasi.`);
+      } catch (err) {
+        showToast(err.message || 'Gagal memproses file gambar.');
+      }
+    });
+  });
+
+  // Bind 7 utility item fields
+  container.querySelectorAll('[data-util-item-id]').forEach((input) => {
+    input.addEventListener('input', (e) => {
+      const itemId = input.getAttribute('data-util-item-id');
+      const field = input.getAttribute('data-util-item-field');
+      if (!itemId || !field) return;
+      adminState.catalog.utilities = normalizeUtilityConfig(adminState.catalog.utilities || {});
+      const currentItem = (adminState.catalog.utilities.items || []).find((i) => i.id === itemId);
+      if (!currentItem) return;
+
+      if (field === 'icon') {
+        const nextIcon = e.target.value.trim();
+        if (!nextIcon) return;
+        queueManagedLogoForDeletion(currentItem.icon);
+        delete adminState.pendingUploads[`__util_tab__${itemId}`];
+        currentItem.icon = nextIcon;
+        const thumb = container.querySelector(`[data-util-item-thumb="${itemId}"]`);
+        if (thumb) thumb.src = nextIcon;
+      } else {
+        currentItem[field] = e.target.value;
+        if (field === 'label') {
+          const heading = container.querySelector(`[data-util-item-heading="${itemId}"]`);
+          const idx = (adminState.catalog.utilities.items || []).findIndex((i) => i.id === itemId);
+          if (heading) heading.textContent = `#${idx + 1} · ${e.target.value || itemId}`;
+        }
+      }
+      adminState.catalog = upsertUtilityItemInCatalog(adminState.catalog, currentItem);
+      markDirty();
+    });
+  });
+
+  // Bind 7 utility item preset selects
+  container.querySelectorAll('[data-util-item-preset]').forEach((select) => {
+    select.addEventListener('change', (e) => {
+      const itemId = select.getAttribute('data-util-item-preset');
+      const val = e.target.value;
+      if (!itemId || val === '__custom__') return;
+      adminState.catalog.utilities = normalizeUtilityConfig(adminState.catalog.utilities || {});
+      const currentItem = (adminState.catalog.utilities.items || []).find((i) => i.id === itemId);
+      if (!currentItem) return;
+      queueManagedLogoForDeletion(currentItem.icon);
+      delete adminState.pendingUploads[`__util_tab__${itemId}`];
+      currentItem.icon = val;
+      adminState.catalog = upsertUtilityItemInCatalog(adminState.catalog, currentItem);
+      markDirty();
+      renderUtilitiesSettings();
+      showToast(`Ikon "${currentItem.label}" diperbarui.`);
+    });
+  });
+
+  // Bind 7 utility item file uploads
+  container.querySelectorAll('[data-util-item-file]').forEach((fileInput) => {
+    fileInput.addEventListener('change', async (e) => {
+      const itemId = fileInput.getAttribute('data-util-item-file');
+      const file = e.target.files?.[0];
+      if (!itemId || !file) return;
+      try {
+        const result = await compressLogoFile(file);
+        adminState.catalog.utilities = normalizeUtilityConfig(adminState.catalog.utilities || {});
+        const currentItem = (adminState.catalog.utilities.items || []).find((i) => i.id === itemId);
+        if (!currentItem) return;
+        queueManagedLogoForDeletion(currentItem.icon);
+        adminState.pendingUploads[`__util_tab__${itemId}`] = {
+          targetPath: `assets/logos/uploads/util-${slugifyId(itemId)}-${Date.now().toString(36)}.${result.ext}`,
+          base64Content: result.base64Content,
+          previewDataUrl: result.previewDataUrl,
+          fileName: file.name,
+        };
+        currentItem.icon = result.previewDataUrl;
+        adminState.catalog = upsertUtilityItemInCatalog(adminState.catalog, currentItem);
+        markDirty();
+        renderUtilitiesSettings();
+        showToast(`Ikon "${currentItem.label}" siap diunggah saat Publikasi.`);
+      } catch (err) {
+        showToast(err.message || 'Gagal memproses file ikon.');
+      }
+    });
   });
 }
 

@@ -4,7 +4,7 @@ import {
   PAY_LATER_SURCHARGE_RATE,
   getDefaultCatalogSnapshot,
   loadCatalogData,
-} from './data.js?v=25';
+} from './data.js?v=26';
 import {
   PENDING_ORDER_STORAGE_KEY,
   addToCart,
@@ -16,14 +16,15 @@ import {
   getStartingPrice,
   normalizeBanners,
   normalizeBrandConfig,
+  normalizeUtilityConfig,
   removeFromCart,
   resolveAbsoluteOgImageUrl,
   syncPaymentOptionsWithBrand,
   updateCartQty,
   validateOrderForm,
-} from './store.js?v=25';
-import { initPwaManager } from './pwa.js?v=25';
-import { initMusicPlayer } from './music.js?v=25';
+} from './store.js?v=26';
+import { initPwaManager } from './pwa.js?v=26';
+import { initMusicPlayer } from './music.js?v=26';
 
 const THEME_STORAGE_KEY = 'manifestudio_theme_v1';
 const CART_STORAGE_KEY = 'manifestudio_cart_v1';
@@ -1522,6 +1523,29 @@ function renderBrandAndFooter() {
     `;
     if (installBtn) {
       socialContainer.appendChild(installBtn);
+    }
+  }
+
+  // Sync Storefront Utilities Callout Card from catalog.utilities.callout
+  const utilitiesCfg = normalizeUtilityConfig(state.catalog?.utilities);
+  const calloutCard = document.getElementById('utilities-callout-card');
+  if (calloutCard && utilitiesCfg.callout) {
+    const iconImg = calloutCard.querySelector('.utilities-callout-icon img');
+    if (iconImg && utilitiesCfg.callout.icon) {
+      iconImg.src = utilitiesCfg.callout.icon;
+    }
+    const titleStrong = calloutCard.querySelector('.utilities-callout-title-row strong');
+    if (titleStrong && utilitiesCfg.callout.title) {
+      titleStrong.textContent = utilitiesCfg.callout.title;
+    }
+    const badgeSpan = calloutCard.querySelector('.utilities-callout-badge');
+    if (badgeSpan && utilitiesCfg.callout.badge) {
+      badgeSpan.textContent = utilitiesCfg.callout.badge;
+    }
+    const subP = calloutCard.querySelector('.utilities-callout-copy p');
+    const calloutDesc = utilitiesCfg.callout.description || utilitiesCfg.callout.subtitle;
+    if (subP && calloutDesc) {
+      subP.textContent = calloutDesc;
     }
   }
 }
