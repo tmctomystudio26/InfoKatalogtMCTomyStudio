@@ -22,30 +22,30 @@ import {
   matchIndonesianCityQuery,
   planMediaCompression,
   resolveAccurateWeatherCondition,
-} from './tools-logic.js?v=33';
+} from './tools-logic.js?v=34';
 import {
   describeLocationSource,
   resolveUserLocation,
   searchCitiesOnline,
   setManualLocation,
-} from './location.js?v=33';
-import { createInteractiveGlobe } from './globe.js?v=33';
+} from './location.js?v=34';
+import { createInteractiveGlobe } from './globe.js?v=34';
 import {
   createSpeedometerGauge,
   fetchSpeedtestEnvironment,
   readClientDeviceTelemetry,
   runInternetSpeedtest,
-} from './speedtest.js?v=33';
+} from './speedtest.js?v=34';
 import {
   extractAudioFromVideoUrl,
   fetchMediaDownload,
   triggerBatchPhotoDownload,
   triggerDirectMediaSave,
-} from './downloader.js?v=33';
-import { compressMediaFile, inspectMediaFile } from './compressor.js?v=33';
-import { formatAudioTime, isTrackInWatchLater } from './music-logic.js?v=33';
-import { MUSIC_PRESET_CATEGORIES, getMusicController, initMusicPlayer } from './music.js?v=33';
-import { normalizeUtilityConfig } from './store.js?v=33';
+} from './downloader.js?v=34';
+import { compressMediaFile, inspectMediaFile } from './compressor.js?v=34';
+import { formatAudioTime, isTrackInWatchLater } from './music-logic.js?v=34';
+import { MUSIC_PRESET_CATEGORIES, getMusicController, initMusicPlayer } from './music.js?v=34';
+import { normalizeUtilityConfig } from './store.js?v=34';
 
 const PRAYER_CACHE_KEY = 'manifestudio_prayer_cache_v1';
 const MYQURAN_CITIES_KEY = 'manifestudio_myquran_cities_v1';
@@ -2041,6 +2041,28 @@ export function createToolsHubController({
           <div class="ytm-topbar-actions">
             <button
               type="button"
+              id="music-hub-pip-btn"
+              class="ytm-chip-btn ${mState.isPipOpen && !mState.pipHeadsetMode ? 'is-active' : ''}"
+              data-music-control="true"
+              aria-pressed="${Boolean(mState.isPipOpen && !mState.pipHeadsetMode)}"
+              title="Buka atau tutup Gambar dalam Gambar (Picture-in-Picture)"
+            >
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="4" width="20" height="16" rx="2"/><rect x="11" y="11" width="9" height="7" rx="1" fill="currentColor"/></svg>
+              <span>${mState.isPipOpen && !mState.pipHeadsetMode ? 'PiP Aktif' : 'Gambar dlm Gambar'}</span>
+            </button>
+            <button
+              type="button"
+              id="music-hub-headset-btn"
+              class="ytm-chip-btn ${mState.pipHeadsetMode ? 'is-headset-active' : ''}"
+              data-music-control="true"
+              aria-pressed="${Boolean(mState.pipHeadsetMode)}"
+              title="Mode Headset: Sembunyikan Gambar dalam Gambar namun lagu tetap berputar di latar belakang"
+            >
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 18v-6a9 9 0 0 1 18 0v6"/><path d="M21 19a2 2 0 0 1-2 2h-1a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h3zM3 19a2 2 0 0 0 2 2h1a2 2 0 0 0 2-2v-3a2 2 0 0 0-2-2H3z"/></svg>
+              <span>${mState.pipHeadsetMode ? 'Headset ON' : 'Mode Headset'}</span>
+            </button>
+            <button
+              type="button"
               id="music-hub-autoclick-btn"
               class="ytm-chip-btn ${mState.autoClickPlayEnabled !== false ? 'is-active' : ''}"
               data-music-control="true"
@@ -2277,10 +2299,19 @@ export function createToolsHubController({
             <span class="ytm-vol-pct mono-num" id="music-hub-vol-pct">${volPct}%</span>
           </div>
 
-          <span class="ytm-bg-badge" title="Tetap memutar otomatis di latar belakang & saat layar terkunci">
-            <span class="ytm-bg-dot"></span>Latar Belakang &amp; Auto-Next Aktif
+          <span class="ytm-bg-badge" title="Tetap memutar otomatis di latar belakang, layar mati & Gambar dalam Gambar">
+            <span class="ytm-bg-dot"></span>${mState.pipHeadsetMode ? '🎧 Mode Headset (Audio Latar Tanpa PiP)' : 'Latar Belakang, PiP &amp; Auto-Next Aktif'}
           </span>
         </div>
+
+        ${
+          mState.pipHeadsetMode
+            ? `<div class="ytm-headset-status-banner" id="music-hub-headset-banner" role="status">
+                <span>🎧 Gambar dalam Gambar disembunyikan — Lagu tetap berputar di latar belakang &amp; layar terkunci.</span>
+                <button type="button" id="music-hub-reopen-pip-btn" class="ytm-chip-btn" data-music-control="true">Tampilkan PiP</button>
+              </div>`
+            : ''
+        }
 
         ${
           mState.lastError
@@ -2698,6 +2729,28 @@ export function createToolsHubController({
       ctrl.toggleMute();
     });
 
+    rootEl.querySelector('#music-hub-pip-btn')?.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const opened = ctrl.togglePiP?.();
+      onToast(
+        opened
+          ? 'Gambar dalam Gambar (PiP) aktif. Klik ikon 🎧 Headset di PiP untuk menyembunyikan PiP tanpa menghentikan lagu.'
+          : 'Gambar dalam Gambar ditutup.'
+      );
+    });
+    rootEl.querySelector('#music-hub-headset-btn')?.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const headsetOn = ctrl.toggleHeadsetMode?.();
+      onToast(
+        headsetOn
+          ? '🎧 Mode Headset aktif: Gambar dalam Gambar disembunyikan & lagu tetap berputar.'
+          : 'Mode Headset dinonaktifkan.'
+      );
+    });
+    rootEl.querySelector('#music-hub-reopen-pip-btn')?.addEventListener('click', (e) => {
+      e.stopPropagation();
+      ctrl.enterPiP?.();
+    });
     rootEl.querySelector('#music-hub-autoclick-btn')?.addEventListener('click', (e) => {
       e.stopPropagation();
       ctrl.toggleAutoClickPlay?.();

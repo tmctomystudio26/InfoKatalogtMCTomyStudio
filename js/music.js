@@ -26,10 +26,12 @@ import {
   getValidCachedStreamUrl,
   hasPendingSeekSettled,
   isBlockedAudioWrapperUrl,
+  isInstantAudioPreviewUrl,
   isStrictAudioMatch,
   isStrictSongMetadataMatch,
   isTrackInWatchLater,
   needsCorsAnonymousAudio,
+  normalizeItunesTrack,
   normalizeMusicLibraryState,
   normalizeRepeatMode,
   normalizeYtMusicTrack,
@@ -40,6 +42,7 @@ import {
   rankSearchResults,
   removeTrackFromPlaylist,
   renameUserPlaylist,
+  resolvePipHeadsetStateTransition,
   scoreSearchRelevance,
   selectUmmyAudioStreamCandidates,
   serializeMusicTrack,
@@ -48,7 +51,7 @@ import {
   shouldStopSilentHoldAndPauseNotification,
   shuffleTracksFisherYates,
   toggleTrackInWatchLater,
-} from './music-logic.js?v=33';
+} from './music-logic.js?v=34';
 
 const MUSIC_POS_KEY = 'manifestudio_music_pos_v2';
 const MUSIC_VOL_KEY = 'manifestudio_music_vol_v2';
@@ -57,15 +60,13 @@ const MUSIC_REPEAT_KEY = 'manifestudio_music_repeat_v2';
 const MUSIC_SESSION_KEY = 'manifestudio_music_session_v1';
 const MUSIC_CLICK_PLAY_KEY = 'manifestudio_music_clickplay_v1';
 const MUSIC_STREAM_CACHE_KEY = 'manifestudio_music_stream_cache_v1';
+const MUSIC_HEADSET_MODE_KEY = 'manifestudio_music_headset_v1';
 
-// Community open-source YT Music / YouTube search API endpoints + direct audio stream resolvers
-const PIPED_API_HOSTS = [
-  'https://api.piped.private.coffee',
-  'https://pipedapi.ducks.party',
-];
+// Community open-source YT Music / YouTube search API endpoints + instant direct audio stream resolvers
 const SIPUTZX_YT_SEARCH_URL = 'https://api.siputzx.my.id/api/s/youtube';
 const SIPUTZX_UMMY_URL = 'https://api.siputzx.my.id/api/d/ummy';
 const AUDIUS_API_BASE = 'https://api.audius.co/v1';
+const ITUNES_SEARCH_URL = 'https://itunes.apple.com/search';
 const ytExactStreamCache = new Map();
 const ytExactInFlight = new Map();
 const trackStreamInFlight = new Map();
@@ -155,6 +156,14 @@ const musicNodeCircuit = new Map();
 function isMusicNodeOpen(url) {
   try {
     const origin = new URL(url).origin;
+    // Never circuit-break core multi-track APIs on per-video 404/503 responses
+    if (
+      origin.includes('siputzx.my.id') ||
+      origin.includes('itunes.apple.com') ||
+      origin.includes('audius.co')
+    ) {
+      return false;
+    }
     const entry = musicNodeCircuit.get(origin);
     if (!entry) return false;
     if (entry.failures >= 2 && Date.now() - entry.lastFailedAt < MUSIC_NODE_COOLDOWN_MS) {
@@ -172,6 +181,13 @@ function isMusicNodeOpen(url) {
 function recordMusicNodeResult(url, ok) {
   try {
     const origin = new URL(url).origin;
+    if (
+      origin.includes('siputzx.my.id') ||
+      origin.includes('itunes.apple.com') ||
+      origin.includes('audius.co')
+    ) {
+      return;
+    }
     if (ok) {
       musicNodeCircuit.delete(origin);
       return;
@@ -261,7 +277,20 @@ const SEED_VIRAL_INDO_TRACKS = [
     duration: 229,
     genre: 'Viral Indonesia',
     isIndonesianViral: true,
-    sourceLabel: 'YT Music API',
+    sourceLabel: 'YT Music · Background Audio',
+    streamUrl:
+      'https://audio-ssl.itunes.apple.com/itunes-assets/AudioPreview221/v4/2f/83/76/2f8376f9-c3cb-4517-19de-e0154e39179f/mzaf_1171188008250273521.plus.aac.p.m4a',
+  }),
+  normalizeYtMusicTrack({
+    videoId: 'SSNa3pW_Ht0',
+    title: 'Tanpa Cinta',
+    artist: 'Yovie Widianto & Tiara Andini',
+    duration: 251,
+    genre: 'Pop & Galau Indo',
+    isIndonesianViral: true,
+    sourceLabel: 'YT Music · Background Audio',
+    streamUrl:
+      'https://audio-ssl.itunes.apple.com/itunes-assets/AudioPreview221/v4/bc/89/94/bc899490-b312-2dd6-f6dd-43add84a594e/mzaf_17584604111107113811.plus.aac.p.m4a',
   }),
   normalizeYtMusicTrack({
     videoId: 'Zq1Jg0H5fzc',
@@ -430,7 +459,9 @@ const SEED_VIRAL_INDO_TRACKS = [
     duration: 184,
     genre: 'Pop Viral Indo',
     isIndonesianViral: true,
-    sourceLabel: 'YT Music API',
+    sourceLabel: 'YT Music · Background Audio',
+    streamUrl:
+      'https://audio-ssl.itunes.apple.com/itunes-assets/AudioPreview221/v4/49/ff/48/49ff48c0-c632-7fdd-2e15-2879a6a9e51e/mzaf_815192612749261657.plus.aac.p.m4a',
   }),
   normalizeYtMusicTrack({
     videoId: 'fKRtnMYMW08',
@@ -439,7 +470,9 @@ const SEED_VIRAL_INDO_TRACKS = [
     duration: 239,
     genre: 'Indie Viral Indo',
     isIndonesianViral: true,
-    sourceLabel: 'YT Music API',
+    sourceLabel: 'YT Music · Background Audio',
+    streamUrl:
+      'https://audio-ssl.itunes.apple.com/itunes-assets/AudioPreview211/v4/49/a4/63/49a4632e-ed7d-a68f-811b-aaad7b6f8249/mzaf_14945182221016939725.plus.aac.p.m4a',
   }),
   normalizeYtMusicTrack({
     videoId: 'V697wAtn6cI',
@@ -448,7 +481,9 @@ const SEED_VIRAL_INDO_TRACKS = [
     duration: 210,
     genre: 'Indie Viral Indo',
     isIndonesianViral: true,
-    sourceLabel: 'YT Music API',
+    sourceLabel: 'YT Music · Background Audio',
+    streamUrl:
+      'https://audio-ssl.itunes.apple.com/itunes-assets/AudioPreview211/v4/08/da/ee/08daee2a-010b-ac41-306b-56d05d4a400d/mzaf_4932649635158581379.plus.aac.p.m4a',
   }),
   normalizeYtMusicTrack({
     videoId: '9YPX7WjPDp8',
@@ -457,7 +492,9 @@ const SEED_VIRAL_INDO_TRACKS = [
     duration: 257,
     genre: 'Pop & Galau Indo',
     isIndonesianViral: true,
-    sourceLabel: 'YT Music API',
+    sourceLabel: 'YT Music · Background Audio',
+    streamUrl:
+      'https://audio-ssl.itunes.apple.com/itunes-assets/AudioPreview211/v4/e5/39/1c/e5391c7b-b92c-7ce0-5fe8-c89774427e4a/mzaf_5635026938220547257.plus.aac.p.m4a',
   }),
   normalizeYtMusicTrack({
     videoId: 'lABZ_-uhC0E',
@@ -466,7 +503,9 @@ const SEED_VIRAL_INDO_TRACKS = [
     duration: 228,
     genre: 'Pop Viral Indo',
     isIndonesianViral: true,
-    sourceLabel: 'YT Music API',
+    sourceLabel: 'YT Music · Background Audio',
+    streamUrl:
+      'https://audio-ssl.itunes.apple.com/itunes-assets/AudioPreview211/v4/10/6a/22/106a2257-a266-307a-9ee8-c89774427e4a/mzaf_13198026841925520306.plus.aac.p.m4a',
   }),
 ].filter(Boolean);
 
@@ -674,7 +713,7 @@ async function fetchAudiusDirectTracks(query, { genre = 'Viral Indonesia', isInd
   try {
     const json = await fetchJsonTimeout(
       `${AUDIUS_API_BASE}/tracks/search?query=${encodeURIComponent(q)}&app_name=Manifestudio`,
-      5500
+      4500
     );
     const items = Array.isArray(json?.data) ? json.data : [];
     const normalized = items
@@ -700,6 +739,30 @@ async function fetchAudiusDirectTracks(query, { genre = 'Viral Indonesia', isInd
       })
       .filter(Boolean);
     return filterFullLengthTracks(normalized, MIN_FULL_TRACK_SECONDS).slice(0, limit);
+  } catch {
+    return [];
+  }
+}
+
+async function fetchItunesDirectTracks(query, { genre = 'Viral Indonesia', isIndonesianViral = true, limit = 10 } = {}) {
+  const q = String(query || '').trim();
+  if (!q) return [];
+  try {
+    const json = await fetchJsonTimeout(
+      `${ITUNES_SEARCH_URL}?country=ID&media=music&entity=song&limit=${limit}&term=${encodeURIComponent(q)}`,
+      3800
+    );
+    const items = Array.isArray(json?.results) ? json.results : [];
+    return items
+      .map((item) =>
+        normalizeItunesTrack(item, {
+          genre,
+          isIndonesianViral,
+          sourceLabel: 'YT Music · Background Audio',
+        })
+      )
+      .filter(Boolean)
+      .slice(0, limit);
   } catch {
     return [];
   }
@@ -886,29 +949,13 @@ async function fetchRawYoutubeCandidates(query, limit = 10) {
     }
   };
 
-  await Promise.allSettled([
-    (async () => {
-      try {
-        const json = await fetchJsonTimeout(`${SIPUTZX_YT_SEARCH_URL}?query=${encodeURIComponent(q)}`, 6000);
-        const items = Array.isArray(json?.data) ? json.data : [];
-        items.slice(0, limit).forEach(pushItem);
-      } catch {
-        // Ignore Siputzx error
-      }
-    })(),
-    ...PIPED_API_HOSTS.slice(0, 1).map(async (host) => {
-      try {
-        const json = await fetchJsonTimeout(
-          `${host}/search?q=${encodeURIComponent(q)}&filter=music_songs`,
-          4500
-        );
-        const items = Array.isArray(json?.items) ? json.items : [];
-        items.slice(0, limit).forEach(pushItem);
-      } catch {
-        // Ignore Piped error
-      }
-    }),
-  ]);
+  try {
+    const json = await fetchJsonTimeout(`${SIPUTZX_YT_SEARCH_URL}?query=${encodeURIComponent(q)}`, 5200);
+    const items = Array.isArray(json?.data) ? json.data : [];
+    items.slice(0, limit).forEach(pushItem);
+  } catch {
+    // Ignore Siputzx error
+  }
 
   return results;
 }
@@ -944,10 +991,23 @@ async function resolveBackgroundStreamForTrack(track, { allowAltYt = true, bypas
       }
 
       const query = `${track.title || ''} ${track.artist || ''}`.trim();
-      const altCandidatesPromise =
-        allowAltYt && query ? fetchRawYoutubeCandidates(query, 12).catch(() => []) : Promise.resolve([]);
 
-      // Race verified Audius direct-stream search IN PARALLEL immediately!
+      // 1. Instant <350ms Apple CDN M4A & Audius direct stream race (zero proxy needed, plays natively in background!)
+      const itunesDirectJob = query
+        ? fetchItunesDirectTracks(query, {
+            genre: track.genre || 'Viral Indonesia',
+            isIndonesianViral: Boolean(track.isIndonesianViral),
+            limit: 6,
+          })
+            .then((itunesMatches) => {
+              const strictHit = itunesMatches.find(
+                (it) => it.streamUrl && !failedStreamUrls.has(it.streamUrl) && isStrictAudioMatch(track, it)
+              );
+              return strictHit?.streamUrl || '';
+            })
+            .catch(() => '')
+        : Promise.resolve('');
+
       const audiusDirectJob = query
         ? fetchAudiusDirectTracks(query, {
             genre: track.genre || 'Viral Indonesia',
@@ -959,7 +1019,7 @@ async function resolveBackgroundStreamForTrack(track, { allowAltYt = true, bypas
                 (a) => a.streamUrl && !failedStreamUrls.has(a.streamUrl) && isStrictAudioMatch(track, a)
               );
               for (const hit of strictHits.slice(0, 2)) {
-                const ok = await probePlayableAudioStream(hit.streamUrl, 4000).catch(() => false);
+                const ok = await probePlayableAudioStream(hit.streamUrl, 3200).catch(() => false);
                 if (ok) return hit.streamUrl;
               }
               return '';
@@ -972,36 +1032,29 @@ async function resolveBackgroundStreamForTrack(track, { allowAltYt = true, bypas
           ? resolveExactYoutubeAudioStream(track.videoId, { bypassCache }).catch(() => '')
           : Promise.resolve('');
 
-      let primaryResolved = false;
-      const primaryWinnerPromise = resolveFirstTruthy([exactYtJob, audiusDirectJob]).then((res) => {
-        if (res) primaryResolved = true;
-        return res;
-      });
-
-      // For priority user playback, race up to 4 strictly-matching alternate uploads immediately (~250ms head start)
-      // instead of waiting 15+ seconds sequentially when the primary videoId is IP-locked 403!
-      const parallelAltJob =
-        allowAltYt && query
-          ? (async () => {
-              const fetchedAlts = await altCandidatesPromise;
-              if (!primaryResolved && !priority) {
-                await new Promise((r) => setTimeout(r, 1200));
-              }
-              if (primaryResolved) return '';
-              const matchingAlts = dedupeMatchingAltTracks(track, [...SEED_VIRAL_INDO_TRACKS, ...fetchedAlts], {
-                failedIds: failedExactVideoIds,
-                maxAlts: priority ? 4 : 2,
-              });
-              if (matchingAlts.length === 0) return '';
-              return resolveFirstTruthy(matchingAlts.map((alt) => resolveExactYoutubeAudioStream(alt.videoId)));
-            })().catch(() => '')
-          : Promise.resolve('');
-
-      const winner = await resolveFirstTruthy([primaryWinnerPromise, parallelAltJob]);
+      const winner = await resolveFirstTruthy([itunesDirectJob, audiusDirectJob, exactYtJob]);
       if (winner && !failedStreamUrls.has(winner)) {
         track.streamUrl = winner;
         if (track.videoId) persistResolvedStreamUrl(track.videoId, winner);
         return winner;
+      }
+
+      if (allowAltYt && query) {
+        const fetchedAlts = await fetchRawYoutubeCandidates(query, 8).catch(() => []);
+        const matchingAlts = dedupeMatchingAltTracks(track, [...SEED_VIRAL_INDO_TRACKS, ...fetchedAlts], {
+          failedIds: failedExactVideoIds,
+          maxAlts: 2,
+        });
+        if (matchingAlts.length > 0) {
+          const altWinner = await resolveFirstTruthy(
+            matchingAlts.map((alt) => resolveExactYoutubeAudioStream(alt.videoId))
+          );
+          if (altWinner && !failedStreamUrls.has(altWinner)) {
+            track.streamUrl = altWinner;
+            if (track.videoId) persistResolvedStreamUrl(track.videoId, altWinner);
+            return altWinner;
+          }
+        }
       }
 
       return '';
@@ -1019,10 +1072,12 @@ async function fetchYtMusicSearch(query, { genre = 'YT Music', isIndonesianViral
   const q = String(query || '').trim();
   if (!q) return [];
 
-  // Run Audius, Siputzx YT Search, and Piped in PARALLEL so slow/down Piped hosts NEVER stall search!
-  const [audiusItems, siputzxItems, pipedItems] = await Promise.all([
+  // Run iTunes Direct CDN, Audius Direct, and Siputzx YT Search in PARALLEL so every search result
+  // already has a verified native <audio> streamUrl attached before the user even taps Play!
+  const [itunesItems, audiusItems, siputzxItems] = await Promise.all([
+    fetchItunesDirectTracks(q, { genre, isIndonesianViral, limit: 8 }).catch(() => []),
     fetchAudiusDirectTracks(q, { genre, isIndonesianViral, limit: 8 }).catch(() => []),
-    fetchJsonTimeout(`${SIPUTZX_YT_SEARCH_URL}?query=${encodeURIComponent(q)}`, 5500)
+    fetchJsonTimeout(`${SIPUTZX_YT_SEARCH_URL}?query=${encodeURIComponent(q)}`, 5200)
       .then((json) => {
         const items = Array.isArray(json?.data) ? json.data : [];
         const normalized = items
@@ -1038,36 +1093,10 @@ async function fetchYtMusicSearch(query, { genre = 'YT Music', isIndonesianViral
         return (full.length > 0 ? full : normalized).slice(0, limit);
       })
       .catch(() => []),
-    resolveFirstTruthy(
-      PIPED_API_HOSTS.map(async (host) => {
-        try {
-          const json = await fetchJsonTimeout(
-            `${host}/search?q=${encodeURIComponent(q)}&filter=music_songs`,
-            4500
-          );
-          const items = Array.isArray(json?.items) ? json.items : [];
-          const normalized = items
-            .map((item) =>
-              normalizeYtMusicTrack(item, {
-                genre,
-                isIndonesianViral,
-                sourceLabel: 'YT Music API',
-              })
-            )
-            .filter(Boolean);
-          const full = filterFullLengthTracks(normalized, MIN_FULL_TRACK_SECONDS);
-          const chosen = full.length > 0 ? full : normalized;
-          return chosen.length > 0 ? chosen.slice(0, limit) : null;
-        } catch {
-          return null;
-        }
-      })
-    ).then((res) => (Array.isArray(res) ? res : [])),
   ]);
 
-  // Prefer Piped `music_songs` if populated cleanly, otherwise Siputzx YT Community results
   const ytMap = new Map();
-  for (const item of [...pipedItems, ...siputzxItems]) {
+  for (const item of siputzxItems) {
     const key = item?.videoId ? `yt-${item.videoId}` : item?.id;
     if (key && !ytMap.has(key)) {
       hydrateTrackStreamFromCache(item);
@@ -1078,8 +1107,8 @@ async function fetchYtMusicSearch(query, { genre = 'YT Music', isIndonesianViral
   const rankedYtItems = rankSearchResults(rawYtItems, q, 45);
   const ytItems = (rankedYtItems.length > 0 ? rankedYtItems : rawYtItems).slice(0, limit);
 
-  // ONLY attach `streamUrl` when strictly verified to be the EXACT same song title & artist!
-  // Never assign another song's streamUrl by index or hash fallback!
+  // Attach verified native <audio> streamUrl to YT items from Seed, Audius, or Apple Music CDN
+  // ONLY when strictly verified to be the EXACT same song title & artist!
   for (let i = 0; i < ytItems.length; i += 1) {
     const yt = ytItems[i];
     if (yt.streamUrl) continue;
@@ -1088,20 +1117,34 @@ async function fetchYtMusicSearch(query, { genre = 'YT Music', isIndonesianViral
     );
     if (seedHit?.streamUrl) {
       yt.streamUrl = seedHit.streamUrl;
+      persistResolvedStreamUrl(yt.videoId, seedHit.streamUrl);
       continue;
     }
     const strictAudMatch = audiusItems.find((a) => isStrictAudioMatch(yt, a));
     if (strictAudMatch?.streamUrl) {
       yt.streamUrl = strictAudMatch.streamUrl;
+      persistResolvedStreamUrl(yt.videoId, strictAudMatch.streamUrl);
+      continue;
+    }
+    const strictItunesMatch = itunesItems.find((it) => isStrictAudioMatch(yt, it));
+    if (strictItunesMatch?.streamUrl) {
+      yt.streamUrl = strictItunesMatch.streamUrl;
+      persistResolvedStreamUrl(yt.videoId, strictItunesMatch.streamUrl);
     }
   }
 
   const combined = [...ytItems];
-  // Only include genuinely query-relevant Audius tracks (never unrelated tag-noise matches)
-  const relevantAudius = rankSearchResults(audiusItems, q, 45);
-  for (const aud of relevantAudius) {
-    if (!combined.some((c) => c.id === aud.id || (aud.streamUrl && c.streamUrl === aud.streamUrl))) {
-      combined.push(aud);
+  const relevantDirect = rankSearchResults([...audiusItems, ...itunesItems], q, 45);
+  for (const dirItem of relevantDirect) {
+    if (
+      !combined.some(
+        (c) =>
+          c.id === dirItem.id ||
+          (dirItem.streamUrl && c.streamUrl === dirItem.streamUrl) ||
+          isStrictAudioMatch(c, dirItem)
+      )
+    ) {
+      combined.push(dirItem);
     }
   }
   return combined.slice(0, limit);
@@ -1259,6 +1302,18 @@ export function initMusicPlayer() {
   let pausedDueToBackgroundWait = false;
   let backgroundAttemptDoneForTrackId = '';
   let hiddenTransitionAt = 0;
+  let isPipOpen = false;
+  let pipHeadsetMode = false;
+  try {
+    pipHeadsetMode = localStorage.getItem(MUSIC_HEADSET_MODE_KEY) === 'true';
+  } catch {
+    pipHeadsetMode = false;
+  }
+  let pipStatusMessage = '';
+  let pipCanvas = null;
+  let pipVideo = null;
+  let pipArtImg = null;
+  let pipArtLoadedSrc = '';
   const recentTrackIds = [];
   const playHistory = [];
   const blockedVideoIds = new Set();
@@ -1561,11 +1616,170 @@ export function initMusicPlayer() {
       queueTotal: activeList.length,
       activeEngine,
       isSilentHold,
+      isPipOpen,
+      pipHeadsetMode,
+      pipStatusMessage,
       ytReady,
       canPrev: playHistory.length > 1 || activeList.length > 1,
       watchLater: musicLibrary.watchLater,
       playlists: musicLibrary.playlists,
     };
+  }
+
+  function ensurePipVideoElement() {
+    if (typeof document === 'undefined') return null;
+    if (pipVideo && pipCanvas) return pipVideo;
+    try {
+      pipCanvas = document.createElement('canvas');
+      pipCanvas.width = 480;
+      pipCanvas.height = 270;
+      pipVideo = document.createElement('video');
+      pipVideo.id = 'ytm-pip-video';
+      pipVideo.className = 'ytm-pip-video-hidden';
+      pipVideo.muted = true;
+      pipVideo.playsInline = true;
+      pipVideo.setAttribute('playsinline', '');
+      pipVideo.setAttribute('webkit-playsinline', '');
+      pipVideo.setAttribute('aria-hidden', 'true');
+      if ('autoPictureInPicture' in pipVideo) {
+        pipVideo.autoPictureInPicture = !pipHeadsetMode;
+      }
+      document.body.appendChild(pipVideo);
+      drawPipCanvasFrame();
+      if (typeof pipCanvas.captureStream === 'function') {
+        const stream = pipCanvas.captureStream(10);
+        pipVideo.srcObject = stream;
+      }
+      pipVideo.addEventListener('leavepictureinpicture', () => {
+        if (!pipHeadsetMode && isPipOpen) {
+          // Keep floating web PiP card synchronized or close cleanly
+          renderWidget();
+          notifySubscribers('pip');
+        }
+      });
+    } catch {
+      // Ignore PiP canvas init error
+    }
+    return pipVideo;
+  }
+
+  function drawPipCanvasFrame() {
+    if (!pipCanvas) return;
+    try {
+      const ctx = pipCanvas.getContext('2d');
+      if (!ctx) return;
+      const active = currentTrack || tracks[0] || SEED_VIRAL_INDO_TRACKS[0];
+      const w = pipCanvas.width;
+      const h = pipCanvas.height;
+      const grad = ctx.createLinearGradient(0, 0, w, h);
+      grad.addColorStop(0, '#0f172a');
+      grad.addColorStop(0.55, '#1e1b4b');
+      grad.addColorStop(1, '#31102f');
+      ctx.fillStyle = grad;
+      ctx.fillRect(0, 0, w, h);
+
+      const artUrl = active?.artwork || active?.artworkFallback || '';
+      if (artUrl && pipArtLoadedSrc !== artUrl && typeof Image !== 'undefined') {
+        pipArtLoadedSrc = artUrl;
+        const img = new Image();
+        img.crossOrigin = 'anonymous';
+        img.onload = () => {
+          pipArtImg = img;
+        };
+        img.src = artUrl;
+      }
+      if (pipArtImg && pipArtImg.complete && pipArtImg.naturalWidth > 0) {
+        try {
+          ctx.drawImage(pipArtImg, 24, 38, 150, 150);
+        } catch {
+          // Ignore cross-origin draw error
+        }
+      } else {
+        ctx.fillStyle = '#ff0033';
+        ctx.fillRect(24, 38, 150, 150);
+        ctx.fillStyle = '#ffffff';
+        ctx.font = 'bold 54px sans-serif';
+        ctx.fillText('♪', 82, 132);
+      }
+
+      ctx.fillStyle = '#fda4af';
+      ctx.font = 'bold 14px sans-serif';
+      ctx.fillText('MANIFESTUDIO YT MUSIC • GAMBAR DALAM GAMBAR', 194, 58);
+
+      ctx.fillStyle = '#ffffff';
+      ctx.font = 'bold 22px sans-serif';
+      const titleStr = String(active?.title || 'YT Music Viral Indonesia').slice(0, 26);
+      ctx.fillText(titleStr, 194, 98);
+
+      ctx.fillStyle = '#cbd5e1';
+      ctx.font = '600 16px sans-serif';
+      const artistStr = String(active?.artist || 'Artis Indonesia').slice(0, 30);
+      ctx.fillText(artistStr, 194, 128);
+
+      ctx.fillStyle = '#7dd3fc';
+      ctx.font = 'bold 14px sans-serif';
+      ctx.fillText('🎧 Klik Headset untuk sembunyikan PiP (musik tetap jalan)', 194, 168);
+
+      const durSec = duration || active?.duration || 180;
+      const curSec = Math.min(durSec, Math.max(0, currentTime || 0));
+      const pct = durSec > 0 ? Math.min(1, curSec / durSec) : 0;
+      ctx.fillStyle = 'rgba(255,255,255,0.16)';
+      ctx.fillRect(24, 218, w - 48, 8);
+      ctx.fillStyle = '#ff0033';
+      ctx.fillRect(24, 218, Math.round((w - 48) * pct), 8);
+    } catch {
+      // Ignore canvas draw error
+    }
+  }
+
+  function applyPipHeadsetTransition(action) {
+    const nextState = resolvePipHeadsetStateTransition({
+      isPipOpen,
+      pipHeadsetMode,
+      isPlaying: isPlaying || isLoading,
+      action,
+    });
+    isPipOpen = nextState.isPipOpen;
+    pipHeadsetMode = nextState.pipHeadsetMode;
+    try {
+      localStorage.setItem(MUSIC_HEADSET_MODE_KEY, String(pipHeadsetMode));
+    } catch {
+      // Ignore storage error
+    }
+    if (pipVideo && 'autoPictureInPicture' in pipVideo) {
+      pipVideo.autoPictureInPicture = !pipHeadsetMode;
+    }
+    if (nextState.shouldExitNativePip && typeof document !== 'undefined' && document.pictureInPictureElement) {
+      try {
+        document.exitPictureInPicture?.().catch(() => {});
+      } catch {
+        // Ignore
+      }
+    }
+    if (isPipOpen && !pipHeadsetMode) {
+      const vid = ensurePipVideoElement();
+      drawPipCanvasFrame();
+      if (vid && action === 'enter-pip' && typeof vid.requestPictureInPicture === 'function' && document.pictureInPictureEnabled) {
+        vid
+          .play()
+          .then(() => vid.requestPictureInPicture?.())
+          .catch(() => {});
+      }
+    }
+    if (nextState.shouldKeepPlaying && !explicitPaused) {
+      ensureBackgroundAudioKeepAlive();
+      if (activeEngine === 'audio-el' && audio.paused && !audio.ended && audio.src && !isSwitchingSource) {
+        audio.play().catch(() => {});
+      }
+    }
+    pipStatusMessage = pipHeadsetMode
+      ? '🎧 Mode Headset aktif: Gambar dalam Gambar disembunyikan & lagu tetap berputar.'
+      : isPipOpen
+      ? 'Gambar dalam Gambar (PiP) aktif.'
+      : '';
+    renderWidget();
+    notifySubscribers('pip');
+    return nextState;
   }
 
   function notifySubscribers(kind = 'state') {
@@ -1768,6 +1982,13 @@ export function initMusicPlayer() {
           controller.seekToSeconds(details.seekTime);
         }
       });
+      try {
+        navigator.mediaSession.setActionHandler('enterpictureinpicture', () => {
+          controller.enterPiP();
+        });
+      } catch {
+        // Ignore if enterpictureinpicture action is unsupported
+      }
       syncMediaPositionState();
     } catch {
       // Ignore unsupported mediaSession handlers
@@ -2295,6 +2516,16 @@ export function initMusicPlayer() {
           syncMediaPositionState();
           renderWidget();
           notifySubscribers('play');
+          // If playing an instant 30s Apple CDN stream and user is not repeating one, quietly pre-resolve full-length YT stream in background
+          if (isInstantAudioPreviewUrl(targetStreamUrl) && track.videoId && !failedExactVideoIds.has(track.videoId)) {
+            resolveExactYoutubeAudioStream(track.videoId)
+              .then((fullUrl) => {
+                if (fullUrl && !failedStreamUrls.has(fullUrl) && !isInstantAudioPreviewUrl(fullUrl)) {
+                  propagateResolvedStreamToPools(track, fullUrl);
+                }
+              })
+              .catch(() => {});
+          }
           // Pre-warm upcoming queue + playlist tracks cleanly in background
           scheduleStreamPrewarm(600);
         })
@@ -2341,44 +2572,40 @@ export function initMusicPlayer() {
       track.streamUrl = '';
     }
 
-    // Track only has videoId: start silent hold inside user gesture so Android/Chrome
-    // grants background wake lock ONLY for the short Wave-1 resolve window, start YT IFrame in foreground,
-    // and swap to <audio> immediately on resolution — or pause cleanly if unresolvable in background!
-    activeEngine = 'yt-iframe';
+    // Track does not have a cached streamUrl yet:
+    // Unlock native <audio> inside the user gesture and resolve direct native stream FIRST (~300ms via Apple CDN / Audius / Seed)
+    // so playback starts IMMEDIATELY on native <audio> ('audio-el') and NEVER stops when switching tabs, locking screen, or leaving the app!
+    activeEngine = 'audio-el';
+    isLoading = true;
+    isPlaying = true;
     startSilentHoldForBackgroundTransition();
-    startYoutubePlaybackForTrack(track, currentTime);
+    renderWidget();
+    notifySubscribers('loading');
     resolveBackgroundStreamForTrack(track, { allowAltYt: true, priority: true })
       .then((resolvedUrl) => {
-        if (resolvedUrl) {
+        if (explicitPaused || currentTrack?.id !== track.id) return;
+        if (resolvedUrl && !failedStreamUrls.has(resolvedUrl)) {
           propagateResolvedStreamToPools(track, resolvedUrl);
+          executePlaybackNow(track, { startSeconds: getResumeSecondsForTrack(track) });
+          return;
         }
-        if (
-          resolvedUrl &&
-          !failedStreamUrls.has(resolvedUrl) &&
-          currentTrack?.id === track.id &&
-          !explicitPaused &&
-          activeEngine === 'yt-iframe'
-        ) {
-          handoffToBackgroundSafeAudio('foreground-stream-upgrade');
-        } else if (currentTrack?.id === track.id && !explicitPaused && activeEngine === 'yt-iframe') {
-          backgroundAttemptDoneForTrackId = track.id;
-          const isHiddenNow = typeof document !== 'undefined' && Boolean(document.hidden);
-          if (
-            shouldStopSilentHoldAndPauseNotification({
-              activeEngine,
-              isSilentHold,
-              resolvedStreamUrl: '',
-              isHidden: isHiddenNow,
-              explicitPaused,
-              timedOutOrFailed: true,
-            })
-          ) {
-            pauseSilentHoldOnBackgroundFailure('bg-unavailable');
-          }
+        // Only fall back to YT IFrame if no direct stream resolved
+        stopSilentHold({ clearSrc: true });
+        const isHiddenNow = typeof document !== 'undefined' && Boolean(document.hidden);
+        if (!isHiddenNow && track.videoId && !failedYtIframeVideoIds.has(track.videoId)) {
+          startYoutubePlaybackForTrack(track, getResumeSecondsForTrack(track));
+        } else {
+          pauseSilentHoldOnBackgroundFailure('bg-unavailable');
         }
         scheduleStreamPrewarm(800);
       })
-      .catch(() => {});
+      .catch(() => {
+        if (explicitPaused || currentTrack?.id !== track.id) return;
+        stopSilentHold({ clearSrc: true });
+        if (track.videoId && !failedYtIframeVideoIds.has(track.videoId)) {
+          startYoutubePlaybackForTrack(track, getResumeSecondsForTrack(track));
+        }
+      });
   }
 
   async function ensureTrackPool() {
@@ -2464,13 +2691,18 @@ export function initMusicPlayer() {
   }
 
   function syncPopoverProgressDom() {
+    drawPipCanvasFrame();
+    const dur = duration || currentTrack?.duration || 180;
+    const cur = Math.min(dur, Math.max(0, currentTime || 0));
+    const pct = dur > 0 ? Math.min(100, (cur / dur) * 100) : 0;
+    const pipFillEl = root.querySelector('#music-pip-progress-fill');
+    const pipTimeEl = root.querySelector('#music-pip-time-label');
+    if (pipFillEl) pipFillEl.style.width = `${pct}%`;
+    if (pipTimeEl) pipTimeEl.textContent = `${formatAudioTime(cur)} / ${formatAudioTime(dur)}`;
     if (!isOpen || isSeeking) return;
     const slider = root.querySelector('#music-seek-slider');
     const timeEl = root.querySelector('#music-time-label');
     const fillEl = root.querySelector('#music-mini-progress-fill');
-    const dur = duration || currentTrack?.duration || 180;
-    const cur = Math.min(dur, Math.max(0, currentTime || 0));
-    const pct = dur > 0 ? Math.min(100, (cur / dur) * 100) : 0;
     if (slider && dur > 0) {
       slider.value = String(pct);
     }
@@ -2507,6 +2739,88 @@ export function initMusicPlayer() {
 
     root.innerHTML = `
       <div
+        id="music-pip-card"
+        data-testid="music-pip-card"
+        class="music-pip-card"
+        role="region"
+        aria-label="Gambar dalam Gambar (Picture-in-Picture) Pemutar Musik"
+        ${isPipOpen && !pipHeadsetMode ? '' : 'hidden'}
+      >
+        <div class="music-pip-head">
+          <span class="music-pip-badge">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="4" width="20" height="16" rx="2"/><rect x="11" y="11" width="9" height="7" rx="1" fill="currentColor"/></svg>
+            <span>Gambar dalam Gambar</span>
+          </span>
+          <div class="music-pip-head-actions">
+            <button
+              type="button"
+              id="music-pip-headset-btn"
+              data-testid="music-pip-headset-btn"
+              class="music-pip-headset-btn"
+              data-music-control="true"
+              title="Sembunyikan Gambar dalam Gambar namun lagu tetap berputar (Mode Headset)"
+              aria-label="Mode Headset: Sembunyikan Gambar dalam Gambar namun lagu tetap berputar"
+            >
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 18v-6a9 9 0 0 1 18 0v6"/><path d="M21 19a2 2 0 0 1-2 2h-1a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h3zM3 19a2 2 0 0 0 2 2h1a2 2 0 0 0 2-2v-3a2 2 0 0 0-2-2H3z"/></svg>
+              <span>Headset</span>
+            </button>
+            <button
+              type="button"
+              id="music-pip-close-btn"
+              class="music-pip-close-btn"
+              data-music-control="true"
+              title="Tutup Gambar dalam Gambar"
+              aria-label="Tutup Gambar dalam Gambar"
+            >
+              ✕
+            </button>
+          </div>
+        </div>
+
+        <div class="music-pip-body">
+          <div class="music-pip-art-wrap">
+            ${
+              active?.artwork
+                ? `<img src="${escapeHtml(active.artwork)}" alt="" width="52" height="52" class="music-pip-art-img" onerror="this.src='${escapeHtml(active.artworkFallback || '')}'" />`
+                : `<span class="music-art-fallback" aria-hidden="true">♪</span>`
+            }
+          </div>
+          <div class="music-pip-meta">
+            <strong class="music-pip-title" id="music-pip-title">${escapeHtml(currentTrack ? currentTrack.title : active?.title || 'YT Music Viral Indonesia')}</strong>
+            <span class="music-pip-artist" id="music-pip-artist">${escapeHtml(currentTrack ? currentTrack.artist : active?.artist || 'Artis Indonesia')}</span>
+          </div>
+          <div class="music-pip-controls">
+            <button
+              type="button"
+              id="music-pip-play-btn"
+              class="music-pip-ctrl-btn is-primary"
+              data-music-control="true"
+              aria-label="${isPlaying ? 'Jeda lagu di PiP' : 'Putar lagu di PiP'}"
+            >
+              ${playIcon}
+            </button>
+            <button
+              type="button"
+              id="music-pip-next-btn"
+              class="music-pip-ctrl-btn"
+              data-music-control="true"
+              aria-label="Lagu berikutnya di PiP"
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 4 15 12 5 20 5 4"/><rect x="16.6" y="4" width="2.4" height="16" rx="1"/></svg>
+            </button>
+          </div>
+        </div>
+
+        <div class="music-pip-progress" aria-hidden="true">
+          <div id="music-pip-progress-fill" class="music-pip-progress-fill" style="width: ${pct}%"></div>
+        </div>
+        <div class="music-pip-foot-tip">
+          <span>Ketuk 🎧 Headset agar PiP sembunyi &amp; musik tetap jalan</span>
+          <span class="mono-num" id="music-pip-time-label">${formatAudioTime(curSec)} / ${formatAudioTime(durSec)}</span>
+        </div>
+      </div>
+
+      <div
         id="music-popover"
         class="music-popover music-popover-modern ytm-mini-popover"
         role="dialog"
@@ -2527,6 +2841,28 @@ export function initMusicPlayer() {
           </div>
 
           <div class="music-head-btns">
+            <button
+              type="button"
+              class="music-icon-mini-btn ${isPipOpen && !pipHeadsetMode ? 'is-active' : ''}"
+              id="music-mini-pip-btn"
+              data-music-control="true"
+              title="Gambar dalam Gambar (Picture-in-Picture)"
+              aria-label="Buka atau tutup Gambar dalam Gambar"
+              aria-pressed="${Boolean(isPipOpen && !pipHeadsetMode)}"
+            >
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="16" rx="2"/><rect x="11" y="11" width="9" height="7" rx="1" fill="currentColor"/></svg>
+            </button>
+            <button
+              type="button"
+              class="music-icon-mini-btn ${pipHeadsetMode ? 'is-headset-active' : ''}"
+              id="music-mini-headset-btn"
+              data-music-control="true"
+              title="Mode Headset: Sembunyikan Gambar dalam Gambar namun lagu tetap berputar"
+              aria-label="Aktifkan Mode Headset"
+              aria-pressed="${Boolean(pipHeadsetMode)}"
+            >
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 18v-6a9 9 0 0 1 18 0v6"/><path d="M21 19a2 2 0 0 1-2 2h-1a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h3zM3 19a2 2 0 0 0 2 2h1a2 2 0 0 0 2-2v-3a2 2 0 0 0-2-2H3z"/></svg>
+            </button>
             <button
               type="button"
               class="music-icon-mini-btn ${autoClickPlayEnabled ? 'is-active' : ''}"
@@ -2907,6 +3243,36 @@ export function initMusicPlayer() {
       }
     });
 
+    root.querySelector('#music-pip-headset-btn')?.addEventListener('click', (e) => {
+      e.stopPropagation();
+      controller.activateHeadsetMode();
+    });
+
+    root.querySelector('#music-pip-close-btn')?.addEventListener('click', (e) => {
+      e.stopPropagation();
+      controller.closePiP();
+    });
+
+    root.querySelector('#music-pip-play-btn')?.addEventListener('click', (e) => {
+      e.stopPropagation();
+      controller.togglePlayPause();
+    });
+
+    root.querySelector('#music-pip-next-btn')?.addEventListener('click', (e) => {
+      e.stopPropagation();
+      controller.playNext({ userInitiated: true });
+    });
+
+    root.querySelector('#music-mini-pip-btn')?.addEventListener('click', (e) => {
+      e.stopPropagation();
+      controller.togglePiP();
+    });
+
+    root.querySelector('#music-mini-headset-btn')?.addEventListener('click', (e) => {
+      e.stopPropagation();
+      controller.toggleHeadsetMode();
+    });
+
     root.querySelector('#music-autoclick-btn')?.addEventListener('click', (e) => {
       e.stopPropagation();
       controller.toggleAutoClickPlay();
@@ -3059,6 +3425,32 @@ export function initMusicPlayer() {
       subscribers.add(cb);
       cb(getSnapshot(), 'init');
       return () => subscribers.delete(cb);
+    },
+
+    enterPiP() {
+      const next = applyPipHeadsetTransition('enter-pip');
+      return next.isPipOpen;
+    },
+
+    closePiP() {
+      const next = applyPipHeadsetTransition('close-pip');
+      return next.isPipOpen;
+    },
+
+    togglePiP() {
+      const next = applyPipHeadsetTransition('toggle-pip');
+      return next.isPipOpen;
+    },
+
+    activateHeadsetMode() {
+      const next = applyPipHeadsetTransition('activate-headset');
+      return next.pipHeadsetMode;
+    },
+
+    toggleHeadsetMode() {
+      const action = isPipOpen ? 'activate-headset' : 'toggle-headset';
+      const next = applyPipHeadsetTransition(action);
+      return next.pipHeadsetMode;
     },
 
     playTrack(track, { startSeconds = 0, queueMode = null, playlistId = '', selectionSource = 'user' } = {}) {
@@ -3901,6 +4293,9 @@ export function initMusicPlayer() {
         currentTime: resumeSec,
         trackSelectionSource,
       });
+      if (!pipHeadsetMode) {
+        applyPipHeadsetTransition('auto-pip-background');
+      }
       if (activeEngine === 'yt-iframe') {
         if (currentTrack && backgroundAttemptDoneForTrackId === currentTrack.id && !currentTrack.streamUrl) {
           pauseSilentHoldOnBackgroundFailure('bg-unavailable');

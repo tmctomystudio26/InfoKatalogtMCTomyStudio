@@ -60,10 +60,12 @@ import {
   getValidCachedStreamUrl,
   hasPendingSeekSettled,
   isBlockedAudioWrapperUrl,
+  isInstantAudioPreviewUrl,
   isStrictAudioMatch,
   isStrictSongMetadataMatch,
   isTrackInWatchLater,
   needsCorsAnonymousAudio,
+  normalizeItunesTrack,
   normalizeMusicLibraryState,
   normalizeMusicMode,
   normalizeRepeatMode,
@@ -76,6 +78,7 @@ import {
   rankSearchResults,
   removeTrackFromPlaylist,
   renameUserPlaylist,
+  resolvePipHeadsetStateTransition,
   scoreSearchRelevance,
   selectUmmyAudioStreamCandidates,
   shouldAutoSkipOnPlaybackError,
@@ -2083,4 +2086,85 @@ test('Artist - Title parser matches genuine alternate uploads for same song whil
   );
 });
 
+test('music v34 normalizes instant Apple Music/iTunes direct streams, prioritizes non-gcr=id Ummy streams, and manages PiP + Headset mode state transitions', () => {
+  const itunesTrack = normalizeItunesTrack({
+    trackId: 1581234567,
+    trackName: 'Tanpa Cinta',
+    artistName: 'Yovie Widianto & Tiara Andini',
+    trackTimeMillis: 251000,
+    artworkUrl100: 'https://is1-ssl.mzstatic.com/image/thumb/Music115/v4/ab/cd/ef/cover/100x100bb.jpg',
+    previewUrl: 'https://audio-ssl.itunes.apple.com/itunes-assets/AudioPreview221/v4/bc/89/94/mzaf_17584604111107113811.plus.aac.p.m4a',
+    primaryGenreName: 'Indo Pop',
+  });
+  assert.ok(itunesTrack);
+  assert.equal(itunesTrack.id, 'itn-1581234567');
+  assert.equal(itunesTrack.title, 'Tanpa Cinta');
+  assert.equal(itunesTrack.artist, 'Yovie Widianto & Tiara Andini');
+  assert.equal(itunesTrack.duration, 251);
+  assert.equal(itunesTrack.artwork.includes('480x480bb'), true);
+  assert.equal(isInstantAudioPreviewUrl(itunesTrack.streamUrl), true);
+  assert.equal(isInstantAudioPreviewUrl('https://api.audius.co/v1/tracks/Nlzyaxp/stream'), false);
 
+  // Strict audio match between YT search item and normalized iTunes track
+  const ytTanpaCinta = normalizeYtMusicTrack({
+    videoId: 'SSNa3pW_Ht0',
+    title: 'Yovie Widianto, Tiara Andini - Tanpa Cinta (Official Music Video)',
+    artist: 'Yovie Widianto',
+    duration: 256,
+  });
+  assert.equal(isStrictAudioMatch(ytTanpaCinta, itunesTrack), true);
+
+  // Non-gcr=id Ummy candidate wins over gcr=id candidate
+  const ummyCands = selectUmmyAudioStreamCandidates({
+    data: {
+      url: [
+        {
+          url: 'https://rr1---sn-id.googlevideo.com/videoplayback?itag=18&gcr=id&mime=video%2Fmp4',
+          ext: 'mp4',
+          no_audio: false,
+        },
+        {
+          url: 'https://rr2---sn-us.googlevideo.com/videoplayback?itag=18&mime=video%2Fmp4',
+          ext: 'mp4',
+          no_audio: false,
+        },
+      ],
+    },
+  });
+  assert.equal(ummyCands.length, 2);
+  assert.equal(decodeURIComponent(ummyCands[0]).includes('gcr=id'), false);
+
+  // Picture-in-Picture & Headset mode state machine
+  const enteredPip = resolvePipHeadsetStateTransition({
+    isPipOpen: false,
+    pipHeadsetMode: false,
+    isPlaying: true,
+    action: 'enter-pip',
+  });
+  assert.equal(enteredPip.isPipOpen, true);
+  assert.equal(enteredPip.pipHeadsetMode, false);
+  assert.equal(enteredPip.shouldKeepPlaying, true);
+
+  // Clicking Headset icon inside PiP hides PiP while keeping music playing uninterrupted
+  const headsetFromPip = resolvePipHeadsetStateTransition({
+    isPipOpen: enteredPip.isPipOpen,
+    pipHeadsetMode: enteredPip.pipHeadsetMode,
+    isPlaying: true,
+    action: 'activate-headset',
+  });
+  assert.equal(headsetFromPip.isPipOpen, false);
+  assert.equal(headsetFromPip.pipHeadsetMode, true);
+  assert.equal(headsetFromPip.shouldExitNativePip, true);
+  assert.equal(headsetFromPip.shouldKeepPlaying, true);
+
+  // Auto-PiP on background respects Headset mode when active
+  const bgWhenHeadset = resolvePipHeadsetStateTransition({
+    isPipOpen: headsetFromPip.isPipOpen,
+    pipHeadsetMode: headsetFromPip.pipHeadsetMode,
+    isPlaying: true,
+    action: 'auto-pip-background',
+  });
+  assert.equal(bgWhenHeadset.isPipOpen, false);
+  assert.equal(bgWhenHeadset.pipHeadsetMode, true);
+  assert.equal(bgWhenHeadset.shouldKeepPlaying, true);
+});

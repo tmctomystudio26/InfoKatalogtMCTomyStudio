@@ -294,9 +294,10 @@ export function selectUmmyAudioStreamCandidates(payload) {
     const finalUrl = wrapMusicAudioCorsProxyIfNeeded(raw);
     if (!finalUrl || seen.has(finalUrl)) continue;
     seen.add(finalUrl);
+    const isIdBound = /[?&]gcr=id(?:[&#]|$)/i.test(raw);
     scored.push({
       url: finalUrl,
-      tier,
+      tier: isIdBound ? tier : tier + 10,
       bitrate: Number(item?.bitrate || item?.quality || 0) || 0,
     });
   }
@@ -381,10 +382,14 @@ export function dedupeMatchingAltTracks(
     ) {
       seenIds.add(alt.videoId);
       matching.push(alt);
-      if (matching.length >= maxAlts) break;
     }
   }
-  return matching;
+  matching.sort((a, b) => {
+    const aScore = /\b(lyrics?|lirik|audio|topic)\b/i.test(`${a.title || ''} ${a.artist || ''}`) ? 1 : 0;
+    const bScore = /\b(lyrics?|lirik|audio|topic)\b/i.test(`${b.title || ''} ${b.artist || ''}`) ? 1 : 0;
+    return bScore - aScore;
+  });
+  return matching.slice(0, maxAlts);
 }
 
 /**
@@ -1043,3 +1048,116 @@ export function pickPrewarmQueueCandidates({
   return out;
 }
 
+export function isInstantAudioPreviewUrl(rawUrl = '') {
+  const s = String(rawUrl || '').trim();
+  if (!s) return false;
+  return /itunes\.apple\.com|mzstatic\.com/i.test(s);
+}
+
+export function normalizeItunesTrack(item, options = {}) {
+  if (!item || typeof item !== 'object') return null;
+  const previewUrl = String(item.previewUrl || '').trim();
+  const title = String(item.trackName || item.title || '').trim();
+  const artist = String(item.artistName || item.artist || '').trim();
+  if (!previewUrl || !title || !artist) return null;
+
+  const fullDurationSec = Math.max(
+    90,
+    Math.round(Number(item.trackTimeMillis || 0) / 1000) || Number(item.duration || 0) || 210
+  );
+  const rawArt = String(item.artworkUrl100 || item.artworkUrl60 || item.artwork || '').trim();
+  const hiResArt = rawArt
+    ? rawArt.replace(/\/\d+x\d+bb\./i, '/480x480bb.')
+    : './assets/icons/brand-icon.svg';
+  const trackId = item.trackId ? `itn-${item.trackId}` : `itn-${normalizeMatchString(`${title}-${artist}`).replace(/\s+/g, '-')}`;
+
+  return normalizeYtMusicTrack(
+    {
+      id: trackId,
+      title,
+      artist,
+      duration: fullDurationSec,
+      artwork: hiResArt,
+      streamUrl: previewUrl,
+      genre: options.genre || item.primaryGenreName || 'Viral Indonesia',
+      isIndonesianViral: options.isIndonesianViral ?? true,
+      sourceLabel: 'YT Music · Background Audio',
+    },
+    options
+  );
+}
+
+/**
+ * Pure state machine for Picture-in-Picture (Gambar dalam Gambar) and Headset Mode (Audio-Only background).
+ * Clicking the Headset button hides PiP (`isPipOpen: false`, `pipHeadsetMode: true`) while keeping audio playing!
+ */
+export function resolvePipHeadsetStateTransition({
+  isPipOpen = false,
+  pipHeadsetMode = false,
+  isPlaying = false,
+  action = 'toggle-pip',
+} = {}) {
+  if (action === 'activate-headset') {
+    return {
+      isPipOpen: false,
+      pipHeadsetMode: true,
+      shouldExitNativePip: true,
+      shouldKeepPlaying: Boolean(isPlaying),
+      statusMessage:
+        'Mode Headset aktif — Gambar-dalam-Gambar disembunyikan, musik tetap berputar di latar belakang.',
+    };
+  }
+  if (action === 'enter-pip') {
+    return {
+      isPipOpen: true,
+      pipHeadsetMode: false,
+      shouldExitNativePip: false,
+      shouldKeepPlaying: Boolean(isPlaying),
+      statusMessage: 'Gambar-dalam-Gambar (PiP) aktif — ketuk ikon Headset untuk sembunyikan layar PiP.',
+    };
+  }
+  if (action === 'close-pip') {
+    return {
+      isPipOpen: false,
+      pipHeadsetMode: Boolean(pipHeadsetMode),
+      shouldExitNativePip: true,
+      shouldKeepPlaying: Boolean(isPlaying),
+      statusMessage: '',
+    };
+  }
+  if (action === 'auto-pip-background') {
+    if (pipHeadsetMode || !isPlaying) {
+      return {
+        isPipOpen: false,
+        pipHeadsetMode: Boolean(pipHeadsetMode),
+        shouldExitNativePip: false,
+        shouldKeepPlaying: Boolean(isPlaying),
+        statusMessage: '',
+      };
+    }
+    return {
+      isPipOpen: true,
+      pipHeadsetMode: false,
+      shouldExitNativePip: false,
+      shouldKeepPlaying: true,
+      statusMessage: 'Gambar-dalam-Gambar (PiP) otomatis aktif.',
+    };
+  }
+  // Default: 'toggle-pip'
+  if (isPipOpen) {
+    return {
+      isPipOpen: false,
+      pipHeadsetMode: false,
+      shouldExitNativePip: true,
+      shouldKeepPlaying: Boolean(isPlaying),
+      statusMessage: '',
+    };
+  }
+  return {
+    isPipOpen: true,
+    pipHeadsetMode: false,
+    shouldExitNativePip: false,
+    shouldKeepPlaying: Boolean(isPlaying),
+    statusMessage: 'Gambar-dalam-Gambar (PiP) aktif — ketuk ikon Headset untuk sembunyikan layar PiP.',
+  };
+}
