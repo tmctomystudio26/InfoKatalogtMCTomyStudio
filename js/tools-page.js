@@ -1,7 +1,7 @@
-import { createToolsHubController } from './tools-ui.js?v=37';
-import { initMusicPlayer } from './music.js?v=37';
-import { loadCatalogData } from './data.js?v=37';
-import { normalizeBrandConfig, normalizeUtilityConfig } from './store.js?v=37';
+import { createToolsHubController } from './tools-ui.js?v=38';
+import { initMusicPlayer } from './music.js?v=38';
+import { loadCatalogData } from './data.js?v=38';
+import { normalizeBrandConfig, normalizeUtilityConfig } from './store.js?v=38';
 
 const THEME_STORAGE_KEY = 'manifestudio_theme_v1';
 const VALID_TABS = new Set(['prayer', 'weather', 'worldclock', 'speedtest', 'downloader', 'compressor', 'music']);
@@ -85,12 +85,25 @@ function applyTheme() {
   toolsHub?.redrawTheme();
 }
 
+const CONCISE_HEADER_NAV_LABELS = {
+  prayer: 'Jadwal Sholat',
+  weather: 'Cuaca',
+  worldclock: 'Jam Dunia',
+  speedtest: 'Speedtest',
+  downloader: 'Downloader',
+  compressor: 'Kompresor HD',
+  music: 'Musik YT',
+};
+
 function syncHeaderNavLabels() {
   document.querySelectorAll('[data-tools-nav]').forEach((btn) => {
     const target = btn.getAttribute('data-tools-nav');
     const item = (activeUtilities.items || []).find((it) => it.id === target);
-    if (item && item.label) {
-      btn.textContent = item.label;
+    const customLabel = String(item?.label || '').trim();
+    if (customLabel && customLabel.length <= 14) {
+      btn.textContent = customLabel;
+    } else if (CONCISE_HEADER_NAV_LABELS[target]) {
+      btn.textContent = CONCISE_HEADER_NAV_LABELS[target];
     }
   });
 }

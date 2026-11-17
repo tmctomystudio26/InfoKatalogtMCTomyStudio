@@ -74,22 +74,24 @@ a {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 0.75rem;
-  min-height: 4.25rem;
+  gap: 0.5rem;
+  min-height: 4.1rem;
+  max-width: 1280px;
+  min-width: 0;
 }
 
 .brand-link {
   display: flex;
   align-items: center;
-  gap: 0.75rem;
+  gap: 0.65rem;
   text-decoration: none;
   min-width: 0;
   flex-shrink: 0;
 }
 
 .brand-mark {
-  width: 38px;
-  height: 38px;
+  width: 36px;
+  height: 36px;
   border-radius: 10px;
   flex-shrink: 0;
 }
@@ -103,7 +105,7 @@ a {
 
 .brand-name {
   font-family: var(--font-display);
-  font-size: clamp(0.98rem, 3.2vw, 1.15rem);
+  font-size: clamp(0.95rem, 2.2vw, 1.1rem);
   font-weight: 700;
   letter-spacing: -0.02em;
   line-height: 1.15;
@@ -113,7 +115,7 @@ a {
 }
 
 .brand-tagline {
-  font-size: 0.75rem;
+  font-size: 0.72rem;
   color: var(--ink-muted);
   white-space: nowrap;
   overflow: hidden;
@@ -123,24 +125,36 @@ a {
 .header-nav {
   display: flex;
   align-items: center;
-  gap: 0.25rem;
-  margin-inline: auto 0.25rem;
+  justify-content: center;
+  justify-content: safe center;
+  gap: 0.15rem;
+  flex: 1 1 auto;
+  min-width: 0;
+  margin-inline: 0.25rem;
+  overflow-x: auto;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.header-nav::-webkit-scrollbar {
+  display: none;
 }
 
 .header-nav-link {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  height: 36px;
-  padding: 0 0.72rem;
+  height: 34px;
+  padding: 0 0.54rem;
   border-radius: var(--radius-sm);
   border: 1px solid transparent;
   background: transparent;
   color: var(--ink-secondary);
-  font-size: 0.83rem;
+  font-size: 0.79rem;
   font-weight: 600;
   text-decoration: none;
   white-space: nowrap;
+  flex-shrink: 0;
   cursor: pointer;
   transition: background-color 0.2s var(--ease), color 0.2s var(--ease), border-color 0.2s var(--ease);
 }
@@ -159,7 +173,7 @@ a {
 .header-actions {
   display: flex;
   align-items: center;
-  gap: 0.5rem;
+  gap: 0.4rem;
   flex-shrink: 0;
 }
 
@@ -167,14 +181,14 @@ a {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 0.45rem;
-  height: 40px;
-  padding: 0 0.85rem;
+  gap: 0.38rem;
+  height: 36px;
+  padding: 0 0.68rem;
   border-radius: var(--radius-sm);
   border: 1px solid var(--border);
   background-color: var(--surface);
   color: var(--ink);
-  font-size: 0.85rem;
+  font-size: 0.81rem;
   font-weight: 600;
   text-decoration: none;
   white-space: nowrap;
@@ -3689,6 +3703,39 @@ a {
 }
 
 /* Responsive Breakpoints */
+@media (max-width: 1180px) {
+  .header-inner {
+    padding-inline: 0.9rem;
+    gap: 0.35rem;
+  }
+  .brand-link {
+    gap: 0.5rem;
+  }
+  .brand-mark {
+    width: 32px;
+    height: 32px;
+  }
+  .header-nav {
+    gap: 0.08rem;
+    margin-inline: 0.15rem;
+  }
+  .header-nav-link {
+    height: 32px;
+    padding: 0 0.36rem;
+    font-size: 0.74rem;
+  }
+  .header-actions {
+    gap: 0.3rem;
+  }
+  .header-btn {
+    padding: 0 0.52rem;
+    font-size: 0.77rem;
+  }
+  #header-install-btn .hide-xs {
+    display: none;
+  }
+}
+
 @media (max-width: 1024px) {
   .product-grid {
     grid-template-columns: repeat(4, minmax(0, 1fr));

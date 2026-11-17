@@ -14,7 +14,7 @@ import {
   isBlockedRedirectDownloadUrl,
   normalizeDownloaderResult,
   parseYouTubeVideoId,
-} from './tools-logic.js?v=37';
+} from './tools-logic.js?v=38';
 
 const COBALT_ENDPOINT = 'https://cobaltapi.cjs.nz/';
 const TIOO_BACKENDS = [

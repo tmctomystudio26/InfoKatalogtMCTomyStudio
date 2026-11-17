@@ -22,30 +22,30 @@ import {
   matchIndonesianCityQuery,
   planMediaCompression,
   resolveAccurateWeatherCondition,
-} from './tools-logic.js?v=37';
+} from './tools-logic.js?v=38';
 import {
   describeLocationSource,
   resolveUserLocation,
   searchCitiesOnline,
   setManualLocation,
-} from './location.js?v=37';
-import { createInteractiveGlobe } from './globe.js?v=37';
+} from './location.js?v=38';
+import { createInteractiveGlobe } from './globe.js?v=38';
 import {
   createSpeedometerGauge,
   fetchSpeedtestEnvironment,
   readClientDeviceTelemetry,
   runInternetSpeedtest,
-} from './speedtest.js?v=37';
+} from './speedtest.js?v=38';
 import {
   extractAudioFromVideoUrl,
   fetchMediaDownload,
   triggerBatchPhotoDownload,
   triggerDirectMediaSave,
-} from './downloader.js?v=37';
-import { compressMediaFile, inspectMediaFile } from './compressor.js?v=37';
-import { formatAudioTime, isTrackInWatchLater } from './music-logic.js?v=37';
-import { MUSIC_PRESET_CATEGORIES, getMusicController, initMusicPlayer } from './music.js?v=37';
-import { normalizeUtilityConfig } from './store.js?v=37';
+} from './downloader.js?v=38';
+import { compressMediaFile, inspectMediaFile } from './compressor.js?v=38';
+import { formatAudioTime, isTrackInWatchLater } from './music-logic.js?v=38';
+import { MUSIC_PRESET_CATEGORIES, getMusicController, initMusicPlayer } from './music.js?v=38';
+import { normalizeUtilityConfig } from './store.js?v=38';
 
 const PRAYER_CACHE_KEY = 'manifestudio_prayer_cache_v1';
 const MYQURAN_CITIES_KEY = 'manifestudio_myquran_cities_v1';

@@ -14,7 +14,7 @@ Dokumen teknis terpadu bagi **Tim IT, Human Developer, maupun AI Coding Agent** 
    - **Menu Utilitas (`tools.html`)**: Halaman terpisah untuk utilitas harian (`?tab=prayer | weather | worldclock | speedtest | downloader | compressor`) yang ditonjolkan melalui kartu aksen `#utilities-callout-card` (`assets/icons/menu-utilitas.svg`) di atas filter kategori, lengkap dengan tombol kembali ke katalog.
    - **Panel Admin (`admin.html`)**: Halaman *unlisted* (`noindex`) terenkripsi AES-256-GCM yang mempublikasikan perubahan katalog, aset upload, OpenGraph `index.html`, dan riwayat perubahan terperinci langsung via GitHub REST API.
 3. **Kualitas Pengalaman Mobile-First, Presisi Tinggi, & Ad-Free**:
-   - Semua kontrol responsif di layar HP (`360px–430px`) maupun desktop (`1440px`), menggunakan *Network-First Service Worker* (`manifestudio-cache-v37`) + query cache-busting `?v=37` agar pembaruan langsung muncul di perangkat mobile pengguna.
+   - Semua kontrol termasuk header navigasi (`1025px–1440px`), grid produk, dan pemutar musik responsif penuh di layar HP (`360px–430px`) maupun laptop/desktop (`1025px–1440px`) tanpa tombol Keranjang atau tautan yang terpotong, menggunakan *Network-First Service Worker* (`manifestudio-cache-v38`) + query cache-busting `?v=38` agar pembaruan langsung muncul di perangkat pengguna.
    - Pemutar musik YT Music open-source bebas iklan dapat digeser bebas, mendukung pencarian lengkap seluruh katalog YouTube / YouTube Music (Indonesia & internasional, hingga 26 lagu per kueri), memutar lagu viral Indonesia full-length (`>= 75 detik`, bebas preview 30 detik) secara acak otomatis tiap kali tombol ditekan, tetap berputar tanpa henti saat pindah tab / keluar browser / layar mati berkat *Silent-Hold Audio Bridge* + *auto-upgrade* ke native `<audio>`, mendukung Gambar-dalam-Gambar (PiP) & Mode Headset, dan dilengkapi Hub lengkap di Menu Utilitas.
 
 ---
@@ -34,7 +34,7 @@ Dokumen teknis terpadu bagi **Tim IT, Human Developer, maupun AI Coding Agent** 
 | `js/compressor.js` | Kompresor Foto & Video HD Zero-Loss (binary EXIF/PNG/MP4 atom stripper & Social Shield encoder) | `tools-logic.js` |
 | `js/music.js` + `js/music-logic.js` | Floating dock minimalis modern draggable, YT Music API open-source (Siputzx YT Search nested duration parser + Ummy Range probe + 30 full-length seed tracks), Silent-Hold Audio Bridge + auto-upgrade `yt-iframe` ke `<audio>` untuk background playback anti-mati, pemblokir preview 30 detik, PiP + Mode Headset, Fisher-Yates auto-shuffle prioritas Viral Indonesia tiap tombol ditekan | YouTube IFrame API / Audius / Siputzx |
 | `data/catalog.json` & `data/catalog-history.json` | Single Source of Truth produk, brand, OpenGraph, banners, kategori, voucher usage limits, FAQ & 12 snapshot riwayat | Service Worker Network-First |
-| `sw.js` + `manifest.webmanifest` | Network-First code/data cache (`manifestudio-cache-v37`) & instalasi PWA | — |
+| `sw.js` + `manifest.webmanifest` | Network-First code/data cache (`manifestudio-cache-v38`) & instalasi PWA | — |
 | `CNAME` | Konfigurasi domain kustom resmi GitHub Pages (`manifestudio.my.id`) — jangan dihapus | Cloudflare DNS |
 
 ---
