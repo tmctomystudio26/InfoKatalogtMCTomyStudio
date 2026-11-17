@@ -185,13 +185,77 @@ export function extractCoreSongTokens(title) {
   return [...new Set(tokens.length > 0 ? tokens : tokenizeText(title))];
 }
 
+export function isBlockedAudioWrapperUrl(rawUrl = '') {
+  const s = String(rawUrl || '').trim();
+  if (!s || !/^https?:\/\//i.test(s)) return true;
+  if (/savetube\.vip|sf-converter\.com|ytshortdown\.com|y2mate\.com|ssyoutube\.com/i.test(s)) {
+    return true;
+  }
+  if (/\.html(\?|#|$)/i.test(s)) return true;
+  return false;
+}
+
+export function wrapMusicAudioCorsProxyIfNeeded(rawUrl = '') {
+  const s = String(rawUrl || '').trim();
+  if (!s) return '';
+  if (/^https?:\/\/[^/]*\.?googlevideo\.com\//i.test(s)) {
+    return `https://api.vidsnap.app/proxy?u=${encodeURIComponent(s)}`;
+  }
+  return s;
+}
+
+export function selectUmmyAudioStreamCandidates(payload) {
+  const list = Array.isArray(payload?.data?.url)
+    ? payload.data.url
+    : Array.isArray(payload?.url)
+    ? payload.url
+    : [];
+  const scored = [];
+  const seen = new Set();
+
+  for (const item of list) {
+    const raw = String(item?.url || '').trim();
+    if (!raw || isBlockedAudioWrapperUrl(raw)) continue;
+    const ext = String(item?.ext || '').toLowerCase();
+    const type = String(item?.type || '').toLowerCase();
+    const noAudio = item?.no_audio;
+
+    let tier = -1;
+    if (ext === 'mp3' || ext === 'm4a' || ext === 'aac') {
+      tier = 3;
+    } else if (ext === 'opus' || item?.audio === true || /audio/i.test(type)) {
+      if (noAudio === true) continue;
+      tier = 2;
+    } else if (ext === 'mp4' && (noAudio === false || !/dash/i.test(type))) {
+      if (noAudio === true) continue;
+      tier = 1;
+    }
+    if (tier < 0) continue;
+
+    const finalUrl = wrapMusicAudioCorsProxyIfNeeded(raw);
+    if (!finalUrl || seen.has(finalUrl)) continue;
+    seen.add(finalUrl);
+    scored.push({
+      url: finalUrl,
+      tier,
+      bitrate: Number(item?.bitrate || item?.quality || 0) || 0,
+    });
+  }
+
+  scored.sort((a, b) => {
+    if (b.tier !== a.tier) return b.tier - a.tier;
+    return b.bitrate - a.bitrate;
+  });
+
+  return scored.map((entry) => entry.url);
+}
+
 /**
- * Strictly verifies whether an audio candidate (e.g. from Audius) genuinely matches
- * a target track's song title and artist before attaching its direct `streamUrl`.
- * Prevents playing an unrelated track under another song's displayed title.
+ * Strictly verifies whether a candidate track (YT alternate or Audius) genuinely matches
+ * a target track's song title, artist, and duration (without requiring `streamUrl`).
  */
-export function isStrictAudioMatch(targetTrack, candidateTrack) {
-  if (!targetTrack || !candidateTrack || !candidateTrack.streamUrl) return false;
+export function isStrictSongMetadataMatch(targetTrack, candidateTrack) {
+  if (!targetTrack || !candidateTrack || !candidateTrack.title) return false;
   const candDur = Number(candidateTrack.duration || 0);
   if (candDur > 0 && (candDur < MIN_FULL_TRACK_SECONDS || candDur > 600)) return false;
 
@@ -204,7 +268,7 @@ export function isStrictAudioMatch(targetTrack, candidateTrack) {
   if (targetCore.length === 0) return false;
 
   const candTitleWords = new Set(tokenizeText(candidateTrack.title));
-  const candAllWords = new Set(tokenizeText(`${candidateTrack.title} ${candidateTrack.artist}`));
+  const candAllWords = new Set(tokenizeText(`${candidateTrack.title} ${candidateTrack.artist || ''}`));
 
   let titleHits = 0;
   for (const tok of targetCore) {
@@ -235,6 +299,25 @@ export function isStrictAudioMatch(targetTrack, candidateTrack) {
   }
 
   return true;
+}
+
+/**
+ * Strictly verifies whether an audio candidate (e.g. from Audius) genuinely matches
+ * a target track's song title and artist before attaching its direct `streamUrl`.
+ * Prevents playing an unrelated track under another song's displayed title.
+ */
+export function isStrictAudioMatch(targetTrack, candidateTrack) {
+  if (!candidateTrack || !candidateTrack.streamUrl) return false;
+  return isStrictSongMetadataMatch(targetTrack, candidateTrack);
+}
+
+export function shouldAutoSkipOnPlaybackError({
+  trackSelectionSource = 'auto',
+  consecutiveErrors = 0,
+  maxSkips = 5,
+} = {}) {
+  if (trackSelectionSource === 'user') return false;
+  return Number(consecutiveErrors || 0) <= Number(maxSkips || 5);
 }
 
 export function shuffleTracksFisherYates(tracks = [], rng = Math.random) {

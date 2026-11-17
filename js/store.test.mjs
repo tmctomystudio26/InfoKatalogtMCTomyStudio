@@ -54,7 +54,9 @@ import {
   filterFullLengthTracks,
   formatAudioTime,
   getPopoverAnchorClasses,
+  isBlockedAudioWrapperUrl,
   isStrictAudioMatch,
+  isStrictSongMetadataMatch,
   isTrackInWatchLater,
   normalizeMusicLibraryState,
   normalizeMusicMode,
@@ -67,6 +69,8 @@ import {
   removeTrackFromPlaylist,
   renameUserPlaylist,
   scoreSearchRelevance,
+  selectUmmyAudioStreamCandidates,
+  shouldAutoSkipOnPlaybackError,
   shuffleTracksFisherYates,
   toggleTrackInWatchLater,
 } from './music-logic.js';
@@ -1801,6 +1805,70 @@ test('Watch Later (Tonton Nanti) and user playlists create, rename, add/remove t
 
   const deleted = deleteUserPlaylist(removed.library, 'pl-custom-1');
   assert.equal(deleted.playlists.length, 0);
+});
+
+test('selectUmmyAudioStreamCandidates filters redirect wrappers, wraps googlevideo proxy, and prioritizes M4A > Opus > MP4 with audio', () => {
+  assert.equal(isBlockedAudioWrapperUrl('https://du.sf-converter.com/download/123'), true);
+  assert.equal(isBlockedAudioWrapperUrl('https://cdn402.savetube.vip/song'), true);
+  assert.equal(isBlockedAudioWrapperUrl('https://cobaltapi.cjs.nz/tunnel?id=abc'), false);
+
+  const candidates = selectUmmyAudioStreamCandidates({
+    status: true,
+    data: {
+      url: [
+        { url: 'https://du.sf-converter.com/a.mp3', ext: 'mp3', bitrate: 320 },
+        { url: 'https://rr2.googlevideo.com/videoplayback?itag=137', ext: 'mp4', no_audio: true, bitrate: 1500 },
+        { url: 'https://rr2.googlevideo.com/videoplayback?itag=18', ext: 'mp4', no_audio: false, bitrate: 500 },
+        { url: 'https://rr2.googlevideo.com/videoplayback?itag=251', ext: 'opus', no_audio: false, bitrate: 160 },
+        { url: 'https://rr2.googlevideo.com/videoplayback?itag=140', ext: 'm4a', no_audio: false, bitrate: 128 },
+      ],
+    },
+  });
+
+  assert.equal(candidates.length, 3);
+  assert.equal(candidates.some((u) => u.includes('sf-converter')), false);
+  assert.equal(candidates.some((u) => u.includes('itag%3D137')), false);
+  assert.equal(candidates[0].startsWith('https://api.vidsnap.app/proxy?u='), true);
+  assert.equal(decodeURIComponent(candidates[0]).includes('itag=140'), true);
+  assert.equal(decodeURIComponent(candidates[1]).includes('itag=251'), true);
+  assert.equal(decodeURIComponent(candidates[2]).includes('itag=18'), true);
+});
+
+test('isStrictSongMetadataMatch aligns alternate YT uploads for the same song and user tracks never auto-skip', () => {
+  const picked = normalizeYtMusicTrack({
+    videoId: 'sc5w6h6fI7w',
+    title: 'Stecu Stecu',
+    artist: 'Faris Adаm',
+    duration: 224,
+  });
+  const officialMv = normalizeYtMusicTrack({
+    videoId: '2e0BMACvymo',
+    title: 'FARIS ADAM - STECU STECU (Official Music Video)',
+    artist: 'Faris Adam Official',
+    duration: 229,
+  });
+  const unrelatedSong = normalizeYtMusicTrack({
+    videoId: 'dQw4w9WgXcQ',
+    title: 'Never Gonna Give You Up',
+    artist: 'Rick Astley',
+    duration: 213,
+  });
+
+  assert.equal(isStrictSongMetadataMatch(picked, officialMv), true);
+  assert.equal(isStrictSongMetadataMatch(picked, unrelatedSong), false);
+
+  assert.equal(
+    shouldAutoSkipOnPlaybackError({ trackSelectionSource: 'user', consecutiveErrors: 1 }),
+    false
+  );
+  assert.equal(
+    shouldAutoSkipOnPlaybackError({ trackSelectionSource: 'auto', consecutiveErrors: 1 }),
+    true
+  );
+  assert.equal(
+    shouldAutoSkipOnPlaybackError({ trackSelectionSource: 'auto', consecutiveErrors: 6 }),
+    false
+  );
 });
 
 

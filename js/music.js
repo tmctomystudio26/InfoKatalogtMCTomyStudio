@@ -21,7 +21,9 @@ import {
   filterFullLengthTracks,
   formatAudioTime,
   getPopoverAnchorClasses,
+  isBlockedAudioWrapperUrl,
   isStrictAudioMatch,
+  isStrictSongMetadataMatch,
   isTrackInWatchLater,
   normalizeMusicLibraryState,
   normalizeRepeatMode,
@@ -32,9 +34,11 @@ import {
   removeTrackFromPlaylist,
   renameUserPlaylist,
   scoreSearchRelevance,
+  selectUmmyAudioStreamCandidates,
+  shouldAutoSkipOnPlaybackError,
   shuffleTracksFisherYates,
   toggleTrackInWatchLater,
-} from './music-logic.js?v=29';
+} from './music-logic.js?v=30';
 
 const MUSIC_POS_KEY = 'manifestudio_music_pos_v2';
 const MUSIC_VOL_KEY = 'manifestudio_music_vol_v2';
@@ -43,12 +47,14 @@ const MUSIC_REPEAT_KEY = 'manifestudio_music_repeat_v2';
 const MUSIC_SESSION_KEY = 'manifestudio_music_session_v1';
 const MUSIC_CLICK_PLAY_KEY = 'manifestudio_music_clickplay_v1';
 
-// Community open-source YT Music / YouTube search API endpoints + Audius direct stream API (CORS *)
+// Community open-source YT Music / YouTube search API endpoints + direct audio stream resolvers
 const PIPED_API_HOSTS = [
   'https://api.piped.private.coffee',
   'https://pipedapi.ducks.party',
 ];
 const SIPUTZX_YT_SEARCH_URL = 'https://api.siputzx.my.id/api/s/youtube';
+const SIPUTZX_UMMY_URL = 'https://api.siputzx.my.id/api/d/ummy';
+const COBALT_AUDIO_ENDPOINT = 'https://cobaltapi.cjs.nz/';
 const AUDIUS_API_BASE = 'https://api.audius.co/v1';
 const TIOO_AUDIO_BACKENDS = [
   'https://backend3.tioo.eu.org',
@@ -58,6 +64,7 @@ const TIOO_AUDIO_BACKENDS = [
 ];
 const ytExactStreamCache = new Map();
 const ytExactInFlight = new Map();
+const trackStreamInFlight = new Map();
 const failedExactVideoIds = new Set();
 const failedStreamUrls = new Set();
 const failedYtIframeVideoIds = new Set();
@@ -168,7 +175,7 @@ const SEED_VIRAL_INDO_TRACKS = [
     streamUrl: 'https://api.audius.co/v1/tracks/7O8YZgj/stream?app_name=Manifestudio',
   }),
   normalizeYtMusicTrack({
-    videoId: 'sc5w6h6fI7w',
+    videoId: '2e0BMACvymo',
     title: 'Stecu Stecu',
     artist: 'Faris Adam',
     duration: 229,
@@ -510,6 +517,7 @@ function readMusicSession() {
           wasPlaying: Boolean(parsed.wasPlaying),
           lastTrackId: String(parsed.lastTrackId || ''),
           currentTime: Math.max(0, Number(parsed.currentTime) || 0),
+          trackSelectionSource: parsed.trackSelectionSource === 'user' ? 'user' : 'auto',
           updatedAt: Number(parsed.updatedAt) || 0,
         };
       }
@@ -522,6 +530,7 @@ function readMusicSession() {
     wasPlaying: false,
     lastTrackId: '',
     currentTime: 0,
+    trackSelectionSource: 'auto',
     updatedAt: 0,
   };
 }
@@ -610,46 +619,167 @@ async function fetchAudiusDirectTracks(query, { genre = 'Viral Indonesia', isInd
   }
 }
 
-async function resolveExactYoutubeAudioStream(videoId) {
+async function probePlayableAudioStream(url, timeoutMs = 4500) {
+  const clean = String(url || '').trim();
+  if (!clean || isBlockedAudioWrapperUrl(clean) || failedStreamUrls.has(clean)) {
+    return false;
+  }
+  const ac = new AbortController();
+  const timer = setTimeout(() => ac.abort(), timeoutMs);
+  try {
+    const res = await fetch(clean, {
+      headers: { Range: 'bytes=0-128' },
+      cache: 'no-store',
+      signal: ac.signal,
+    });
+    const ct = String(res.headers.get('content-type') || '').toLowerCase();
+    if ((res.ok || res.status === 206) && !ct.includes('text/html')) {
+      try {
+        await res.body?.cancel?.();
+      } catch {
+        // Ignore stream cancel error
+      }
+      return true;
+    }
+    failedStreamUrls.add(clean);
+    return false;
+  } catch (err) {
+    // Only treat network/timeout/HTTP errors cleanly without poisoning transient aborts unless explicit failure
+    if (err?.name !== 'AbortError') {
+      failedStreamUrls.add(clean);
+    }
+    return false;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+function resolveFirstTruthy(promises) {
+  return new Promise((resolve) => {
+    if (!Array.isArray(promises) || promises.length === 0) {
+      resolve('');
+      return;
+    }
+    let settled = 0;
+    let done = false;
+    for (const p of promises) {
+      Promise.resolve(p)
+        .then((val) => {
+          if (!done && val) {
+            done = true;
+            resolve(val);
+          }
+        })
+        .catch(() => {})
+        .finally(() => {
+          settled += 1;
+          if (!done && settled >= promises.length) {
+            resolve('');
+          }
+        });
+    }
+  });
+}
+
+async function resolveCobaltAudioStream(ytUrl) {
+  if (isMusicNodeOpen(COBALT_AUDIO_ENDPOINT)) return '';
+  const ac = new AbortController();
+  const timer = setTimeout(() => ac.abort(), 8500);
+  try {
+    const res = await fetch(COBALT_AUDIO_ENDPOINT, {
+      method: 'POST',
+      headers: {
+        Accept: 'application/json',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        url: ytUrl,
+        downloadMode: 'audio',
+        audioFormat: 'mp3',
+        audioBitrate: '128',
+      }),
+      signal: ac.signal,
+    });
+    const data = await res.json().catch(() => null);
+    if (!res.ok || !data || data.status === 'error') {
+      recordMusicNodeResult(COBALT_AUDIO_ENDPOINT, false);
+      return '';
+    }
+    const candidate = String(data.url || '').trim();
+    if (!candidate || isBlockedAudioWrapperUrl(candidate)) return '';
+    const ok = await probePlayableAudioStream(candidate, 5000);
+    if (ok) {
+      recordMusicNodeResult(COBALT_AUDIO_ENDPOINT, true);
+      return candidate;
+    }
+    return '';
+  } catch {
+    recordMusicNodeResult(COBALT_AUDIO_ENDPOINT, false);
+    return '';
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function resolveSiputzxUmmyAudioStream(ytUrl) {
+  try {
+    const data = await fetchJsonTimeout(`${SIPUTZX_UMMY_URL}?url=${encodeURIComponent(ytUrl)}`, 15000);
+    const candidates = selectUmmyAudioStreamCandidates(data);
+    for (const cand of candidates.slice(0, 4)) {
+      const ok = await probePlayableAudioStream(cand, 4500);
+      if (ok) return cand;
+    }
+  } catch {
+    // Ummy unavailable or timed out
+  }
+  return '';
+}
+
+async function resolveExactYoutubeAudioStream(videoId, { bypassCache = false } = {}) {
   const cleanId = extractYouTubeVideoId(videoId);
-  if (!cleanId || failedExactVideoIds.has(cleanId)) return '';
-  if (ytExactStreamCache.has(cleanId)) {
+  if (!cleanId) return '';
+  if (!bypassCache && failedExactVideoIds.has(cleanId)) return '';
+  if (!bypassCache && ytExactStreamCache.has(cleanId)) {
     const cached = ytExactStreamCache.get(cleanId) || '';
     if (cached && !failedStreamUrls.has(cached)) {
       return cached;
     }
     ytExactStreamCache.delete(cleanId);
   }
-  if (ytExactInFlight.has(cleanId)) {
+  if (!bypassCache && ytExactInFlight.has(cleanId)) {
     return ytExactInFlight.get(cleanId);
   }
+
   const ytUrl = `https://www.youtube.com/watch?v=${cleanId}`;
   const encoded = encodeURIComponent(ytUrl);
 
   const job = (async () => {
     try {
-      const winner = await Promise.any(
-        TIOO_AUDIO_BACKENDS.map(async (host) => {
-          const data = await fetchJsonTimeout(`${host}/youtube?url=${encoded}`, 10500);
-          const candidate = String(data?.mp3 || data?.mp4 || '').trim();
-          if (!/^https?:\/\//i.test(candidate)) {
-            throw new Error('No audio URL');
+      const winner = await resolveFirstTruthy([
+        resolveCobaltAudioStream(ytUrl),
+        resolveSiputzxUmmyAudioStream(ytUrl),
+        (async () => {
+          for (const host of TIOO_AUDIO_BACKENDS) {
+            try {
+              const data = await fetchJsonTimeout(`${host}/youtube?url=${encoded}`, 7500);
+              const cand = String(data?.mp3 || data?.mp4 || '').trim();
+              if (cand && !isBlockedAudioWrapperUrl(cand) && (await probePlayableAudioStream(cand, 4000))) {
+                return cand;
+              }
+            } catch {
+              // Try next mirror
+            }
           }
-          if (/savetube\.vip|ytshortdown\.com|sf-converter\.com/i.test(candidate)) {
-            throw new Error('Blocked redirect');
-          }
-          if (failedStreamUrls.has(candidate)) {
-            throw new Error('Stream previously failed');
-          }
-          return candidate;
-        })
-      );
-      if (winner && !failedStreamUrls.has(winner) && !failedExactVideoIds.has(cleanId)) {
+          return '';
+        })(),
+      ]);
+
+      if (winner && !failedStreamUrls.has(winner)) {
+        failedExactVideoIds.delete(cleanId);
         ytExactStreamCache.set(cleanId, winner);
         return winner;
       }
-    } catch {
-      // All Tioo mirrors failed or timed out for this videoId
+      failedExactVideoIds.add(cleanId);
     } finally {
       ytExactInFlight.delete(cleanId);
     }
@@ -660,51 +790,131 @@ async function resolveExactYoutubeAudioStream(videoId) {
   return job;
 }
 
-async function resolveBackgroundStreamForTrack(track) {
+async function fetchRawYoutubeCandidates(query, limit = 10) {
+  const q = String(query || '').trim();
+  if (!q) return [];
+  const results = [];
+  const seenIds = new Set();
+  const pushItem = (item) => {
+    const norm = normalizeYtMusicTrack(item, { sourceLabel: 'YT Music API' });
+    if (norm?.videoId && !seenIds.has(norm.videoId)) {
+      seenIds.add(norm.videoId);
+      results.push(norm);
+    }
+  };
+
+  await Promise.allSettled([
+    (async () => {
+      try {
+        const json = await fetchJsonTimeout(`${SIPUTZX_YT_SEARCH_URL}?query=${encodeURIComponent(q)}`, 6000);
+        const items = Array.isArray(json?.data) ? json.data : [];
+        items.slice(0, limit).forEach(pushItem);
+      } catch {
+        // Ignore Siputzx error
+      }
+    })(),
+    ...PIPED_API_HOSTS.slice(0, 1).map(async (host) => {
+      try {
+        const json = await fetchJsonTimeout(
+          `${host}/search?q=${encodeURIComponent(q)}&filter=music_songs`,
+          5000
+        );
+        const items = Array.isArray(json?.items) ? json.items : [];
+        items.slice(0, limit).forEach(pushItem);
+      } catch {
+        // Ignore Piped error
+      }
+    }),
+  ]);
+
+  return results;
+}
+
+async function resolveBackgroundStreamForTrack(track, { allowAltYt = true, bypassCache = false } = {}) {
   if (!track) return '';
-  if (track.streamUrl) {
+  if (!bypassCache && track.streamUrl) {
     if (!failedStreamUrls.has(track.streamUrl)) {
       return track.streamUrl;
     }
     track.streamUrl = '';
   }
 
-  const seedMatch = SEED_VIRAL_INDO_TRACKS.find(
-    (s) =>
-      s.streamUrl &&
-      !failedStreamUrls.has(s.streamUrl) &&
-      ((track.videoId && s.videoId === track.videoId) || isStrictAudioMatch(track, s))
-  );
-  if (seedMatch?.streamUrl) {
-    track.streamUrl = seedMatch.streamUrl;
-    return track.streamUrl;
+  const inflightKey = `${track.id || track.videoId || track.title}:${allowAltYt ? 'alt' : 'exact'}`;
+  if (!bypassCache && trackStreamInFlight.has(inflightKey)) {
+    return trackStreamInFlight.get(inflightKey);
   }
 
-  const query = `${track.title || ''} ${track.artist || ''}`.trim();
-  if (query) {
-    const audiusMatches = await fetchAudiusDirectTracks(query, {
-      genre: track.genre || 'Viral Indonesia',
-      isIndonesianViral: Boolean(track.isIndonesianViral),
-      limit: 6,
-    });
-    const strictAudiusHit = audiusMatches.find(
-      (a) => a.streamUrl && !failedStreamUrls.has(a.streamUrl) && isStrictAudioMatch(track, a)
-    );
-    if (strictAudiusHit?.streamUrl) {
-      track.streamUrl = strictAudiusHit.streamUrl;
-      return track.streamUrl;
+  const job = (async () => {
+    try {
+      const seedMatch = SEED_VIRAL_INDO_TRACKS.find(
+        (s) =>
+          s.streamUrl &&
+          !failedStreamUrls.has(s.streamUrl) &&
+          ((track.videoId && s.videoId === track.videoId) || isStrictAudioMatch(track, s))
+      );
+      if (seedMatch?.streamUrl) {
+        track.streamUrl = seedMatch.streamUrl;
+        return track.streamUrl;
+      }
+
+      if (track.videoId && (bypassCache || !failedExactVideoIds.has(track.videoId))) {
+        const exactYtStream = await resolveExactYoutubeAudioStream(track.videoId, { bypassCache });
+        if (exactYtStream && !failedStreamUrls.has(exactYtStream)) {
+          track.streamUrl = exactYtStream;
+          return track.streamUrl;
+        }
+      }
+
+      const query = `${track.title || ''} ${track.artist || ''}`.trim();
+      if (query) {
+        const audiusMatches = await fetchAudiusDirectTracks(query, {
+          genre: track.genre || 'Viral Indonesia',
+          isIndonesianViral: Boolean(track.isIndonesianViral),
+          limit: 6,
+        });
+        const strictAudiusHit = audiusMatches.find(
+          (a) => a.streamUrl && !failedStreamUrls.has(a.streamUrl) && isStrictAudioMatch(track, a)
+        );
+        if (strictAudiusHit?.streamUrl) {
+          track.streamUrl = strictAudiusHit.streamUrl;
+          return track.streamUrl;
+        }
+      }
+
+      // If primary YouTube videoId is IP-locked / login-gated, resolve an alternate YouTube upload
+      // that STRICTLY matches the exact same song title & artist (keeping displayed metadata untouched).
+      if (allowAltYt && query) {
+        const altCandidates = await fetchRawYoutubeCandidates(query, 10);
+        const matchingAlts = altCandidates
+          .filter(
+            (alt) =>
+              alt.videoId &&
+              alt.videoId !== track.videoId &&
+              !failedExactVideoIds.has(alt.videoId) &&
+              isStrictSongMetadataMatch(track, alt)
+          )
+          .slice(0, 3);
+
+        for (const alt of matchingAlts) {
+          const altStream = await resolveExactYoutubeAudioStream(alt.videoId);
+          if (altStream && !failedStreamUrls.has(altStream)) {
+            track.streamUrl = altStream;
+            if (track.videoId) {
+              ytExactStreamCache.set(track.videoId, altStream);
+            }
+            return track.streamUrl;
+          }
+        }
+      }
+
+      return '';
+    } finally {
+      trackStreamInFlight.delete(inflightKey);
     }
-  }
+  })();
 
-  if (track.videoId && !failedExactVideoIds.has(track.videoId)) {
-    const exactYtMp3 = await resolveExactYoutubeAudioStream(track.videoId);
-    if (exactYtMp3 && !failedStreamUrls.has(exactYtMp3)) {
-      track.streamUrl = exactYtMp3;
-      return track.streamUrl;
-    }
-  }
-
-  return '';
+  trackStreamInFlight.set(inflightKey, job);
+  return job;
 }
 
 async function fetchYtMusicSearch(query, { genre = 'YT Music', isIndonesianViral = true, limit = 16 } = {}) {
@@ -846,8 +1056,9 @@ export function getMusicController() {
 }
 
 export function initMusicPlayer() {
-  if (controllerSingleton || typeof document === 'undefined') {
-    return controllerSingleton;
+  const existingGlobal = typeof window !== 'undefined' ? window.__manifestudioMusic || null : null;
+  if (controllerSingleton || existingGlobal || typeof document === 'undefined') {
+    return controllerSingleton || existingGlobal;
   }
 
   // Native HTML5 <audio> Background-Safe Engine & YouTube IFrame Engine shell
@@ -896,6 +1107,7 @@ export function initMusicPlayer() {
         (t) => t.id === initialSession.lastTrackId || t.videoId === initialSession.lastTrackId
       )) ||
     null;
+  let trackSelectionSource = currentTrack && initialSession.trackSelectionSource === 'user' ? 'user' : 'auto';
   let isPlaying = false;
   let isLoading = false;
   let isOpen = false;
@@ -934,7 +1146,6 @@ export function initMusicPlayer() {
   let ytReady = false;
   let timeTicker = null;
   let bgWatchdogTimer = null;
-  let bgYtVerifyTimer = null;
   let silentAudioCtx = null;
   let silentOscillator = null;
   let lastAutoNextAt = 0;
@@ -1234,18 +1445,31 @@ export function initMusicPlayer() {
         target.streamUrl = '';
       }
       if (!target.streamUrl) {
-        // Bound background network resolution so mobile OS does not freeze timers before audio starts
-        await Promise.race([
-          resolveBackgroundStreamForTrack(target),
-          new Promise((res) => setTimeout(res, 2200)),
-        ]);
+        await resolveBackgroundStreamForTrack(target, { allowAltYt: true });
       }
-      // Strictly never swap the currently displayed song to a different random track;
-      // if this YT track has no exact audio stream yet, let YT IFrame keep playing it.
-      if (!target.streamUrl || failedStreamUrls.has(target.streamUrl)) return false;
+      // Strictly abort handoff if user changed track or paused while resolving,
+      // and NEVER replace user's chosen track with a random catalog track!
+      if (
+        explicitPaused ||
+        currentTrack?.id !== target.id ||
+        !target.streamUrl ||
+        failedStreamUrls.has(target.streamUrl)
+      ) {
+        return false;
+      }
 
-      const resumeSec = currentTime > 1 ? currentTime : 0;
+      let liveSec = currentTime;
+      if (activeEngine === 'yt-iframe' && ytReady && ytPlayer?.getCurrentTime) {
+        try {
+          const ytSec = ytPlayer.getCurrentTime();
+          if (Number.isFinite(ytSec) && ytSec > 0) liveSec = ytSec;
+        } catch {
+          // Ignore YT read error
+        }
+      }
+      const resumeSec = liveSec > 1 ? liveSec : 0;
       currentTrack = target;
+      currentTime = resumeSec;
       activeEngine = 'audio-el';
       try {
         if (ytReady && ytPlayer?.pauseVideo) ytPlayer.pauseVideo();
@@ -1271,6 +1495,8 @@ export function initMusicPlayer() {
       }
       isPlaying = true;
       isLoading = false;
+      lastError = '';
+      consecutiveErrors = 0;
       startTimeTicker();
       syncMediaSession(target);
       saveMusicSession({
@@ -1278,6 +1504,7 @@ export function initMusicPlayer() {
         wasPlaying: true,
         lastTrackId: target.id,
         currentTime: resumeSec,
+        trackSelectionSource,
       });
       renderWidget();
       notifySubscribers('play');
@@ -1288,30 +1515,6 @@ export function initMusicPlayer() {
     } finally {
       backgroundHandoffInFlight = false;
     }
-  }
-
-  function scheduleBackgroundYtVerification() {
-    if (bgYtVerifyTimer) {
-      clearTimeout(bgYtVerifyTimer);
-      bgYtVerifyTimer = null;
-    }
-    if (explicitPaused || activeEngine !== 'yt-iframe') return;
-    bgYtVerifyTimer = setTimeout(() => {
-      bgYtVerifyTimer = null;
-      if (explicitPaused || activeEngine !== 'yt-iframe') return;
-      if (typeof document === 'undefined' || !document.hidden) return;
-      let st = -1;
-      try {
-        st = ytPlayer?.getPlayerState?.() ?? -1;
-      } catch {
-        st = -1;
-      }
-      // If mobile/desktop OS still keeps cross-origin YT iframe paused in background,
-      // switch cleanly to a verified background-safe native <audio> track (with updated title!)
-      if (st !== 1) {
-        controller.playNext({ reason: 'background-handoff' });
-      }
-    }, 750);
   }
 
   function initYouTubeEngine() {
@@ -1377,6 +1580,7 @@ export function initMusicPlayer() {
                   wasPlaying: true,
                   lastTrackId: currentTrack?.id || '',
                   currentTime,
+                  trackSelectionSource,
                 });
                 startTimeTicker();
                 syncMediaPositionState();
@@ -1388,8 +1592,8 @@ export function initMusicPlayer() {
                 notifySubscribers('loading');
               } else if (state === YTState.PAUSED) {
                 if (activeEngine !== 'yt-iframe') return;
-                // Mobile OS often fires YTState.PAUSED 50-300ms BEFORE visibilitychange/hidden flips true!
-                // If user didn't click pause (explicitPaused === false), hand off or keep recovering instead of dying.
+                // Mobile OS often fires YTState.PAUSED 50-300ms BEFORE visibilitychange/hidden flips true.
+                // Never replace the user's chosen song with another song — resolve and hand off the EXACT same track!
                 if (!explicitPaused) {
                   const isHiddenOrBlurred =
                     (typeof document !== 'undefined' && (document.hidden || !document.hasFocus?.())) ||
@@ -1404,7 +1608,6 @@ export function initMusicPlayer() {
                           // Ignore
                         }
                       }
-                      scheduleBackgroundYtVerification();
                     });
                     return;
                   }
@@ -1415,11 +1618,7 @@ export function initMusicPlayer() {
                       typeof document !== 'undefined' &&
                       (document.hidden || !document.hasFocus?.())
                     ) {
-                      handoffToBackgroundSafeAudio('yt-delayed-hidden-pause').then((switched) => {
-                        if (!switched && !explicitPaused && activeEngine === 'yt-iframe') {
-                          scheduleBackgroundYtVerification();
-                        }
-                      });
+                      handoffToBackgroundSafeAudio('yt-delayed-hidden-pause');
                     }
                   }, 140);
                   return;
@@ -1453,12 +1652,14 @@ export function initMusicPlayer() {
               if (failedId) {
                 failedYtIframeVideoIds.add(failedId);
               }
-              // Try resolving an exact streamUrl for THIS SAME song (if not already failed) before skipping!
-              if (failedTrack && !explicitPaused && (!failedId || !failedExactVideoIds.has(failedId))) {
+              // Try resolving an exact streamUrl (or strictly-matching alt upload of the EXACT same song) first!
+              if (failedTrack && !explicitPaused) {
                 isLoading = true;
                 renderWidget();
                 notifySubscribers('loading');
-                const resolved = await resolveBackgroundStreamForTrack(failedTrack).catch(() => '');
+                const resolved = await resolveBackgroundStreamForTrack(failedTrack, {
+                  allowAltYt: true,
+                }).catch(() => '');
                 if (
                   resolved &&
                   !failedStreamUrls.has(resolved) &&
@@ -1469,18 +1670,25 @@ export function initMusicPlayer() {
                   return;
                 }
               }
-              if (failedId) {
+              if (failedId && trackSelectionSource !== 'user') {
                 blockedVideoIds.add(failedId);
                 tracks = tracks.filter((t) => t.videoId !== failedId);
               }
               isPlaying = false;
               isLoading = false;
               consecutiveErrors += 1;
-              if (!explicitPaused && consecutiveErrors <= 5 && tracks.length > 0) {
+              if (
+                !explicitPaused &&
+                shouldAutoSkipOnPlaybackError({ trackSelectionSource, consecutiveErrors }) &&
+                tracks.length > 0
+              ) {
                 lastError = 'Mengganti ke lagu YT Music lain yang tersedia...';
                 controller.playNext({ reason: 'error-skip' });
               } else {
-                lastError = 'Pemutar YT Music sedang menunggu koneksi atau memilih lagu lain.';
+                lastError =
+                  trackSelectionSource === 'user'
+                    ? 'Sumber audio lagu ini sedang sibuk atau dibatasi. Ketuk Putar untuk coba lagi atau buka di YT.'
+                    : 'Pemutar YT Music sedang menunggu koneksi atau memilih lagu lain.';
                 renderWidget();
                 notifySubscribers('error');
               }
@@ -1523,10 +1731,6 @@ export function initMusicPlayer() {
 
   function executePlaybackNow(track, { startSeconds = 0 } = {}) {
     if (!track) return;
-    if (bgYtVerifyTimer) {
-      clearTimeout(bgYtVerifyTimer);
-      bgYtVerifyTimer = null;
-    }
     currentTrack = track;
     currentTime = Math.max(0, Number(startSeconds) || 0);
     duration = Number(track.duration || 0);
@@ -1541,6 +1745,7 @@ export function initMusicPlayer() {
       wasPlaying: true,
       lastTrackId: track.id,
       currentTime,
+      trackSelectionSource,
     });
 
     // Always prefer native HTML5 <audio> whenever a valid direct streamUrl exists so playback
@@ -1591,19 +1796,19 @@ export function initMusicPlayer() {
             ytExactStreamCache.delete(track.videoId);
             failedExactVideoIds.add(track.videoId);
           }
-          // Clear broken streamUrl on this track and fall back to the EXACT same song via YT IFrame (only if YT hasn't failed for it)
+          // Clear broken streamUrl on this track and fall back to the EXACT same song via YT IFrame
           track.streamUrl = '';
           const isTabHidden = typeof document !== 'undefined' && document.hidden;
           if (track.videoId && !failedYtIframeVideoIds.has(track.videoId) && !isTabHidden) {
             startYoutubePlaybackForTrack(track, currentTime);
           } else {
             consecutiveErrors += 1;
-            if (consecutiveErrors <= 5 && tracks.length > 0) {
+            if (shouldAutoSkipOnPlaybackError({ trackSelectionSource, consecutiveErrors }) && tracks.length > 0) {
               controller.playNext({ reason: 'error-skip' });
             } else {
               isPlaying = false;
               isLoading = false;
-              lastError = 'Sumber audio lagu ini sedang tidak tersedia.';
+              lastError = 'Sumber audio lagu ini sedang bermasalah. Ketuk Putar untuk coba lagi.';
               renderWidget();
               notifySubscribers('error');
             }
@@ -1615,11 +1820,24 @@ export function initMusicPlayer() {
       track.streamUrl = '';
     }
 
-    // Track only has videoId: bless native <audio> for background handoff, start YT IFrame, and resolve background stream
+    // Track only has videoId: bless native <audio> for background handoff, start YT IFrame,
+    // and upgrade seamlessly to background-safe <audio> the moment exact stream resolution completes!
     activeEngine = 'yt-iframe';
     unlockNativeAudioElement();
-    resolveBackgroundStreamForTrack(track).catch(() => {});
     startYoutubePlaybackForTrack(track, currentTime);
+    resolveBackgroundStreamForTrack(track, { allowAltYt: true })
+      .then((resolvedUrl) => {
+        if (
+          resolvedUrl &&
+          !failedStreamUrls.has(resolvedUrl) &&
+          currentTrack?.id === track.id &&
+          !explicitPaused &&
+          activeEngine === 'yt-iframe'
+        ) {
+          handoffToBackgroundSafeAudio('foreground-stream-upgrade');
+        }
+      })
+      .catch(() => {});
   }
 
   async function ensureTrackPool() {
@@ -2299,8 +2517,9 @@ export function initMusicPlayer() {
       return () => subscribers.delete(cb);
     },
 
-    playTrack(track, { startSeconds = 0, queueMode = null, playlistId = '' } = {}) {
+    playTrack(track, { startSeconds = 0, queueMode = null, playlistId = '', selectionSource = 'user' } = {}) {
       if (!track) return;
+      trackSelectionSource = selectionSource === 'auto' ? 'auto' : 'user';
       if (queueMode) {
         activeQueueMode = queueMode;
         activeQueuePlaylistId = playlistId || '';
@@ -2418,6 +2637,7 @@ export function initMusicPlayer() {
         wasPlaying: true,
         lastTrackId: currentTrack?.id || '',
         currentTime,
+        trackSelectionSource,
       });
       if (!currentTrack) {
         this.playNext({ userInitiated: true });
@@ -2439,7 +2659,12 @@ export function initMusicPlayer() {
           syncMediaPositionState();
           renderWidget();
           notifySubscribers('play');
-        }).catch(() => this.playTrack(currentTrack, { startSeconds: currentTime }));
+        }).catch(() =>
+          this.playTrack(currentTrack, {
+            startSeconds: currentTime,
+            selectionSource: trackSelectionSource,
+          })
+        );
       } else if (ytReady && ytPlayer?.playVideo) {
         try {
           if (isMuted) ytPlayer.mute?.();
@@ -2452,20 +2677,22 @@ export function initMusicPlayer() {
           renderWidget();
           notifySubscribers('play');
         } catch {
-          this.playTrack(currentTrack, { startSeconds: currentTime });
+          this.playTrack(currentTrack, {
+            startSeconds: currentTime,
+            selectionSource: trackSelectionSource,
+          });
         }
       } else {
-        this.playTrack(currentTrack, { startSeconds: currentTime });
+        this.playTrack(currentTrack, {
+          startSeconds: currentTime,
+          selectionSource: trackSelectionSource,
+        });
       }
     },
 
     pause({ external = false } = {}) {
       explicitPaused = true;
       pendingPlayTrack = null;
-      if (bgYtVerifyTimer) {
-        clearTimeout(bgYtVerifyTimer);
-        bgYtVerifyTimer = null;
-      }
       if (!audio.paused) audio.pause();
       if (ytReady && ytPlayer?.pauseVideo) {
         try {
@@ -2485,6 +2712,7 @@ export function initMusicPlayer() {
         wasPlaying: false,
         lastTrackId: currentTrack?.id || '',
         currentTime,
+        trackSelectionSource,
       });
       syncMediaPositionState();
       if (external) {
@@ -2512,10 +2740,16 @@ export function initMusicPlayer() {
         consecutiveErrors = 0;
       }
 
-      if (reason === 'any-button-click' || reason === 'fab-open' || reason === 'background-handoff') {
+      if (reason === 'any-button-click' || reason === 'fab-open') {
         activeQueueMode = 'catalog';
         activeQueuePlaylistId = '';
       }
+      const nextSelectionSource =
+        reason === 'any-button-click' || reason === 'fab-open' || reason === 'error-skip'
+          ? 'auto'
+          : userInitiated
+          ? 'user'
+          : trackSelectionSource;
 
       // Custom Playlist or Watch Later queue navigation
       if (
@@ -2536,7 +2770,11 @@ export function initMusicPlayer() {
             picked = pool[(idx + 1) % pool.length] || pool[0];
           }
           if (picked) {
-            this.playTrack(picked, { queueMode: activeQueueMode, playlistId: activeQueuePlaylistId });
+            this.playTrack(picked, {
+              queueMode: activeQueueMode,
+              playlistId: activeQueuePlaylistId,
+              selectionSource: 'user',
+            });
             return;
           }
         }
@@ -2553,7 +2791,6 @@ export function initMusicPlayer() {
         reason === 'any-button-click' ||
         reason === 'fab-open' ||
         reason === 'error-skip' ||
-        reason === 'background-handoff' ||
         activePool === tracks
       ) {
         // Prefer verified native background <audio> streamUrl tracks for seamless playback
@@ -2575,9 +2812,9 @@ export function initMusicPlayer() {
       }
 
       if (nextTrack) {
-        this.playTrack(nextTrack, { queueMode: 'catalog' });
+        this.playTrack(nextTrack, { queueMode: 'catalog', selectionSource: nextSelectionSource });
       } else if (userInitiated && tracks.length > 0) {
-        this.playTrack(tracks[0], { queueMode: 'catalog' });
+        this.playTrack(tracks[0], { queueMode: 'catalog', selectionSource: nextSelectionSource });
       }
     },
 
@@ -2798,8 +3035,12 @@ export function initMusicPlayer() {
           }
           tracks = [...allMap.values()];
           searchFeedback = '';
+          // Non-blocking prefetch of exact background-safe audio streams for top search hits (never skips current song)
+          Promise.allSettled(
+            finalResults.slice(0, 3).map((hit) => resolveBackgroundStreamForTrack(hit, { allowAltYt: true }))
+          ).catch(() => {});
           if (autoPlayFirst) {
-            this.playTrack(finalResults[0]);
+            this.playTrack(finalResults[0], { selectionSource: 'user' });
           }
         } else {
           searchFeedback = `Tidak ditemukan lagu di YT Music untuk "${q}". Coba kata kunci lain.`;
@@ -2940,42 +3181,56 @@ export function initMusicPlayer() {
     }
   });
 
-  audio.addEventListener('error', () => {
+  audio.addEventListener('error', async () => {
     if (isUnlockingAudio || activeEngine !== 'audio-el' || explicitPaused) return;
-    const failedSrc = currentTrack?.streamUrl || audio.currentSrc || audio.src || '';
+    const failedTrack = currentTrack;
+    const failedSrc = failedTrack?.streamUrl || audio.currentSrc || audio.src || '';
     if (failedSrc) {
       failedStreamUrls.add(failedSrc);
     }
-    if (currentTrack?.videoId) {
-      const vid = currentTrack.videoId;
+    if (failedTrack?.videoId) {
+      const vid = failedTrack.videoId;
       if (ytExactStreamCache.get(vid) === failedSrc) {
         ytExactStreamCache.delete(vid);
       }
       failedExactVideoIds.add(vid);
     }
-    if (currentTrack) {
-      currentTrack.streamUrl = '';
+    if (failedTrack) {
+      failedTrack.streamUrl = '';
+    }
+    // Attempt resolving another exact verified stream for THIS SAME song first before fallback
+    if (failedTrack && !explicitPaused) {
+      const altResolved = await resolveBackgroundStreamForTrack(failedTrack, {
+        allowAltYt: true,
+      }).catch(() => '');
+      if (altResolved && !failedStreamUrls.has(altResolved) && currentTrack?.id === failedTrack.id && !explicitPaused) {
+        executePlaybackNow(failedTrack, { startSeconds: currentTime });
+        return;
+      }
     }
     if (
-      currentTrack?.videoId &&
-      !failedYtIframeVideoIds.has(currentTrack.videoId) &&
+      failedTrack?.videoId &&
+      !failedYtIframeVideoIds.has(failedTrack.videoId) &&
       (typeof document === 'undefined' || !document.hidden)
     ) {
-      startYoutubePlaybackForTrack(currentTrack, currentTime);
+      startYoutubePlaybackForTrack(failedTrack, currentTime);
       return;
     }
-    if (currentTrack?.videoId) {
-      blockedVideoIds.add(currentTrack.videoId);
-      tracks = tracks.filter((t) => t.videoId !== currentTrack.videoId);
+    if (failedTrack?.videoId && trackSelectionSource !== 'user') {
+      blockedVideoIds.add(failedTrack.videoId);
+      tracks = tracks.filter((t) => t.videoId !== failedTrack.videoId);
     }
     consecutiveErrors += 1;
-    if (consecutiveErrors <= 5 && tracks.length > 0) {
+    if (shouldAutoSkipOnPlaybackError({ trackSelectionSource, consecutiveErrors }) && tracks.length > 0) {
       lastError = 'Mengganti ke lagu YT Music lain yang tersedia...';
       controller.playNext({ reason: 'error-skip' });
     } else {
       isPlaying = false;
       isLoading = false;
-      lastError = 'Pemutar YT Music sedang menunggu koneksi atau memilih lagu lain.';
+      lastError =
+        trackSelectionSource === 'user'
+          ? 'Sumber audio lagu ini sedang bermasalah. Ketuk Putar untuk coba lagi atau buka di YT.'
+          : 'Pemutar YT Music sedang menunggu koneksi atau memilih lagu lain.';
       renderWidget();
       notifySubscribers('error');
     }
@@ -2987,11 +3242,8 @@ export function initMusicPlayer() {
     ensureBackgroundAudioKeepAlive();
     if (isPlaying || isLoading) {
       if (activeEngine === 'yt-iframe') {
-        handoffToBackgroundSafeAudio(reason).then((switched) => {
-          if (!switched && !explicitPaused && activeEngine === 'yt-iframe' && document.hidden) {
-            scheduleBackgroundYtVerification();
-          }
-        });
+        // Resolve and hand off the EXACT user song to <audio>; NEVER overwrite it with a random song!
+        handoffToBackgroundSafeAudio(reason);
       } else if (audio.ended) {
         triggerSeamlessAutoNext('ended');
       } else if (audio.paused && audio.src && !isSwitchingSource) {
@@ -3007,18 +3259,25 @@ export function initMusicPlayer() {
       if (document.hidden) {
         keepAudioAliveOnLifecycle('visibility-hidden');
       } else {
-        if (bgYtVerifyTimer) {
-          clearTimeout(bgYtVerifyTimer);
-          bgYtVerifyTimer = null;
-        }
         const saved = readMusicSession();
         if (!explicitPaused && (saved.wasPlaying || isPlaying) && currentTrack) {
           if (activeEngine === 'audio-el') {
             if (audio.ended) {
               triggerSeamlessAutoNext('ended');
             } else if (audio.paused && audio.src && !isSwitchingSource) {
+              ensureBackgroundAudioKeepAlive();
               audio.play().catch(() => {});
             }
+          } else if (activeEngine === 'yt-iframe') {
+            handoffToBackgroundSafeAudio('return-visible').then((switched) => {
+              if (!switched && !explicitPaused && activeEngine === 'yt-iframe' && ytReady && ytPlayer?.playVideo) {
+                try {
+                  ytPlayer.playVideo();
+                } catch {
+                  // Ignore YT resume error
+                }
+              }
+            });
           }
         }
       }
@@ -3097,7 +3356,10 @@ export function initMusicPlayer() {
       if (externalMediaPlaying) return;
       if (!isPlaying && !isLoading) {
         if (currentTrack && currentTime > 0) {
-          controller.playTrack(currentTrack, { startSeconds: currentTime });
+          controller.playTrack(currentTrack, {
+            startSeconds: currentTime,
+            selectionSource: trackSelectionSource,
+          });
         } else {
           controller.playNext({ reason: 'any-button-click' });
         }
