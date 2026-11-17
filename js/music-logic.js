@@ -438,3 +438,216 @@ export function parseSavedVolume(raw, fallback = 0.72) {
   if (Number.isFinite(num) && num >= 0 && num <= 1) return num;
   return fallback;
 }
+
+export const MUSIC_LIBRARY_STORAGE_KEY = 'manifestudio_music_library_v1';
+
+export function serializeMusicTrack(track, addedAt = '') {
+  if (!track || typeof track !== 'object') return null;
+  const normalized = normalizeYtMusicTrack(track, {
+    genre: track.genre,
+    isIndonesianViral: track.isIndonesianViral,
+    sourceLabel: track.sourceLabel,
+  });
+  if (!normalized) return null;
+  return {
+    id: normalized.id,
+    videoId: normalized.videoId || '',
+    title: normalized.title,
+    artist: normalized.artist,
+    genre: normalized.genre,
+    duration: normalized.duration,
+    artwork: normalized.artwork,
+    artworkFallback: normalized.artworkFallback,
+    watchUrl: normalized.watchUrl,
+    isIndonesianViral: Boolean(normalized.isIndonesianViral),
+    sourceLabel: normalized.sourceLabel,
+    streamUrl: normalized.streamUrl || '',
+    addedAt: String(addedAt || track.addedAt || ''),
+  };
+}
+
+function getTrackIdentityKey(trackOrId) {
+  if (!trackOrId) return '';
+  if (typeof trackOrId === 'string') return trackOrId.trim();
+  return String(trackOrId.id || (trackOrId.videoId ? `yt-${trackOrId.videoId}` : '')).trim();
+}
+
+function isSameTrackItem(a, b) {
+  if (!a || !b) return false;
+  if (a.id && b.id && a.id === b.id) return true;
+  if (a.videoId && b.videoId && a.videoId === b.videoId) return true;
+  return false;
+}
+
+export function normalizeMusicLibraryState(raw = {}) {
+  const src = raw && typeof raw === 'object' ? raw : {};
+  const watchLaterMap = new Map();
+  if (Array.isArray(src.watchLater)) {
+    for (const item of src.watchLater) {
+      const clean = serializeMusicTrack(item);
+      if (clean && !watchLaterMap.has(clean.id)) {
+        watchLaterMap.set(clean.id, clean);
+      }
+    }
+  }
+
+  const playlists = [];
+  const seenPlaylistIds = new Set();
+  if (Array.isArray(src.playlists)) {
+    for (const pl of src.playlists) {
+      if (!pl || typeof pl !== 'object') continue;
+      const pid = String(pl.id || '').trim();
+      const name = String(pl.name || '').trim().slice(0, 60);
+      if (!pid || !name || seenPlaylistIds.has(pid)) continue;
+      seenPlaylistIds.add(pid);
+      const trackMap = new Map();
+      if (Array.isArray(pl.tracks)) {
+        for (const t of pl.tracks) {
+          const clean = serializeMusicTrack(t);
+          if (clean && !trackMap.has(clean.id)) {
+            trackMap.set(clean.id, clean);
+          }
+        }
+      }
+      playlists.push({
+        id: pid,
+        name,
+        createdAt: String(pl.createdAt || ''),
+        updatedAt: String(pl.updatedAt || pl.createdAt || ''),
+        tracks: [...trackMap.values()],
+      });
+    }
+  }
+
+  return {
+    watchLater: [...watchLaterMap.values()],
+    playlists,
+  };
+}
+
+export function isTrackInWatchLater(library, trackOrId) {
+  const lib = normalizeMusicLibraryState(library);
+  const key = getTrackIdentityKey(trackOrId);
+  if (!key) return false;
+  return lib.watchLater.some(
+    (t) => t.id === key || (typeof trackOrId === 'object' && isSameTrackItem(t, trackOrId))
+  );
+}
+
+export function toggleTrackInWatchLater(library, track, nowIso = new Date().toISOString()) {
+  const lib = normalizeMusicLibraryState(library);
+  const clean = serializeMusicTrack(track, nowIso);
+  if (!clean) {
+    return { library: lib, added: false };
+  }
+  const existingIdx = lib.watchLater.findIndex((t) => isSameTrackItem(t, clean));
+  if (existingIdx !== -1) {
+    return {
+      library: {
+        ...lib,
+        watchLater: lib.watchLater.filter((_, i) => i !== existingIdx),
+      },
+      added: false,
+    };
+  }
+  return {
+    library: {
+      ...lib,
+      watchLater: [clean, ...lib.watchLater],
+    },
+    added: true,
+  };
+}
+
+export function createUserPlaylist(
+  library,
+  name,
+  initialTrack = null,
+  nowIso = new Date().toISOString(),
+  customId = ''
+) {
+  const lib = normalizeMusicLibraryState(library);
+  const cleanName = String(name || '').trim().slice(0, 60);
+  if (!cleanName) {
+    return { library: lib, playlist: null };
+  }
+  const id =
+    String(customId || '').trim() ||
+    `pl-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
+  const initialClean = initialTrack ? serializeMusicTrack(initialTrack, nowIso) : null;
+  const playlist = {
+    id,
+    name: cleanName,
+    createdAt: nowIso,
+    updatedAt: nowIso,
+    tracks: initialClean ? [initialClean] : [],
+  };
+  return {
+    library: {
+      ...lib,
+      playlists: [playlist, ...lib.playlists],
+    },
+    playlist,
+  };
+}
+
+export function renameUserPlaylist(library, playlistId, nextName, nowIso = new Date().toISOString()) {
+  const lib = normalizeMusicLibraryState(library);
+  const cleanName = String(nextName || '').trim().slice(0, 60);
+  if (!cleanName) return lib;
+  return {
+    ...lib,
+    playlists: lib.playlists.map((pl) =>
+      pl.id === playlistId ? { ...pl, name: cleanName, updatedAt: nowIso } : pl
+    ),
+  };
+}
+
+export function deleteUserPlaylist(library, playlistId) {
+  const lib = normalizeMusicLibraryState(library);
+  return {
+    ...lib,
+    playlists: lib.playlists.filter((pl) => pl.id !== playlistId),
+  };
+}
+
+export function addTrackToPlaylist(library, playlistId, track, nowIso = new Date().toISOString()) {
+  const lib = normalizeMusicLibraryState(library);
+  const clean = serializeMusicTrack(track, nowIso);
+  if (!clean) return { library: lib, added: false };
+  let added = false;
+  const nextPlaylists = lib.playlists.map((pl) => {
+    if (pl.id !== playlistId) return pl;
+    if (pl.tracks.some((t) => isSameTrackItem(t, clean))) {
+      return pl;
+    }
+    added = true;
+    return {
+      ...pl,
+      updatedAt: nowIso,
+      tracks: [...pl.tracks, clean],
+    };
+  });
+  return {
+    library: { ...lib, playlists: nextPlaylists },
+    added,
+  };
+}
+
+export function removeTrackFromPlaylist(library, playlistId, trackId, nowIso = new Date().toISOString()) {
+  const lib = normalizeMusicLibraryState(library);
+  let removed = false;
+  const nextPlaylists = lib.playlists.map((pl) => {
+    if (pl.id !== playlistId) return pl;
+    const filtered = pl.tracks.filter((t) => t.id !== trackId && `yt-${t.videoId}` !== trackId);
+    if (filtered.length !== pl.tracks.length) {
+      removed = true;
+      return { ...pl, updatedAt: nowIso, tracks: filtered };
+    }
+    return pl;
+  });
+  return {
+    library: { ...lib, playlists: nextPlaylists },
+    removed,
+  };
+}

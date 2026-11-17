@@ -22,30 +22,30 @@ import {
   matchIndonesianCityQuery,
   planMediaCompression,
   resolveAccurateWeatherCondition,
-} from './tools-logic.js?v=27';
+} from './tools-logic.js?v=29';
 import {
   describeLocationSource,
   resolveUserLocation,
   searchCitiesOnline,
   setManualLocation,
-} from './location.js?v=27';
-import { createInteractiveGlobe } from './globe.js?v=27';
+} from './location.js?v=29';
+import { createInteractiveGlobe } from './globe.js?v=29';
 import {
   createSpeedometerGauge,
   fetchSpeedtestEnvironment,
   readClientDeviceTelemetry,
   runInternetSpeedtest,
-} from './speedtest.js?v=27';
+} from './speedtest.js?v=29';
 import {
   extractAudioFromVideoUrl,
   fetchMediaDownload,
   triggerBatchPhotoDownload,
   triggerDirectMediaSave,
-} from './downloader.js?v=27';
-import { compressMediaFile, inspectMediaFile } from './compressor.js?v=27';
-import { formatAudioTime } from './music-logic.js?v=27';
-import { MUSIC_PRESET_CATEGORIES, getMusicController, initMusicPlayer } from './music.js?v=27';
-import { normalizeUtilityConfig } from './store.js?v=27';
+} from './downloader.js?v=29';
+import { compressMediaFile, inspectMediaFile } from './compressor.js?v=29';
+import { formatAudioTime, isTrackInWatchLater } from './music-logic.js?v=29';
+import { MUSIC_PRESET_CATEGORIES, getMusicController, initMusicPlayer } from './music.js?v=29';
+import { normalizeUtilityConfig } from './store.js?v=29';
 
 const PRAYER_CACHE_KEY = 'manifestudio_prayer_cache_v1';
 const MYQURAN_CITIES_KEY = 'manifestudio_myquran_cities_v1';
@@ -423,6 +423,12 @@ export function createToolsHubController({
     compProgressLabel: '',
     compError: '',
     compResult: null,
+    musicBrowserTab: 'queue', // 'queue' | 'playlists' | 'watch-later'
+    musicSelectedPlaylistId: '',
+    musicStagePlaylistPickerOpen: false,
+    musicRowPlaylistPickerId: '',
+    musicEditingPlaylistId: '',
+    musicPlaylistFeedback: '',
   };
 
   let clockTimer = null;
@@ -1971,15 +1977,48 @@ export function createToolsHubController({
     return 'Ulang Semua';
   }
 
+  function getActiveQueueListFromState(mState) {
+    if (mState.activeQueueMode === 'watch-later') {
+      return mState.watchLater || [];
+    }
+    if (mState.activeQueueMode === 'playlist' && mState.activeQueuePlaylistId) {
+      const pl = (mState.playlists || []).find((p) => p.id === mState.activeQueuePlaylistId);
+      if (pl) return pl.tracks || [];
+    }
+    return mState.searchResults?.length > 0 ? mState.searchResults : mState.tracks || [];
+  }
+
+  function findTrackByIdInState(mState, trackId) {
+    if (!trackId) return null;
+    const all = [
+      ...(mState.searchResults || []),
+      ...(mState.tracks || []),
+      ...(mState.watchLater || []),
+      ...(mState.playlists || []).flatMap((p) => p.tracks || []),
+    ];
+    return all.find((t) => t && t.id === trackId) || null;
+  }
+
   function buildMusicHubStageHtml(mState) {
     const active = mState.currentTrack || mState.tracks?.[0] || null;
     const dur = mState.duration || active?.duration || 180;
     const cur = Math.min(dur, Math.max(0, mState.currentTime || 0));
     const pct = dur > 0 ? Math.min(100, Math.round((cur / dur) * 100)) : 0;
     const volPct = Math.round((mState.isMuted ? 0 : (mState.volume ?? 0.72)) * 100);
-    const activeList = mState.searchResults?.length > 0 ? mState.searchResults : mState.tracks || [];
+    const activeList = getActiveQueueListFromState(mState);
     const posNum = mState.queueIndex >= 0 ? mState.queueIndex + 1 : 1;
     const totalNum = activeList.length || 1;
+    const inWatchLater = Boolean(active && isTrackInWatchLater({ watchLater: mState.watchLater }, active));
+    const activePlaylist =
+      mState.activeQueueMode === 'playlist' && mState.activeQueuePlaylistId
+        ? (mState.playlists || []).find((p) => p.id === mState.activeQueuePlaylistId)
+        : null;
+    const queueLabel =
+      mState.activeQueueMode === 'watch-later'
+        ? 'Antrean: Tonton Nanti'
+        : activePlaylist
+        ? `Playlist: ${activePlaylist.name}`
+        : '';
     const statusLabel = mState.isLoading
       ? 'Memuat Stream...'
       : mState.isPlaying
@@ -2046,14 +2085,84 @@ export function createToolsHubController({
             </div>
             <div class="ytm-track-badges">
               <span class="ytm-queue-pill mono-num">${posNum} / ${totalNum}</span>
+              ${queueLabel ? `<span class="ytm-queue-pill is-mode">${escapeHtml(queueLabel)}</span>` : ''}
               ${
                 active?.watchUrl
                   ? `<a href="${escapeHtml(active.watchUrl)}" target="_blank" rel="noopener noreferrer" class="ytm-watch-pill" title="Buka di YouTube Music">YT ↗</a>`
                   : ''
               }
+              <button
+                type="button"
+                id="music-hub-watchlater-btn"
+                class="ytm-chip-btn ${inWatchLater ? 'is-active' : ''}"
+                data-music-control="true"
+                aria-pressed="${inWatchLater}"
+                title="${inWatchLater ? 'Hapus dari Tonton Nanti' : 'Simpan ke Tonton Nanti'}"
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round">${
+                  inWatchLater
+                    ? '<circle cx="12" cy="12" r="9" fill="currentColor" stroke="currentColor"/><polyline points="12 7 12 12 15 14" stroke="#ffffff"/>'
+                    : '<circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15 14"/>'
+                }</svg>
+                <span>${inWatchLater ? 'Di Tonton Nanti' : 'Tonton Nanti'}</span>
+              </button>
+              <button
+                type="button"
+                id="music-hub-stage-pl-btn"
+                class="ytm-chip-btn ${toolState.musicStagePlaylistPickerOpen ? 'is-active' : ''}"
+                data-music-control="true"
+                aria-expanded="${toolState.musicStagePlaylistPickerOpen}"
+                title="Simpan lagu ini ke Playlist"
+              >
+                <span>+ Playlist</span>
+              </button>
             </div>
           </div>
         </div>
+
+        ${
+          toolState.musicStagePlaylistPickerOpen && active
+            ? `<div class="ytm-hub-pl-picker" id="music-hub-stage-pl-picker" data-music-control="true">
+                <div class="ytm-hub-pl-picker-head">
+                  <strong>Simpan "${escapeHtml(active.title)}" ke Playlist</strong>
+                  <button type="button" id="music-hub-stage-pl-close" class="ytm-row-action-btn" data-music-control="true" aria-label="Tutup pemilih playlist">✕</button>
+                </div>
+                <form id="music-hub-stage-create-pl-form" class="ytm-playlist-create-form">
+                  <input
+                    type="text"
+                    id="music-hub-stage-new-pl-input"
+                    class="music-search-input"
+                    placeholder="Buat playlist baru & langsung simpan..."
+                    maxlength="60"
+                    aria-label="Nama playlist baru"
+                  />
+                  <button type="submit" class="btn btn-primary btn-xs" data-music-control="true">Buat &amp; Simpan</button>
+                </form>
+                ${
+                  (mState.playlists || []).length > 0
+                    ? `<div class="ytm-hub-pl-quicklist">
+                        ${mState.playlists
+                          .map((pl) => {
+                            const hasTrack = pl.tracks.some((t) => t.id === active.id);
+                            return `
+                              <button
+                                type="button"
+                                class="music-search-hit ${hasTrack ? 'is-active' : ''}"
+                                data-hub-stage-add-pl="${escapeHtml(pl.id)}"
+                                data-music-control="true"
+                              >
+                                <span class="music-search-hit-title">${escapeHtml(pl.name)} (${pl.tracks.length} lagu)</span>
+                                <span class="music-search-hit-dur">${hasTrack ? '✓ Tersimpan' : '+ Tambah'}</span>
+                              </button>
+                            `;
+                          })
+                          .join('')}
+                      </div>`
+                    : `<div class="music-search-note">Belum ada playlist tersimpan. Ketik nama playlist baru di atas.</div>`
+                }
+              </div>`
+            : ''
+        }
 
         <div class="ytm-scrubber-wrap">
           <input
@@ -2182,7 +2291,132 @@ export function createToolsHubController({
     `;
   }
 
+  function renderMusicTrackRowHtml(track, mState, { playAttr = 'data-hub-music-pick', playlistIdForRemove = '' } = {}) {
+    const isCurrent = mState.currentTrack?.id === track.id;
+    const inWl = isTrackInWatchLater({ watchLater: mState.watchLater }, track);
+    const pickerOpen = toolState.musicRowPlaylistPickerId === track.id;
+    const playlists = mState.playlists || [];
+
+    return `
+      <div class="ytm-track-row-block">
+        <div
+          class="ytm-track-row ${isCurrent ? 'is-active' : ''}"
+          role="option"
+          aria-selected="${isCurrent}"
+        >
+          <button
+            type="button"
+            class="ytm-track-row-main"
+            ${playAttr}="${escapeHtml(track.id)}"
+            data-music-control="true"
+          >
+            <div class="ytm-row-thumb-wrap">
+              <img
+                src="${escapeHtml(track.artwork)}"
+                alt=""
+                width="46"
+                height="46"
+                loading="lazy"
+                class="ytm-row-thumb"
+                onerror="this.src='${escapeHtml(track.artworkFallback || '')}'"
+              />
+              <span class="ytm-row-overlay-icon" aria-hidden="true">
+                ${isCurrent && mState.isPlaying ? '❚❚' : '▶'}
+              </span>
+            </div>
+            <span class="ytm-row-info">
+              <span class="ytm-row-title">${escapeHtml(track.title)}</span>
+              <span class="ytm-row-sub">${escapeHtml(track.artist)} • ${escapeHtml(track.genre || 'YT Music')}</span>
+            </span>
+          </button>
+          <div class="ytm-row-actions">
+            <span class="ytm-row-dur mono-num">${formatAudioTime(track.duration)}</span>
+            <button
+              type="button"
+              class="ytm-row-action-btn ${inWl ? 'is-active' : ''}"
+              data-hub-wl-id="${escapeHtml(track.id)}"
+              data-music-control="true"
+              title="${inWl ? 'Hapus dari Tonton Nanti' : 'Simpan ke Tonton Nanti'}"
+              aria-label="${inWl ? 'Hapus dari Tonton Nanti' : 'Simpan ke Tonton Nanti'}"
+              aria-pressed="${inWl}"
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round">${
+                inWl
+                  ? '<circle cx="12" cy="12" r="9" fill="currentColor" stroke="currentColor"/><polyline points="12 7 12 12 15 14" stroke="#ffffff"/>'
+                  : '<circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15 14"/>'
+              }</svg>
+            </button>
+            ${
+              playlistIdForRemove
+                ? `<button
+                    type="button"
+                    class="ytm-row-action-btn is-danger"
+                    data-hub-pl-remove-track="${escapeHtml(track.id)}"
+                    data-hub-pl-id="${escapeHtml(playlistIdForRemove)}"
+                    data-music-control="true"
+                    title="Hapus lagu dari playlist ini"
+                    aria-label="Hapus ${escapeHtml(track.title)} dari playlist"
+                  >✕</button>`
+                : `<button
+                    type="button"
+                    class="ytm-row-action-btn ${pickerOpen ? 'is-active' : ''}"
+                    data-hub-pl-row-open="${escapeHtml(track.id)}"
+                    data-music-control="true"
+                    title="Tambahkan ke Playlist"
+                    aria-label="Tambahkan ${escapeHtml(track.title)} ke Playlist"
+                    aria-expanded="${pickerOpen}"
+                  >+</button>`
+            }
+          </div>
+        </div>
+        ${
+          pickerOpen && !playlistIdForRemove
+            ? `<div class="ytm-hub-pl-picker ytm-hub-pl-picker-inline" data-music-control="true">
+                <form class="ytm-playlist-create-form" data-hub-row-create-pl="${escapeHtml(track.id)}">
+                  <input
+                    type="text"
+                    class="music-search-input"
+                    data-hub-row-new-pl-input="${escapeHtml(track.id)}"
+                    placeholder="Nama playlist baru..."
+                    maxlength="60"
+                    aria-label="Nama playlist baru"
+                  />
+                  <button type="submit" class="btn btn-primary btn-xs" data-music-control="true">Buat</button>
+                </form>
+                ${
+                  playlists.length > 0
+                    ? `<div class="ytm-hub-pl-quicklist">
+                        ${playlists
+                          .map((pl) => {
+                            const hasTrack = pl.tracks.some((t) => t.id === track.id);
+                            return `
+                              <button
+                                type="button"
+                                class="music-search-hit ${hasTrack ? 'is-active' : ''}"
+                                data-hub-row-add-pl="${escapeHtml(pl.id)}"
+                                data-hub-row-track="${escapeHtml(track.id)}"
+                                data-music-control="true"
+                              >
+                                <span class="music-search-hit-title">${escapeHtml(pl.name)} (${pl.tracks.length})</span>
+                                <span class="music-search-hit-dur">${hasTrack ? '✓ Ada' : '+ Tambah'}</span>
+                              </button>
+                            `;
+                          })
+                          .join('')}
+                      </div>`
+                    : ''
+                }
+              </div>`
+            : ''
+        }
+      </div>
+    `;
+  }
+
   function buildMusicHubQueueHtml(mState) {
+    const watchLater = mState.watchLater || [];
+    const playlists = mState.playlists || [];
+    const activeTab = toolState.musicBrowserTab || 'queue';
     const isSearchView = Boolean(mState.searchQuery && mState.searchResults);
     const list =
       mState.searchQuery && mState.searchResults?.length > 0
@@ -2193,8 +2427,180 @@ export function createToolsHubController({
     const activeCat =
       MUSIC_PRESET_CATEGORIES.find((c) => c.id === mState.activeCategory) || MUSIC_PRESET_CATEGORIES[0];
 
+    const selectedPlaylist =
+      toolState.musicSelectedPlaylistId
+        ? playlists.find((p) => p.id === toolState.musicSelectedPlaylistId) || null
+        : null;
+
+    const tabsNavHtml = `
+      <div class="ytm-browser-tabs" role="tablist" aria-label="Pustaka Musik Pengguna">
+        <button
+          type="button"
+          role="tab"
+          class="ytm-browser-tab-btn ${activeTab === 'queue' ? 'is-active' : ''}"
+          data-hub-music-tab="queue"
+          data-music-control="true"
+          aria-selected="${activeTab === 'queue'}"
+        >
+          <span>${isSearchView ? 'Hasil Cari' : 'Antrean'}</span>
+        </button>
+        <button
+          type="button"
+          role="tab"
+          class="ytm-browser-tab-btn ${activeTab === 'playlists' ? 'is-active' : ''}"
+          data-hub-music-tab="playlists"
+          data-music-control="true"
+          aria-selected="${activeTab === 'playlists'}"
+        >
+          <span>Playlist (${playlists.length})</span>
+        </button>
+        <button
+          type="button"
+          role="tab"
+          class="ytm-browser-tab-btn ${activeTab === 'watch-later' ? 'is-active' : ''}"
+          data-hub-music-tab="watch-later"
+          data-music-control="true"
+          aria-selected="${activeTab === 'watch-later'}"
+        >
+          <span>Tonton Nanti (${watchLater.length})</span>
+        </button>
+      </div>
+    `;
+
+    if (activeTab === 'playlists') {
+      return `
+        <div class="ytm-queue-panel" id="music-hub-queue-slot">
+          ${tabsNavHtml}
+
+          <form id="music-hub-create-playlist-form" class="ytm-playlist-create-form" data-music-control="true">
+            <input
+              type="text"
+              id="music-hub-new-playlist-name"
+              class="music-search-input"
+              placeholder="Buat playlist baru (contoh: Santai Malam)..."
+              maxlength="60"
+              aria-label="Nama playlist baru"
+            />
+            <button type="submit" class="btn btn-primary btn-sm" data-music-control="true">Buat Playlist</button>
+          </form>
+
+          ${
+            toolState.musicPlaylistFeedback
+              ? `<div class="music-search-note" role="status">${escapeHtml(toolState.musicPlaylistFeedback)}</div>`
+              : ''
+          }
+
+          ${
+            selectedPlaylist
+              ? `<div class="ytm-playlist-detail-head">
+                  <button type="button" id="music-hub-pl-back" class="btn btn-secondary btn-xs" data-music-control="true">← Semua Playlist</button>
+                  <div class="ytm-playlist-detail-title">
+                    <strong>${escapeHtml(selectedPlaylist.name)}</strong>
+                    <span>${selectedPlaylist.tracks.length} lagu · Tersimpan otomatis</span>
+                  </div>
+                  <div class="ytm-playlist-detail-actions">
+                    <button type="button" class="btn btn-primary btn-xs" data-hub-pl-play="${escapeHtml(selectedPlaylist.id)}" data-music-control="true" ${selectedPlaylist.tracks.length === 0 ? 'disabled' : ''}>Putar</button>
+                    <button type="button" class="btn btn-secondary btn-xs" data-hub-pl-shuffle="${escapeHtml(selectedPlaylist.id)}" data-music-control="true" ${selectedPlaylist.tracks.length === 0 ? 'disabled' : ''}>Acak</button>
+                  </div>
+                </div>
+                <div class="ytm-tracklist" role="listbox" aria-label="Lagu di playlist ${escapeHtml(selectedPlaylist.name)}">
+                  ${
+                    selectedPlaylist.tracks.length === 0
+                      ? `<div class="music-hub-empty">Playlist ini masih kosong. Buka tab Antrean atau putar lagu lalu klik tombol <strong>+</strong> untuk menambahkannya ke sini.</div>`
+                      : selectedPlaylist.tracks
+                          .map((track) =>
+                            renderMusicTrackRowHtml(track, mState, {
+                              playAttr: 'data-hub-pl-play-track',
+                              playlistIdForRemove: selectedPlaylist.id,
+                            })
+                          )
+                          .join('')
+                  }
+                </div>`
+              : `<div class="ytm-playlist-list">
+                  ${
+                    playlists.length === 0
+                      ? `<div class="music-hub-empty">Belum ada playlist pribadi. Buat playlist di atas — semua playlist &amp; lagu tersimpan otomatis di perangkat Anda.</div>`
+                      : playlists
+                          .map((pl) => {
+                            const totalSec = pl.tracks.reduce((sum, t) => sum + (Number(t.duration) || 0), 0);
+                            const isRenaming = toolState.musicEditingPlaylistId === pl.id;
+                            const isPlayingThis =
+                              mState.activeQueueMode === 'playlist' && mState.activeQueuePlaylistId === pl.id;
+                            return `
+                              <div class="ytm-playlist-card ${isPlayingThis ? 'is-active' : ''}">
+                                ${
+                                  isRenaming
+                                    ? `<form class="ytm-playlist-create-form" data-hub-pl-rename-form="${escapeHtml(pl.id)}">
+                                        <input
+                                          type="text"
+                                          class="music-search-input"
+                                          data-hub-pl-rename-input="${escapeHtml(pl.id)}"
+                                          value="${escapeHtml(pl.name)}"
+                                          maxlength="60"
+                                          aria-label="Ubah nama playlist"
+                                        />
+                                        <button type="submit" class="btn btn-primary btn-xs" data-music-control="true">Simpan</button>
+                                        <button type="button" class="btn btn-secondary btn-xs" data-hub-pl-rename-cancel="true" data-music-control="true">Batal</button>
+                                      </form>`
+                                    : `<div class="ytm-playlist-card-top">
+                                        <button type="button" class="ytm-playlist-card-main" data-hub-pl-open="${escapeHtml(pl.id)}" data-music-control="true">
+                                          <strong>${escapeHtml(pl.name)}</strong>
+                                          <span>${pl.tracks.length} lagu${totalSec > 0 ? ` · ${formatAudioTime(totalSec)}` : ''}</span>
+                                        </button>
+                                        <div class="ytm-playlist-card-actions">
+                                          <button type="button" class="btn btn-primary btn-xs" data-hub-pl-play="${escapeHtml(pl.id)}" data-music-control="true" ${pl.tracks.length === 0 ? 'disabled' : ''}>Putar</button>
+                                          <button type="button" class="btn btn-secondary btn-xs" data-hub-pl-open="${escapeHtml(pl.id)}" data-music-control="true">Buka</button>
+                                          <button type="button" class="ytm-row-action-btn" data-hub-pl-rename-open="${escapeHtml(pl.id)}" data-music-control="true" title="Ubah nama playlist" aria-label="Ubah nama playlist">✎</button>
+                                          <button type="button" class="ytm-row-action-btn is-danger" data-hub-pl-delete="${escapeHtml(pl.id)}" data-music-control="true" title="Hapus playlist" aria-label="Hapus playlist ${escapeHtml(pl.name)}">✕</button>
+                                        </div>
+                                      </div>`
+                                }
+                              </div>
+                            `;
+                          })
+                          .join('')
+                  }
+                </div>`
+          }
+        </div>
+      `;
+    }
+
+    if (activeTab === 'watch-later') {
+      return `
+        <div class="ytm-queue-panel" id="music-hub-queue-slot">
+          ${tabsNavHtml}
+          <div class="ytm-queue-tabs-head">
+            <div class="ytm-queue-tab-title">
+              <span class="ytm-queue-tab-indicator"></span>
+              <strong>TONTON NANTI (${watchLater.length})</strong>
+            </div>
+            <div class="ytm-playlist-detail-actions">
+              <button type="button" id="music-hub-wl-play-all" class="btn btn-primary btn-xs" data-music-control="true" ${watchLater.length === 0 ? 'disabled' : ''}>Putar Semua</button>
+              <button type="button" id="music-hub-wl-shuffle-all" class="btn btn-secondary btn-xs" data-music-control="true" ${watchLater.length === 0 ? 'disabled' : ''}>Acak</button>
+            </div>
+          </div>
+          <div class="ytm-tracklist" role="listbox" aria-label="Daftar lagu Tonton Nanti">
+            ${
+              watchLater.length === 0
+                ? `<div class="music-hub-empty">Daftar Tonton Nanti masih kosong. Tekan ikon jam <strong>(Tonton Nanti)</strong> di lagu mana saja untuk menyimpannya otomatis.</div>`
+                : watchLater
+                    .map((track) =>
+                      renderMusicTrackRowHtml(track, mState, {
+                        playAttr: 'data-hub-wl-play-track',
+                      })
+                    )
+                    .join('')
+            }
+          </div>
+        </div>
+      `;
+    }
+
     return `
       <div class="ytm-queue-panel" id="music-hub-queue-slot">
+        ${tabsNavHtml}
         <div class="ytm-queue-tabs-head">
           <div class="ytm-queue-tab-title">
             <span class="ytm-queue-tab-indicator"></span>
@@ -2224,37 +2630,11 @@ export function createToolsHubController({
                     : 'Belum ada lagu yang cocok. Coba kata kunci atau kategori lain.'
                 }</div>`
               : list
-                  .map((track, idx) => {
-                    const isCurrent = mState.currentTrack?.id === track.id;
-                    return `
-                      <button
-                        type="button"
-                        class="ytm-track-row ${isCurrent ? 'is-active' : ''}"
-                        data-hub-music-pick="${escapeHtml(track.id)}"
-                        data-music-control="true"
-                      >
-                        <div class="ytm-row-thumb-wrap">
-                          <img
-                            src="${escapeHtml(track.artwork)}"
-                            alt=""
-                            width="46"
-                            height="46"
-                            loading="lazy"
-                            class="ytm-row-thumb"
-                            onerror="this.src='${escapeHtml(track.artworkFallback || '')}'"
-                          />
-                          <span class="ytm-row-overlay-icon" aria-hidden="true">
-                            ${isCurrent && mState.isPlaying ? '❚❚' : '▶'}
-                          </span>
-                        </div>
-                        <span class="ytm-row-info">
-                          <span class="ytm-row-title">${escapeHtml(track.title)}</span>
-                          <span class="ytm-row-sub">${escapeHtml(track.artist)} • ${escapeHtml(track.genre)}</span>
-                        </span>
-                        <span class="ytm-row-dur mono-num">${formatAudioTime(track.duration)}</span>
-                      </button>
-                    `;
-                  })
+                  .map((track) =>
+                    renderMusicTrackRowHtml(track, mState, {
+                      playAttr: 'data-hub-music-pick',
+                    })
+                  )
                   .join('')
           }
         </div>
@@ -2276,6 +2656,15 @@ export function createToolsHubController({
     }
     if (curEl) curEl.textContent = formatAudioTime(cur);
     if (durEl) durEl.textContent = formatAudioTime(dur);
+  }
+
+  function refreshMusicHubPanels(ctrl) {
+    const mState = ctrl.getState();
+    const stageWrap = rootEl.querySelector('.music-hub-stage-wrap');
+    const queueWrap = rootEl.querySelector('#music-hub-queue-wrap');
+    if (stageWrap) stageWrap.innerHTML = buildMusicHubStageHtml(mState);
+    if (queueWrap) queueWrap.innerHTML = buildMusicHubQueueHtml(mState);
+    bindMusicStageAndQueueEvents(ctrl);
   }
 
   function bindMusicStageAndQueueEvents(ctrl) {
@@ -2318,6 +2707,54 @@ export function createToolsHubController({
       ctrl.playNext({ reason: 'any-button-click' });
     });
 
+    rootEl.querySelector('#music-hub-watchlater-btn')?.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const snap = ctrl.getState();
+      const target = snap.currentTrack || snap.tracks?.[0];
+      if (!target) return;
+      const added = ctrl.toggleWatchLater(target);
+      onToast(added ? `"${target.title}" disimpan ke Tonton Nanti.` : `"${target.title}" dihapus dari Tonton Nanti.`);
+    });
+
+    rootEl.querySelector('#music-hub-stage-pl-btn')?.addEventListener('click', (e) => {
+      e.stopPropagation();
+      toolState.musicStagePlaylistPickerOpen = !toolState.musicStagePlaylistPickerOpen;
+      refreshMusicHubPanels(ctrl);
+    });
+
+    rootEl.querySelector('#music-hub-stage-pl-close')?.addEventListener('click', (e) => {
+      e.stopPropagation();
+      toolState.musicStagePlaylistPickerOpen = false;
+      refreshMusicHubPanels(ctrl);
+    });
+
+    rootEl.querySelector('#music-hub-stage-create-pl-form')?.addEventListener('submit', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const input = rootEl.querySelector('#music-hub-stage-new-pl-input');
+      const name = String(input?.value || '').trim();
+      const snap = ctrl.getState();
+      const active = snap.currentTrack || snap.tracks?.[0] || null;
+      if (!name) return;
+      const pl = ctrl.createPlaylist(name, active);
+      if (pl) {
+        toolState.musicStagePlaylistPickerOpen = false;
+        onToast(active ? `Playlist "${pl.name}" dibuat & "${active.title}" disimpan.` : `Playlist "${pl.name}" dibuat.`);
+      }
+    });
+
+    rootEl.querySelectorAll('[data-hub-stage-add-pl]').forEach((btn) => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const plId = btn.getAttribute('data-hub-stage-add-pl');
+        const snap = ctrl.getState();
+        const active = snap.currentTrack || snap.tracks?.[0];
+        if (!plId || !active) return;
+        const added = ctrl.addTrackToPlaylist(plId, active);
+        onToast(added ? `"${active.title}" ditambahkan ke playlist.` : 'Lagu sudah ada di playlist tersebut.');
+      });
+    });
+
     const seekSlider = rootEl.querySelector('#music-hub-seek-slider');
     seekSlider?.addEventListener('input', () => {
       isHubSeeking = true;
@@ -2342,11 +2779,206 @@ export function createToolsHubController({
       if (pctEl) pctEl.textContent = `${Math.round(val * 100)}%`;
     });
 
+    // Browser library tabs (Antrean & Cari | Playlist | Tonton Nanti)
+    rootEl.querySelectorAll('[data-hub-music-tab]').forEach((btn) => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        toolState.musicBrowserTab = btn.getAttribute('data-hub-music-tab') || 'queue';
+        toolState.musicPlaylistFeedback = '';
+        refreshMusicHubPanels(ctrl);
+      });
+    });
+
+    // Queue & Search track play
     rootEl.querySelectorAll('[data-hub-music-pick]').forEach((btn) => {
       btn.addEventListener('click', (e) => {
         e.stopPropagation();
         const pickId = btn.getAttribute('data-hub-music-pick');
-        ctrl.playTrackById(pickId);
+        ctrl.playTrackById(pickId, { queueMode: 'catalog' });
+      });
+    });
+
+    // Row Watch Later toggle
+    rootEl.querySelectorAll('[data-hub-wl-id]').forEach((btn) => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const wlId = btn.getAttribute('data-hub-wl-id');
+        const target = findTrackByIdInState(ctrl.getState(), wlId);
+        if (!target) return;
+        const added = ctrl.toggleWatchLater(target);
+        onToast(added ? `"${target.title}" disimpan ke Tonton Nanti.` : `"${target.title}" dihapus dari Tonton Nanti.`);
+      });
+    });
+
+    // Row + Playlist inline picker
+    rootEl.querySelectorAll('[data-hub-pl-row-open]').forEach((btn) => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const tid = btn.getAttribute('data-hub-pl-row-open') || '';
+        toolState.musicRowPlaylistPickerId = toolState.musicRowPlaylistPickerId === tid ? '' : tid;
+        refreshMusicHubPanels(ctrl);
+      });
+    });
+
+    rootEl.querySelectorAll('[data-hub-row-create-pl]').forEach((form) => {
+      form.addEventListener('submit', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        const tid = form.getAttribute('data-hub-row-create-pl');
+        const input = form.querySelector('[data-hub-row-new-pl-input]');
+        const name = String(input?.value || '').trim();
+        const track = findTrackByIdInState(ctrl.getState(), tid);
+        if (!name) return;
+        const pl = ctrl.createPlaylist(name, track);
+        if (pl) {
+          toolState.musicRowPlaylistPickerId = '';
+          onToast(track ? `Playlist "${pl.name}" dibuat & lagu disimpan.` : `Playlist "${pl.name}" dibuat.`);
+        }
+      });
+    });
+
+    rootEl.querySelectorAll('[data-hub-row-add-pl]').forEach((btn) => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const plId = btn.getAttribute('data-hub-row-add-pl');
+        const tid = btn.getAttribute('data-hub-row-track');
+        const track = findTrackByIdInState(ctrl.getState(), tid);
+        if (!plId || !track) return;
+        const added = ctrl.addTrackToPlaylist(plId, track);
+        toolState.musicRowPlaylistPickerId = '';
+        onToast(added ? `"${track.title}" ditambahkan ke playlist.` : 'Lagu sudah ada di playlist ini.');
+      });
+    });
+
+    // Playlist Management tab events
+    rootEl.querySelector('#music-hub-create-playlist-form')?.addEventListener('submit', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const input = rootEl.querySelector('#music-hub-new-playlist-name');
+      const name = String(input?.value || '').trim();
+      if (!name) return;
+      const pl = ctrl.createPlaylist(name);
+      if (pl) {
+        toolState.musicPlaylistFeedback = `Playlist "${pl.name}" berhasil dibuat & tersimpan.`;
+        toolState.musicSelectedPlaylistId = pl.id;
+        refreshMusicHubPanels(ctrl);
+      }
+    });
+
+    rootEl.querySelector('#music-hub-pl-back')?.addEventListener('click', (e) => {
+      e.stopPropagation();
+      toolState.musicSelectedPlaylistId = '';
+      toolState.musicEditingPlaylistId = '';
+      refreshMusicHubPanels(ctrl);
+    });
+
+    rootEl.querySelectorAll('[data-hub-pl-open]').forEach((btn) => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        toolState.musicSelectedPlaylistId = btn.getAttribute('data-hub-pl-open') || '';
+        toolState.musicPlaylistFeedback = '';
+        refreshMusicHubPanels(ctrl);
+      });
+    });
+
+    rootEl.querySelectorAll('[data-hub-pl-play]').forEach((btn) => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const plId = btn.getAttribute('data-hub-pl-play');
+        if (plId) ctrl.playPlaylist(plId, { shuffle: false });
+      });
+    });
+
+    rootEl.querySelectorAll('[data-hub-pl-shuffle]').forEach((btn) => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const plId = btn.getAttribute('data-hub-pl-shuffle');
+        if (plId) ctrl.playPlaylist(plId, { shuffle: true });
+      });
+    });
+
+    rootEl.querySelectorAll('[data-hub-pl-play-track]').forEach((btn) => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const tid = btn.getAttribute('data-hub-pl-play-track');
+        if (tid && toolState.musicSelectedPlaylistId) {
+          ctrl.playPlaylist(toolState.musicSelectedPlaylistId, { startTrackId: tid });
+        }
+      });
+    });
+
+    rootEl.querySelectorAll('[data-hub-pl-remove-track]').forEach((btn) => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const tid = btn.getAttribute('data-hub-pl-remove-track');
+        const plId = btn.getAttribute('data-hub-pl-id');
+        if (plId && tid) {
+          ctrl.removeTrackFromPlaylist(plId, tid);
+          onToast('Lagu dihapus dari playlist.');
+        }
+      });
+    });
+
+    rootEl.querySelectorAll('[data-hub-pl-rename-open]').forEach((btn) => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        toolState.musicEditingPlaylistId = btn.getAttribute('data-hub-pl-rename-open') || '';
+        refreshMusicHubPanels(ctrl);
+      });
+    });
+
+    rootEl.querySelectorAll('[data-hub-pl-rename-cancel]').forEach((btn) => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        toolState.musicEditingPlaylistId = '';
+        refreshMusicHubPanels(ctrl);
+      });
+    });
+
+    rootEl.querySelectorAll('[data-hub-pl-rename-form]').forEach((form) => {
+      form.addEventListener('submit', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        const plId = form.getAttribute('data-hub-pl-rename-form');
+        const input = form.querySelector('[data-hub-pl-rename-input]');
+        const nextName = String(input?.value || '').trim();
+        if (plId && nextName) {
+          toolState.musicEditingPlaylistId = '';
+          ctrl.renamePlaylist(plId, nextName);
+          onToast(`Nama playlist diperbarui menjadi "${nextName}".`);
+        }
+      });
+    });
+
+    rootEl.querySelectorAll('[data-hub-pl-delete]').forEach((btn) => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const plId = btn.getAttribute('data-hub-pl-delete');
+        if (!plId) return;
+        if (toolState.musicSelectedPlaylistId === plId) {
+          toolState.musicSelectedPlaylistId = '';
+        }
+        ctrl.deletePlaylist(plId);
+        onToast('Playlist dihapus.');
+      });
+    });
+
+    // Watch Later tab events
+    rootEl.querySelector('#music-hub-wl-play-all')?.addEventListener('click', (e) => {
+      e.stopPropagation();
+      ctrl.playWatchLater({ shuffle: false });
+    });
+
+    rootEl.querySelector('#music-hub-wl-shuffle-all')?.addEventListener('click', (e) => {
+      e.stopPropagation();
+      ctrl.playWatchLater({ shuffle: true });
+    });
+
+    rootEl.querySelectorAll('[data-hub-wl-play-track]').forEach((btn) => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const tid = btn.getAttribute('data-hub-wl-play-track');
+        if (tid) ctrl.playWatchLater({ startTrackId: tid });
       });
     });
   }
@@ -3017,12 +3649,15 @@ export function createToolsHubController({
         searchForm?.addEventListener('submit', (e) => {
           e.preventDefault();
           e.stopPropagation();
-          ctrl.search(searchInput?.value || '', { autoPlayFirst: true });
+          toolState.musicBrowserTab = 'queue';
+          // Never interrupt or auto-skip the currently playing song when user searches
+          ctrl.search(searchInput?.value || '', { autoPlayFirst: false });
         });
 
         rootEl.querySelector('#music-hub-clear-search')?.addEventListener('click', (e) => {
           e.stopPropagation();
           if (searchInput) searchInput.value = '';
+          toolState.musicBrowserTab = 'queue';
           ctrl.clearSearch();
         });
 
@@ -3032,6 +3667,7 @@ export function createToolsHubController({
             const presetId = btn.getAttribute('data-hub-music-preset');
             if (!presetId) return;
             if (searchInput) searchInput.value = '';
+            toolState.musicBrowserTab = 'queue';
             ctrl.loadPresetPlaylist(presetId);
           });
         });
@@ -3048,12 +3684,24 @@ export function createToolsHubController({
           }
           if (kind === 'init') return;
 
+          const activeEl = document.activeElement;
+          const typingInStagePicker = Boolean(activeEl?.closest('#music-hub-stage-pl-picker'));
+          const typingInQueueInput = Boolean(
+            activeEl?.closest('#music-hub-queue-wrap') &&
+              (activeEl.tagName === 'INPUT' || activeEl.tagName === 'TEXTAREA')
+          );
+
           const stageWrap = rootEl.querySelector('.music-hub-stage-wrap');
           const queueWrap = rootEl.querySelector('#music-hub-queue-wrap');
-          if (stageWrap && !isHubSeeking && document.activeElement?.id !== 'music-hub-volume-slider') {
+          if (
+            stageWrap &&
+            !isHubSeeking &&
+            !typingInStagePicker &&
+            activeEl?.id !== 'music-hub-volume-slider'
+          ) {
             stageWrap.innerHTML = buildMusicHubStageHtml(nextState);
           }
-          if (queueWrap) {
+          if (queueWrap && (!typingInQueueInput || kind === 'library')) {
             queueWrap.innerHTML = buildMusicHubQueueHtml(nextState);
           }
           rootEl.querySelectorAll('[data-hub-music-preset]').forEach((btn) => {

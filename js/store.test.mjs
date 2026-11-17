@@ -45,12 +45,18 @@ import {
 } from './store.js';
 import {
   MIN_FULL_TRACK_SECONDS,
+  MUSIC_LIBRARY_STORAGE_KEY,
+  addTrackToPlaylist,
   clampMusicFabPosition,
+  createUserPlaylist,
+  deleteUserPlaylist,
   extractYouTubeVideoId,
   filterFullLengthTracks,
   formatAudioTime,
   getPopoverAnchorClasses,
   isStrictAudioMatch,
+  isTrackInWatchLater,
+  normalizeMusicLibraryState,
   normalizeMusicMode,
   normalizeRepeatMode,
   normalizeYtMusicTrack,
@@ -58,8 +64,11 @@ import {
   parseSavedVolume,
   pickShuffledViralTrack,
   rankSearchResults,
+  removeTrackFromPlaylist,
+  renameUserPlaylist,
   scoreSearchRelevance,
   shuffleTracksFisherYates,
+  toggleTrackInWatchLater,
 } from './music-logic.js';
 import {
   decryptVault,
@@ -1718,6 +1727,80 @@ test('strict audio matcher prevents playing unrelated songs under another song t
   });
   assert.equal(scoreSearchRelevance(fiftyMinCompilation, 'Bernadya Satu Bulan'), 0);
   assert.equal(isStrictAudioMatch(manguYt, fiftyMinCompilation), false);
+});
+
+test('Watch Later (Tonton Nanti) and user playlists create, rename, add/remove tracks, deduplicate, and persist cleanly', () => {
+  assert.equal(MUSIC_LIBRARY_STORAGE_KEY, 'manifestudio_music_library_v1');
+
+  const trackA = normalizeYtMusicTrack({
+    id: 'aud-7O8YZgj',
+    title: 'Mangu',
+    artist: 'Fourtwnty',
+    duration: 262,
+    streamUrl: 'https://api.audius.co/v1/tracks/7O8YZgj/stream?app_name=Manifestudio',
+  });
+  const trackB = normalizeYtMusicTrack({
+    videoId: 'sc5w6h6fI7w',
+    title: 'Stecu Stecu',
+    artist: 'Faris Adam',
+    duration: 229,
+  });
+
+  let lib = normalizeMusicLibraryState({});
+  assert.deepEqual(lib.watchLater, []);
+  assert.deepEqual(lib.playlists, []);
+
+  // Watch Later toggle on & off
+  const wl1 = toggleTrackInWatchLater(lib, trackA, '2026-11-17T01:00:00.000Z');
+  assert.equal(wl1.added, true);
+  lib = wl1.library;
+  assert.equal(isTrackInWatchLater(lib, trackA), true);
+  assert.equal(isTrackInWatchLater(lib, trackB), false);
+
+  const wlDup = toggleTrackInWatchLater(lib, trackA);
+  assert.equal(wlDup.added, false);
+  assert.equal(isTrackInWatchLater(wlDup.library, trackA), false);
+
+  // Add both to Watch Later and keep Track B saved
+  lib = toggleTrackInWatchLater(lib, trackB, '2026-11-17T01:02:00.000Z').library;
+  assert.equal(lib.watchLater.length, 2);
+
+  // Create custom playlist with initial track, rename, add duplicate & second track, remove one, delete
+  const created = createUserPlaylist(lib, 'Favorit Malam', trackB, '2026-11-17T01:05:00.000Z', 'pl-custom-1');
+  assert.ok(created.playlist);
+  assert.equal(created.playlist.id, 'pl-custom-1');
+  assert.equal(created.playlist.tracks.length, 1);
+  lib = created.library;
+
+  // Empty name is rejected safely
+  const emptyCreated = createUserPlaylist(lib, '   ');
+  assert.equal(emptyCreated.playlist, null);
+
+  // Duplicate track should not be added twice
+  const addDup = addTrackToPlaylist(lib, 'pl-custom-1', trackB);
+  assert.equal(addDup.added, false);
+  const addNew = addTrackToPlaylist(addDup.library, 'pl-custom-1', trackA, '2026-11-17T01:06:00.000Z');
+  assert.equal(addNew.added, true);
+  lib = addNew.library;
+  assert.equal(lib.playlists[0].tracks.length, 2);
+
+  lib = renameUserPlaylist(lib, 'pl-custom-1', 'Lagu Indo Santai', '2026-11-17T01:07:00.000Z');
+  assert.equal(lib.playlists[0].name, 'Lagu Indo Santai');
+
+  // Survives JSON serialization / reload normalization cleanly
+  const reloaded = normalizeMusicLibraryState(JSON.parse(JSON.stringify(lib)));
+  assert.equal(reloaded.watchLater.length, 2);
+  assert.equal(reloaded.playlists.length, 1);
+  assert.equal(reloaded.playlists[0].name, 'Lagu Indo Santai');
+  assert.equal(reloaded.playlists[0].tracks.length, 2);
+  assert.equal(reloaded.playlists[0].tracks[0].title, 'Stecu Stecu');
+
+  const removed = removeTrackFromPlaylist(reloaded, 'pl-custom-1', trackB.id);
+  assert.equal(removed.removed, true);
+  assert.equal(removed.library.playlists[0].tracks.length, 1);
+
+  const deleted = deleteUserPlaylist(removed.library, 'pl-custom-1');
+  assert.equal(deleted.playlists.length, 0);
 });
 
 

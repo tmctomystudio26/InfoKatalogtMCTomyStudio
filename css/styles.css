@@ -6213,6 +6213,7 @@ a {
 
 .ytm-queue-tabs-head {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
   gap: 0.5rem;
@@ -6252,19 +6253,22 @@ a {
   padding-right: 0.2rem;
 }
 
+.ytm-track-row-block {
+  display: grid;
+  gap: 0.35rem;
+}
+
 .ytm-track-row {
   display: grid;
-  grid-template-columns: 46px minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
-  gap: 0.72rem;
+  gap: 0.55rem;
   width: 100%;
-  padding: 0.48rem 0.68rem;
+  padding: 0.42rem 0.58rem;
   border-radius: 12px;
   border: 1px solid var(--border);
   background-color: var(--bg);
   color: var(--ink);
-  text-align: left;
-  cursor: pointer;
   transition: border-color 0.16s var(--ease), background-color 0.16s var(--ease);
 }
 
@@ -6276,6 +6280,61 @@ a {
 .ytm-track-row.is-active {
   border-color: rgba(255, 0, 51, 0.45);
   background-color: var(--ytm-red-soft);
+}
+
+.ytm-track-row-main {
+  display: grid;
+  grid-template-columns: 46px minmax(0, 1fr);
+  align-items: center;
+  gap: 0.68rem;
+  width: 100%;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+  min-width: 0;
+}
+
+.ytm-row-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.32rem;
+  flex-shrink: 0;
+}
+
+.ytm-row-action-btn {
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  border: 1px solid var(--border-strong);
+  background-color: var(--surface);
+  color: var(--ink-secondary);
+  font-size: 0.85rem;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: color 0.16s var(--ease), border-color 0.16s var(--ease), background-color 0.16s var(--ease);
+}
+
+.ytm-row-action-btn:hover {
+  color: var(--ink);
+  border-color: var(--ink-muted);
+}
+
+.ytm-row-action-btn.is-active {
+  color: var(--ytm-red);
+  border-color: rgba(255, 0, 51, 0.42);
+  background-color: var(--ytm-red-soft);
+}
+
+.ytm-row-action-btn.is-danger:hover {
+  color: #ef4444;
+  border-color: rgba(239, 68, 68, 0.5);
 }
 
 .ytm-row-thumb-wrap {
@@ -6337,15 +6396,248 @@ a {
 }
 
 .ytm-row-dur {
-  font-size: 0.74rem;
+  font-size: 0.72rem;
   color: var(--ink-muted);
   white-space: nowrap;
+  margin-right: 0.12rem;
+}
+
+/* Browser Tabs, Playlist & Watch Later Management */
+.ytm-browser-tabs {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.35rem;
+  padding: 0.28rem;
+  border-radius: 12px;
+  background-color: var(--bg);
+  border: 1px solid var(--border);
+}
+
+.ytm-browser-tab-btn {
+  padding: 0.46rem 0.5rem;
+  border-radius: 9px;
+  border: none;
+  background: transparent;
+  color: var(--ink-secondary);
+  font-size: 0.76rem;
+  font-weight: 700;
+  cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  transition: background-color 0.16s var(--ease), color 0.16s var(--ease);
+}
+
+.ytm-browser-tab-btn.is-active {
+  background-color: var(--ytm-red);
+  color: #ffffff;
+}
+
+.ytm-playlist-create-form {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+}
+
+.ytm-playlist-create-form .music-search-input {
+  flex: 1;
+  min-width: 0;
+  height: 36px;
+}
+
+.ytm-hub-pl-picker {
+  display: grid;
+  gap: 0.5rem;
+  padding: 0.75rem;
+  border-radius: 12px;
+  border: 1px solid var(--border-strong);
+  background-color: var(--bg);
+}
+
+.ytm-hub-pl-picker-inline {
+  padding: 0.58rem;
+  background-color: var(--surface-elevated);
+}
+
+.ytm-hub-pl-picker-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  font-size: 0.8rem;
+}
+
+.ytm-hub-pl-quicklist {
+  display: grid;
+  gap: 0.32rem;
+  max-height: 165px;
+  overflow-y: auto;
+}
+
+.ytm-playlist-list {
+  display: grid;
+  gap: 0.5rem;
+  max-height: 400px;
+  overflow-y: auto;
+}
+
+.ytm-playlist-card {
+  padding: 0.65rem 0.75rem;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  background-color: var(--bg);
+  display: grid;
+  gap: 0.45rem;
+}
+
+.ytm-playlist-card.is-active {
+  border-color: rgba(255, 0, 51, 0.45);
+  background-color: var(--ytm-red-soft);
+}
+
+.ytm-playlist-card-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.ytm-playlist-card-main {
+  flex: 1 1 160px;
+  min-width: 0;
+  display: grid;
+  gap: 0.14rem;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--ink);
+  text-align: left;
+  cursor: pointer;
+}
+
+.ytm-playlist-card-main strong {
+  font-size: 0.88rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ytm-playlist-card-main span {
+  font-size: 0.74rem;
+  color: var(--ink-muted);
+}
+
+.ytm-playlist-card-actions,
+.ytm-playlist-detail-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  flex-wrap: wrap;
+}
+
+.ytm-playlist-detail-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.55rem 0.7rem;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  background-color: var(--bg);
+}
+
+.ytm-playlist-detail-title {
+  display: grid;
+  gap: 0.08rem;
+  min-width: 0;
+  flex: 1 1 150px;
+}
+
+.ytm-playlist-detail-title strong {
+  font-size: 0.86rem;
+  color: var(--ink);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ytm-playlist-detail-title span {
+  font-size: 0.71rem;
+  color: var(--ink-muted);
+}
+
+.ytm-queue-pill.is-mode {
+  border-color: rgba(255, 0, 51, 0.35);
+  background-color: var(--ytm-red-soft);
+  color: var(--ytm-red);
+}
+
+/* Keep native <audio> actively renderable offscreen so mobile OS never suspends background playback */
+.music-bg-audio-el {
+  display: block !important;
+  position: fixed;
+  width: 1px;
+  height: 1px;
+  left: -9999px;
+  top: 0;
+  opacity: 0.001;
+  pointer-events: none;
 }
 
 /* Mini Floating Player (YouTube Music Compact Popover) */
 .ytm-mini-popover {
   padding-top: 0.9rem;
-  overflow: hidden;
+  overflow-x: hidden;
+  overflow-y: auto;
+  max-height: calc(100dvh - 5.25rem);
+  z-index: 48;
+}
+
+.ytm-mini-save-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  margin-left: auto;
+  flex-shrink: 0;
+}
+
+.ytm-mini-playlist-drawer {
+  display: grid;
+  gap: 0.42rem;
+  padding: 0.52rem;
+  margin-bottom: 0.35rem;
+  border-radius: 10px;
+  border: 1px solid var(--border-strong);
+  background-color: var(--bg);
+}
+
+.ytm-mini-pl-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 0.72rem;
+  color: var(--ink-secondary);
+}
+
+.ytm-mini-create-pl-form {
+  display: flex;
+  gap: 0.35rem;
+}
+
+.ytm-mini-pl-list {
+  display: grid;
+  gap: 0.26rem;
+  max-height: 98px;
+  overflow-y: auto;
+}
+
+.music-search-hit-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 0.32rem;
 }
 
 .ytm-mini-top-progress {
@@ -6538,15 +6830,27 @@ a {
     gap: 0.55rem;
   }
   .ytm-track-row {
-    grid-template-columns: 42px minmax(0, 1fr) auto;
-    gap: 0.58rem;
-    padding: 0.44rem 0.56rem;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 0.42rem;
+    padding: 0.42rem 0.5rem;
+  }
+  .ytm-track-row-main {
+    grid-template-columns: 40px minmax(0, 1fr);
+    gap: 0.52rem;
   }
   .ytm-row-thumb-wrap {
-    width: 42px;
-    height: 42px;
+    width: 40px;
+    height: 40px;
+  }
+  .ytm-row-dur {
+    display: none;
+  }
+  .ytm-browser-tab-btn {
+    font-size: 0.71rem;
+    padding: 0.44rem 0.3rem;
   }
 }
+
 
 
 
