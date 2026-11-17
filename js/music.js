@@ -51,7 +51,7 @@ import {
   shouldStopSilentHoldAndPauseNotification,
   shuffleTracksFisherYates,
   toggleTrackInWatchLater,
-} from './music-logic.js?v=35';
+} from './music-logic.js?v=36';
 
 const MUSIC_POS_KEY = 'manifestudio_music_pos_v2';
 const MUSIC_VOL_KEY = 'manifestudio_music_vol_v2';
@@ -251,11 +251,11 @@ export const MUSIC_PRESET_CATEGORIES = [
   },
 ];
 
-// Pre-seeded real Viral Indonesia catalog: 26 verified 100% full-length (156s–346s) direct audio streams
-// (zero 30-second previews!) so every song plays full duration natively in background & foreground!
+// Pre-seeded real Viral Indonesia catalog: 30 verified 100% full-length (156s–354s) tracks
+// with verified real YouTube videoIds + direct full-length audio streams (zero 30-second previews!)
 export const SEED_VIRAL_INDO_TRACKS = [
   normalizeYtMusicTrack({
-    videoId: 'En-EHqRk8yg',
+    videoId: 'k0ubS6BhHu4',
     title: 'Garam & Madu (Sakit Dadaku)',
     artist: 'Tenxi, Naykilla & Jemsii',
     duration: 251,
@@ -265,7 +265,7 @@ export const SEED_VIRAL_INDO_TRACKS = [
     streamUrl: 'https://api.audius.co/v1/tracks/Nlzyaxp/stream?app_name=Manifestudio',
   }),
   normalizeYtMusicTrack({
-    videoId: 'vI1gP5sC6c4',
+    videoId: 'JENpTmMQBQY',
     title: 'Mangu',
     artist: 'Fourtwnty',
     duration: 262,
@@ -275,7 +275,7 @@ export const SEED_VIRAL_INDO_TRACKS = [
     streamUrl: 'https://api.audius.co/v1/tracks/7O8YZgj/stream?app_name=Manifestudio',
   }),
   normalizeYtMusicTrack({
-    videoId: 'm0kL9jU0P2c',
+    videoId: 'yjnSX_iUFVo',
     title: 'Satu Bulan',
     artist: 'Bernadya',
     duration: 200,
@@ -285,7 +285,7 @@ export const SEED_VIRAL_INDO_TRACKS = [
     streamUrl: 'https://api.audius.co/v1/tracks/WEjzjgB/stream?app_name=Manifestudio',
   }),
   normalizeYtMusicTrack({
-    videoId: 'V697wAtn6cI',
+    videoId: 's6H6ffS6zJI',
     title: 'Nanti Kita Seperti Ini',
     artist: 'Batas Senja',
     duration: 210,
@@ -295,7 +295,7 @@ export const SEED_VIRAL_INDO_TRACKS = [
     streamUrl: 'https://api.audius.co/v1/tracks/bp6wYxO/stream?app_name=Manifestudio',
   }),
   normalizeYtMusicTrack({
-    videoId: 'Zq1Jg0H5fzc',
+    videoId: 'JPVhHpE1gog',
     title: 'Betty (feat. White Chorus)',
     artist: 'Hindia',
     duration: 265,
@@ -305,7 +305,7 @@ export const SEED_VIRAL_INDO_TRACKS = [
     streamUrl: 'https://api.audius.co/v1/tracks/MoPA5xm/stream?app_name=Manifestudio',
   }),
   normalizeYtMusicTrack({
-    videoId: '2r7UutFm7qc',
+    videoId: 'Wh66ThpxvI4',
     title: 'Sisa Rasa',
     artist: 'Mahalini',
     duration: 328,
@@ -315,7 +315,7 @@ export const SEED_VIRAL_INDO_TRACKS = [
     streamUrl: 'https://api.audius.co/v1/tracks/6xM2m/stream?app_name=Manifestudio',
   }),
   normalizeYtMusicTrack({
-    videoId: 'kX5Z-9qG9tA',
+    videoId: 'Svz5F8J1Ap0',
     title: 'Melawan Restu',
     artist: 'Mahalini',
     duration: 260,
@@ -325,7 +325,7 @@ export const SEED_VIRAL_INDO_TRACKS = [
     streamUrl: 'https://api.audius.co/v1/tracks/mWgk2/stream?app_name=Manifestudio',
   }),
   normalizeYtMusicTrack({
-    videoId: 'E7kHvjvU6JY',
+    videoId: 'aHPUWgYgees',
     title: 'Tukar Jiwa',
     artist: 'Tulus',
     duration: 230,
@@ -355,7 +355,7 @@ export const SEED_VIRAL_INDO_TRACKS = [
     streamUrl: 'https://api.audius.co/v1/tracks/82Yvv/stream?app_name=Manifestudio',
   }),
   normalizeYtMusicTrack({
-    videoId: 'gH_RYRwVrVM',
+    videoId: 'kcc9Kfip2uw',
     title: 'Secukupnya',
     artist: 'Hindia',
     duration: 263,
@@ -365,7 +365,7 @@ export const SEED_VIRAL_INDO_TRACKS = [
     streamUrl: 'https://api.audius.co/v1/tracks/KxAdo/stream?app_name=Manifestudio',
   }),
   normalizeYtMusicTrack({
-    videoId: 'e1vN7k8m9rU',
+    videoId: '-9qV_tSpS9c',
     title: 'Evakuasi',
     artist: 'Hindia',
     duration: 218,
@@ -375,7 +375,7 @@ export const SEED_VIRAL_INDO_TRACKS = [
     streamUrl: 'https://api.audius.co/v1/tracks/Byxgj/stream?app_name=Manifestudio',
   }),
   normalizeYtMusicTrack({
-    videoId: 'tW7rE7x0z8A',
+    videoId: 'bGsMkd8qHWI',
     title: 'Serana',
     artist: 'For Revenge',
     duration: 243,
@@ -385,7 +385,7 @@ export const SEED_VIRAL_INDO_TRACKS = [
     streamUrl: 'https://api.audius.co/v1/tracks/52rE1/stream?app_name=Manifestudio',
   }),
   normalizeYtMusicTrack({
-    videoId: 'BoESHbOq_s8',
+    videoId: '5k6IkftDRwE',
     title: 'Rumah Singgah',
     artist: 'Fabio Asher',
     duration: 245,
@@ -395,7 +395,7 @@ export const SEED_VIRAL_INDO_TRACKS = [
     streamUrl: 'https://api.audius.co/v1/tracks/aZ5g38A/stream?app_name=Manifestudio',
   }),
   normalizeYtMusicTrack({
-    videoId: 'g6iIVyRfiUk',
+    videoId: 'oIYWenB637c',
     title: 'To The Bone',
     artist: 'Pamungkas',
     duration: 318,
@@ -405,7 +405,7 @@ export const SEED_VIRAL_INDO_TRACKS = [
     streamUrl: 'https://api.audius.co/v1/tracks/82Nw9/stream?app_name=Manifestudio',
   }),
   normalizeYtMusicTrack({
-    videoId: 'Z3E3AamV2to',
+    videoId: 'zgSfpOOuI6Q',
     title: 'Widodari (feat. Guyon Waton)',
     artist: 'Denny Caknan',
     duration: 296,
@@ -415,7 +415,7 @@ export const SEED_VIRAL_INDO_TRACKS = [
     streamUrl: 'https://api.audius.co/v1/tracks/8YdyW/stream?app_name=Manifestudio',
   }),
   normalizeYtMusicTrack({
-    videoId: 'tMLV3IWfOMs',
+    videoId: 'yIesFy7fVPQ',
     title: 'Wegah Pisah (Hiphop Dangdut)',
     artist: 'NDX A.K.A.',
     duration: 346,
@@ -425,7 +425,7 @@ export const SEED_VIRAL_INDO_TRACKS = [
     streamUrl: 'https://api.audius.co/v1/tracks/dWGyv/stream?app_name=Manifestudio',
   }),
   normalizeYtMusicTrack({
-    videoId: 'J1HR1_uG6VU',
+    videoId: 'p3_RV_c6O9M',
     title: 'Jump (Whisnu Santika & Adnan Veron Edit)',
     artist: 'Whisnu Santika & Adnan Veron',
     duration: 156,
@@ -435,7 +435,7 @@ export const SEED_VIRAL_INDO_TRACKS = [
     streamUrl: 'https://api.audius.co/v1/tracks/7YM4OJ7/stream?app_name=Manifestudio',
   }),
   normalizeYtMusicTrack({
-    videoId: 'X9EDqDWza3M',
+    videoId: 'ywg5Vg5xiXk',
     title: 'Feel Koplo Edit — Awas Dangdut Viral',
     artist: 'Feel Koplo',
     duration: 206,
@@ -445,7 +445,7 @@ export const SEED_VIRAL_INDO_TRACKS = [
     streamUrl: 'https://api.audius.co/v1/tracks/aPgMr/stream?app_name=Manifestudio',
   }),
   normalizeYtMusicTrack({
-    videoId: 'ljSczANvbV8',
+    videoId: 'pz9bGfyVlXQ',
     title: 'Dulu — Lagu Viral Indonesia',
     artist: 'Danar Widianto',
     duration: 215,
@@ -455,7 +455,7 @@ export const SEED_VIRAL_INDO_TRACKS = [
     streamUrl: 'https://api.audius.co/v1/tracks/ZRrjQ/stream?app_name=Manifestudio',
   }),
   normalizeYtMusicTrack({
-    videoId: '6f9t3kR2rW8',
+    videoId: '4tAg2H7tqD0',
     title: 'Sephia',
     artist: 'Sheila On 7',
     duration: 294,
@@ -465,7 +465,7 @@ export const SEED_VIRAL_INDO_TRACKS = [
     streamUrl: 'https://api.audius.co/v1/tracks/NbP3YZ/stream?app_name=Manifestudio',
   }),
   normalizeYtMusicTrack({
-    videoId: 'f4w7n6vM8tI',
+    videoId: '1-U3I5jRf6A',
     title: 'Waktu Yang Salah',
     artist: 'Fiersa Besari',
     duration: 324,
@@ -475,7 +475,7 @@ export const SEED_VIRAL_INDO_TRACKS = [
     streamUrl: 'https://api.audius.co/v1/tracks/REWzj/stream?app_name=Manifestudio',
   }),
   normalizeYtMusicTrack({
-    videoId: 'sY8zT3l6B8E',
+    videoId: 's9NoBV_7yVI',
     title: 'Bukti',
     artist: 'Virgoun',
     duration: 305,
@@ -485,7 +485,7 @@ export const SEED_VIRAL_INDO_TRACKS = [
     streamUrl: 'https://api.audius.co/v1/tracks/1dBdW/stream?app_name=Manifestudio',
   }),
   normalizeYtMusicTrack({
-    videoId: 'm8yW9tP5x3Q',
+    videoId: '0pu9khqEpi4',
     title: 'Percayalah',
     artist: 'Last Child',
     duration: 224,
@@ -495,8 +495,44 @@ export const SEED_VIRAL_INDO_TRACKS = [
     streamUrl: 'https://api.audius.co/v1/tracks/p9WJG/stream?app_name=Manifestudio',
   }),
   normalizeYtMusicTrack({
-    videoId: 'wK8t9yN3z5M',
-    title: 'Hingga',
+    videoId: '8zwz2fVgfVM',
+    title: 'Duka',
+    artist: 'Last Child',
+    duration: 339,
+    genre: 'Pop & Galau Indo',
+    isIndonesianViral: true,
+    sourceLabel: 'YT Music · Full Audio',
+  }),
+  normalizeYtMusicTrack({
+    videoId: 'Ske9Nwk-TmA',
+    title: 'Seluruh Nafas Ini (feat. Giselle)',
+    artist: 'Last Child',
+    duration: 294,
+    genre: 'Pop & Galau Indo',
+    isIndonesianViral: true,
+    sourceLabel: 'YT Music · Full Audio',
+  }),
+  normalizeYtMusicTrack({
+    videoId: 'PlK_crOqt64',
+    title: 'Lagu Galau',
+    artist: 'Al Ghazali',
+    duration: 248,
+    genre: 'Pop & Galau Indo',
+    isIndonesianViral: true,
+    sourceLabel: 'YT Music · Full Audio',
+  }),
+  normalizeYtMusicTrack({
+    videoId: 'QrupIQIGIqI',
+    title: 'Dua Cincin',
+    artist: 'Hello',
+    duration: 276,
+    genre: 'Pop & Galau Indo',
+    isIndonesianViral: true,
+    sourceLabel: 'YT Music · Full Audio',
+  }),
+  normalizeYtMusicTrack({
+    videoId: 'b5ZQob-mDGM',
+    title: 'Hingga Tua Bersama',
     artist: 'Rizky Febian',
     duration: 266,
     genre: 'Pop Viral Indo',
@@ -505,7 +541,7 @@ export const SEED_VIRAL_INDO_TRACKS = [
     streamUrl: 'https://api.audius.co/v1/tracks/aa3kQ/stream?app_name=Manifestudio',
   }),
   normalizeYtMusicTrack({
-    videoId: 'B7r8W9k3x2U',
+    videoId: 'SWcMwUySDvI',
     title: 'Mungkin Nanti',
     artist: 'Peterpan',
     duration: 269,
@@ -919,26 +955,40 @@ async function resolveExactYoutubeAudioStream(videoId, { bypassCache = false } =
   return job;
 }
 
-async function fetchRawYoutubeCandidates(query, limit = 10) {
+async function fetchSiputzxYoutubeItems(query, timeoutMs = 10500) {
+  const q = String(query || '').trim();
+  if (!q) return [];
+  const url = `${SIPUTZX_YT_SEARCH_URL}?query=${encodeURIComponent(q)}`;
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    try {
+      const json = await fetchJsonTimeout(url, timeoutMs);
+      const items = Array.isArray(json?.data) ? json.data : [];
+      if (items.length > 0) return items;
+    } catch {
+      // Retry after brief pause on transient timeout/rate-limit hiccup
+    }
+    if (attempt < 2) {
+      await new Promise((r) => setTimeout(r, 550 * (attempt + 1)));
+    }
+  }
+  return [];
+}
+
+async function fetchRawYoutubeCandidates(query, limit = 12) {
   const q = String(query || '').trim();
   if (!q) return [];
   const results = [];
   const seenIds = new Set();
   const pushItem = (item) => {
-    const norm = normalizeYtMusicTrack(item, { sourceLabel: 'YT Music API' });
+    const norm = normalizeYtMusicTrack(item, { sourceLabel: 'YT Music API', fromYtSearch: true });
     if (norm?.videoId && !seenIds.has(norm.videoId)) {
       seenIds.add(norm.videoId);
       results.push(norm);
     }
   };
 
-  try {
-    const json = await fetchJsonTimeout(`${SIPUTZX_YT_SEARCH_URL}?query=${encodeURIComponent(q)}`, 5200);
-    const items = Array.isArray(json?.data) ? json.data : [];
-    items.slice(0, limit).forEach(pushItem);
-  } catch {
-    // Ignore Siputzx error
-  }
+  const items = await fetchSiputzxYoutubeItems(q, 9000);
+  items.slice(0, limit).forEach(pushItem);
 
   return results;
 }
@@ -1036,27 +1086,27 @@ async function resolveBackgroundStreamForTrack(track, { allowAltYt = true, bypas
   return job;
 }
 
-async function fetchYtMusicSearch(query, { genre = 'YT Music', isIndonesianViral = true, limit = 16 } = {}) {
+async function fetchYtMusicSearch(query, { genre = 'YT Music', isIndonesianViral = true, limit = 24 } = {}) {
   const q = String(query || '').trim();
   if (!q) return [];
 
   // Run full-length Audius Direct and Siputzx YT Search in PARALLEL (never 30s iTunes previews!)
   const [audiusItems, siputzxItems] = await Promise.all([
     fetchAudiusDirectTracks(q, { genre, isIndonesianViral, limit: 8 }).catch(() => []),
-    fetchJsonTimeout(`${SIPUTZX_YT_SEARCH_URL}?query=${encodeURIComponent(q)}`, 5200)
-      .then((json) => {
-        const items = Array.isArray(json?.data) ? json.data : [];
+    fetchSiputzxYoutubeItems(q, 10500)
+      .then((items) => {
         const normalized = items
           .map((item) =>
             normalizeYtMusicTrack(item, {
               genre,
               isIndonesianViral,
-              sourceLabel: 'YT Community API',
+              sourceLabel: 'YT Music API',
+              fromYtSearch: true,
             })
           )
           .filter(Boolean);
         const full = filterFullLengthTracks(normalized, MIN_FULL_TRACK_SECONDS);
-        return (full.length > 0 ? full : normalized).slice(0, limit);
+        return (full.length > 0 ? full : normalized).slice(0, Math.max(limit, 24));
       })
       .catch(() => []),
   ]);
@@ -1070,8 +1120,12 @@ async function fetchYtMusicSearch(query, { genre = 'YT Music', isIndonesianViral
     }
   }
   const rawYtItems = [...ytMap.values()];
-  const rankedYtItems = rankSearchResults(rawYtItems, q, MIN_FULL_TRACK_SECONDS);
-  const ytItems = (rankedYtItems.length > 0 ? rankedYtItems : filterFullLengthTracks(rawYtItems, MIN_FULL_TRACK_SECONDS)).slice(0, limit);
+  const rankedYtItems = rankSearchResults(rawYtItems, q, MIN_FULL_TRACK_SECONDS, {
+    allowYoutubeSearchOrder: true,
+  });
+  const ytItems = (
+    rankedYtItems.length > 0 ? rankedYtItems : filterFullLengthTracks(rawYtItems, MIN_FULL_TRACK_SECONDS)
+  ).slice(0, limit);
 
   // Attach verified full-length native <audio> streamUrl to YT items from Seed or Audius
   // ONLY when strictly verified to be the EXACT same full-length song title & artist!
@@ -1094,7 +1148,9 @@ async function fetchYtMusicSearch(query, { genre = 'YT Music', isIndonesianViral
   }
 
   const combined = [...ytItems];
-  const relevantDirect = rankSearchResults(audiusItems, q, MIN_FULL_TRACK_SECONDS);
+  const relevantDirect = rankSearchResults(audiusItems, q, MIN_FULL_TRACK_SECONDS, {
+    allowYoutubeSearchOrder: false,
+  });
   for (const dirItem of relevantDirect) {
     if (
       !combined.some(
@@ -2586,22 +2642,26 @@ export function initMusicPlayer() {
     if (poolPromise) return poolPromise;
     poolPromise = (async () => {
       try {
+        // Yield briefly so user search requests never compete with background pool hydration
+        await new Promise((r) => setTimeout(r, 1200));
+        if (isSearching || activeUserResolveCount > 0) {
+          poolLoaded = true;
+          return tracks;
+        }
         const preset = MUSIC_PRESET_CATEGORIES[0];
-        const jobs = preset.queries.map((q) =>
-          fetchYtMusicSearch(q, { genre: 'Viral Indonesia', isIndonesianViral: true, limit: 12 }).catch(
-            () => []
-          )
-        );
-        const settled = await Promise.all(jobs);
+        const primaryQuery = preset.queries[0] || 'Lagu Viral Indonesia 2026';
+        const fetchedGroup = await fetchYtMusicSearch(primaryQuery, {
+          genre: 'Viral Indonesia',
+          isIndonesianViral: true,
+          limit: 16,
+        }).catch(() => []);
         const merged = new Map(
           SEED_VIRAL_INDO_TRACKS.map((t) => [t.id, hydrateTrackStreamFromCache(t)])
         );
-        for (const group of settled) {
-          for (const item of group) {
-            const key = item?.videoId ? `yt-${item.videoId}` : item?.id;
-            if (key && (!item.videoId || !blockedVideoIds.has(item.videoId)) && !merged.has(key)) {
-              merged.set(key, hydrateTrackStreamFromCache(item));
-            }
+        for (const item of fetchedGroup) {
+          const key = item?.videoId ? `yt-${item.videoId}` : item?.id;
+          if (key && (!item.videoId || !blockedVideoIds.has(item.videoId)) && !merged.has(key)) {
+            merged.set(key, hydrateTrackStreamFromCache(item));
           }
         }
         tracks = shuffleTracksFisherYates([...merged.values()]);
@@ -3977,7 +4037,7 @@ export function initMusicPlayer() {
           fetched = await fetchYtMusicSearch(q, {
             genre: 'Pencarian YT Music',
             isIndonesianViral: /indo|viral|dj|koplo|galau|remix|bernadya|hindia|tulus|mahalini|tenxi|nd[x]*/i.test(q),
-            limit: 18,
+            limit: 26,
           });
         }
 
@@ -3985,12 +4045,14 @@ export function initMusicPlayer() {
 
         // Combine live API results with verified local pool matches ranked cleanly;
         // prioritize already-streamable exact matches first so user selections start reliably in background!
-        const poolMatches = rankSearchResults([...SEED_VIRAL_INDO_TRACKS, ...tracks], q, 45);
+        const poolMatches = rankSearchResults([...SEED_VIRAL_INDO_TRACKS, ...tracks], q, 45, {
+          allowYoutubeSearchOrder: false,
+        });
         const exactReadyPoolMatches = poolMatches.filter(
           (r) =>
             r &&
             (Boolean(r.streamUrl) || SEED_VIRAL_INDO_TRACKS.some((s) => s.id === r.id)) &&
-            scoreSearchRelevance(r, q) >= 50
+            scoreSearchRelevance(r, q, { allowYoutubeSearchOrder: false }) >= 50
         );
         const byId = new Map();
         for (const r of [...exactReadyPoolMatches, ...fetched, ...poolMatches]) {

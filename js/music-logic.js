@@ -38,12 +38,25 @@ export function extractYouTubeVideoId(raw) {
 
 export function parseDurationSeconds(raw) {
   if (typeof raw === 'number' && Number.isFinite(raw)) {
-    return Math.max(0, Math.round(raw));
+    const val = Math.max(0, Math.round(raw));
+    return val > 36000 ? Math.round(val / 1000) : val;
+  }
+  if (raw && typeof raw === 'object') {
+    return (
+      parseDurationSeconds(raw.seconds) ||
+      parseDurationSeconds(raw.duration) ||
+      parseDurationSeconds(raw.lengthSeconds) ||
+      parseDurationSeconds(raw.timestamp) ||
+      parseDurationSeconds(raw.text) ||
+      parseDurationSeconds(raw.label) ||
+      0
+    );
   }
   const str = String(raw || '').trim();
   if (!str) return 0;
   if (/^\d+$/.test(str)) {
-    return Math.max(0, Number(str));
+    const val = Math.max(0, Number(str));
+    return val > 36000 ? Math.round(val / 1000) : val;
   }
   const parts = str.split(':').map((p) => Number(p.trim()));
   if (parts.some((n) => !Number.isFinite(n) || n < 0)) return 0;
@@ -54,6 +67,10 @@ export function parseDurationSeconds(raw) {
 
 export function normalizeYtMusicTrack(item, options = {}) {
   if (!item || typeof item !== 'object') return null;
+  const itemType = String(item.type || '').trim().toLowerCase();
+  if (itemType && (itemType === 'playlist' || itemType === 'channel' || itemType === 'mix' || itemType === 'radio')) {
+    return null;
+  }
   const videoId =
     extractYouTubeVideoId(item.videoId) ||
     extractYouTubeVideoId(item.url) ||
@@ -69,9 +86,17 @@ export function normalizeYtMusicTrack(item, options = {}) {
   const title = String(item.title || '').trim();
   if (!title) return null;
 
-  const duration = parseDurationSeconds(
-    item.duration ?? item.seconds ?? item.lengthSeconds ?? item.timestamp
-  );
+  const duration =
+    parseDurationSeconds(item.duration) ||
+    parseDurationSeconds(item.seconds) ||
+    parseDurationSeconds(item.lengthSeconds) ||
+    parseDurationSeconds(item.timestamp);
+
+  // Skip YouTube auto-generated endless Mix rows that have no duration
+  if (duration === 0 && /^mix\s+[-–—]/i.test(title) && !directStreamUrl) {
+    return null;
+  }
+
   const artist = String(
     item.uploaderName ||
       item.artist ||
@@ -83,11 +108,12 @@ export function normalizeYtMusicTrack(item, options = {}) {
     .replace(/\s*-\s*Topic$/i, '')
     .trim();
 
-  const fallbackThumb = videoId
-    ? `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`
-    : './assets/icons/brand-icon.svg';
+  const ytThumb = videoId ? `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg` : '';
   const rawThumb = String(item.thumbnail || item.artwork || item.image || '').trim();
-  const artwork = rawThumb.startsWith('http') ? rawThumb : fallbackThumb;
+  const safeRawThumb = rawThumb.startsWith('http') && !/_custom_/i.test(rawThumb) ? rawThumb : '';
+  const artwork = safeRawThumb || ytThumb || './assets/icons/brand-icon.svg';
+  const artworkFallback =
+    artwork !== ytThumb && ytThumb ? ytThumb : './assets/icons/brand-icon.svg';
   const isIndo =
     typeof options.isIndonesianViral === 'boolean'
       ? options.isIndonesianViral
@@ -96,6 +122,8 @@ export function normalizeYtMusicTrack(item, options = {}) {
       : true;
   const genre = String(options.genre || item.genre || (isIndo ? 'Viral Indonesia' : 'YT Music')).trim();
   const sourceLabel = String(options.sourceLabel || item.sourceLabel || 'YT Music API').trim();
+  const description = String(item.description || '').trim().slice(0, 220);
+  const fromYtSearch = Boolean(options.fromYtSearch ?? item.fromYtSearch);
   const resolvedId = videoId ? `yt-${videoId}` : customId || `aud-${title.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`;
 
   return {
@@ -104,16 +132,17 @@ export function normalizeYtMusicTrack(item, options = {}) {
     title,
     artist: artist || 'Artis YT Music',
     genre,
-    tags: `${title} ${artist} ${genre} ${isIndo ? 'indonesia viral yt music' : 'yt music'}`.trim(),
+    tags: `${title} ${artist} ${description} ${genre} ${isIndo ? 'indonesia viral yt music' : 'yt music'}`.trim(),
     duration,
     artwork,
-    artworkFallback: fallbackThumb,
+    artworkFallback,
     watchUrl: videoId
       ? `https://music.youtube.com/watch?v=${videoId}`
       : item.watchUrl || `https://music.youtube.com/search?q=${encodeURIComponent(`${title} ${artist}`)}`,
     isIndonesianViral: isIndo,
     sourceLabel,
     streamUrl: directStreamUrl,
+    ...(fromYtSearch ? { fromYtSearch: true } : {}),
   };
 }
 
@@ -561,21 +590,27 @@ export function pickShuffledViralTrack(tracks = [], options = {}) {
   return finalPool[idx] || finalPool[0];
 }
 
-export function scoreSearchRelevance(track, query) {
+export function scoreSearchRelevance(track, query, options = {}) {
   if (!track || !(track.videoId || track.streamUrl)) return 0;
   const cleanQuery = normalizeMatchString(query);
   if (!cleanQuery) return 0;
 
+  const { allowYoutubeSearchOrder = false, searchRankIndex = 0 } = options || {};
+  const isLiveYtHit = Boolean(allowYoutubeSearchOrder && track.videoId);
+
   const title = normalizeMatchString(track.title);
   const artist = normalizeMatchString(track.artist);
+  const tags = normalizeMatchString(track.tags || '');
   const titleWords = new Set(tokenizeText(track.title));
   const artistWords = new Set(tokenizeText(track.artist));
+  const tagWords = new Set(tokenizeText(track.tags || ''));
   const combined = `${title} ${artist}`.trim();
   const tokens = tokenizeText(cleanQuery);
   if (tokens.length === 0) return 0;
 
   let score = 0;
   let titleOrArtistTokenHits = 0;
+  let tagTokenHits = 0;
 
   const phraseWordRegex = new RegExp(`(?:^|\\s)${cleanQuery.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?:\\s|$)`);
   if (title === cleanQuery) score += 80;
@@ -585,31 +620,47 @@ export function scoreSearchRelevance(track, query) {
   else if (phraseWordRegex.test(artist)) score += 35;
 
   if (phraseWordRegex.test(combined)) score += 25;
+  else if (tags && phraseWordRegex.test(tags)) score += 12;
 
   for (const token of tokens) {
     const inTitle =
       titleWords.has(token) || (token.length >= 4 && [...titleWords].some((w) => w.startsWith(token)));
     const inArtist =
       artistWords.has(token) || (token.length >= 4 && [...artistWords].some((w) => w.startsWith(token)));
+    const inTags =
+      tagWords.has(token) || (token.length >= 4 && [...tagWords].some((w) => w.startsWith(token)));
     if (inTitle) score += 18;
     if (inArtist) score += 14;
     if (inTitle || inArtist) {
       titleOrArtistTokenHits += 1;
+    } else if (inTags) {
+      score += 6;
+      tagTokenHits += 1;
     }
   }
 
   const minRequiredHits = tokens.length === 1 ? 1 : Math.ceil(tokens.length * 0.5);
   if (titleOrArtistTokenHits < minRequiredHits) {
-    return 0;
+    if (isLiveYtHit) {
+      // YouTube Search already matched this video via lyrics, description, or translated title
+      score = Math.max(score, Math.max(4, 22 - Number(searchRankIndex || 0) * 0.75) + tagTokenHits * 4);
+    } else {
+      return 0;
+    }
+  } else if (isLiveYtHit) {
+    // Preserve slight tie-breaker preference for higher YouTube Search rank
+    score += Math.max(0, 6 - Number(searchRankIndex || 0) * 0.25);
   }
 
   const dur = Number(track.duration || 0);
   if (dur > 0 && dur < MIN_FULL_TRACK_SECONDS) {
+    if (!isLiveYtHit) return 0;
     score = Math.max(0, score - 22);
   }
   const wantsLongMix = /\b(album|full album|mix|nonstop|kompilasi|playlist|1 jam)\b/i.test(cleanQuery);
-  if (!wantsLongMix && dur > 720) {
-    return 0;
+  if (!wantsLongMix && dur > 900) {
+    if (!isLiveYtHit && dur > 720) return 0;
+    score = Math.max(2, score - 14);
   }
   if (/\b(parody|parodi|lucu|shorts|#shorts|prank|sound effect|reaction)\b/i.test(combined)) {
     score = Math.max(0, score - 25);
@@ -620,16 +671,25 @@ export function scoreSearchRelevance(track, query) {
   return Number(score.toFixed(2));
 }
 
-export function rankSearchResults(tracks = [], query = '', minSeconds = MIN_FULL_TRACK_SECONDS) {
+export function rankSearchResults(tracks = [], query = '', minSeconds = MIN_FULL_TRACK_SECONDS, options = {}) {
   if (!Array.isArray(tracks) || tracks.length === 0) return [];
   const fullOnly = filterFullLengthTracks(tracks, minSeconds);
   const candidates =
     fullOnly.length > 0
       ? fullOnly
-      : tracks.filter((t) => t && t.id && (t.videoId || t.streamUrl) && Number(t.duration || 0) >= 45);
+      : tracks.filter(
+          (t) =>
+            t &&
+            t.id &&
+            (t.videoId || t.streamUrl) &&
+            (Number(t.duration || 0) >= 45 || (t.videoId && Number(t.duration || 0) === 0))
+        );
 
   return candidates
-    .map((track) => ({ track, relevance: scoreSearchRelevance(track, query) }))
+    .map((track, idx) => ({
+      track,
+      relevance: scoreSearchRelevance(track, query, { ...options, searchRankIndex: idx }),
+    }))
     .filter((entry) => entry.relevance > 0)
     .sort((a, b) => {
       if (b.relevance !== a.relevance) return b.relevance - a.relevance;

@@ -2227,3 +2227,98 @@ test('music v35 blocks and strips 30-second Apple iTunes preview URLs, enforces 
   assert.equal(toggledOn.pipHeadsetMode, true);
   assert.equal(toggledOn.isPipOpen, false);
 });
+
+test('normalizeYtMusicTrack parses nested Siputzx duration objects and rankSearchResults preserves all YouTube search hits (Indonesian, international & translated titles)', () => {
+  // Siputzx /api/s/youtube returns duration: { seconds: 248, timestamp: '4:08' }
+  const alGhazaliRaw = {
+    type: 'video',
+    videoId: 'PlK_crOqt64',
+    title: 'Al Ghazali - Lagu Galau (Official Music Video) | Soundtrack Anak Jalanan',
+    author: { name: 'Pelangi Records' },
+    duration: { seconds: 248, timestamp: '4:08' },
+    timestamp: '4:08',
+  };
+  const normAl = normalizeYtMusicTrack(alGhazaliRaw, { fromYtSearch: true });
+  assert.ok(normAl);
+  assert.equal(normAl.duration, 248);
+  assert.equal(normAl.fromYtSearch, true);
+  assert.equal(normAl.artworkFallback, './assets/icons/brand-icon.svg');
+
+  // Skip Mix / Playlist items that have no duration
+  const mixRow = normalizeYtMusicTrack({
+    type: 'mix',
+    videoId: 'PlK_crOqt64',
+    title: 'Mix - Al Ghazali - Lagu Galau',
+  });
+  assert.equal(mixRow, null);
+
+  // Test "Hati butuh kepastian" where YouTube auto-translates titles or matches via lyrics
+  const hatiCandidates = [
+    normalizeYtMusicTrack(
+      {
+        videoId: 'hK9LzAhg75Y',
+        title: 'DJ HEART NEEDS CERTAINTY X MY HEART MY HEART - FALLING IN LOVE VIRAL TIKTOK LATEST 2026',
+        author: { name: 'Ratu Stecu' },
+        duration: { seconds: 514, timestamp: '8:34' },
+      },
+      { fromYtSearch: true }
+    ),
+    normalizeYtMusicTrack(
+      {
+        videoId: 'fXwBsUdnmCk',
+        title: 'Lirik lagu “aku jatuh cinta” Raden Rakha feat Basmalah Gralind',
+        author: { name: '_liriklagu' },
+        duration: { seconds: 280, timestamp: '4:40' },
+      },
+      { fromYtSearch: true }
+    ),
+    normalizeYtMusicTrack(
+      {
+        videoId: '58KVjo_9M_E',
+        title: 'DJ HATI BUTUH KEPASTIAN X MY HEART - DJ JATUH CINTA ( BOOTLEG )',
+        author: { name: 'djprincefvnky' },
+        duration: { seconds: 511, timestamp: '8:31' },
+      },
+      { fromYtSearch: true }
+    ),
+  ];
+  const rankedHati = rankSearchResults(hatiCandidates, 'Hati butuh kepastian', 75, {
+    allowYoutubeSearchOrder: true,
+  });
+  assert.equal(rankedHati.length, 3);
+  // Exact Indonesian title match ranks #1, while translated/lyric YouTube matches are still preserved!
+  assert.equal(rankedHati[0].videoId, '58KVjo_9M_E');
+
+  // Test "Dua cincin", "Lagu galau al ghazali", "Last child duka", and international "Bruno Mars Die With A Smile"
+  const duaCincin = normalizeYtMusicTrack(
+    {
+      videoId: 'QrupIQIGIqI',
+      title: 'Hello - Dua Cincin (Official Music Video NAGASWARA) #music',
+      author: { name: 'NAGASWARA Official Video Indonesian Music Channel' },
+      duration: { seconds: 276, timestamp: '4:36' },
+    },
+    { fromYtSearch: true }
+  );
+  assert.equal(rankSearchResults([duaCincin], 'Dua cincin', 75, { allowYoutubeSearchOrder: true }).length, 1);
+  assert.equal(rankSearchResults([normAl], 'Lagu galau al ghazali', 75, { allowYoutubeSearchOrder: true }).length, 1);
+
+  const bruno = normalizeYtMusicTrack(
+    {
+      videoId: 'kPa7bsKwL-c',
+      title: 'Lady Gaga, Bruno Mars - Die With A Smile (Official Music Video)',
+      author: { name: 'Lady Gaga' },
+      duration: { seconds: 253, timestamp: '4:13' },
+    },
+    { fromYtSearch: true, isIndonesianViral: false }
+  );
+  assert.equal(
+    rankSearchResults([bruno], 'Bruno Mars Die With A Smile', 75, { allowYoutubeSearchOrder: true }).length,
+    1
+  );
+  // Previous search tracks merged into pool must NOT leak into an unrelated subsequent query when allowYoutubeSearchOrder is false
+  assert.equal(
+    rankSearchResults([bruno, normAl], 'Last child duka', 75, { allowYoutubeSearchOrder: false }).length,
+    0
+  );
+});
+
