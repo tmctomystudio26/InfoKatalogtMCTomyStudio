@@ -2,7 +2,7 @@ import {
   CATALOG_PREVIEW_STORAGE_KEY,
   getDefaultCatalogSnapshot,
   loadCatalogData,
-} from './data.js?v=40';
+} from './data.js?v=41';
 import {
   DEFAULT_UTILITY_CONFIG,
   MAX_HISTORY_LOGS,
@@ -37,12 +37,12 @@ import {
   upsertProductInCatalog,
   upsertSocialInCatalog,
   upsertUtilityItemInCatalog,
-} from './store.js?v=40';
+} from './store.js?v=41';
 import {
   decryptVault,
   encryptVault,
   verifyGitHubTokenAccess,
-} from './vault.js?v=40';
+} from './vault.js?v=41';
 
 const THEME_STORAGE_KEY = 'manifestudio_theme_v1';
 const ADMIN_VAULT_STORAGE_KEY = 'manifestudio_admin_vault_v1';
