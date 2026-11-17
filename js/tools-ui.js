@@ -22,30 +22,30 @@ import {
   matchIndonesianCityQuery,
   planMediaCompression,
   resolveAccurateWeatherCondition,
-} from './tools-logic.js?v=38';
+} from './tools-logic.js?v=39';
 import {
   describeLocationSource,
   resolveUserLocation,
   searchCitiesOnline,
   setManualLocation,
-} from './location.js?v=38';
-import { createInteractiveGlobe } from './globe.js?v=38';
+} from './location.js?v=39';
+import { createInteractiveGlobe } from './globe.js?v=39';
 import {
   createSpeedometerGauge,
   fetchSpeedtestEnvironment,
   readClientDeviceTelemetry,
   runInternetSpeedtest,
-} from './speedtest.js?v=38';
+} from './speedtest.js?v=39';
 import {
   extractAudioFromVideoUrl,
   fetchMediaDownload,
   triggerBatchPhotoDownload,
   triggerDirectMediaSave,
-} from './downloader.js?v=38';
-import { compressMediaFile, inspectMediaFile } from './compressor.js?v=38';
-import { formatAudioTime, isTrackInWatchLater } from './music-logic.js?v=38';
-import { MUSIC_PRESET_CATEGORIES, getMusicController, initMusicPlayer } from './music.js?v=38';
-import { normalizeUtilityConfig } from './store.js?v=38';
+} from './downloader.js?v=39';
+import { compressMediaFile, inspectMediaFile } from './compressor.js?v=39';
+import { formatAudioTime, getLoadingProgressMeta, isTrackInWatchLater } from './music-logic.js?v=39';
+import { MUSIC_PRESET_CATEGORIES, getMusicController, initMusicPlayer } from './music.js?v=39';
+import { normalizeUtilityConfig } from './store.js?v=39';
 
 const PRAYER_CACHE_KEY = 'manifestudio_prayer_cache_v1';
 const MYQURAN_CITIES_KEY = 'manifestudio_myquran_cities_v1';
@@ -424,6 +424,7 @@ export function createToolsHubController({
     compError: '',
     compResult: null,
     musicBrowserTab: 'queue', // 'queue' | 'playlists' | 'watch-later'
+    musicCategoryDrawerOpen: false,
     musicSelectedPlaylistId: '',
     musicStagePlaylistPickerOpen: false,
     musicRowPlaylistPickerId: '',
@@ -1999,6 +2000,172 @@ export function createToolsHubController({
     return all.find((t) => t && t.id === trackId) || null;
   }
 
+  function getMusicCategorySvg(iconKey = 'music') {
+    switch (iconKey) {
+      case 'flame':
+        return '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 0 0 2.5 2.5z"/></svg>';
+      case 'sparkles':
+        return '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m12 3-1.9 5.8a2 2 0 0 1-1.3 1.3L3 12l5.8 1.9a2 2 0 0 1 1.3 1.3L12 21l1.9-5.8a2 2 0 0 1 1.3-1.3L21 12l-5.8-1.9a2 2 0 0 1-1.3-1.3Z"/></svg>';
+      case 'heart':
+        return '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"/></svg>';
+      case 'disc':
+        return '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="3"/></svg>';
+      case 'guitar':
+        return '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m11.9 12.1 4.5-4.5"/><path d="M18 2l4 4-2 2-4-4Z"/><path d="M5.5 14.5a4.5 4.5 0 1 0 4 4L14 14l-4-4Z"/></svg>';
+      case 'globe':
+        return '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M2 12h20"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10Z"/></svg>';
+      case 'star':
+        return '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="12 2 15.1 8.3 22 9.3 17 14.1 18.2 21 12 17.8 5.8 21 7 14.1 2 9.3 8.9 8.3 12 2"/></svg>';
+      case 'mic':
+        return '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 10v2a7 7 0 0 0 14 0v-2"/><line x1="12" y1="19" x2="12" y2="22"/></svg>';
+      case 'bolt':
+        return '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M13 2 3 14h9l-1 8 10-12h-9l1-8z"/></svg>';
+      case 'moon':
+        return '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></svg>';
+      case 'headphones':
+        return '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 18v-6a9 9 0 0 1 18 0v6"/><path d="M21 19a2 2 0 0 1-2 2h-1a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h3zM3 19a2 2 0 0 0 2 2h1a2 2 0 0 0 2-2v-3a2 2 0 0 0-2-2H3z"/></svg>';
+      case 'clock':
+        return '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15 14"/></svg>';
+      case 'compass':
+        return '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><polygon points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76"/></svg>';
+      default:
+        return '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>';
+    }
+  }
+
+  function buildMusicCategoryBarAndDrawerHtml(mState) {
+    const categories =
+      Array.isArray(mState.categories) && mState.categories.length > 0
+        ? mState.categories
+        : MUSIC_PRESET_CATEGORIES;
+    const activeCat = categories.find((c) => c.id === mState.activeCategory) || categories[0];
+    const isOpen = Boolean(toolState.musicCategoryDrawerOpen);
+    const chips = Array.isArray(mState.liveTrendChips) ? mState.liveTrendChips : [];
+    const updatedLabel = mState.trendUpdatedAt
+      ? `Tren Live · ${new Date(mState.trendUpdatedAt).toLocaleTimeString('id-ID', {
+          hour: '2-digit',
+          minute: '2-digit',
+        })}`
+      : 'Tren Live YT Music';
+
+    return `
+      <div class="ytm-cat-toolbar" role="region" aria-label="Kontrol Kategori YT Music">
+        <button
+          type="button"
+          id="music-hub-cat-toggle-btn"
+          class="ytm-cat-icon-trigger ${isOpen ? 'is-open' : ''}"
+          data-music-control="true"
+          aria-expanded="${isOpen}"
+          aria-controls="music-hub-cat-drawer"
+          title="${isOpen ? 'Minimize daftar kategori' : 'Buka daftar kategori YT Music & tren live'}"
+        >
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>
+          <span>Kategori (${categories.length})</span>
+          <svg class="ytm-cat-chevron" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg>
+        </button>
+
+        <button
+          type="button"
+          id="music-hub-active-cat-pill"
+          class="ytm-active-cat-pill"
+          data-music-control="true"
+          title="Ketuk untuk ganti kategori lagu"
+        >
+          ${getMusicCategorySvg(activeCat.iconKey)}
+          <span>${escapeHtml(activeCat.label)}</span>
+          ${activeCat.isLiveTrend || activeCat.isHot ? '<span class="ytm-hot-dot" title="Sedang tren"></span>' : ''}
+        </button>
+
+        <button
+          type="button"
+          id="music-hub-refresh-trends-btn"
+          class="ytm-trend-sync-btn ${mState.isSyncingTrends ? 'is-syncing' : ''}"
+          data-music-control="true"
+          title="Perbarui kategori & tren real-time YT Music"
+          aria-label="Perbarui tren real-time YT Music"
+        >
+          <svg class="${mState.isSyncingTrends ? 'ytm-spin' : ''}" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/></svg>
+          <span class="ytm-trend-sync-text">${mState.isSyncingTrends ? 'Sinkron...' : 'Live'}</span>
+        </button>
+      </div>
+
+      <div
+        id="music-hub-cat-drawer"
+        class="ytm-cat-slide-shell ${isOpen ? 'is-open' : ''}"
+        aria-hidden="${!isOpen}"
+      >
+        <div class="ytm-cat-slide-inner">
+          <div class="ytm-cat-drawer-head">
+            <div class="ytm-cat-drawer-title">
+              <span class="ytm-bg-dot"></span>
+              <strong>Eksplorasi Kategori YT Music</strong>
+              <span class="ytm-cat-sync-time">${escapeHtml(updatedLabel)}</span>
+            </div>
+            <button
+              type="button"
+              id="music-hub-cat-minimize-btn"
+              class="ytm-cat-minimize-btn"
+              data-music-control="true"
+              aria-label="Minimize kategori"
+              title="Minimize kategori"
+            >
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m15 18-6-6 6-6"/></svg>
+              <span>Minimize</span>
+            </button>
+          </div>
+
+          <div class="ytm-cat-scroll-rail" role="group" aria-label="Pilih kategori lagu YT Music">
+            ${categories
+              .map(
+                (cat) => `
+              <button
+                type="button"
+                class="ytm-cat-rail-btn ${mState.activeCategory === cat.id && !mState.searchQuery ? 'is-active' : ''}"
+                data-hub-music-preset="${escapeHtml(cat.id)}"
+                data-music-control="true"
+                ${cat.trendSummary ? `title="${escapeHtml(cat.trendSummary)}"` : ''}
+              >
+                ${getMusicCategorySvg(cat.iconKey)}
+                <span>${escapeHtml(cat.label)}</span>
+                ${
+                  cat.isLiveTrend
+                    ? '<span class="ytm-cat-tag is-live">LIVE</span>'
+                    : cat.isHot
+                    ? '<span class="ytm-cat-tag is-hot">HOT</span>'
+                    : ''
+                }
+              </button>
+            `
+              )
+              .join('')}
+          </div>
+
+          ${
+            chips.length > 0
+              ? `<div class="ytm-live-trends-row" aria-label="Pencarian Tren Real-Time YT Music">
+                  <span class="ytm-trends-kicker">🔥 Tren Saat Ini:</span>
+                  ${chips
+                    .map(
+                      (chip) => `
+                    <button
+                      type="button"
+                      class="ytm-trend-chip-btn"
+                      data-hub-trend-query="${escapeHtml(chip.query)}"
+                      data-music-control="true"
+                    >
+                      ${escapeHtml(chip.label)}
+                    </button>
+                  `
+                    )
+                    .join('')}
+                </div>`
+              : ''
+          }
+        </div>
+      </div>
+    `;
+  }
+
   function buildMusicHubStageHtml(mState) {
     const active = mState.currentTrack || mState.tracks?.[0] || null;
     const dur = mState.duration || active?.duration || 180;
@@ -2314,6 +2481,34 @@ export function createToolsHubController({
         }
 
         ${
+          mState.isLoading
+            ? (() => {
+                const loader = getLoadingProgressMeta({
+                  isLoading: mState.isLoading,
+                  isSearching: false,
+                  phase: mState.loadingPhase === 'buffering' ? 'buffering' : 'buffering',
+                  label: mState.loadingLabel || 'Menyiapkan stream audio latar belakang...',
+                  progress: mState.loadingProgress || 48,
+                });
+                return `
+                  <div class="ytm-stage-buffer-bar" role="status">
+                    <div class="ytm-progress-banner-head">
+                      <span class="ytm-progress-spin-wrap">
+                        <span class="ytm-inline-spinner" aria-hidden="true"></span>
+                        <span>${escapeHtml(loader.label)}</span>
+                      </span>
+                      <span class="ytm-progress-pct mono-num">${loader.percent}%</span>
+                    </div>
+                    <div class="ytm-progress-track">
+                      <div class="ytm-progress-fill" style="width: ${loader.percent}%"></div>
+                    </div>
+                  </div>
+                `;
+              })()
+            : ''
+        }
+
+        ${
           mState.lastError
             ? `<div class="music-search-note" role="status">${escapeHtml(mState.lastError)}</div>`
             : ''
@@ -2493,7 +2688,8 @@ export function createToolsHubController({
           data-music-control="true"
           aria-selected="${activeTab === 'watch-later'}"
         >
-          <span>Tonton Nanti (${watchLater.length})</span>
+          <span class="ytm-tab-desktop">Tonton Nanti (${watchLater.length})</span>
+          <span class="ytm-tab-mobile">Nanti (${watchLater.length})</span>
         </button>
       </div>
     `;
@@ -2629,6 +2825,20 @@ export function createToolsHubController({
       `;
     }
 
+    const catList =
+      Array.isArray(mState.categories) && mState.categories.length > 0
+        ? mState.categories
+        : MUSIC_PRESET_CATEGORIES;
+    const activeCatInfo = catList.find((c) => c.id === mState.activeCategory) || catList[0];
+    const progressMeta = getLoadingProgressMeta({
+      isSearching: mState.isSearching,
+      isLoading: false,
+      isSyncingTrends: mState.isSyncingTrends && !mState.isSearching,
+      phase: mState.loadingPhase,
+      label: mState.loadingLabel,
+      progress: mState.loadingProgress,
+    });
+
     return `
       <div class="ytm-queue-panel" id="music-hub-queue-slot">
         ${tabsNavHtml}
@@ -2638,13 +2848,36 @@ export function createToolsHubController({
             <strong>${
               isSearchView
                 ? `HASIL PENCARIAN "${escapeHtml(mState.searchQuery)}"`
-                : `BERIKUTNYA · ${escapeHtml(activeCat.label.toUpperCase())}`
+                : `BERIKUTNYA · ${escapeHtml(activeCatInfo.label.toUpperCase())}`
             }</strong>
           </div>
           <span class="ytm-queue-count mono-num">${
-            mState.isSearching ? 'Memuat...' : `${list.length} lagu`
+            mState.isSearching
+              ? `<span class="ytm-loading-pill"><span class="ytm-inline-spinner" aria-hidden="true"></span> ${progressMeta.percent}%</span>`
+              : `${list.length} lagu`
           }</span>
         </div>
+
+        ${
+          mState.isSearching || mState.isSyncingTrends
+            ? `<div class="ytm-progress-banner" id="music-hub-progress-banner" role="status" aria-live="polite">
+                <div class="ytm-progress-banner-head">
+                  <span class="ytm-progress-spin-wrap">
+                    <span class="ytm-inline-spinner" aria-hidden="true"></span>
+                    <span>${escapeHtml(
+                      mState.isSearching
+                        ? progressMeta.label || 'Mencari lagu di YT Music...'
+                        : 'Menyinkronkan tren real-time YT Music...'
+                    )}</span>
+                  </span>
+                  <span class="ytm-progress-pct mono-num">${mState.isSearching ? progressMeta.percent : 64}%</span>
+                </div>
+                <div class="ytm-progress-track">
+                  <div class="ytm-progress-fill" style="width: ${mState.isSearching ? progressMeta.percent : 64}%"></div>
+                </div>
+              </div>`
+            : ''
+        }
 
         ${
           mState.searchFeedback
@@ -2654,12 +2887,23 @@ export function createToolsHubController({
 
         <div class="ytm-tracklist" role="listbox" aria-label="Daftar putar YouTube Music">
           ${
-            list.length === 0
-              ? `<div class="music-hub-empty">${
-                  mState.isSearching
-                    ? 'Sedang mengambil daftar lagu terbaru dari YT Music...'
-                    : 'Belum ada lagu yang cocok. Coba kata kunci atau kategori lain.'
-                }</div>`
+            mState.isSearching && list.length === 0
+              ? `<div class="ytm-skeleton-list" aria-hidden="true">
+                  ${Array.from({ length: 5 })
+                    .map(
+                      () => `
+                    <div class="ytm-skeleton-row">
+                      <div class="ytm-skeleton-thumb"></div>
+                      <div class="ytm-skeleton-lines">
+                        <span class="ytm-skeleton-bar is-title"></span>
+                        <span class="ytm-skeleton-bar is-sub"></span>
+                      </div>
+                    </div>`
+                    )
+                    .join('')}
+                </div>`
+              : list.length === 0
+              ? `<div class="music-hub-empty">Belum ada lagu yang cocok. Coba kata kunci atau pilih kategori lain.</div>`
               : list
                   .map((track) =>
                     renderMusicTrackRowHtml(track, mState, {
@@ -2693,9 +2937,73 @@ export function createToolsHubController({
     const mState = ctrl.getState();
     const stageWrap = rootEl.querySelector('.music-hub-stage-wrap');
     const queueWrap = rootEl.querySelector('#music-hub-queue-wrap');
+    const catSlot = rootEl.querySelector('#music-hub-category-slot');
     if (stageWrap) stageWrap.innerHTML = buildMusicHubStageHtml(mState);
+    if (catSlot) catSlot.innerHTML = buildMusicCategoryBarAndDrawerHtml(mState);
     if (queueWrap) queueWrap.innerHTML = buildMusicHubQueueHtml(mState);
     bindMusicStageAndQueueEvents(ctrl);
+    bindMusicCategoryDrawerEvents(ctrl);
+  }
+
+  function bindMusicCategoryDrawerEvents(ctrl) {
+    const searchInput = rootEl.querySelector('#music-hub-search-input');
+    const toggleDrawer = (forceState = null) => {
+      toolState.musicCategoryDrawerOpen =
+        typeof forceState === 'boolean' ? forceState : !toolState.musicCategoryDrawerOpen;
+      const drawer = rootEl.querySelector('#music-hub-cat-drawer');
+      const toggleBtn = rootEl.querySelector('#music-hub-cat-toggle-btn');
+      if (drawer) {
+        drawer.classList.toggle('is-open', toolState.musicCategoryDrawerOpen);
+        drawer.setAttribute('aria-hidden', String(!toolState.musicCategoryDrawerOpen));
+      }
+      if (toggleBtn) {
+        toggleBtn.classList.toggle('is-open', toolState.musicCategoryDrawerOpen);
+        toggleBtn.setAttribute('aria-expanded', String(toolState.musicCategoryDrawerOpen));
+      }
+    };
+
+    rootEl.querySelector('#music-hub-cat-toggle-btn')?.addEventListener('click', (e) => {
+      e.stopPropagation();
+      toggleDrawer();
+    });
+
+    rootEl.querySelector('#music-hub-active-cat-pill')?.addEventListener('click', (e) => {
+      e.stopPropagation();
+      toggleDrawer();
+    });
+
+    rootEl.querySelector('#music-hub-cat-minimize-btn')?.addEventListener('click', (e) => {
+      e.stopPropagation();
+      toggleDrawer(false);
+    });
+
+    rootEl.querySelector('#music-hub-refresh-trends-btn')?.addEventListener('click', (e) => {
+      e.stopPropagation();
+      ctrl.refreshCategories?.();
+      onToast('Menyinkronkan kategori & tren real-time YT Music...');
+    });
+
+    rootEl.querySelectorAll('[data-hub-music-preset]').forEach((btn) => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const presetId = btn.getAttribute('data-hub-music-preset');
+        if (!presetId) return;
+        if (searchInput) searchInput.value = '';
+        toolState.musicBrowserTab = 'queue';
+        ctrl.loadPresetPlaylist(presetId);
+      });
+    });
+
+    rootEl.querySelectorAll('[data-hub-trend-query]').forEach((btn) => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const tq = btn.getAttribute('data-hub-trend-query');
+        if (!tq) return;
+        if (searchInput) searchInput.value = tq;
+        toolState.musicBrowserTab = 'queue';
+        ctrl.search(tq, { autoPlayFirst: false });
+      });
+    });
   }
 
   function bindMusicStageAndQueueEvents(ctrl) {
@@ -3091,19 +3399,8 @@ export function createToolsHubController({
               <button type="button" id="music-hub-clear-search" class="btn btn-secondary btn-sm" data-music-control="true">Reset</button>
             </form>
 
-            <div class="music-hub-presets" role="group" aria-label="Pilih kategori lagu YT Music Indonesia">
-              ${MUSIC_PRESET_CATEGORIES.map(
-                (cat) => `
-                <button
-                  type="button"
-                  class="music-hub-preset-btn ${mState.activeCategory === cat.id && !mState.searchQuery ? 'is-active' : ''}"
-                  data-hub-music-preset="${escapeHtml(cat.id)}"
-                  data-music-control="true"
-                >
-                  ${escapeHtml(cat.label)}
-                </button>
-              `
-              ).join('')}
+            <div id="music-hub-category-slot" class="music-hub-category-slot">
+              ${buildMusicCategoryBarAndDrawerHtml(mState)}
             </div>
 
             <div id="music-hub-queue-wrap" class="music-hub-queue-wrap">
@@ -3695,6 +3992,7 @@ export function createToolsHubController({
       const ctrl = ensureMusicHubController();
       if (ctrl) {
         bindMusicStageAndQueueEvents(ctrl);
+        bindMusicCategoryDrawerEvents(ctrl);
 
         const searchForm = rootEl.querySelector('#music-hub-search-form');
         const searchInput = rootEl.querySelector('#music-hub-search-input');
@@ -3703,7 +4001,6 @@ export function createToolsHubController({
           e.preventDefault();
           e.stopPropagation();
           toolState.musicBrowserTab = 'queue';
-          // Never interrupt or auto-skip the currently playing song when user searches
           ctrl.search(searchInput?.value || '', { autoPlayFirst: false });
         });
 
@@ -3712,17 +4009,6 @@ export function createToolsHubController({
           if (searchInput) searchInput.value = '';
           toolState.musicBrowserTab = 'queue';
           ctrl.clearSearch();
-        });
-
-        rootEl.querySelectorAll('[data-hub-music-preset]').forEach((btn) => {
-          btn.addEventListener('click', (e) => {
-            e.stopPropagation();
-            const presetId = btn.getAttribute('data-hub-music-preset');
-            if (!presetId) return;
-            if (searchInput) searchInput.value = '';
-            toolState.musicBrowserTab = 'queue';
-            ctrl.loadPresetPlaylist(presetId);
-          });
         });
 
         if (musicUnsub) {
@@ -3737,6 +4023,31 @@ export function createToolsHubController({
           }
           if (kind === 'init') return;
 
+          if (kind === 'progress') {
+            const pBanner = rootEl.querySelector('#music-hub-progress-banner');
+            const pct = Math.max(8, Math.min(99, Number(nextState.loadingProgress) || 32));
+            if (pBanner) {
+              const fill = pBanner.querySelector('.ytm-progress-fill');
+              const pctEl = pBanner.querySelector('.ytm-progress-pct');
+              const lbl = pBanner.querySelector('.ytm-progress-spin-wrap > span:last-child');
+              if (fill) fill.style.width = `${pct}%`;
+              if (pctEl) pctEl.textContent = `${pct}%`;
+              if (lbl && nextState.loadingLabel) lbl.textContent = nextState.loadingLabel;
+            }
+            const stageBuf = rootEl.querySelector('.ytm-stage-buffer-bar');
+            if (stageBuf && nextState.isLoading) {
+              const fill = stageBuf.querySelector('.ytm-progress-fill');
+              const pctEl = stageBuf.querySelector('.ytm-progress-pct');
+              if (fill) fill.style.width = `${pct}%`;
+              if (pctEl) pctEl.textContent = `${pct}%`;
+            }
+            const qPill = rootEl.querySelector('.ytm-queue-count .ytm-loading-pill');
+            if (qPill) {
+              qPill.innerHTML = `<span class="ytm-inline-spinner" aria-hidden="true"></span> ${pct}%`;
+            }
+            return;
+          }
+
           const activeEl = document.activeElement;
           const typingInStagePicker = Boolean(activeEl?.closest('#music-hub-stage-pl-picker'));
           const typingInQueueInput = Boolean(
@@ -3745,22 +4056,24 @@ export function createToolsHubController({
           );
 
           const stageWrap = rootEl.querySelector('.music-hub-stage-wrap');
+          const catSlot = rootEl.querySelector('#music-hub-category-slot');
           const queueWrap = rootEl.querySelector('#music-hub-queue-wrap');
           if (
             stageWrap &&
+            kind !== 'trends' &&
             !isHubSeeking &&
             !typingInStagePicker &&
             activeEl?.id !== 'music-hub-volume-slider'
           ) {
             stageWrap.innerHTML = buildMusicHubStageHtml(nextState);
           }
-          if (queueWrap && (!typingInQueueInput || kind === 'library')) {
+          if (catSlot && (kind === 'trends' || kind === 'pool' || kind === 'search')) {
+            catSlot.innerHTML = buildMusicCategoryBarAndDrawerHtml(nextState);
+            bindMusicCategoryDrawerEvents(ctrl);
+          }
+          if (queueWrap && kind !== 'trends' && (!typingInQueueInput || kind === 'library')) {
             queueWrap.innerHTML = buildMusicHubQueueHtml(nextState);
           }
-          rootEl.querySelectorAll('[data-hub-music-preset]').forEach((btn) => {
-            const pid = btn.getAttribute('data-hub-music-preset');
-            btn.classList.toggle('is-active', pid === nextState.activeCategory && !nextState.searchQuery);
-          });
           bindMusicStageAndQueueEvents(ctrl);
         });
       }

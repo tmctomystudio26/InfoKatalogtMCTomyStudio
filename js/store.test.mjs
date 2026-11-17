@@ -47,6 +47,7 @@ import {
   MIN_FULL_TRACK_SECONDS,
   MUSIC_LIBRARY_STORAGE_KEY,
   addTrackToPlaylist,
+  buildAudiusLookupQueries,
   buildCleanAudioLookupQuery,
   clampMusicFabPosition,
   computeSafeResumeSeconds,
@@ -56,8 +57,11 @@ import {
   extractYouTubeVideoId,
   extractStreamExpiryMs,
   filterFullLengthTracks,
+  filterPresetCategoryTracks,
   formatAudioTime,
+  getLoadingProgressMeta,
   getPopoverAnchorClasses,
+  getSilentHoldPcmSample,
   getValidCachedStreamUrl,
   hasPendingSeekSettled,
   isBlockedAudioWrapperUrl,
@@ -65,6 +69,7 @@ import {
   isStrictAudioMatch,
   isStrictSongMetadataMatch,
   isTrackInWatchLater,
+  mergeRealtimeTrendCategories,
   needsCorsAnonymousAudio,
   normalizeItunesTrack,
   normalizeMusicLibraryState,
@@ -73,6 +78,7 @@ import {
   normalizeYtMusicTrack,
   parseDurationSeconds,
   parseSavedVolume,
+  pickBackgroundSafeNextTrack,
   pickPrewarmQueueCandidates,
   pickShuffledViralTrack,
   pruneAndSerializeStreamCache,
@@ -81,6 +87,7 @@ import {
   renameUserPlaylist,
   resolvePipHeadsetStateTransition,
   scoreSearchRelevance,
+  selectTiooAudioStreamCandidates,
   selectUmmyAudioStreamCandidates,
   shouldAutoSkipOnPlaybackError,
   shouldIgnoreTimeUpdateDuringPendingSeek,
@@ -2422,5 +2429,108 @@ test('background audio persistence helpers: clean lookup query, Safari m4a/mp4 c
     true
   );
 });
+
+test('music v39 helpers: Tioo stream priority, silent-hold PCM micro-dither, real-time YT Music category trends, and loading progress normalization', () => {
+  // 1. selectTiooAudioStreamCandidates prioritizes non-gcr=id and mp3/audio over mp4
+  const tiooRanked = selectTiooAudioStreamCandidates({
+    mp4: 'https://rr1.googlevideo.com/videoplayback?itag=18&gcr=id',
+    mp3: 'https://cdn.tioo.eu.org/dl/song-global.mp3',
+    audio: 'https://rr2.googlevideo.com/videoplayback?itag=251',
+    result: {
+      mp3: 'https://ytshortdown.com/redirect', // blocked wrapper filtered out
+    },
+  });
+  assert.equal(tiooRanked.length, 3);
+  assert.equal(tiooRanked[0], 'https://cdn.tioo.eu.org/dl/song-global.mp3');
+  assert.equal(tiooRanked.some((u) => u.includes('ytshortdown.com')), false);
+  // Raw googlevideo URL is wrapped via vidsnap proxy and non-gcr=id beats gcr=id
+  assert.equal(tiooRanked[1].includes('vidsnap.app/proxy'), true);
+  assert.equal(decodeURIComponent(tiooRanked[1]).includes('gcr=id'), false);
+  assert.equal(decodeURIComponent(tiooRanked[2]).includes('gcr=id'), true);
+
+  // 2. getSilentHoldPcmSample stays within [127, 129] around 128 midpoint while oscillating (not flat silence)
+  const samples = Array.from({ length: 200 }, (_, i) => getSilentHoldPcmSample(i, 8000));
+  assert.equal(samples.every((s) => s >= 127 && s <= 129), true);
+  assert.equal(samples.some((s) => s === 129), true);
+  assert.equal(samples.some((s) => s === 127), true);
+
+  // 3. mergeRealtimeTrendCategories updates live trend queries, hot badges, and trendChips
+  const baseCats = [
+    { id: 'trending-live', label: 'Trending Live', iconKey: 'flame', queries: ['top hits indo'], keywords: ['viral'] },
+    { id: 'dj-remix', label: 'DJ Remix TikTok', iconKey: 'disc', queries: ['dj remix'], keywords: ['dj', 'jedag'] },
+    { id: 'lofi-focus', label: 'Lo-Fi & Fokus', iconKey: 'coffee', queries: ['lofi'], keywords: ['lofi', 'study'] },
+  ];
+  const merged = mergeRealtimeTrendCategories(baseCats, {
+    ytTrendItems: [
+      { title: 'DJ Garam & Madu (Remix Viral)', artist: 'Tenxi - Topic' },
+      { title: 'Bernadya - Satu Bulan (Live)', artist: 'Bernadya' },
+    ],
+    audiusTrending: [{ title: 'Midnight Drive', artist: 'Kairo', genre: 'Electronic' }],
+    syncedAt: 1731900000000,
+  });
+  const liveCat = merged.categories.find((c) => c.id === 'trending-live');
+  const djCat = merged.categories.find((c) => c.id === 'dj-remix');
+  const lofiCat = merged.categories.find((c) => c.id === 'lofi-focus');
+  assert.equal(liveCat?.isLiveTrend, true);
+  assert.equal(liveCat?.queries[0].includes('Tenxi'), true);
+  assert.equal(djCat?.isHot, true);
+  assert.equal(Boolean(lofiCat?.isHot), false);
+  assert.ok(merged.trendChips.length >= 3);
+  assert.equal(merged.updatedAt, 1731900000000);
+
+  // 4. getLoadingProgressMeta normalizes active phases and clamps percentages to [8, 99]
+  const idleMeta = getLoadingProgressMeta({ isSearching: false, isLoading: false, isSyncingTrends: false });
+  assert.equal(idleMeta.active, false);
+  assert.equal(idleMeta.percent, 0);
+
+  const searchMeta = getLoadingProgressMeta({ isSearching: true, phase: 'searching', progress: 140 });
+  assert.equal(searchMeta.active, true);
+  assert.equal(searchMeta.phase, 'searching');
+  assert.equal(searchMeta.percent, 99);
+
+  const catMeta = getLoadingProgressMeta({ isSearching: true, phase: 'category', progress: 2 });
+  assert.equal(catMeta.active, true);
+  assert.equal(catMeta.phase, 'category');
+  assert.equal(catMeta.percent, 8);
+});
+
+test('50. filterPresetCategoryTracks, buildAudiusLookupQueries, and pickBackgroundSafeNextTrack prevent 2-hour mixes & background stalls', () => {
+  const tracks = [
+    { id: 'mix-1', videoId: 'vid-mix', title: 'Lagu Galau Indonesia Terbaru 2 Jam Nonstop', artist: 'Kompilasi Channel', duration: 6828 },
+    { id: 'short-1', videoId: 'vid-short', title: 'Teaser 30s', artist: 'Artist', duration: 30 },
+    { id: 'song-1', videoId: 'vid-1', title: 'Satu Bulan', artist: 'Bernadya', duration: 205 },
+    { id: 'song-2', videoId: 'vid-2', title: 'Sial', artist: 'Mahalini', duration: 243 },
+    { id: 'song-3', videoId: 'vid-3', title: 'Garam & Madu', artist: 'Tenxi', duration: 190 },
+    { id: 'song-4', videoId: 'vid-4', title: 'Untungnya Hidup Harus Tetap Berjalan', artist: 'Bernadya', duration: 184 },
+  ];
+  const filtered = filterPresetCategoryTracks(tracks, { minSeconds: MIN_FULL_TRACK_SECONDS, maxSeconds: 900 });
+  assert.equal(filtered.length, 4);
+  assert.equal(filtered.some((t) => t.id === 'mix-1'), false);
+  assert.equal(filtered.some((t) => t.id === 'short-1'), false);
+
+  const queries = buildAudiusLookupQueries({
+    title: 'Duka (Official Music Video) | Live Session',
+    artist: 'Last Child Official Records',
+  });
+  assert.ok(queries.length >= 1 && queries.length <= 2);
+  assert.equal(queries.some((q) => /duka/i.test(q)), true);
+  assert.equal(queries.some((q) => /records|official/i.test(q)), false);
+
+  const bgQueue = [
+    { id: 'bg-cur', videoId: 'v-cur', title: 'Lagu 1', artist: 'Artis 1', duration: 200, streamUrl: 'https://api.audius.co/v1/tracks/cur/stream?app_name=Manifestudio' },
+    { id: 'bg-no-stream', videoId: 'v-ns', title: 'Lagu 2 (Iframe Only)', artist: 'Artis 2', duration: 210, streamUrl: null },
+    { id: 'bg-ready', videoId: 'v-ready', title: 'Lagu 3 (Native Audio)', artist: 'Artis 3', duration: 225, streamUrl: 'https://api.audius.co/v1/tracks/ready/stream?app_name=Manifestudio' },
+  ];
+  const hiddenPick = pickBackgroundSafeNextTrack({
+    currentTrack: bgQueue[0],
+    queue: bgQueue,
+    isHidden: true,
+    shuffle: false,
+    repeatMode: 'all',
+  });
+  assert.equal(hiddenPick?.id, 'bg-ready');
+});
+
+
 
 

@@ -1297,3 +1297,383 @@ export function resolvePipHeadsetStateTransition({
     statusMessage: 'Gambar-dalam-Gambar (PiP) aktif — ketuk ikon Headset untuk sembunyikan layar PiP.',
   };
 }
+
+/**
+ * Normalizes and scores Tioo (`backend1..4.tioo.eu.org/youtube`) audio/video responses.
+ * Prioritizes direct `mp3` / `audio` over `mp4` and non-region-locked (`!gcr=id`) proxies.
+ */
+export function selectTiooAudioStreamCandidates(payload) {
+  if (!payload || typeof payload !== 'object') return [];
+  const rawEntries = [];
+  const pushCandidate = (url, tier) => {
+    if (Array.isArray(url)) {
+      url.forEach((u) => pushCandidate(u, tier));
+      return;
+    }
+    if (url && typeof url === 'object') {
+      pushCandidate(url.url || url.mp3 || url.audio || url.mp4, tier);
+      return;
+    }
+    const clean = String(url || '').trim();
+    if (clean) rawEntries.push({ url: clean, tier });
+  };
+
+  pushCandidate(payload.mp3, 5);
+  pushCandidate(payload.audio, 4);
+  pushCandidate(payload.url, 3);
+  pushCandidate(payload.mp4, 2);
+  if (payload.result && typeof payload.result === 'object') {
+    pushCandidate(payload.result.mp3, 5);
+    pushCandidate(payload.result.audio, 4);
+    pushCandidate(payload.result.url, 3);
+    pushCandidate(payload.result.mp4, 2);
+  }
+
+  const scored = [];
+  const seen = new Set();
+  for (const entry of rawEntries) {
+    if (isBlockedAudioWrapperUrl(entry.url)) continue;
+    const wrapped = wrapMusicAudioCorsProxyIfNeeded(entry.url);
+    if (!wrapped || seen.has(wrapped)) continue;
+    seen.add(wrapped);
+    let inspectedUrl = wrapped;
+    try {
+      const uParam = new URL(wrapped).searchParams.get('u');
+      if (uParam) inspectedUrl = decodeURIComponent(uParam);
+    } catch {
+      // Ignore parse error
+    }
+    const isIdBound = /[?&]gcr=id(?:[&#]|$)/i.test(inspectedUrl);
+    scored.push({
+      url: wrapped,
+      score: isIdBound ? entry.tier : entry.tier + 10,
+    });
+  }
+
+  scored.sort((a, b) => b.score - a.score);
+  return scored.map((item) => item.url);
+}
+
+/**
+ * Generates an 8-bit unsigned PCM sample (around 128 midpoint) containing a tiny 40Hz
+ * micro-dither (+/- 1 quantization step ~ -42 dBFS). Imperceptible to ears, yet ensures
+ * mobile Android/iOS MediaSession audibility checks keep background audio focus active.
+ */
+export function getSilentHoldPcmSample(sampleIndex, sampleRate = 8000) {
+  const idx = Math.max(0, Number(sampleIndex) || 0);
+  const sr = Math.max(1000, Number(sampleRate) || 8000);
+  const phase = (2 * Math.PI * 40 * idx) / sr;
+  return 128 + Math.round(Math.sin(phase));
+}
+
+/**
+ * Dynamically enriches YT Music preset categories with live YT Music Indonesia trends
+ * and Audius chart signals so category labels, badges, queries, and trend chips update in real time.
+ */
+export function mergeRealtimeTrendCategories(
+  baseCategories = [],
+  { ytTrendItems = [], audiusTrending = [], syncedAt = 0 } = {}
+) {
+  const list = Array.isArray(baseCategories) ? baseCategories.map((c) => ({ ...c })) : [];
+  const cleanChips = [];
+  const seenChipKeys = new Set();
+
+  const pushChip = (label, query, kind = 'yt') => {
+    const cleanLabel = String(label || '')
+      .replace(/\[[^\]]*\]|\([^)]*\)/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim()
+      .slice(0, 32);
+    const cleanQuery = String(query || cleanLabel).trim();
+    const key = cleanLabel.toLowerCase();
+    if (!cleanLabel || cleanLabel.length < 3 || seenChipKeys.has(key)) return;
+    seenChipKeys.add(key);
+    cleanChips.push({
+      id: `trend-${seenChipKeys.size}`,
+      label: cleanLabel,
+      query: cleanQuery,
+      kind,
+    });
+  };
+
+  const trendTermsCorpus = [];
+  const liveTrendQueries = [];
+
+  for (const item of Array.isArray(ytTrendItems) ? ytTrendItems.slice(0, 10) : []) {
+    const rawTitle = String(item?.title || '').trim();
+    const rawArtist = String(item?.artist || '')
+      .replace(/\s*-\s*Topic$/i, '')
+      .trim();
+    if (!rawTitle) continue;
+    trendTermsCorpus.push(`${rawTitle} ${rawArtist}`.toLowerCase());
+
+    const shortTitle = rawTitle
+      .replace(/\(.*?\)|\[.*?\]/g, ' ')
+      .replace(/\s*[-–|].*$/, '')
+      .replace(/\s+/g, ' ')
+      .trim();
+    const firstArtist = rawArtist.split(/[,&]|feat\.?|ft\.?/i)[0]?.trim() || '';
+    const chipText = firstArtist && shortTitle && !shortTitle.toLowerCase().includes(firstArtist.toLowerCase())
+      ? `${firstArtist} - ${shortTitle}`
+      : shortTitle || firstArtist;
+    if (chipText && cleanChips.length < 6) {
+      pushChip(chipText, `${firstArtist} ${shortTitle}`.trim(), 'yt');
+    }
+    if (liveTrendQueries.length < 2 && firstArtist && shortTitle) {
+      liveTrendQueries.push(`${firstArtist} ${shortTitle}`.trim());
+    }
+  }
+
+  for (const track of Array.isArray(audiusTrending) ? audiusTrending.slice(0, 8) : []) {
+    const genre = String(track?.genre || '').trim();
+    const title = String(track?.title || '').trim();
+    const artist = String(track?.artist || '').trim();
+    trendTermsCorpus.push(`${title} ${artist} ${genre}`.toLowerCase());
+    if (genre && cleanChips.length < 8) {
+      pushChip(`${genre} Trending`, `${genre} hits viral`, 'chart');
+    }
+  }
+
+  const corpusText = trendTermsCorpus.join(' ');
+  const updatedCategories = list.map((cat) => {
+    const next = {
+      ...cat,
+      queries: Array.isArray(cat.queries) ? [...cat.queries] : [],
+      keywords: Array.isArray(cat.keywords) ? [...cat.keywords] : [],
+    };
+    if (cat.id === 'trending-live') {
+      next.isLiveTrend = true;
+      next.trendUpdatedAt = syncedAt || 0;
+      if (liveTrendQueries.length > 0) {
+        for (let i = liveTrendQueries.length - 1; i >= 0; i -= 1) {
+          if (!next.queries.includes(liveTrendQueries[i])) {
+            next.queries.unshift(liveTrendQueries[i]);
+          }
+        }
+        next.queries = next.queries.slice(0, 4);
+      }
+      if (cleanChips.length > 0) {
+        next.trendSummary = cleanChips
+          .slice(0, 2)
+          .map((c) => c.label)
+          .join(' • ');
+        next.badge = 'Live Tren';
+      }
+    } else if (corpusText && next.keywords.some((kw) => kw && corpusText.includes(String(kw).toLowerCase()))) {
+      next.isHot = true;
+    }
+    return next;
+  });
+
+  return {
+    categories: updatedCategories,
+    trendChips: cleanChips.slice(0, 8),
+    updatedAt: Number(syncedAt) || 0,
+  };
+}
+
+/**
+ * Normalizes animated progress bar state across music search, category load, trend sync, and buffering.
+ */
+export function getLoadingProgressMeta({
+  isSearching = false,
+  isLoading = false,
+  isSyncingTrends = false,
+  phase = 'idle',
+  label = '',
+  progress = 0,
+} = {}) {
+  const active = Boolean(isSearching || isLoading || isSyncingTrends);
+  if (!active) {
+    return { active: false, phase: 'idle', label: '', percent: 0 };
+  }
+  const cleanPhase =
+    phase && phase !== 'idle'
+      ? phase
+      : isSearching
+      ? 'searching'
+      : isSyncingTrends
+      ? 'trend-sync'
+      : 'buffering';
+  const defaultLabel =
+    cleanPhase === 'searching'
+      ? 'Mencari lagu di YouTube Music...'
+      : cleanPhase === 'category'
+      ? 'Memuat lagu kategori YT Music...'
+      : cleanPhase === 'trend-sync'
+      ? 'Menyinkronkan tren real-time YT Music...'
+      : 'Menyiapkan stream audio latar belakang...';
+  const pct = Math.max(8, Math.min(99, Math.round(Number(progress) || (cleanPhase === 'buffering' ? 54 : 32))));
+  return {
+    active: true,
+    phase: cleanPhase,
+    label: String(label || defaultLabel).trim(),
+    percent: pct,
+  };
+}
+
+const COMPILATION_MIX_TITLE_RE =
+  /\b(nonstop|full\s*album|kompilasi|compilation|kumpulan\s*lagu|mixtape|megamix|playlist\s*lagu|lagu\s*santai\s*viral|top\s*hits\s*spotify|lagu\s*hits\s*indonesia\s*20\d{2}|lagu\s*terbaru\s*viral|\d+\s*jam)\b/i;
+
+/**
+ * Returns true when a track looks like a single song (75s..15m by default) rather than a long compilation mix.
+ */
+export function isSingleSongTrack(
+  track,
+  { minSeconds = MIN_FULL_TRACK_SECONDS, maxSeconds = 900 } = {}
+) {
+  if (!track || !track.id || !(track.videoId || track.streamUrl)) return false;
+  const dur = Number(track.duration || 0);
+  if (dur > 0 && (dur < minSeconds || dur > maxSeconds)) return false;
+  if (dur === 0 && !track.streamUrl) return false;
+  if (COMPILATION_MIX_TITLE_RE.test(String(track.title || ''))) return false;
+  return true;
+}
+
+/**
+ * Excludes multi-hour compilation videos from curated category rails while preserving single full-length songs.
+ */
+export function filterPresetCategoryTracks(
+  tracks = [],
+  { minSeconds = MIN_FULL_TRACK_SECONDS, maxSeconds = 900, allowLongFallback = false } = {}
+) {
+  if (!Array.isArray(tracks) || tracks.length === 0) return [];
+  const singles = tracks.filter((t) => isSingleSongTrack(t, { minSeconds, maxSeconds }));
+  if (singles.length > 0) return singles;
+  const maxRelaxed = Math.max(maxSeconds, 1200);
+  const relaxed = tracks.filter(
+    (t) =>
+      t &&
+      t.id &&
+      Boolean(t.videoId || t.streamUrl) &&
+      Number(t.duration || 0) >= minSeconds &&
+      Number(t.duration || 0) <= maxRelaxed &&
+      !COMPILATION_MIX_TITLE_RE.test(String(t.title || ''))
+  );
+  if (relaxed.length > 0) return relaxed;
+  return allowLongFallback ? filterFullLengthTracks(tracks, minSeconds) : [];
+}
+
+/**
+ * Produces 1-2 clean Audius lookup queries for a YouTube track without polluting searches
+ * with unrelated YouTube channel names (e.g. "Aneka Safari Records", "zgssn").
+ */
+export function buildAudiusLookupQueries(track) {
+  if (!track || typeof track !== 'object') return [];
+  const rawTitle = String(track.title || '')
+    .replace(PIPE_NOISE_SUFFIX_RE, '')
+    .replace(PAREN_NOISE_RE, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  const queries = [];
+  const seen = new Set();
+  const push = (val) => {
+    const clean = String(val || '').replace(/\s+/g, ' ').trim();
+    const key = clean.toLowerCase();
+    if (clean.length >= 3 && !seen.has(key)) {
+      seen.add(key);
+      queries.push(clean);
+    }
+  };
+
+  const primary = buildCleanAudioLookupQuery(track);
+  push(primary);
+
+  // If title already contains "Artist - Title" or brackets, add stripped core query
+  if (DASH_SEPARATOR_RE.test(rawTitle)) {
+    push(rawTitle.replace(/\s+[-–—]\s+/g, ' '));
+  } else {
+    const cleanTitleOnly = rawTitle.replace(/\|.*$/, '').trim();
+    const artistFirstWord = String(track.artist || '')
+      .replace(/\s*-\s*Topic$/i, '')
+      .replace(/\b(?:official|records|music|entertainment|indonesia|channel|tv|vevo)\b/gi, ' ')
+      .trim();
+    if (cleanTitleOnly && !normalizeMatchString(cleanTitleOnly).includes(normalizeMatchString(artistFirstWord))) {
+      push(`${cleanTitleOnly} ${artistFirstWord}`.trim());
+    }
+    if (cleanTitleOnly && cleanTitleOnly.split(/\s+/).length >= 2) {
+      push(cleanTitleOnly);
+    }
+  }
+
+  return queries.slice(0, 2);
+}
+
+/**
+ * Selects the next playable track safely, ensuring background auto-advance (when tab/screen is hidden)
+ * prefers tracks with pre-resolved native <audio> `streamUrl` so playback never stalls on dead iframes.
+ */
+export function pickBackgroundSafeNextTrack({
+  currentTrack = null,
+  queue = [],
+  fallbackPool = [],
+  isHidden = false,
+  shuffle = false,
+  repeatMode = 'all',
+  recentTrackIds = [],
+  blockedVideoIds = new Set(),
+  failedUrls = new Set(),
+} = {}) {
+  const isPlayableBg = (t) =>
+    Boolean(
+      t &&
+        t.id &&
+        t.streamUrl &&
+        !failedUrls.has(t.streamUrl) &&
+        !isBlockedAudioWrapperUrl(t.streamUrl) &&
+        (!t.videoId || !blockedVideoIds.has(t.videoId))
+    );
+
+  const isPlayableAny = (t) =>
+    Boolean(t && t.id && (t.videoId || t.streamUrl) && (!t.videoId || !blockedVideoIds.has(t.videoId)));
+
+  if (repeatMode === 'one' && currentTrack && (!isHidden || isPlayableBg(currentTrack))) {
+    return currentTrack;
+  }
+
+  const primaryList = Array.isArray(queue) && queue.length > 0 ? queue : [];
+  const combinedPool = [...primaryList, ...(Array.isArray(fallbackPool) ? fallbackPool : [])];
+
+  if (isHidden) {
+    const bgQueue = primaryList.filter(isPlayableBg);
+    const bgFallback = combinedPool.filter(isPlayableBg);
+    const bgPool = bgQueue.length > 0 ? bgQueue : bgFallback;
+    if (bgPool.length > 0) {
+      if (shuffle && bgPool.length > 1) {
+        return (
+          pickShuffledViralTrack(bgPool, {
+            currentTrackId: currentTrack?.id || null,
+            recentTrackIds,
+            prioritizeIndonesianViral: true,
+            blockedVideoIds,
+            minSeconds: MIN_FULL_TRACK_SECONDS,
+          }) || bgPool[0]
+        );
+      }
+      const idx = currentTrack
+        ? bgPool.findIndex((t) => t.id === currentTrack.id || (currentTrack.videoId && t.videoId === currentTrack.videoId))
+        : -1;
+      return bgPool[(idx + 1) % bgPool.length] || bgPool[0];
+    }
+  }
+
+  const activePool = primaryList.filter(isPlayableAny);
+  if (activePool.length === 0) return null;
+  if (shuffle) {
+    const bgReady = activePool.filter(isPlayableBg);
+    const pickPool = bgReady.length > 0 ? bgReady : activePool;
+    return pickShuffledViralTrack(pickPool, {
+      currentTrackId: currentTrack?.id || null,
+      recentTrackIds,
+      prioritizeIndonesianViral: true,
+      blockedVideoIds,
+      minSeconds: MIN_FULL_TRACK_SECONDS,
+    });
+  }
+  const idx = currentTrack
+    ? activePool.findIndex((t) => t.id === currentTrack.id || (currentTrack.videoId && t.videoId === currentTrack.videoId))
+    : -1;
+  return activePool[(idx + 1) % activePool.length] || activePool[0];
+}
+
+
