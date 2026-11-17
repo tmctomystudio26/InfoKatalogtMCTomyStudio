@@ -47,6 +47,7 @@ import {
   MIN_FULL_TRACK_SECONDS,
   MUSIC_LIBRARY_STORAGE_KEY,
   addTrackToPlaylist,
+  buildCleanAudioLookupQuery,
   clampMusicFabPosition,
   computeSafeResumeSeconds,
   createUserPlaylist,
@@ -83,6 +84,8 @@ import {
   selectUmmyAudioStreamCandidates,
   shouldAutoSkipOnPlaybackError,
   shouldIgnoreTimeUpdateDuringPendingSeek,
+  shouldKeepSilentHoldBridgeActive,
+  shouldPoisonExactYoutubeIdOnError,
   shouldStopSilentHoldAndPauseNotification,
   shuffleTracksFisherYates,
   toggleTrackInWatchLater,
@@ -2321,4 +2324,103 @@ test('normalizeYtMusicTrack parses nested Siputzx duration objects and rankSearc
     0
   );
 });
+
+test('background audio persistence helpers: clean lookup query, Safari m4a/mp4 codec priority, silent-hold bridge state, and non-poisoning of YouTube IDs on 3P stream failure', () => {
+  // 1. buildCleanAudioLookupQuery strips parentheticals, pipes, and duplicate artist prefixes
+  const cleanQ = buildCleanAudioLookupQuery({
+    title: 'Al Ghazali - Lagu Galau (Official Music Video) | Soundtrack Anak Jalanan',
+    artist: 'Al Ghazali',
+  });
+  assert.equal(cleanQ, 'Al Ghazali Lagu Galau');
+
+  const cleanDuka = buildCleanAudioLookupQuery({
+    title: 'Last Child - Duka (Official Lyric Video)',
+    artist: 'LAST CHILD',
+  });
+  assert.equal(cleanDuka, 'Last Child Duka');
+
+  // 2. selectUmmyAudioStreamCandidates prioritizes mp4 over opus when canPlayOpus === false (e.g. iOS Safari)
+  const ummyPayload = {
+    data: {
+      url: [
+        {
+          url: 'https://vidsnap.app/proxy?url=https%3A%2F%2Frr1.googlevideo.com%2Fvideoplayback%3Fitag%3D251%26mime%3Daudio%252Fwebm',
+          ext: 'opus',
+          type: 'opus (160 Kbps)',
+          no_audio: false,
+        },
+        {
+          url: 'https://vidsnap.app/proxy?url=https%3A%2F%2Frr1.googlevideo.com%2Fvideoplayback%3Fitag%3D18%26mime%3Dvideo%252Fmp4',
+          ext: 'mp4',
+          type: 'mp4 (360p)',
+          no_audio: false,
+        },
+      ],
+    },
+  };
+  const chromeOrder = selectUmmyAudioStreamCandidates(ummyPayload, { canPlayOpus: true });
+  const safariOrder = selectUmmyAudioStreamCandidates(ummyPayload, { canPlayOpus: false });
+  assert.equal(chromeOrder[0].includes('itag%3D251'), true);
+  assert.equal(safariOrder[0].includes('itag%3D18'), true);
+
+  // 3. shouldKeepSilentHoldBridgeActive keeps #music-audio-el unlocked while resolving or while yt-iframe plays
+  assert.equal(
+    shouldKeepSilentHoldBridgeActive({
+      activeEngine: 'audio-el',
+      isPlaying: true,
+      isLoading: true,
+      explicitPaused: false,
+      hasActiveRealAudioStream: false,
+    }),
+    true
+  );
+  assert.equal(
+    shouldKeepSilentHoldBridgeActive({
+      activeEngine: 'yt-iframe',
+      isPlaying: true,
+      isLoading: false,
+      explicitPaused: false,
+      hasActiveRealAudioStream: false,
+    }),
+    true
+  );
+  assert.equal(
+    shouldKeepSilentHoldBridgeActive({
+      activeEngine: 'audio-el',
+      isPlaying: true,
+      isLoading: false,
+      explicitPaused: false,
+      hasActiveRealAudioStream: true,
+    }),
+    false
+  );
+  assert.equal(
+    shouldKeepSilentHoldBridgeActive({
+      activeEngine: 'yt-iframe',
+      isPlaying: false,
+      isLoading: false,
+      explicitPaused: true,
+      hasActiveRealAudioStream: false,
+    }),
+    false
+  );
+
+  // 4. shouldPoisonExactYoutubeIdOnError never poisons YouTube videoId when a 3P Audius stream fails
+  assert.equal(
+    shouldPoisonExactYoutubeIdOnError({
+      videoId: 'fKRtnMYMW08',
+      failedStreamUrl: 'https://api.audius.co/v1/tracks/WEjzjgB/stream?app_name=manifestudio_katalog',
+    }),
+    false
+  );
+  assert.equal(
+    shouldPoisonExactYoutubeIdOnError({
+      videoId: 'fKRtnMYMW08',
+      failedStreamUrl:
+        'https://vidsnap.app/proxy?url=https%3A%2F%2Frr2.googlevideo.com%2Fvideoplayback%3Fitag%3D18',
+    }),
+    true
+  );
+});
+
 

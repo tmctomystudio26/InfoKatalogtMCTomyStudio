@@ -214,7 +214,7 @@ export function tokenizeText(raw) {
 }
 
 const DASH_SEPARATOR_RE = /\s+[-–—]\s+/;
-const PIPE_NOISE_SUFFIX_RE = /\s*\|\s*(?:official|lirik|lyrics?|audio|video|hd|hq|full|music).*$/i;
+const PIPE_NOISE_SUFFIX_RE = /\s*\|\s*(?:official|lirik|lyrics?|audio|video|hd|hq|full|music|soundtrack|ost).*$/i;
 const PAREN_NOISE_RE = /\([^)]*(?:official|music|video|mv|lyric|lyrics|lirik|audio|live|cover|remix|ver\.?|version|hd|hq|kbps|feat\.?|ft\.?)[^)]*\)|\[[^\]]*(?:official|music|video|mv|lyric|lyrics|lirik|audio|live|cover|remix|ver\.?|version|hd|hq|kbps|feat\.?|ft\.?)[^\]]*\]/gi;
 
 export function extractCoreSongTokens(title) {
@@ -237,20 +237,29 @@ function buildSongTitleHypotheses(rawTitle, rawArtist = '') {
     if (parts.length >= 2) {
       const leftRaw = parts[0];
       const rightRaw = parts.slice(1).join(' ');
+      const middleCore = parts.length >= 3 ? extractCoreSongTokens(parts[1]) : [];
       const leftCore = extractCoreSongTokens(leftRaw);
       const rightCore = extractCoreSongTokens(rightRaw);
       if (leftCore.length > 0 && rightCore.length > 0) {
         const artistSet = new Set(baseArtistTokens);
         const leftHasArtist = leftCore.some((tok) => artistSet.has(tok));
         const rightHasArtist = rightCore.some((tok) => artistSet.has(tok));
+        const mergedRightArtist = [...new Set([...baseArtistTokens, ...leftCore])];
 
         if (leftHasArtist && !rightHasArtist) {
-          return [
+          const out = [
             {
               songTokens: rightCore,
-              artistTokens: [...new Set([...baseArtistTokens, ...leftCore])],
+              artistTokens: mergedRightArtist,
             },
           ];
+          if (middleCore.length > 0 && middleCore.length < rightCore.length) {
+            out.push({
+              songTokens: middleCore,
+              artistTokens: mergedRightArtist,
+            });
+          }
+          return out;
         }
         if (rightHasArtist && !leftHasArtist) {
           return [
@@ -260,21 +269,49 @@ function buildSongTitleHypotheses(rawTitle, rawArtist = '') {
             },
           ];
         }
-        return [
+        const both = [
           {
             songTokens: rightCore,
-            artistTokens: [...new Set([...baseArtistTokens, ...leftCore])],
+            artistTokens: mergedRightArtist,
           },
           {
             songTokens: leftCore,
             artistTokens: [...new Set([...baseArtistTokens, ...rightCore])],
           },
         ];
+        if (middleCore.length > 0 && middleCore.length < rightCore.length) {
+          both.push({
+            songTokens: middleCore,
+            artistTokens: mergedRightArtist,
+          });
+        }
+        return both;
       }
     }
   }
 
   return [{ songTokens: fullCore, artistTokens: baseArtistTokens }];
+}
+
+export function buildCleanAudioLookupQuery(track) {
+  if (!track || typeof track !== 'object') return '';
+  const cleanedTitle = String(track.title || '')
+    .replace(/\s*\|.*$/, '')
+    .replace(PAREN_NOISE_RE, ' ')
+    .replace(/\s+[-–—]\s+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  const rawArtist = String(track.artist || '')
+    .replace(/\s*-\s*Topic$/i, '')
+    .replace(/\b(?:official|records|music|entertainment|indonesia|channel|tv)\b/gi, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  const titleLower = normalizeMatchString(cleanedTitle);
+  const artistLower = normalizeMatchString(rawArtist);
+  if (!artistLower || titleLower.includes(artistLower)) {
+    return cleanedTitle;
+  }
+  return `${cleanedTitle} ${rawArtist}`.trim();
 }
 
 export function isInstantAudioPreviewUrl(rawUrl = '') {
@@ -303,7 +340,7 @@ export function wrapMusicAudioCorsProxyIfNeeded(rawUrl = '') {
   return s;
 }
 
-export function selectUmmyAudioStreamCandidates(payload) {
+export function selectUmmyAudioStreamCandidates(payload, { canPlayOpus = true } = {}) {
   const list = Array.isArray(payload?.data?.url)
     ? payload.data.url
     : Array.isArray(payload?.url)
@@ -320,14 +357,19 @@ export function selectUmmyAudioStreamCandidates(payload) {
     const noAudio = item?.no_audio;
 
     let tier = -1;
-    if (ext === 'mp3' || ext === 'm4a' || ext === 'aac') {
-      tier = 3;
+    if (ext === 'mp3' || ext === 'm4a' || ext === 'aac' || /audio\/mp4/i.test(type)) {
+      tier = 4;
     } else if (ext === 'opus' || item?.audio === true || /audio/i.test(type)) {
       if (noAudio === true) continue;
-      tier = 2;
+      const isOpusCodec = ext === 'opus' || /opus|webm/i.test(type);
+      if (isOpusCodec && !canPlayOpus) {
+        tier = 1;
+      } else {
+        tier = 3;
+      }
     } else if (ext === 'mp4' && (noAudio === false || !/dash/i.test(type))) {
       if (noAudio === true) continue;
-      tier = 1;
+      tier = 2;
     }
     if (tier < 0) continue;
 
@@ -452,6 +494,37 @@ export function shouldStopSilentHoldAndPauseNotification({
       !resolvedStreamUrl &&
       timedOutOrFailed
   );
+}
+
+/**
+ * Determines whether the native <audio> silent-hold PCM bridge MUST stay actively playing
+ * so mobile OS / browsers keep background audio focus alive while YT IFrame plays or resolves.
+ */
+export function shouldKeepSilentHoldBridgeActive({
+  activeEngine = 'audio-el',
+  isPlaying = false,
+  isLoading = false,
+  explicitPaused = false,
+  hasActiveRealAudioStream = false,
+} = {}) {
+  if (explicitPaused) return false;
+  if (!isPlaying && !isLoading) return false;
+  if (activeEngine === 'yt-iframe') return true;
+  return !hasActiveRealAudioStream;
+}
+
+/**
+ * Only mark a YouTube videoId as failed for exact YouTube stream resolution if the failed stream
+ * actually came from a YouTube/vidsnap/googlevideo source (never when a 3P Audius stream fails).
+ */
+export function shouldPoisonExactYoutubeIdOnError({
+  videoId = '',
+  failedStreamUrl = '',
+} = {}) {
+  const vid = extractYouTubeVideoId(videoId) || String(videoId || '').trim();
+  const url = String(failedStreamUrl || '').trim();
+  if (!vid || !url) return false;
+  return /vidsnap\.app|googlevideo\.com/i.test(url);
 }
 
 /**

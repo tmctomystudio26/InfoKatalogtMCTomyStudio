@@ -14,6 +14,7 @@ import {
   MIN_FULL_TRACK_SECONDS,
   MUSIC_LIBRARY_STORAGE_KEY,
   addTrackToPlaylist,
+  buildCleanAudioLookupQuery,
   clampMusicFabPosition,
   computeSafeResumeSeconds,
   createUserPlaylist,
@@ -48,10 +49,12 @@ import {
   serializeMusicTrack,
   shouldAutoSkipOnPlaybackError,
   shouldIgnoreTimeUpdateDuringPendingSeek,
+  shouldKeepSilentHoldBridgeActive,
+  shouldPoisonExactYoutubeIdOnError,
   shouldStopSilentHoldAndPauseNotification,
   shuffleTracksFisherYates,
   toggleTrackInWatchLater,
-} from './music-logic.js?v=36';
+} from './music-logic.js?v=37';
 
 const MUSIC_POS_KEY = 'manifestudio_music_pos_v2';
 const MUSIC_VOL_KEY = 'manifestudio_music_vol_v2';
@@ -282,7 +285,6 @@ export const SEED_VIRAL_INDO_TRACKS = [
     genre: 'Pop & Galau Indo',
     isIndonesianViral: true,
     sourceLabel: 'YT Music · Full Audio',
-    streamUrl: 'https://api.audius.co/v1/tracks/WEjzjgB/stream?app_name=Manifestudio',
   }),
   normalizeYtMusicTrack({
     videoId: 's6H6ffS6zJI',
@@ -292,7 +294,6 @@ export const SEED_VIRAL_INDO_TRACKS = [
     genre: 'Indie Viral Indo',
     isIndonesianViral: true,
     sourceLabel: 'YT Music · Full Audio',
-    streamUrl: 'https://api.audius.co/v1/tracks/bp6wYxO/stream?app_name=Manifestudio',
   }),
   normalizeYtMusicTrack({
     videoId: 'JPVhHpE1gog',
@@ -502,6 +503,7 @@ export const SEED_VIRAL_INDO_TRACKS = [
     genre: 'Pop & Galau Indo',
     isIndonesianViral: true,
     sourceLabel: 'YT Music · Full Audio',
+    streamUrl: 'https://api.audius.co/v1/tracks/ZRpd4/stream?app_name=Manifestudio',
   }),
   normalizeYtMusicTrack({
     videoId: 'Ske9Nwk-TmA',
@@ -511,6 +513,7 @@ export const SEED_VIRAL_INDO_TRACKS = [
     genre: 'Pop & Galau Indo',
     isIndonesianViral: true,
     sourceLabel: 'YT Music · Full Audio',
+    streamUrl: 'https://api.audius.co/v1/tracks/dW1ry/stream?app_name=Manifestudio',
   }),
   normalizeYtMusicTrack({
     videoId: 'PlK_crOqt64',
@@ -787,14 +790,15 @@ async function fetchAudiusDirectTracks(query, { genre = 'Viral Indonesia', isInd
   }
 }
 
-function probeAudioElementMetadata(url, timeoutMs = 5500) {
+function probeAudioElementMetadata(url, timeoutMs = 4500) {
   return new Promise((resolve) => {
-    if (typeof Audio === 'undefined') {
+    if (typeof Audio === 'undefined' || (typeof document !== 'undefined' && document.hidden)) {
       resolve(false);
       return;
     }
     let settled = false;
     const probe = new Audio();
+    probe.dataset.musicInternal = 'true';
     probe.preload = 'metadata';
     probe.muted = true;
     if (needsCorsAnonymousAudio(url)) {
@@ -834,13 +838,10 @@ function probeAudioElementMetadata(url, timeoutMs = 5500) {
   });
 }
 
-async function probePlayableAudioStream(url, timeoutMs = 5500) {
+async function probePlayableAudioStream(url, timeoutMs = 3800) {
   const clean = String(url || '').trim();
   if (!clean || isBlockedAudioWrapperUrl(clean) || failedStreamUrls.has(clean)) {
     return false;
-  }
-  if (needsCorsAnonymousAudio(clean)) {
-    return probeAudioElementMetadata(clean, timeoutMs);
   }
   const ac = new AbortController();
   const timer = setTimeout(() => ac.abort(), timeoutMs);
@@ -859,13 +860,18 @@ async function probePlayableAudioStream(url, timeoutMs = 5500) {
       }
       return true;
     }
-    failedStreamUrls.add(clean);
-    return false;
-  } catch (err) {
-    // Only treat network/timeout/HTTP errors cleanly without poisoning transient aborts unless explicit failure
-    if (err?.name !== 'AbortError') {
+    if (res.status === 403 || res.status === 404 || res.status === 410 || ct.includes('text/html')) {
       failedStreamUrls.add(clean);
     }
+    return false;
+  } catch (err) {
+    if (err?.name === 'AbortError') {
+      return false;
+    }
+    if (needsCorsAnonymousAudio(clean) && typeof document !== 'undefined' && !document.hidden) {
+      return probeAudioElementMetadata(clean, Math.min(timeoutMs, 3000));
+    }
+    failedStreamUrls.add(clean);
     return false;
   } finally {
     clearTimeout(timer);
@@ -899,24 +905,58 @@ function resolveFirstTruthy(promises) {
   });
 }
 
-async function resolveSiputzxUmmyAudioStream(ytUrl) {
+function browserSupportsOpusAudio() {
   try {
-    const data = await fetchJsonTimeout(`${SIPUTZX_UMMY_URL}?url=${encodeURIComponent(ytUrl)}`, 14500);
-    const allCandidates = selectUmmyAudioStreamCandidates(data);
-    if (allCandidates.length === 0) return '';
-    // Probe up to 6 candidates in parallel so muxed MP4 itag=18 (which often returns HTTP 206
-    // even when audio-only itag=140/251 are IP-blocked 403) wins immediately without extra latency.
-    const candidates = allCandidates.slice(0, 6);
-    const winner = await resolveFirstTruthy(
-      candidates.map((cand) =>
-        probePlayableAudioStream(cand, 4200)
-          .then((ok) => (ok ? cand : ''))
-          .catch(() => '')
-      )
-    );
-    if (winner) return winner;
+    if (typeof Audio === 'undefined') return true;
+    const testEl = new Audio();
+    const res = testEl.canPlayType('audio/webm; codecs="opus"') || testEl.canPlayType('audio/ogg; codecs="opus"');
+    return Boolean(res && res !== 'no');
   } catch {
-    // Ummy unavailable or timed out
+    return true;
+  }
+}
+
+async function resolveSiputzxUmmyAudioStream(ytUrl) {
+  const canPlayOpus = browserSupportsOpusAudio();
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    try {
+      const data = await fetchJsonTimeout(`${SIPUTZX_UMMY_URL}?url=${encodeURIComponent(ytUrl)}`, 14500);
+      const allCandidates = selectUmmyAudioStreamCandidates(data, { canPlayOpus });
+      if (allCandidates.length === 0) {
+        if (attempt === 0) {
+          await new Promise((r) => setTimeout(r, 450));
+          continue;
+        }
+        return '';
+      }
+      // Probe top candidate (non-gcr=id preferred) first so we don't fire unnecessary requests against gcr=id URLs
+      const topCandidate = allCandidates[0];
+      const topOk = await probePlayableAudioStream(topCandidate, 2600).catch(() => false);
+      if (topOk) return topCandidate;
+
+      const restCandidates = allCandidates
+        .slice(1, 4)
+        .filter((c) => !decodeURIComponent(c).includes('gcr=id'));
+      if (restCandidates.length > 0) {
+        const winner = await resolveFirstTruthy(
+          restCandidates.map((cand) =>
+            probePlayableAudioStream(cand, 2800)
+              .then((ok) => (ok ? cand : ''))
+              .catch(() => '')
+          )
+        );
+        if (winner) return winner;
+      }
+      // If probes merely timed out on slow mobile connection without explicit 403/404 failure, use top unfailed candidate
+      const unfailedFallback = allCandidates.find(
+        (c) => !failedStreamUrls.has(c) && !decodeURIComponent(c).includes('gcr=id')
+      );
+      if (unfailedFallback) return unfailedFallback;
+    } catch {
+      if (attempt === 0) {
+        await new Promise((r) => setTimeout(r, 450));
+      }
+    }
   }
   return '';
 }
@@ -1023,11 +1063,11 @@ async function resolveBackgroundStreamForTrack(track, { allowAltYt = true, bypas
         return track.streamUrl;
       }
 
-      const query = `${track.title || ''} ${track.artist || ''}`.trim();
+      const cleanQuery = buildCleanAudioLookupQuery(track) || `${track.title || ''} ${track.artist || ''}`.trim();
 
       // 1. Full-length (>=75s) Audius direct stream & exact YouTube stream race (zero 30s previews!)
-      const audiusDirectJob = query
-        ? fetchAudiusDirectTracks(query, {
+      const audiusDirectJob = cleanQuery
+        ? fetchAudiusDirectTracks(cleanQuery, {
             genre: track.genre || 'Viral Indonesia',
             isIndonesianViral: Boolean(track.isIndonesianViral),
             limit: 6,
@@ -1037,7 +1077,7 @@ async function resolveBackgroundStreamForTrack(track, { allowAltYt = true, bypas
                 (a) => a.streamUrl && !failedStreamUrls.has(a.streamUrl) && isStrictAudioMatch(track, a)
               );
               for (const hit of strictHits.slice(0, 2)) {
-                const ok = await probePlayableAudioStream(hit.streamUrl, 3200).catch(() => false);
+                const ok = await probePlayableAudioStream(hit.streamUrl, 2800).catch(() => false);
                 if (ok) return hit.streamUrl;
               }
               return '';
@@ -1057,8 +1097,8 @@ async function resolveBackgroundStreamForTrack(track, { allowAltYt = true, bypas
         return winner;
       }
 
-      if (allowAltYt && query) {
-        const fetchedAlts = await fetchRawYoutubeCandidates(query, 8).catch(() => []);
+      if (allowAltYt && cleanQuery) {
+        const fetchedAlts = await fetchRawYoutubeCandidates(cleanQuery, 8).catch(() => []);
         const matchingAlts = dedupeMatchingAltTracks(track, [...SEED_VIRAL_INDO_TRACKS, ...fetchedAlts], {
           failedIds: failedExactVideoIds,
           maxAlts: 2,
@@ -1226,6 +1266,7 @@ export function initMusicPlayer() {
   const audio = new Audio();
   audio.id = 'music-audio-el';
   audio.className = 'music-bg-audio-el';
+  audio.dataset.musicInternal = 'true';
   audio.controls = true;
   audio.tabIndex = -1;
   audio.preload = 'auto';
@@ -1442,6 +1483,13 @@ export function initMusicPlayer() {
   function ensureBackgroundAudioKeepAlive() {
     if (typeof window === 'undefined') return;
     try {
+      if (typeof navigator !== 'undefined' && 'audioSession' in navigator && navigator.audioSession) {
+        navigator.audioSession.type = 'playback';
+      }
+    } catch {
+      // Ignore audioSession assignment error
+    }
+    try {
       const AudioCtx = window.AudioContext || window.webkitAudioContext;
       if (!AudioCtx) return;
       if (!silentAudioCtx) {
@@ -1468,27 +1516,48 @@ export function initMusicPlayer() {
     }
   }
 
-  function startSilentHoldForBackgroundTransition() {
-    if (explicitPaused || activeEngine === 'audio-el') return;
+  function startSilentHoldForBackgroundTransition({ force = false } = {}) {
+    if (explicitPaused) return;
+    const holdUrl = getSilentHoldWavUrl();
+    const hasActiveRealAudioStream =
+      activeEngine === 'audio-el' &&
+      !isSilentHold &&
+      Boolean(audio.src) &&
+      audio.src !== holdUrl &&
+      !audio.paused &&
+      !audio.error;
+    if (
+      !force &&
+      !shouldKeepSilentHoldBridgeActive({
+        activeEngine,
+        isPlaying: isPlaying || true,
+        isLoading: isLoading || true,
+        explicitPaused,
+        hasActiveRealAudioStream,
+      })
+    ) {
+      return;
+    }
     try {
       isSilentHold = true;
       audioElUnlocked = true;
       audio.removeAttribute('crossorigin');
       audio.loop = true;
       audio.muted = false;
-      audio.volume = isMuted ? 0 : 0.05;
-      const holdUrl = getSilentHoldWavUrl();
+      audio.volume = isMuted ? 0 : 0.001;
       if (audio.src !== holdUrl) {
         audio.src = holdUrl;
       }
-      const p = audio.play();
-      if (p && typeof p.catch === 'function') {
-        p.catch(() => {
-          if (isSilentHold) {
-            isSilentHold = false;
-            audioElUnlocked = false;
-          }
-        });
+      if (audio.paused) {
+        const p = audio.play();
+        if (p && typeof p.catch === 'function') {
+          p.catch(() => {
+            if (isSilentHold) {
+              isSilentHold = false;
+              audioElUnlocked = false;
+            }
+          });
+        }
       }
     } catch {
       isSilentHold = false;
@@ -1652,6 +1721,7 @@ export function initMusicPlayer() {
       pipVideo = document.createElement('video');
       pipVideo.id = 'ytm-pip-video';
       pipVideo.className = 'ytm-pip-video-hidden';
+      pipVideo.dataset.musicInternal = 'true';
       pipVideo.muted = true;
       pipVideo.playsInline = true;
       pipVideo.setAttribute('playsinline', '');
@@ -1845,14 +1915,27 @@ export function initMusicPlayer() {
         return;
       }
       if (explicitPaused || (!isPlaying && !isLoading)) return;
+      if (isSilentHold && audio.paused && !isSwitchingSource) {
+        ensureBackgroundAudioKeepAlive();
+        audio.play().catch(() => {});
+      }
       if (activeEngine === 'yt-iframe') {
+        // Proactively upgrade yt-iframe to native <audio> as soon as a streamUrl is ready (even in foreground!)
+        if (
+          currentTrack?.streamUrl &&
+          !failedStreamUrls.has(currentTrack.streamUrl) &&
+          !backgroundHandoffInFlight
+        ) {
+          handoffToBackgroundSafeAudio('fg-watchdog-upgrade');
+          return;
+        }
         const isHidden = typeof document !== 'undefined' && document.hidden;
         if (isHidden) {
           if (!hiddenTransitionAt) hiddenTransitionAt = Date.now();
           if (
             isSilentHold &&
             !backgroundHandoffInFlight &&
-            Date.now() - hiddenTransitionAt > 17500
+            Date.now() - hiddenTransitionAt > 20000
           ) {
             pauseSilentHoldOnBackgroundFailure('bg-timeout');
             return;
@@ -1864,6 +1947,9 @@ export function initMusicPlayer() {
           ) {
             handoffToBackgroundSafeAudio('bg-watchdog-upgrade');
           }
+        } else if (!isSilentHold) {
+          // Ensure silent-hold bridge remains active while yt-iframe plays in foreground
+          startSilentHoldForBackgroundTransition({ force: true });
         }
         return;
       }
@@ -1883,7 +1969,7 @@ export function initMusicPlayer() {
         }
         syncMediaPositionState();
       }
-    }, 1500);
+    }, 1200);
   }
 
   function stopBackgroundWatchdog() {
@@ -2063,6 +2149,7 @@ export function initMusicPlayer() {
           // Ignore YT read error
         }
       }
+      const prevEngine = activeEngine;
       const resumeSec = liveSec > 1 ? liveSec : 0;
       currentTrack = target;
       currentTime = resumeSec;
@@ -2072,11 +2159,6 @@ export function initMusicPlayer() {
       backgroundAttemptDoneForTrackId = '';
       recordGoodPosition(target, resumeSec, { force: true });
       activeEngine = 'audio-el';
-      try {
-        if (ytReady && ytPlayer?.pauseVideo) ytPlayer.pauseVideo();
-      } catch {
-        // Ignore
-      }
       isSwitchingSource = true;
       stopSilentHold();
       audio.loop = false;
@@ -2089,7 +2171,25 @@ export function initMusicPlayer() {
       ensureBackgroundAudioKeepAlive();
       const playProm = audio.play();
       isSwitchingSource = false;
-      await playProm;
+      try {
+        await playProm;
+      } catch (playErr) {
+        // If native <audio> play failed while still in foreground and yt-iframe was playing, keep yt-iframe alive
+        const isHiddenNow = typeof document !== 'undefined' && Boolean(document.hidden);
+        if (!isHiddenNow && prevEngine === 'yt-iframe' && ytReady && ytPlayer) {
+          invalidateCachedStreamUrl(target.videoId, target.streamUrl);
+          target.streamUrl = '';
+          activeEngine = 'yt-iframe';
+          startSilentHoldForBackgroundTransition({ force: true });
+          return false;
+        }
+        throw playErr;
+      }
+      try {
+        if (ytReady && ytPlayer?.pauseVideo) ytPlayer.pauseVideo();
+      } catch {
+        // Ignore
+      }
       applyPendingAudioSeek();
       isPlaying = true;
       isLoading = false;
@@ -2345,7 +2445,9 @@ export function initMusicPlayer() {
     activeEngine = 'yt-iframe';
     const targetSec = Math.max(0, Number(startSec) || 0);
     pendingYtSeekSeconds = targetSec > 1.5 ? targetSec : 0;
-    if (!isSilentHold && !audio.paused) audio.pause();
+    // Keep #music-audio-el actively playing the inaudible silent-hold bridge so the browser
+    // never revokes background audio permission while yt-iframe is playing!
+    startSilentHoldForBackgroundTransition({ force: true });
     if (!track?.videoId) return;
     if (ytReady && ytPlayer?.loadVideoById) {
       pendingPlayTrack = null;
@@ -2550,26 +2652,69 @@ export function initMusicPlayer() {
             return;
           }
           invalidateCachedStreamUrl(track.videoId, targetStreamUrl);
-          if (track.videoId) {
+          if (
+            track.videoId &&
+            shouldPoisonExactYoutubeIdOnError({
+              videoId: track.videoId,
+              failedStreamUrl: targetStreamUrl,
+            })
+          ) {
             failedExactVideoIds.add(track.videoId);
           }
-          // Clear broken streamUrl on this track and fall back to the EXACT same song via YT IFrame
+          // Clear broken streamUrl on this track and resolve a fresh background stream (or play via YT IFrame while upgrading)
           track.streamUrl = '';
           const isTabHidden = typeof document !== 'undefined' && document.hidden;
           if (track.videoId && !failedYtIframeVideoIds.has(track.videoId) && !isTabHidden) {
             startYoutubePlaybackForTrack(track, fallbackResumeSec);
+            resolveBackgroundStreamForTrack(track, {
+              allowAltYt: true,
+              bypassCache: true,
+              priority: true,
+            })
+              .then((freshUrl) => {
+                if (
+                  freshUrl &&
+                  !failedStreamUrls.has(freshUrl) &&
+                  !isBlockedAudioWrapperUrl(freshUrl)
+                ) {
+                  propagateResolvedStreamToPools(track, freshUrl);
+                  if (!explicitPaused && currentTrack?.id === track.id && activeEngine === 'yt-iframe') {
+                    handoffToBackgroundSafeAudio('error-recovery-upgrade');
+                  }
+                }
+              })
+              .catch(() => {});
           } else {
-            consecutiveErrors += 1;
-            if (shouldAutoSkipOnPlaybackError({ trackSelectionSource, consecutiveErrors }) && tracks.length > 0) {
-              controller.playNext({ reason: 'error-skip' });
-            } else {
-              isPlaying = false;
-              isLoading = false;
-              stopSilentHoldAndSyncPaused({ pauseYt: true });
-              lastError = 'Sumber audio lagu ini sedang bermasalah. Ketuk Putar untuk coba lagi.';
-              renderWidget();
-              notifySubscribers('error');
-            }
+            resolveBackgroundStreamForTrack(track, {
+              allowAltYt: true,
+              bypassCache: true,
+              priority: true,
+            })
+              .then((freshUrl) => {
+                if (
+                  freshUrl &&
+                  !failedStreamUrls.has(freshUrl) &&
+                  !isBlockedAudioWrapperUrl(freshUrl) &&
+                  !explicitPaused &&
+                  currentTrack?.id === track.id
+                ) {
+                  propagateResolvedStreamToPools(track, freshUrl);
+                  executePlaybackNow(track, { startSeconds: getResumeSecondsForTrack(track) });
+                  return;
+                }
+                consecutiveErrors += 1;
+                if (shouldAutoSkipOnPlaybackError({ trackSelectionSource, consecutiveErrors }) && tracks.length > 0) {
+                  controller.playNext({ reason: 'error-skip' });
+                } else {
+                  isPlaying = false;
+                  isLoading = false;
+                  stopSilentHoldAndSyncPaused({ pauseYt: true });
+                  lastError = 'Sumber audio lagu ini sedang bermasalah. Ketuk Putar untuk coba lagi.';
+                  renderWidget();
+                  notifySubscribers('error');
+                }
+              })
+              .catch(() => {});
           }
         });
       return;
@@ -2584,7 +2729,7 @@ export function initMusicPlayer() {
     activeEngine = 'audio-el';
     isLoading = true;
     isPlaying = true;
-    startSilentHoldForBackgroundTransition();
+    startSilentHoldForBackgroundTransition({ force: true });
     renderWidget();
     notifySubscribers('loading');
 
@@ -2611,16 +2756,58 @@ export function initMusicPlayer() {
           executePlaybackNow(track, { startSeconds: getResumeSecondsForTrack(track) });
           return;
         }
-        // Start full-length YouTube IFrame immediately if direct stream is still resolving or unavailable
-        stopSilentHold({ clearSrc: true });
         const isHiddenNow = typeof document !== 'undefined' && Boolean(document.hidden);
+        if (raceResult === '__YT_FAST_FALLBACK__' && isHiddenNow) {
+          // User locked screen or switched tabs within 2.4s of tapping Play:
+          // Keep silent-hold alive on #music-audio-el and wait for bgPromise to finish resolving!
+          bgPromise
+            .then((lateUrl) => {
+              if (explicitPaused || currentTrack?.id !== track.id) return;
+              if (lateUrl && !failedStreamUrls.has(lateUrl) && !isBlockedAudioWrapperUrl(lateUrl)) {
+                propagateResolvedStreamToPools(track, lateUrl);
+                executePlaybackNow(track, { startSeconds: getResumeSecondsForTrack(track) });
+              } else {
+                pauseSilentHoldOnBackgroundFailure('bg-unavailable');
+              }
+            })
+            .catch(() => {
+              if (!explicitPaused && currentTrack?.id === track.id) {
+                pauseSilentHoldOnBackgroundFailure('bg-unavailable');
+              }
+            });
+          return;
+        }
+        // Start full-length YouTube IFrame in foreground while keeping #music-audio-el silent-hold bridge alive!
         if (!isHiddenNow && track.videoId && !failedYtIframeVideoIds.has(track.videoId)) {
           startYoutubePlaybackForTrack(track, getResumeSecondsForTrack(track));
-          // If direct full-length stream finishes resolving later, store it for instant lock-screen handoff
+          // As soon as direct full-length stream finishes resolving, upgrade immediately to native <audio>
+          // so subsequent tab switch / browser exit / screen lock never interrupts playback!
           bgPromise
             .then((lateUrl) => {
               if (lateUrl && !failedStreamUrls.has(lateUrl) && !isBlockedAudioWrapperUrl(lateUrl)) {
                 propagateResolvedStreamToPools(track, lateUrl);
+                if (!explicitPaused && currentTrack?.id === track.id && activeEngine === 'yt-iframe') {
+                  handoffToBackgroundSafeAudio('late-resolved-upgrade');
+                }
+              } else if (!explicitPaused && currentTrack?.id === track.id && activeEngine === 'yt-iframe') {
+                // Schedule one background retry so the track still upgrades to native <audio> before user leaves the tab
+                setTimeout(() => {
+                  if (explicitPaused || currentTrack?.id !== track.id || track.streamUrl) return;
+                  resolveBackgroundStreamForTrack(track, {
+                    allowAltYt: true,
+                    bypassCache: true,
+                    priority: true,
+                  })
+                    .then((retryUrl) => {
+                      if (retryUrl && !failedStreamUrls.has(retryUrl) && !isBlockedAudioWrapperUrl(retryUrl)) {
+                        propagateResolvedStreamToPools(track, retryUrl);
+                        if (!explicitPaused && currentTrack?.id === track.id && activeEngine === 'yt-iframe') {
+                          handoffToBackgroundSafeAudio('retry-resolved-upgrade');
+                        }
+                      }
+                    })
+                    .catch(() => {});
+                }, 2500);
               }
             })
             .catch(() => {});
@@ -2631,7 +2818,6 @@ export function initMusicPlayer() {
       })
       .catch(() => {
         if (explicitPaused || currentTrack?.id !== track.id) return;
-        stopSilentHold({ clearSrc: true });
         if (track.videoId && !failedYtIframeVideoIds.has(track.videoId)) {
           startYoutubePlaybackForTrack(track, getResumeSecondsForTrack(track));
         }
@@ -4219,34 +4405,46 @@ export function initMusicPlayer() {
   });
 
   audio.addEventListener('pause', () => {
-    if (isSilentHold || isUnlockingAudio || activeEngine !== 'audio-el' || isSwitchingSource) return;
+    if (isUnlockingAudio || isSwitchingSource) return;
+    if (isSilentHold) {
+      if (!explicitPaused && (isPlaying || isLoading)) {
+        ensureBackgroundAudioKeepAlive();
+        audio.play().catch(() => {});
+      }
+      return;
+    }
+    if (activeEngine !== 'audio-el') return;
     const dur = Number.isFinite(audio.duration) && audio.duration > 0 ? audio.duration : duration || 0;
     // If paused right at the end of track while in background, advance immediately
     if (!explicitPaused && (audio.ended || (dur > 10 && audio.currentTime >= dur - 1.2))) {
       triggerSeamlessAutoNext('ended');
       return;
     }
-    const recentlyTransitioned = Date.now() - lastFocusTransitionAt < 5000;
+    const recentlyTransitioned = Date.now() - lastFocusTransitionAt < 6500;
     const isHiddenNow = typeof document !== 'undefined' && (document.hidden || !document.hasFocus?.());
     // Whenever user did NOT click Pause (explicitPaused === false) and audio stopped transiently
     // due to screen lock, tab switch, or app exit, auto-resume cleanly & keep watchdog alive!
-    if (!explicitPaused && !audio.ended && audio.src && (isHiddenNow || recentlyTransitioned || isLoading || autoResumeAttempts < 3)) {
+    if (!explicitPaused && !audio.ended && audio.src && (isHiddenNow || recentlyTransitioned || isLoading || autoResumeAttempts < 6)) {
       autoResumeAttempts += 1;
       ensureBackgroundAudioKeepAlive();
+      startBackgroundWatchdog();
+      const attemptResume = () => {
+        if (!explicitPaused && activeEngine === 'audio-el' && !isSilentHold && audio.paused && !audio.ended && audio.src && !isSwitchingSource) {
+          ensureBackgroundAudioKeepAlive();
+          audio.play().catch(() => {});
+        }
+      };
       audio.play().catch((err) => {
-        if (err?.name === 'NotAllowedError' && !document.hidden) {
+        if (err?.name === 'NotAllowedError' && !isHiddenNow && !recentlyTransitioned) {
           isPlaying = false;
           stopTimeTicker();
           renderWidget();
           notifySubscribers('pause');
         }
       });
-      setTimeout(() => {
-        if (!explicitPaused && activeEngine === 'audio-el' && !isSilentHold && audio.paused && !audio.ended && audio.src && !isSwitchingSource) {
-          ensureBackgroundAudioKeepAlive();
-          audio.play().catch(() => {});
-        }
-      }, 280);
+      setTimeout(attemptResume, 160);
+      setTimeout(attemptResume, 520);
+      setTimeout(attemptResume, 1200);
       return;
     }
     isPlaying = false;
@@ -4282,7 +4480,9 @@ export function initMusicPlayer() {
       if (ytExactStreamCache.get(vid) === failedSrc) {
         ytExactStreamCache.delete(vid);
       }
-      failedExactVideoIds.add(vid);
+      if (shouldPoisonExactYoutubeIdOnError({ videoId: vid, failedStreamUrl: failedSrc })) {
+        failedExactVideoIds.add(vid);
+      }
     }
     if (failedTrack) {
       failedTrack.streamUrl = '';
@@ -4291,6 +4491,7 @@ export function initMusicPlayer() {
     if (failedTrack && !explicitPaused) {
       const altResolved = await resolveBackgroundStreamForTrack(failedTrack, {
         allowAltYt: true,
+        bypassCache: true,
         priority: true,
       }).catch(() => '');
       if (altResolved && !failedStreamUrls.has(altResolved) && currentTrack?.id === failedTrack.id && !explicitPaused) {
@@ -4346,6 +4547,7 @@ export function initMusicPlayer() {
         applyPipHeadsetTransition('auto-pip-background');
       }
       if (activeEngine === 'yt-iframe') {
+        startSilentHoldForBackgroundTransition({ force: true });
         if (currentTrack && backgroundAttemptDoneForTrackId === currentTrack.id && !currentTrack.streamUrl) {
           pauseSilentHoldOnBackgroundFailure('bg-unavailable');
           return;
@@ -4355,7 +4557,7 @@ export function initMusicPlayer() {
       } else if (audio.ended) {
         triggerSeamlessAutoNext('ended');
       } else if (audio.paused && audio.src && !isSwitchingSource) {
-        if (audio.currentTime < 1.5 && resumeSec > 2) {
+        if (!isSilentHold && audio.currentTime < 1.5 && resumeSec > 2) {
           pendingSeekSeconds = resumeSec;
           applyPendingAudioSeek();
         }
@@ -4382,7 +4584,7 @@ export function initMusicPlayer() {
     if (activeEngine === 'audio-el') {
       if (audio.ended) {
         triggerSeamlessAutoNext('ended');
-      } else if (audio.error || !audio.src) {
+      } else if (audio.error || !audio.src || isSilentHold) {
         executePlaybackNow(currentTrack, { startSeconds: resumeSec });
       } else {
         if (audio.currentTime < 1.5 && resumeSec > 2) {
@@ -4406,8 +4608,8 @@ export function initMusicPlayer() {
       // Resume YT IFrame cleanly at saved timestamp immediately while foreground is back
       if (ytReady && ytPlayer?.playVideo) {
         try {
-          if (wasPausedOnBgWait || !isPlaying) {
-            startSilentHoldForBackgroundTransition();
+          if (wasPausedOnBgWait || !isPlaying || !isSilentHold) {
+            startSilentHoldForBackgroundTransition({ force: true });
           }
           const ytCur = Number(ytPlayer.getCurrentTime?.() || 0);
           if (resumeSec > 2 && ytCur < Math.max(1.5, resumeSec - 4)) {
@@ -4454,8 +4656,11 @@ export function initMusicPlayer() {
           currentTime: resumeSec,
           trackSelectionSource,
         });
-        if (activeEngine === 'audio-el') {
-          ensureBackgroundAudioKeepAlive();
+        ensureBackgroundAudioKeepAlive();
+        if (activeEngine === 'yt-iframe') {
+          startSilentHoldForBackgroundTransition({ force: true });
+          handoffToBackgroundSafeAudio('window-blur', resumeSec);
+        } else if (activeEngine === 'audio-el') {
           if (audio.paused && !audio.ended && audio.src && !isSwitchingSource) {
             audio.play().catch(() => {});
           }
@@ -4476,8 +4681,14 @@ export function initMusicPlayer() {
         currentTime: resumeSec,
         trackSelectionSource,
       });
-      if (!explicitPaused && isPlaying && activeEngine === 'audio-el' && audio.paused && !audio.ended && audio.src) {
-        audio.play().catch(() => {});
+      if (!explicitPaused && (isPlaying || isLoading)) {
+        ensureBackgroundAudioKeepAlive();
+        if (activeEngine === 'yt-iframe') {
+          startSilentHoldForBackgroundTransition({ force: true });
+          handoffToBackgroundSafeAudio('pagehide', resumeSec);
+        } else if (activeEngine === 'audio-el' && audio.paused && !audio.ended && audio.src) {
+          audio.play().catch(() => {});
+        }
       }
     });
   }
@@ -4487,7 +4698,7 @@ export function initMusicPlayer() {
     'play',
     (e) => {
       const target = e.target;
-      if (target === audio) return;
+      if (target === audio || target === pipVideo || target?.dataset?.musicInternal === 'true') return;
       if (target instanceof HTMLMediaElement && !root.contains(target)) {
         controller.pause({ external: true });
       }
@@ -4520,7 +4731,12 @@ export function initMusicPlayer() {
       if (!interactive) return;
       if (explicitPaused || !autoClickPlayEnabled) return;
       const externalMediaPlaying = Array.from(document.querySelectorAll('video, audio')).some(
-        (el) => el !== audio && !el.paused && !el.ended
+        (el) =>
+          el !== audio &&
+          el !== pipVideo &&
+          el.dataset?.musicInternal !== 'true' &&
+          !el.paused &&
+          !el.ended
       );
       if (externalMediaPlaying) return;
       if (!isPlaying && !isLoading) {

@@ -6676,16 +6676,17 @@ a {
   color: var(--ytm-red);
 }
 
-/* Keep native <audio> actively renderable offscreen so mobile OS never suspends background playback */
+/* Keep native <audio> actively renderable inside viewport bounds so mobile OS never suspends background playback */
 .music-bg-audio-el {
   display: block !important;
   position: fixed;
-  width: 1px;
-  height: 1px;
-  left: -9999px;
-  top: 0;
-  opacity: 0.001;
+  width: 2px;
+  height: 2px;
+  left: 2px;
+  bottom: 2px;
+  opacity: 0.004;
   pointer-events: none;
+  z-index: -1;
 }
 
 /* Mini Floating Player (YouTube Music Compact Popover) */
