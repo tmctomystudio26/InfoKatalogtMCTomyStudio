@@ -50,6 +50,7 @@ import {
   filterFullLengthTracks,
   formatAudioTime,
   getPopoverAnchorClasses,
+  isStrictAudioMatch,
   normalizeMusicMode,
   normalizeRepeatMode,
   normalizeYtMusicTrack,
@@ -1661,4 +1662,62 @@ test('normalizeUtilityConfig, upsertUtilityItemInCatalog, and describeCatalogCha
     true
   );
 });
+
+test('strict audio matcher prevents playing unrelated songs under another song title', () => {
+  const stecuYt = normalizeYtMusicTrack({
+    videoId: 'sc5w6h6fI7w',
+    title: 'Stecu Stecu',
+    artist: 'Faris Adаm', // includes Cyrillic homoglyph а
+    duration: 229,
+  });
+  const unrelatedWestern = normalizeYtMusicTrack({
+    id: 'aud-yya2E',
+    title: 'Speculation (Instrumental)',
+    artist: 'Arkatech Beatz',
+    duration: 286,
+    streamUrl: 'https://api.audius.co/v1/tracks/yya2E/stream?app_name=Manifestudio',
+  });
+  const unrelatedPrefix = normalizeYtMusicTrack({
+    id: 'aud-l4pdK',
+    title: 'Xiuhtecuhtli',
+    artist: 'Eluterio',
+    duration: 182,
+    streamUrl: 'https://api.audius.co/v1/tracks/l4pdK/stream?app_name=Manifestudio',
+  });
+
+  // Unrelated songs must NEVER match Stecu Stecu or rank in Stecu search results
+  assert.equal(isStrictAudioMatch(stecuYt, unrelatedWestern), false);
+  assert.equal(isStrictAudioMatch(stecuYt, unrelatedPrefix), false);
+  assert.equal(scoreSearchRelevance(unrelatedWestern, 'Stecu'), 0);
+  assert.equal(scoreSearchRelevance(unrelatedPrefix, 'Stecu'), 0);
+  assert.ok(scoreSearchRelevance(stecuYt, 'Stecu') > 0);
+
+  // Genuine Indonesian track match (Mangu - Fourtwnty) MUST succeed
+  const manguYt = normalizeYtMusicTrack({
+    videoId: 'abc12345678',
+    title: 'Mangu (Official Lyric Video)',
+    artist: 'Fourtwnty - Topic',
+    duration: 260,
+  });
+  const manguAudius = normalizeYtMusicTrack({
+    id: 'aud-7O8YZgj',
+    title: 'Mangu',
+    artist: 'fourtwnty',
+    duration: 262,
+    streamUrl: 'https://api.audius.co/v1/tracks/7O8YZgj/stream?app_name=Manifestudio',
+  });
+  assert.equal(isStrictAudioMatch(manguYt, manguAudius), true);
+
+  // Reject huge 50-min compilation mixes when searching for a single track
+  const fiftyMinCompilation = normalizeYtMusicTrack({
+    id: 'aud-O75plov',
+    title: 'BERNADYA FULL ALBUM lagu santai',
+    artist: 'bigdig',
+    duration: 3055,
+    streamUrl: 'https://api.audius.co/v1/tracks/O75plov/stream?app_name=Manifestudio',
+  });
+  assert.equal(scoreSearchRelevance(fiftyMinCompilation, 'Bernadya Satu Bulan'), 0);
+  assert.equal(isStrictAudioMatch(manguYt, fiftyMinCompilation), false);
+});
+
 

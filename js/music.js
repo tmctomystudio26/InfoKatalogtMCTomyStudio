@@ -17,6 +17,7 @@ import {
   filterFullLengthTracks,
   formatAudioTime,
   getPopoverAnchorClasses,
+  isStrictAudioMatch,
   normalizeRepeatMode,
   normalizeYtMusicTrack,
   parseSavedVolume,
@@ -24,7 +25,7 @@ import {
   rankSearchResults,
   scoreSearchRelevance,
   shuffleTracksFisherYates,
-} from './music-logic.js?v=26';
+} from './music-logic.js?v=27';
 
 const MUSIC_POS_KEY = 'manifestudio_music_pos_v2';
 const MUSIC_VOL_KEY = 'manifestudio_music_vol_v2';
@@ -40,6 +41,17 @@ const PIPED_API_HOSTS = [
 ];
 const SIPUTZX_YT_SEARCH_URL = 'https://api.siputzx.my.id/api/s/youtube';
 const AUDIUS_API_BASE = 'https://api.audius.co/v1';
+const TIOO_AUDIO_BACKENDS = [
+  'https://backend3.tioo.eu.org',
+  'https://backend4.tioo.eu.org',
+  'https://backend1.tioo.eu.org',
+  'https://backend2.tioo.eu.org',
+];
+const ytExactStreamCache = new Map();
+const ytExactInFlight = new Map();
+const failedExactVideoIds = new Set();
+const failedStreamUrls = new Set();
+const failedYtIframeVideoIds = new Set();
 
 const MUSIC_NODE_COOLDOWN_MS = 180000;
 const musicNodeCircuit = new Map();
@@ -123,8 +135,8 @@ export const MUSIC_PRESET_CATEGORIES = [
   },
 ];
 
-// Pre-seeded real YT Music Viral Indonesia catalog with verified 200 OK direct audio streams
-// so playback and auto-next NEVER stop when screen is off, tab is hidden, or browser is minimized
+// Pre-seeded real Viral Indonesia catalog: ONLY 100%-verified matching audio streams
+// (or exact YouTube videoIds without cross-track stream mixing) so title ALWAYS matches the audio!
 const SEED_VIRAL_INDO_TRACKS = [
   normalizeYtMusicTrack({
     videoId: 'En-EHqRk8yg',
@@ -137,18 +149,27 @@ const SEED_VIRAL_INDO_TRACKS = [
     streamUrl: 'https://api.audius.co/v1/tracks/Nlzyaxp/stream?app_name=Manifestudio',
   }),
   normalizeYtMusicTrack({
-    videoId: 'hc-8aB0Dkkw',
-    title: 'Satu Bulan / Untungnya Hidup Harus Tetap Berjalan',
-    artist: 'Bernadya',
-    duration: 200,
-    genre: 'Pop Viral Indo',
+    id: 'aud-7O8YZgj',
+    title: 'Mangu',
+    artist: 'Fourtwnty',
+    duration: 262,
+    genre: 'Indie Viral Indo',
     isIndonesianViral: true,
     sourceLabel: 'YT Music · Background Audio',
-    streamUrl: 'https://api.audius.co/v1/tracks/J7Xb000/stream?app_name=Manifestudio',
+    streamUrl: 'https://api.audius.co/v1/tracks/7O8YZgj/stream?app_name=Manifestudio',
+  }),
+  normalizeYtMusicTrack({
+    videoId: 'sc5w6h6fI7w',
+    title: 'Stecu Stecu',
+    artist: 'Faris Adam',
+    duration: 229,
+    genre: 'Viral Indonesia',
+    isIndonesianViral: true,
+    sourceLabel: 'YT Music API',
   }),
   normalizeYtMusicTrack({
     videoId: 'Zq1Jg0H5fzc',
-    title: 'Betty / Everything U Are',
+    title: 'Betty (feat. White Chorus)',
     artist: 'Hindia',
     duration: 265,
     genre: 'Indie Viral Indo',
@@ -157,28 +178,8 @@ const SEED_VIRAL_INDO_TRACKS = [
     streamUrl: 'https://api.audius.co/v1/tracks/MoPA5xm/stream?app_name=Manifestudio',
   }),
   normalizeYtMusicTrack({
-    videoId: '-07Xbws-LB4',
-    title: 'Bersenja Gurau / Komang',
-    artist: 'Raim Laode',
-    duration: 263,
-    genre: 'Indie Viral Indo',
-    isIndonesianViral: true,
-    sourceLabel: 'YT Music · Background Audio',
-    streamUrl: 'https://api.audius.co/v1/tracks/W08NKdZ/stream?app_name=Manifestudio',
-  }),
-  normalizeYtMusicTrack({
-    videoId: 'V697wAtn6cI',
-    title: 'Nanti Kita Seperti Ini',
-    artist: 'BATAS SENJA',
-    duration: 210,
-    genre: 'Indie Viral Indo',
-    isIndonesianViral: true,
-    sourceLabel: 'YT Music · Background Audio',
-    streamUrl: 'https://api.audius.co/v1/tracks/AK3w5q0/stream?app_name=Manifestudio',
-  }),
-  normalizeYtMusicTrack({
     videoId: '2r7UutFm7qc',
-    title: 'Sisa Rasa / Mati-Matian',
+    title: 'Sisa Rasa',
     artist: 'Mahalini',
     duration: 328,
     genre: 'Pop Viral Indo',
@@ -188,7 +189,7 @@ const SEED_VIRAL_INDO_TRACKS = [
   }),
   normalizeYtMusicTrack({
     videoId: 'E7kHvjvU6JY',
-    title: 'Tukar Jiwa / Hati-Hati di Jalan',
+    title: 'Tukar Jiwa',
     artist: 'Tulus',
     duration: 230,
     genre: 'Pop Viral Indo',
@@ -197,8 +198,18 @@ const SEED_VIRAL_INDO_TRACKS = [
     streamUrl: 'https://api.audius.co/v1/tracks/bl5QX/stream?app_name=Manifestudio',
   }),
   normalizeYtMusicTrack({
+    id: 'aud-Oxg4V',
+    title: 'Hati-Hati di Jalan',
+    artist: 'Tulus',
+    duration: 242,
+    genre: 'Pop Viral Indo',
+    isIndonesianViral: true,
+    sourceLabel: 'YT Music · Background Audio',
+    streamUrl: 'https://api.audius.co/v1/tracks/Oxg4V/stream?app_name=Manifestudio',
+  }),
+  normalizeYtMusicTrack({
     videoId: 'tMLV3IWfOMs',
-    title: 'Wegah Pisah / Nemen (Hiphop Dangdut)',
+    title: 'Wegah Pisah (Hiphop Dangdut)',
     artist: 'NDX A.K.A.',
     duration: 346,
     genre: 'Koplo & Dangdut',
@@ -208,7 +219,7 @@ const SEED_VIRAL_INDO_TRACKS = [
   }),
   normalizeYtMusicTrack({
     videoId: 'J1HR1_uG6VU',
-    title: 'Jump / Cartel (Whisnu Santika & Adnan Veron Edit)',
+    title: 'Jump (Whisnu Santika & Adnan Veron Edit)',
     artist: 'Whisnu Santika & Adnan Veron',
     duration: 156,
     genre: 'DJ Remix TikTok',
@@ -218,7 +229,7 @@ const SEED_VIRAL_INDO_TRACKS = [
   }),
   normalizeYtMusicTrack({
     videoId: 'Z3E3AamV2to',
-    title: 'Widodari / Sigar (feat. Guyon Waton)',
+    title: 'Widodari (feat. Guyon Waton)',
     artist: 'Denny Caknan',
     duration: 296,
     genre: 'Koplo & Dangdut',
@@ -237,34 +248,14 @@ const SEED_VIRAL_INDO_TRACKS = [
     streamUrl: 'https://api.audius.co/v1/tracks/aZ5g38A/stream?app_name=Manifestudio',
   }),
   normalizeYtMusicTrack({
-    videoId: '9YPX7WjPDp8',
-    title: 'Pesan Terakhir',
-    artist: 'Lyodra',
-    duration: 257,
-    genre: 'Pop & Galau Indo',
-    isIndonesianViral: true,
-    sourceLabel: 'YT Music · Background Audio',
-    streamUrl: 'https://api.audius.co/v1/tracks/mzXmz1/stream?app_name=Manifestudio',
-  }),
-  normalizeYtMusicTrack({
     videoId: 'g6iIVyRfiUk',
-    title: 'To The Bone / Penjaga Hati',
-    artist: 'Pamungkas & Nadhif Basalamah',
+    title: 'To The Bone',
+    artist: 'Pamungkas',
     duration: 318,
     genre: 'Pop Viral Indo',
     isIndonesianViral: true,
     sourceLabel: 'YT Music · Background Audio',
     streamUrl: 'https://api.audius.co/v1/tracks/82Nw9/stream?app_name=Manifestudio',
-  }),
-  normalizeYtMusicTrack({
-    videoId: 'lABZ_-uhC0E',
-    title: 'Merasa Indah / Gala Bunga Matahari',
-    artist: 'Tiara Andini & Sal Priadi',
-    duration: 228,
-    genre: 'Pop Viral Indo',
-    isIndonesianViral: true,
-    sourceLabel: 'YT Music · Background Audio',
-    streamUrl: 'https://api.audius.co/v1/tracks/g4N8qxv/stream?app_name=Manifestudio',
   }),
   normalizeYtMusicTrack({
     videoId: 'X9EDqDWza3M',
@@ -280,68 +271,108 @@ const SEED_VIRAL_INDO_TRACKS = [
     videoId: 'ljSczANvbV8',
     title: 'Dulu — Lagu Viral Indonesia',
     artist: 'Danar Widianto',
-    duration: 211,
+    duration: 215,
     genre: 'Viral Indonesia',
     isIndonesianViral: true,
     sourceLabel: 'YT Music · Background Audio',
-    streamUrl: 'https://api.audius.co/v1/tracks/PQaKgB1/stream?app_name=Manifestudio',
+    streamUrl: 'https://api.audius.co/v1/tracks/ZRrjQ/stream?app_name=Manifestudio',
   }),
   normalizeYtMusicTrack({
-    videoId: 'k7q1Y8n0M1w',
-    title: 'Sial / Bohongi Hati',
+    id: 'aud-mWgk2',
+    title: 'Melawan Restu',
     artist: 'Mahalini',
+    duration: 260,
+    genre: 'Pop & Galau Indo',
+    isIndonesianViral: true,
+    sourceLabel: 'YT Music · Background Audio',
+    streamUrl: 'https://api.audius.co/v1/tracks/mWgk2/stream?app_name=Manifestudio',
+  }),
+  normalizeYtMusicTrack({
+    id: 'aud-KxAdo',
+    title: 'Secukupnya',
+    artist: 'Hindia',
+    duration: 263,
+    genre: 'Indie Viral Indo',
+    isIndonesianViral: true,
+    sourceLabel: 'YT Music · Background Audio',
+    streamUrl: 'https://api.audius.co/v1/tracks/KxAdo/stream?app_name=Manifestudio',
+  }),
+  normalizeYtMusicTrack({
+    id: 'aud-52rE1',
+    title: 'Serana',
+    artist: 'For Revenge',
     duration: 243,
     genre: 'Pop & Galau Indo',
     isIndonesianViral: true,
     sourceLabel: 'YT Music · Background Audio',
-    thumbnail: 'https://i.ytimg.com/vi/2r7UutFm7qc/hqdefault.jpg',
-    streamUrl: 'https://api.audius.co/v1/tracks/2oBRERd/stream?app_name=Manifestudio',
+    streamUrl: 'https://api.audius.co/v1/tracks/52rE1/stream?app_name=Manifestudio',
   }),
   normalizeYtMusicTrack({
-    videoId: 'p0mZ2t3X9vQ',
-    title: 'Kata Mereka Ini Berlebihan',
-    artist: 'Bernadya',
-    duration: 211,
-    genre: 'Pop Viral Indo',
-    isIndonesianViral: true,
-    sourceLabel: 'YT Music · Background Audio',
-    thumbnail: 'https://i.ytimg.com/vi/hc-8aB0Dkkw/hqdefault.jpg',
-    streamUrl: 'https://api.audius.co/v1/tracks/r70GlbZ/stream?app_name=Manifestudio',
-  }),
-  normalizeYtMusicTrack({
-    videoId: 'w2K9x8L4n1E',
-    title: 'Evaluasi / Secukupnya',
+    id: 'aud-Byxgj',
+    title: 'Evakuasi',
     artist: 'Hindia',
-    duration: 194,
+    duration: 218,
     genre: 'Indie Viral Indo',
     isIndonesianViral: true,
     sourceLabel: 'YT Music · Background Audio',
-    thumbnail: 'https://i.ytimg.com/vi/Zq1Jg0H5fzc/hqdefault.jpg',
-    streamUrl: 'https://api.audius.co/v1/tracks/87GrbyW/stream?app_name=Manifestudio',
+    streamUrl: 'https://api.audius.co/v1/tracks/Byxgj/stream?app_name=Manifestudio',
   }),
   normalizeYtMusicTrack({
-    videoId: 'm4N6v8B2c9P',
-    title: 'Monokrom / Interaksi',
+    id: 'aud-82Yvv',
+    title: 'Monokrom',
     artist: 'Tulus',
-    duration: 215,
+    duration: 208,
     genre: 'Pop Viral Indo',
     isIndonesianViral: true,
     sourceLabel: 'YT Music · Background Audio',
-    thumbnail: 'https://i.ytimg.com/vi/E7kHvjvU6JY/hqdefault.jpg',
-    streamUrl: 'https://api.audius.co/v1/tracks/NPOpmN4/stream?app_name=Manifestudio',
+    streamUrl: 'https://api.audius.co/v1/tracks/82Yvv/stream?app_name=Manifestudio',
+  }),
+  normalizeYtMusicTrack({
+    videoId: 'hc-8aB0Dkkw',
+    title: 'Untungnya, Hidup Harus Tetap Berjalan',
+    artist: 'Bernadya',
+    duration: 200,
+    genre: 'Pop Viral Indo',
+    isIndonesianViral: true,
+    sourceLabel: 'YT Music API',
+  }),
+  normalizeYtMusicTrack({
+    videoId: '-07Xbws-LB4',
+    title: 'Komang',
+    artist: 'Raim Laode',
+    duration: 263,
+    genre: 'Indie Viral Indo',
+    isIndonesianViral: true,
+    sourceLabel: 'YT Music API',
+  }),
+  normalizeYtMusicTrack({
+    videoId: 'V697wAtn6cI',
+    title: 'Nanti Kita Seperti Ini',
+    artist: 'BATAS SENJA',
+    duration: 210,
+    genre: 'Indie Viral Indo',
+    isIndonesianViral: true,
+    sourceLabel: 'YT Music API',
+  }),
+  normalizeYtMusicTrack({
+    videoId: '9YPX7WjPDp8',
+    title: 'Pesan Terakhir',
+    artist: 'Lyodra',
+    duration: 257,
+    genre: 'Pop & Galau Indo',
+    isIndonesianViral: true,
+    sourceLabel: 'YT Music API',
+  }),
+  normalizeYtMusicTrack({
+    videoId: 'lABZ_-uhC0E',
+    title: 'Merasa Indah',
+    artist: 'Tiara Andini',
+    duration: 228,
+    genre: 'Pop Viral Indo',
+    isIndonesianViral: true,
+    sourceLabel: 'YT Music API',
   }),
 ].filter(Boolean);
-
-function resolveGuaranteedStreamUrl(track, fallbackIdx = 0) {
-  if (track?.streamUrl) return track.streamUrl;
-  const keyStr = String(track?.videoId || track?.id || track?.title || fallbackIdx);
-  let hash = 0;
-  for (let i = 0; i < keyStr.length; i += 1) {
-    hash = (hash * 31 + keyStr.charCodeAt(i)) >>> 0;
-  }
-  const seed = SEED_VIRAL_INDO_TRACKS[hash % SEED_VIRAL_INDO_TRACKS.length];
-  return seed?.streamUrl || SEED_VIRAL_INDO_TRACKS[0]?.streamUrl || '';
-}
 
 let controllerSingleton = null;
 let ytApiLoadPromise = null;
@@ -525,8 +556,9 @@ async function fetchAudiusDirectTracks(query, { genre = 'Viral Indonesia', isInd
     const normalized = items
       .map((item) => {
         if (!item?.id || !item?.title) return null;
+        if (item.is_streamable === false || item.access?.stream === false) return null;
         const dur = Number(item.duration || 0);
-        if (dur < MIN_FULL_TRACK_SECONDS || dur > 900) return null;
+        if (dur < MIN_FULL_TRACK_SECONDS || dur > 660) return null;
         return normalizeYtMusicTrack(
           {
             id: `aud-${item.id}`,
@@ -549,39 +581,108 @@ async function fetchAudiusDirectTracks(query, { genre = 'Viral Indonesia', isInd
   }
 }
 
+async function resolveExactYoutubeAudioStream(videoId) {
+  const cleanId = extractYouTubeVideoId(videoId);
+  if (!cleanId || failedExactVideoIds.has(cleanId)) return '';
+  if (ytExactStreamCache.has(cleanId)) {
+    const cached = ytExactStreamCache.get(cleanId) || '';
+    if (cached && !failedStreamUrls.has(cached)) {
+      return cached;
+    }
+    ytExactStreamCache.delete(cleanId);
+  }
+  if (ytExactInFlight.has(cleanId)) {
+    return ytExactInFlight.get(cleanId);
+  }
+  const ytUrl = `https://www.youtube.com/watch?v=${cleanId}`;
+  const encoded = encodeURIComponent(ytUrl);
+
+  const job = (async () => {
+    try {
+      const winner = await Promise.any(
+        TIOO_AUDIO_BACKENDS.map(async (host) => {
+          const data = await fetchJsonTimeout(`${host}/youtube?url=${encoded}`, 10500);
+          const candidate = String(data?.mp3 || data?.mp4 || '').trim();
+          if (!/^https?:\/\//i.test(candidate)) {
+            throw new Error('No audio URL');
+          }
+          if (/savetube\.vip|ytshortdown\.com|sf-converter\.com/i.test(candidate)) {
+            throw new Error('Blocked redirect');
+          }
+          if (failedStreamUrls.has(candidate)) {
+            throw new Error('Stream previously failed');
+          }
+          return candidate;
+        })
+      );
+      if (winner && !failedStreamUrls.has(winner) && !failedExactVideoIds.has(cleanId)) {
+        ytExactStreamCache.set(cleanId, winner);
+        return winner;
+      }
+    } catch {
+      // All Tioo mirrors failed or timed out for this videoId
+    } finally {
+      ytExactInFlight.delete(cleanId);
+    }
+    return '';
+  })();
+
+  ytExactInFlight.set(cleanId, job);
+  return job;
+}
+
 async function resolveBackgroundStreamForTrack(track) {
   if (!track) return '';
-  if (track.streamUrl) return track.streamUrl;
+  if (track.streamUrl) {
+    if (!failedStreamUrls.has(track.streamUrl)) {
+      return track.streamUrl;
+    }
+    track.streamUrl = '';
+  }
+
   const seedMatch = SEED_VIRAL_INDO_TRACKS.find(
     (s) =>
-      (track.videoId && s.videoId === track.videoId) ||
-      s.title.toLowerCase() === String(track.title || '').toLowerCase()
+      s.streamUrl &&
+      !failedStreamUrls.has(s.streamUrl) &&
+      ((track.videoId && s.videoId === track.videoId) || isStrictAudioMatch(track, s))
   );
   if (seedMatch?.streamUrl) {
     track.streamUrl = seedMatch.streamUrl;
     return track.streamUrl;
   }
+
   const query = `${track.title || ''} ${track.artist || ''}`.trim();
   if (query) {
     const audiusMatches = await fetchAudiusDirectTracks(query, {
       genre: track.genre || 'Viral Indonesia',
       isIndonesianViral: Boolean(track.isIndonesianViral),
-      limit: 4,
+      limit: 6,
     });
-    if (audiusMatches.length > 0 && audiusMatches[0].streamUrl) {
-      track.streamUrl = audiusMatches[0].streamUrl;
+    const strictAudiusHit = audiusMatches.find(
+      (a) => a.streamUrl && !failedStreamUrls.has(a.streamUrl) && isStrictAudioMatch(track, a)
+    );
+    if (strictAudiusHit?.streamUrl) {
+      track.streamUrl = strictAudiusHit.streamUrl;
       return track.streamUrl;
     }
   }
-  track.streamUrl = resolveGuaranteedStreamUrl(track);
-  return track.streamUrl;
+
+  if (track.videoId && !failedExactVideoIds.has(track.videoId)) {
+    const exactYtMp3 = await resolveExactYoutubeAudioStream(track.videoId);
+    if (exactYtMp3 && !failedStreamUrls.has(exactYtMp3)) {
+      track.streamUrl = exactYtMp3;
+      return track.streamUrl;
+    }
+  }
+
+  return '';
 }
 
 async function fetchYtMusicSearch(query, { genre = 'YT Music', isIndonesianViral = true, limit = 16 } = {}) {
   const q = String(query || '').trim();
   if (!q) return [];
 
-  // Run Audius direct-stream search & Piped/Siputzx YT Music search in parallel for fast resilience
+  // Run Audius direct-stream search & Piped/Siputzx YT Music search in parallel
   const audiusPromise = fetchAudiusDirectTracks(q, { genre, isIndonesianViral, limit: 8 }).catch(() => []);
 
   let ytItems = [];
@@ -638,30 +739,29 @@ async function fetchYtMusicSearch(query, { genre = 'YT Music', isIndonesianViral
   }
 
   const audiusItems = await audiusPromise;
-  // Enrich YT items with background-capable streamUrl so 100% of tracks play natively in background
+  // ONLY attach `streamUrl` when strictly verified to be the EXACT same song title & artist!
+  // Never assign another song's streamUrl by index or hash fallback!
   for (let i = 0; i < ytItems.length; i += 1) {
     const yt = ytItems[i];
     if (yt.streamUrl) continue;
-    const seedHit = SEED_VIRAL_INDO_TRACKS.find((s) => s.videoId === yt.videoId);
+    const seedHit = SEED_VIRAL_INDO_TRACKS.find(
+      (s) => s.streamUrl && ((yt.videoId && s.videoId === yt.videoId) || isStrictAudioMatch(yt, s))
+    );
     if (seedHit?.streamUrl) {
       yt.streamUrl = seedHit.streamUrl;
       continue;
     }
-    const match = audiusItems.find((a) => scoreSearchRelevance(a, `${yt.title} ${yt.artist}`) >= 28);
-    if (match?.streamUrl) {
-      yt.streamUrl = match.streamUrl;
-      continue;
-    }
-    if (audiusItems[i]?.streamUrl) {
-      yt.streamUrl = audiusItems[i].streamUrl;
-    } else {
-      yt.streamUrl = resolveGuaranteedStreamUrl(yt, i);
+    const strictAudMatch = audiusItems.find((a) => isStrictAudioMatch(yt, a));
+    if (strictAudMatch?.streamUrl) {
+      yt.streamUrl = strictAudMatch.streamUrl;
     }
   }
 
   const combined = [...ytItems];
-  for (const aud of audiusItems) {
-    if (!combined.some((c) => c.id === aud.id || c.streamUrl === aud.streamUrl)) {
+  // Only include genuinely query-relevant Audius tracks (never unrelated tag-noise matches)
+  const relevantAudius = rankSearchResults(audiusItems, q, 45);
+  for (const aud of relevantAudius) {
+    if (!combined.some((c) => c.id === aud.id || (aud.streamUrl && c.streamUrl === aud.streamUrl))) {
       combined.push(aud);
     }
   }
@@ -987,24 +1087,19 @@ export function initMusicPlayer() {
     if (explicitPaused || backgroundHandoffInFlight) return false;
     backgroundHandoffInFlight = true;
     try {
-      let target = currentTrack;
-      if (target && !target.streamUrl) {
+      const target = currentTrack;
+      if (!target) return false;
+      if (target.streamUrl && failedStreamUrls.has(target.streamUrl)) {
+        target.streamUrl = '';
+      }
+      if (!target.streamUrl) {
         await resolveBackgroundStreamForTrack(target);
       }
-      if (!target || !target.streamUrl) {
-        // Pick a background-ready viral track if current track only had an iframe
-        const bgPool = SEED_VIRAL_INDO_TRACKS.filter((t) => Boolean(t.streamUrl));
-        target =
-          pickShuffledViralTrack(bgPool, {
-            currentTrackId: currentTrack?.id || null,
-            recentTrackIds,
-            prioritizeIndonesianViral: true,
-          }) || bgPool[0];
-      }
-      if (!target || !target.streamUrl) return false;
+      // Strictly never swap the currently displayed song to a different random track;
+      // if this YT track has no exact audio stream yet, let YT IFrame keep playing it.
+      if (!target.streamUrl || failedStreamUrls.has(target.streamUrl)) return false;
 
-      const resumeSec =
-        currentTrack && target.id === currentTrack.id && currentTime > 1 ? currentTime : 0;
+      const resumeSec = currentTime > 1 ? currentTime : 0;
       currentTrack = target;
       activeEngine = 'audio-el';
       try {
@@ -1156,14 +1251,29 @@ export function initMusicPlayer() {
                 }
               }
             },
-            onError: () => {
+            onError: async () => {
               if (activeEngine !== 'yt-iframe') return;
-              // If track has a native streamUrl, play via <audio> immediately before skipping
-              if (currentTrack?.streamUrl && !explicitPaused) {
-                handoffToBackgroundSafeAudio('yt-error-fallback');
-                return;
+              const failedTrack = currentTrack;
+              const failedId = failedTrack?.videoId;
+              if (failedId) {
+                failedYtIframeVideoIds.add(failedId);
               }
-              const failedId = currentTrack?.videoId;
+              // Try resolving an exact streamUrl for THIS SAME song (if not already failed) before skipping!
+              if (failedTrack && !explicitPaused && (!failedId || !failedExactVideoIds.has(failedId))) {
+                isLoading = true;
+                renderWidget();
+                notifySubscribers('loading');
+                const resolved = await resolveBackgroundStreamForTrack(failedTrack).catch(() => '');
+                if (
+                  resolved &&
+                  !failedStreamUrls.has(resolved) &&
+                  currentTrack?.id === failedTrack.id &&
+                  !explicitPaused
+                ) {
+                  executePlaybackNow(failedTrack, { startSeconds: currentTime });
+                  return;
+                }
+              }
               if (failedId) {
                 blockedVideoIds.add(failedId);
                 tracks = tracks.filter((t) => t.videoId !== failedId);
@@ -1233,9 +1343,9 @@ export function initMusicPlayer() {
       currentTime,
     });
 
-    // Always prefer native HTML5 <audio> whenever a direct streamUrl exists so playback
+    // Always prefer native HTML5 <audio> whenever a valid direct streamUrl exists so playback
     // NEVER stops when locking the screen, minimizing the browser, or switching tabs!
-    if (track.streamUrl) {
+    if (track.streamUrl && !failedStreamUrls.has(track.streamUrl)) {
       activeEngine = 'audio-el';
       pendingPlayTrack = null;
       try {
@@ -1243,8 +1353,9 @@ export function initMusicPlayer() {
       } catch {
         // Ignore
       }
-      if (audio.src !== track.streamUrl) {
-        audio.src = track.streamUrl;
+      const targetStreamUrl = track.streamUrl;
+      if (audio.src !== targetStreamUrl) {
+        audio.src = targetStreamUrl;
       }
       audio.muted = isMuted;
       audio.volume = volume;
@@ -1270,36 +1381,34 @@ export function initMusicPlayer() {
           notifySubscribers('play');
         })
         .catch(() => {
-          if (explicitPaused) return;
-          const altUrl = resolveGuaranteedStreamUrl(track, 1 + Math.floor(Math.random() * 12));
-          if (altUrl && audio.src !== altUrl) {
-            track.streamUrl = altUrl;
-            audio.src = altUrl;
-            ensureBackgroundAudioKeepAlive();
-            audio.play().catch(() => {
-              const isTabHidden = typeof document !== 'undefined' && document.hidden;
-              if (track.videoId && !isTabHidden) {
-                startYoutubePlaybackForTrack(track, currentTime);
-              } else {
-                isPlaying = false;
-                isLoading = false;
-                renderWidget();
-                notifySubscribers('error');
-              }
-            });
-            return;
+          if (explicitPaused || currentTrack?.id !== track.id) return;
+          failedStreamUrls.add(targetStreamUrl);
+          if (track.videoId && ytExactStreamCache.get(track.videoId) === targetStreamUrl) {
+            ytExactStreamCache.delete(track.videoId);
+            failedExactVideoIds.add(track.videoId);
           }
+          // Clear broken streamUrl on this track and fall back to the EXACT same song via YT IFrame (only if YT hasn't failed for it)
+          track.streamUrl = '';
           const isTabHidden = typeof document !== 'undefined' && document.hidden;
-          if (track.videoId && !isTabHidden) {
+          if (track.videoId && !failedYtIframeVideoIds.has(track.videoId) && !isTabHidden) {
             startYoutubePlaybackForTrack(track, currentTime);
           } else {
-            isPlaying = false;
-            isLoading = false;
-            renderWidget();
-            notifySubscribers('error');
+            consecutiveErrors += 1;
+            if (consecutiveErrors <= 5 && tracks.length > 0) {
+              controller.playNext({ reason: 'error-skip' });
+            } else {
+              isPlaying = false;
+              isLoading = false;
+              lastError = 'Sumber audio lagu ini sedang tidak tersedia.';
+              renderWidget();
+              notifySubscribers('error');
+            }
           }
         });
       return;
+    }
+    if (track.streamUrl && failedStreamUrls.has(track.streamUrl)) {
+      track.streamUrl = '';
     }
 
     // Track only has videoId: start YT IFrame immediately AND resolve background stream in parallel
@@ -1953,13 +2062,15 @@ export function initMusicPlayer() {
       }
 
       let nextTrack = null;
-      if (shuffleEnabled || reason === 'any-button-click' || reason === 'fab-open' || activePool === tracks) {
-        // Prefer tracks with native background streamUrl when tab/screen is hidden or on auto-click
+      if (shuffleEnabled || reason === 'any-button-click' || reason === 'fab-open' || reason === 'error-skip' || activePool === tracks) {
+        // Prefer tracks with verified native background streamUrl when tab/screen is hidden, on auto-click, or on error-skip
         const fullPool = tracks.length > 0 ? tracks : SEED_VIRAL_INDO_TRACKS;
-        const bgReadyPool = fullPool.filter((t) => Boolean(t.streamUrl));
+        const bgReadyPool = fullPool.filter((t) => Boolean(t.streamUrl) && !failedStreamUrls.has(t.streamUrl));
         const candidatePool =
-          (typeof document !== 'undefined' && document.hidden && bgReadyPool.length > 0) ||
-          (reason === 'any-button-click' && bgReadyPool.length > 0)
+          ((typeof document !== 'undefined' && document.hidden) ||
+            reason === 'any-button-click' ||
+            reason === 'error-skip') &&
+          bgReadyPool.length > 0
             ? bgReadyPool
             : fullPool;
 
@@ -2332,23 +2443,43 @@ export function initMusicPlayer() {
 
   audio.addEventListener('error', () => {
     if (activeEngine !== 'audio-el' || explicitPaused) return;
-    // Before falling back to YT iframe, try assigning a guaranteed verified 200 OK background stream
-    const fallbackUrl = resolveGuaranteedStreamUrl(currentTrack, consecutiveErrors + 1);
-    if (fallbackUrl && audio.src !== fallbackUrl && consecutiveErrors < 3) {
-      consecutiveErrors += 1;
-      currentTrack.streamUrl = fallbackUrl;
-      audio.src = fallbackUrl;
-      ensureBackgroundAudioKeepAlive();
-      audio.play().catch(() => {
-        controller.playNext({ reason: 'error-skip' });
-      });
-      return;
+    const failedSrc = currentTrack?.streamUrl || audio.currentSrc || audio.src || '';
+    if (failedSrc) {
+      failedStreamUrls.add(failedSrc);
     }
-    if (currentTrack?.videoId && (typeof document === 'undefined' || !document.hidden)) {
+    if (currentTrack?.videoId) {
+      const vid = currentTrack.videoId;
+      if (ytExactStreamCache.get(vid) === failedSrc) {
+        ytExactStreamCache.delete(vid);
+      }
+      failedExactVideoIds.add(vid);
+    }
+    if (currentTrack) {
+      currentTrack.streamUrl = '';
+    }
+    if (
+      currentTrack?.videoId &&
+      !failedYtIframeVideoIds.has(currentTrack.videoId) &&
+      (typeof document === 'undefined' || !document.hidden)
+    ) {
       startYoutubePlaybackForTrack(currentTrack, currentTime);
       return;
     }
-    controller.playNext({ reason: 'error-skip' });
+    if (currentTrack?.videoId) {
+      blockedVideoIds.add(currentTrack.videoId);
+      tracks = tracks.filter((t) => t.videoId !== currentTrack.videoId);
+    }
+    consecutiveErrors += 1;
+    if (consecutiveErrors <= 5 && tracks.length > 0) {
+      lastError = 'Mengganti ke lagu YT Music lain yang tersedia...';
+      controller.playNext({ reason: 'error-skip' });
+    } else {
+      isPlaying = false;
+      isLoading = false;
+      lastError = 'Pemutar YT Music sedang menunggu koneksi atau memilih lagu lain.';
+      renderWidget();
+      notifySubscribers('error');
+    }
   });
 
   // Keep music alive when switching tabs, minimizing browser, or locking screen

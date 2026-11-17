@@ -125,12 +125,116 @@ export function filterFullLengthTracks(tracks = [], minSeconds = MIN_FULL_TRACK_
   );
 }
 
-export function tokenizeText(raw) {
+const SONG_NOISE_TOKENS = new Set([
+  'official',
+  'music',
+  'video',
+  'mv',
+  'lyric',
+  'lyrics',
+  'lirik',
+  'audio',
+  'hd',
+  'hq',
+  'kbps',
+  '128kbps',
+  '320kbps',
+  'ft',
+  'feat',
+  'featuring',
+  'remix',
+  'cover',
+  'live',
+  'mp3',
+  'youtube',
+  'topic',
+  'version',
+  'ver',
+  'edit',
+  'mix',
+  'y2mate',
+  'com',
+  'net',
+  'lagu',
+  'terbaru',
+  'viral',
+]);
+
+export function normalizeMatchString(raw) {
   return String(raw || '')
+    .normalize('NFKC')
     .toLowerCase()
+    .replace(/[\u0430]/g, 'a')
+    .replace(/[\u0435]/g, 'e')
+    .replace(/[\u043e]/g, 'o')
+    .replace(/[\u0440]/g, 'p')
+    .replace(/[\u0441]/g, 'c')
     .replace(/[^a-z0-9\s]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+export function tokenizeText(raw) {
+  return normalizeMatchString(raw)
     .split(/\s+/)
     .filter((w) => w.length >= 2);
+}
+
+export function extractCoreSongTokens(title) {
+  const tokens = tokenizeText(title).filter((w) => !SONG_NOISE_TOKENS.has(w));
+  return [...new Set(tokens.length > 0 ? tokens : tokenizeText(title))];
+}
+
+/**
+ * Strictly verifies whether an audio candidate (e.g. from Audius) genuinely matches
+ * a target track's song title and artist before attaching its direct `streamUrl`.
+ * Prevents playing an unrelated track under another song's displayed title.
+ */
+export function isStrictAudioMatch(targetTrack, candidateTrack) {
+  if (!targetTrack || !candidateTrack || !candidateTrack.streamUrl) return false;
+  const candDur = Number(candidateTrack.duration || 0);
+  if (candDur > 0 && (candDur < MIN_FULL_TRACK_SECONDS || candDur > 600)) return false;
+
+  const targetDur = Number(targetTrack.duration || 0);
+  if (targetDur > 0 && candDur > 0 && Math.abs(targetDur - candDur) > 95) {
+    return false;
+  }
+
+  const targetCore = extractCoreSongTokens(targetTrack.title);
+  if (targetCore.length === 0) return false;
+
+  const candTitleWords = new Set(tokenizeText(candidateTrack.title));
+  const candAllWords = new Set(tokenizeText(`${candidateTrack.title} ${candidateTrack.artist}`));
+
+  let titleHits = 0;
+  for (const tok of targetCore) {
+    if (candTitleWords.has(tok)) {
+      titleHits += 1;
+    }
+  }
+
+  // Must match whole-word song title tokens (for 1-word titles like "Mangu" or "Stecu", 100% must match title)
+  const requiredTitleHits =
+    targetCore.length === 1
+      ? 1
+      : targetCore.length === 2
+      ? 2
+      : Math.max(2, Math.ceil(targetCore.length * 0.75));
+
+  if (titleHits < requiredTitleHits) return false;
+
+  // Verify artist alignment if target artist is specific (avoid same-title different-artist collisions)
+  const genericArtists = new Set(['artis', 'music', 'youtube', 'topic', 'viral', 'indonesia', 'indo']);
+  const targetArtistTokens = tokenizeText(targetTrack.artist).filter((w) => !genericArtists.has(w));
+  if (targetArtistTokens.length > 0) {
+    const artistMatched = targetArtistTokens.some((tok) => candAllWords.has(tok));
+    // Require artist match unless target title has >= 3 distinct matched words
+    if (!artistMatched && titleHits < 3) {
+      return false;
+    }
+  }
+
+  return true;
 }
 
 export function shuffleTracksFisherYates(tracks = [], rng = Math.random) {
@@ -194,16 +298,13 @@ export function pickShuffledViralTrack(tracks = [], options = {}) {
 
 export function scoreSearchRelevance(track, query) {
   if (!track || !(track.videoId || track.streamUrl)) return 0;
-  const cleanQuery = String(query || '')
-    .toLowerCase()
-    .replace(/[^a-z0-9\s]/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim();
+  const cleanQuery = normalizeMatchString(query);
   if (!cleanQuery) return 0;
 
-  const title = String(track.title || '').toLowerCase();
-  const artist = String(track.artist || '').toLowerCase();
-  const tags = String(track.tags || '').toLowerCase();
+  const title = normalizeMatchString(track.title);
+  const artist = normalizeMatchString(track.artist);
+  const titleWords = new Set(tokenizeText(track.title));
+  const artistWords = new Set(tokenizeText(track.artist));
   const combined = `${title} ${artist}`.trim();
   const tokens = tokenizeText(cleanQuery);
   if (tokens.length === 0) return 0;
@@ -211,34 +312,39 @@ export function scoreSearchRelevance(track, query) {
   let score = 0;
   let titleOrArtistTokenHits = 0;
 
+  const phraseWordRegex = new RegExp(`(?:^|\\s)${cleanQuery.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?:\\s|$)`);
   if (title === cleanQuery) score += 80;
-  else if (title.includes(cleanQuery)) score += 50;
+  else if (phraseWordRegex.test(title)) score += 50;
 
   if (artist === cleanQuery) score += 55;
-  else if (artist.includes(cleanQuery)) score += 35;
+  else if (phraseWordRegex.test(artist)) score += 35;
 
-  if (combined.includes(cleanQuery)) score += 25;
+  if (phraseWordRegex.test(combined)) score += 25;
 
   for (const token of tokens) {
-    const inTitle = title.includes(token);
-    const inArtist = artist.includes(token);
-    if (inTitle) score += 16;
-    if (inArtist) score += 12;
+    const inTitle =
+      titleWords.has(token) || (token.length >= 4 && [...titleWords].some((w) => w.startsWith(token)));
+    const inArtist =
+      artistWords.has(token) || (token.length >= 4 && [...artistWords].some((w) => w.startsWith(token)));
+    if (inTitle) score += 18;
+    if (inArtist) score += 14;
     if (inTitle || inArtist) {
       titleOrArtistTokenHits += 1;
-    } else if (tags.includes(token)) {
-      score += 3;
     }
   }
 
   const minRequiredHits = tokens.length === 1 ? 1 : Math.ceil(tokens.length * 0.5);
-  if (titleOrArtistTokenHits < minRequiredHits && !combined.includes(cleanQuery)) {
+  if (titleOrArtistTokenHits < minRequiredHits) {
     return 0;
   }
 
   const dur = Number(track.duration || 0);
   if (dur > 0 && dur < MIN_FULL_TRACK_SECONDS) {
     score = Math.max(0, score - 22);
+  }
+  const wantsLongMix = /\b(album|full album|mix|nonstop|kompilasi|playlist|1 jam)\b/i.test(cleanQuery);
+  if (!wantsLongMix && dur > 720) {
+    return 0;
   }
   if (/\b(parody|parodi|lucu|shorts|#shorts|prank|sound effect|reaction)\b/i.test(combined)) {
     score = Math.max(0, score - 25);
