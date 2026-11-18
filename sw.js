@@ -1,4 +1,4 @@
-const CACHE_NAME = 'manifestudio-cache-v43';
+const CACHE_NAME = 'manifestudio-cache-v44';
 
 const PRECACHE_ASSETS = [
   './',
@@ -20,6 +20,15 @@ const PRECACHE_ASSETS = [
   './js/downloader.js',
   './js/compressor.js',
   './js/converter.js',
+  './js/media-engine.js',
+  './js/vendor/lame.min.js',
+  './js/vendor/ffmpeg/index.js',
+  './js/vendor/ffmpeg/classes.js',
+  './js/vendor/ffmpeg/const.js',
+  './js/vendor/ffmpeg/errors.js',
+  './js/vendor/ffmpeg/types.js',
+  './js/vendor/ffmpeg/utils.js',
+  './js/vendor/ffmpeg/worker.js',
   './js/tools-ui.js',
   './js/tools-page.js',
   './js/music-logic.js',
@@ -79,7 +88,7 @@ self.addEventListener('activate', (event) => {
     caches.keys().then((keys) =>
       Promise.all(
         keys
-          .filter((key) => key !== CACHE_NAME)
+          .filter((key) => key !== CACHE_NAME && key !== 'manifestudio-ffmpeg-core-v1')
           .map((oldKey) => caches.delete(oldKey))
       )
     )

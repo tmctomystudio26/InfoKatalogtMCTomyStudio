@@ -22,36 +22,36 @@ import {
   matchIndonesianCityQuery,
   planMediaCompression,
   resolveAccurateWeatherCondition,
-} from './tools-logic.js?v=43';
+} from './tools-logic.js?v=44';
 import {
   describeLocationSource,
   resolveUserLocation,
   searchCitiesOnline,
   setManualLocation,
-} from './location.js?v=43';
-import { createInteractiveGlobe } from './globe.js?v=43';
+} from './location.js?v=44';
+import { createInteractiveGlobe } from './globe.js?v=44';
 import {
   createSpeedometerGauge,
   fetchSpeedtestEnvironment,
   readClientDeviceTelemetry,
   runInternetSpeedtest,
-} from './speedtest.js?v=43';
+} from './speedtest.js?v=44';
 import {
   extractAudioFromVideoUrl,
   fetchMediaDownload,
   triggerBatchPhotoDownload,
   triggerDirectMediaSave,
-} from './downloader.js?v=43';
-import { compressMediaFile, inspectMediaFile } from './compressor.js?v=43';
+} from './downloader.js?v=44';
+import { compressMediaFile, inspectMediaFile } from './compressor.js?v=44';
 import {
   ALL_TARGET_FORMATS,
   convertAnyFile,
   detectSourceFormat,
   getAvailableTargetFormats,
-} from './converter.js?v=43';
-import { formatAudioTime, getLoadingProgressMeta, isTrackInWatchLater } from './music-logic.js?v=43';
-import { MUSIC_PRESET_CATEGORIES, getMusicController, initMusicPlayer } from './music.js?v=43';
-import { normalizeUtilityConfig } from './store.js?v=43';
+} from './converter.js?v=44';
+import { formatAudioTime, getLoadingProgressMeta, isTrackInWatchLater } from './music-logic.js?v=44';
+import { MUSIC_PRESET_CATEGORIES, getMusicController, initMusicPlayer } from './music.js?v=44';
+import { normalizeUtilityConfig } from './store.js?v=44';
 
 const PRAYER_CACHE_KEY = 'manifestudio_prayer_cache_v1';
 const MYQURAN_CITIES_KEY = 'manifestudio_myquran_cities_v1';
@@ -1660,7 +1660,7 @@ export function createToolsHubController({
         <div class="compressor-hero-card">
           <div class="compressor-head">
             <div>
-              <span class="tool-kicker">Open-Source Compression Engine · Squoosh / Libvips / UPNG</span>
+              <span class="tool-kicker">Open-Source Compression Engine · FFmpeg WebAssembly / Squoosh / UPNG</span>
               <h3 class="tool-subhead">Kompres Foto &amp; Video HD Nyata Tanpa Pecah di Sosmed</h3>
               <p class="tool-hint">
                 Menggunakan algoritma pencarian biner kualitas adaptif &amp; kuantisasi palet open-source untuk <strong>memangkas ukuran byte foto &amp; video secara nyata (30%–80% lebih ringan)</strong> agar lolos kompresi paksa TikTok, Instagram, dan WhatsApp.
@@ -2051,6 +2051,8 @@ export function createToolsHubController({
                 ${
                   res.mimeType.startsWith('image/')
                     ? `<img src="${escapeHtml(res.outputUrl)}" alt="Hasil konversi" class="dl-thumb-img" />`
+                    : res.mimeType.startsWith('video/')
+                    ? `<video class="dl-video-preview" controls playsinline preload="metadata" src="${escapeHtml(res.outputUrl)}"></video>`
                     : res.mimeType.startsWith('audio/')
                     ? `<div style="padding:1rem;width:100%;text-align:center;">
                         <img src="./assets/icons/tool-converter.svg" alt="" width="52" height="52" style="margin:0 auto 0.65rem;" />
@@ -2066,7 +2068,7 @@ export function createToolsHubController({
               <div class="comp-result-body">
                 <div class="dl-result-badges">
                   <span class="dl-plat-pill is-detected" data-testid="conv-verified-badge">
-                    ${res.verified ? '✓ Biner Valid' : 'Selesai'} · ${escapeHtml(res.sourceFormat)} → ${escapeHtml(res.targetFormat)}
+                    ${res.verified ? '✓ Terverifikasi &amp; Siap Putar' : 'Selesai'} · ${escapeHtml(res.sourceFormat)} → ${escapeHtml(res.targetFormat)}
                   </span>
                   <span class="dl-dur-pill">${escapeHtml(res.engineLabel)}</span>
                   <span class="dl-dur-pill">${escapeHtml(res.signatureLabel)}</span>

@@ -12,7 +12,11 @@ import {
   COMPRESSION_PLATFORM_PRESETS,
   formatBytes,
   planMediaCompression,
-} from './tools-logic.js';
+} from './tools-logic.js?v=44';
+import {
+  compressVideoWithRealEngine,
+  verifyPlayableMediaBlob,
+} from './media-engine.js?v=44';
 
 /**
  * Builds an open-source GitHub `weserv/images` (wsrv.nl) libvips compression API URL
@@ -252,82 +256,6 @@ export function quantizeRgbaBufferOpenSource(rgbaBytes, bitsPerChannel = 5) {
   return { quantized: out, hasAlpha };
 }
 
-/**
- * Deterministic MP4/Video Bitstream Compactor.
- * Strips padding boxes (`free`, `skip`, `wide`, `uuid`, `udta`) and compacts oversized
- * `mdat` stream payloads to the target bitrate ratio while keeping `ftyp` and `moov` valid.
- */
-export function compressVideoBufferDeterministic(arrayBuffer, targetRatio = 0.56) {
-  const stripped = stripMp4AtomsLossless(arrayBuffer);
-  const bytes = new Uint8Array(stripped);
-  const clampedRatio = Math.max(0.28, Math.min(0.82, Number(targetRatio) || 0.56));
-
-  if (bytes.length < 64) {
-    return stripped;
-  }
-
-  // Parse top-level ISO BMFF boxes and compact oversized `mdat` payload
-  const chunks = [];
-  let offset = 0;
-  let compactedAnyBox = false;
-
-  while (offset + 8 <= bytes.length) {
-    const view = new DataView(bytes.buffer, bytes.byteOffset + offset, 8);
-    const boxSize = view.getUint32(0, false);
-    const boxType = String.fromCharCode(
-      bytes[offset + 4],
-      bytes[offset + 5],
-      bytes[offset + 6],
-      bytes[offset + 7]
-    );
-
-    if (boxSize < 8 || offset + boxSize > bytes.length) {
-      break;
-    }
-
-    if (boxType === 'free' || boxType === 'skip' || boxType === 'wide' || boxType === 'uuid') {
-      compactedAnyBox = true;
-      offset += boxSize;
-      continue;
-    }
-
-    if (boxType === 'mdat' && boxSize > 32) {
-      const payloadLen = boxSize - 8;
-      const targetPayloadLen = Math.max(16, Math.floor(payloadLen * clampedRatio));
-      const newBoxSize = 8 + targetPayloadLen;
-      const newBox = new Uint8Array(newBoxSize);
-      const nbView = new DataView(newBox.buffer);
-      nbView.setUint32(0, newBoxSize, false);
-      newBox.set(bytes.subarray(offset + 4, offset + 8), 4);
-      newBox.set(bytes.subarray(offset + 8, offset + 8 + targetPayloadLen), 8);
-      chunks.push(newBox);
-      compactedAnyBox = true;
-      offset += boxSize;
-      continue;
-    }
-
-    chunks.push(bytes.subarray(offset, offset + boxSize));
-    offset += boxSize;
-  }
-
-  if (compactedAnyBox && chunks.length > 0) {
-    const total = chunks.reduce((acc, c) => acc + c.byteLength, 0);
-    if (total > 16 && total < arrayBuffer.byteLength) {
-      const out = new Uint8Array(total);
-      let pos = 0;
-      for (const c of chunks) {
-        out.set(c, pos);
-        pos += c.byteLength;
-      }
-      return out.buffer;
-    }
-  }
-
-  // Fallback for raw stream / WebM buffers without top-level mdat
-  const targetLen = Math.max(32, Math.floor(bytes.length * clampedRatio));
-  return bytes.subarray(0, targetLen).buffer;
-}
-
 export async function inspectMediaFile(file) {
   if (!file) throw new Error('Pilih file foto atau video terlebih dahulu.');
   const mime = String(file.type || '').toLowerCase();
@@ -460,11 +388,42 @@ function canvasToBlob(canvas, mimeType, quality) {
   });
 }
 
+async function verifyImageBlobReadable(blob) {
+  if (typeof Image === 'undefined' || typeof URL === 'undefined') {
+    return Boolean(blob && blob.size > 32);
+  }
+  const url = URL.createObjectURL(blob);
+  try {
+    return await new Promise((resolve) => {
+      const timer = setTimeout(() => resolve(false), 3000);
+      const img = new Image();
+      img.onload = () => {
+        clearTimeout(timer);
+        resolve((img.naturalWidth || img.width || 0) > 0 && (img.naturalHeight || img.height || 0) > 0);
+      };
+      img.onerror = () => {
+        clearTimeout(timer);
+        resolve(false);
+      };
+      img.src = url;
+    });
+  } finally {
+    URL.revokeObjectURL(url);
+  }
+}
+
 /**
  * Open-Source Squoosh / Browser-Image-Compression Iterative Binary-Search Engine.
  * Finds the highest-clarity encoding that genuinely shrinks the file to the target byte budget.
  */
-async function compressImageIterativeOpenSource(imgEl, originalSize, plan, sourceMime, strippedBlob) {
+async function compressImageIterativeOpenSource(
+  imgEl,
+  originalSize,
+  plan,
+  sourceMime,
+  strippedBlob,
+  onProgress = () => {}
+) {
   const targetBytes = Math.max(
     4096,
     Math.min(
@@ -473,8 +432,13 @@ async function compressImageIterativeOpenSource(imgEl, originalSize, plan, sourc
     )
   );
 
-  let curW = plan.targetWidth;
-  let curH = plan.targetHeight;
+  const curW = plan.targetWidth;
+  const curH = plan.targetHeight;
+  onProgress({
+    phase: 'scale',
+    percent: 42,
+    label: `Menyesuaikan kanvas HD (${curW}×${curH}px) & menganalisis kanal warna...`,
+  });
   const baseCanvas = drawSteppedHighQuality(imgEl, curW, curH);
   const ctx = baseCanvas.getContext('2d', { willReadFrequently: true });
   const imgData = ctx.getImageData(0, 0, curW, curH);
@@ -493,7 +457,7 @@ async function compressImageIterativeOpenSource(imgEl, originalSize, plan, sourc
     });
   }
 
-  // If image has no transparency, test MozJPEG-style iterative binary search + WebP
+  // If image has transparency use WebP + UPNG; otherwise MozJPEG-style JPEG + WebP
   const testMimes = hasAlpha
     ? ['image/webp', 'image/png']
     : ['image/jpeg', 'image/webp'];
@@ -507,9 +471,15 @@ async function compressImageIterativeOpenSource(imgEl, originalSize, plan, sourc
     0.28,
   ];
 
+  let stepIdx = 0;
+  const totalOps = testMimes.length * qualitySteps.length;
   for (const mime of testMimes) {
     if (mime === 'image/png') {
-      // Apply UPNG-style palette quantization before PNG DEFLATE encoding
+      onProgress({
+        phase: 'upng',
+        percent: 58,
+        label: 'Menjalankan UPNG 8-bit palette quantization untuk PNG lossless...',
+      });
       const qCanvas = document.createElement('canvas');
       qCanvas.width = curW;
       qCanvas.height = curH;
@@ -528,6 +498,13 @@ async function compressImageIterativeOpenSource(imgEl, originalSize, plan, sourc
     }
 
     for (const q of qualitySteps) {
+      stepIdx += 1;
+      const pct = Math.min(82, Math.round(48 + (stepIdx / Math.max(1, totalOps)) * 34));
+      onProgress({
+        phase: 'binary-search',
+        percent: pct,
+        label: `Menguji enkoding ${mime === 'image/webp' ? 'WebP' : 'MozJPEG'} kualitas ${Math.round(q * 100)}%...`,
+      });
       const b = await canvasToBlob(baseCanvas, mime, q);
       if (b && b.size > 0 && b.size < originalSize) {
         candidates.push({
@@ -541,7 +518,6 @@ async function compressImageIterativeOpenSource(imgEl, originalSize, plan, sourc
     }
   }
 
-  // If still above targetBytes (e.g. already tiny or high-entropy image), do adaptive scale pass (0.82x and 0.68x)
   const bestSoFar = candidates.reduce(
     (best, c) => (!best || c.blob.size < best.blob.size ? c : best),
     null
@@ -549,6 +525,11 @@ async function compressImageIterativeOpenSource(imgEl, originalSize, plan, sourc
 
   if (!bestSoFar || bestSoFar.blob.size > targetBytes) {
     for (const scale of [0.82, 0.68]) {
+      onProgress({
+        phase: 'adaptive-scale',
+        percent: 88,
+        label: `Mengoptimalkan rasio kompresi lanjutan (${Math.round(scale * 100)}%)...`,
+      });
       const scaledW = Math.max(64, Math.round((curW * scale) / 2) * 2);
       const scaledH = Math.max(64, Math.round((curH * scale) / 2) * 2);
       const scaledCanvas = drawSteppedHighQuality(imgEl, scaledW, scaledH);
@@ -566,7 +547,6 @@ async function compressImageIterativeOpenSource(imgEl, originalSize, plan, sourc
     }
   }
 
-  // Pick candidate closest to targetBytes while strictly < originalSize
   const validCandidates = candidates.filter((c) => c.blob && c.blob.size < originalSize);
   if (validCandidates.length > 0) {
     validCandidates.sort((a, b) => {
@@ -574,8 +554,8 @@ async function compressImageIterativeOpenSource(imgEl, originalSize, plan, sourc
       const bFits = b.blob.size <= targetBytes;
       if (aFits && !bFits) return -1;
       if (!aFits && bFits) return 1;
-      if (aFits && bFits) return b.blob.size - a.blob.size; // Highest quality that fits target budget
-      return a.blob.size - b.blob.size; // Smallest available
+      if (aFits && bFits) return b.blob.size - a.blob.size;
+      return a.blob.size - b.blob.size;
     });
     return validCandidates[0];
   }
@@ -592,7 +572,7 @@ export async function compressMediaFile(
   file,
   { methodId = 'social-shield', presetId = 'tiktok-hd', onProgress = () => {} } = {}
 ) {
-  onProgress({ phase: 'inspect', percent: 14, label: 'Menganalisis bitstream & resolusi media...' });
+  onProgress({ phase: 'inspect', percent: 10, label: 'Menganalisis bitstream & resolusi media...' });
   const meta = await inspectMediaFile(file);
 
   const plan = planMediaCompression({
@@ -614,8 +594,8 @@ export async function compressMediaFile(
   if (meta.mediaKind === 'image') {
     onProgress({
       phase: 'strip',
-      percent: 36,
-      label: 'Membersihkan metadata EXIF/ICC & menjalankan kuantisasi palet open-source...',
+      percent: 26,
+      label: 'Membersihkan metadata EXIF/ICC tanpa menyentuh ketajaman piksel...',
     });
     const rawBuffer = await file.arrayBuffer();
     let strippedBuffer = rawBuffer;
@@ -634,20 +614,25 @@ export async function compressMediaFile(
       i.src = meta.previewUrl;
     });
 
-    onProgress({
-      phase: 'encode',
-      percent: 72,
-      label: `Menjalankan pencarian biner kualitas (${plan.methodLabel})...`,
-    });
-
     const chosen = await compressImageIterativeOpenSource(
       imgEl,
       file.size,
       plan,
       meta.mimeType,
-      strippedBlob
+      strippedBlob,
+      onProgress
     );
     const finalBlob = chosen.blob;
+
+    onProgress({
+      phase: 'verify',
+      percent: 94,
+      label: 'Memverifikasi integritas piksel gambar hasil kompresi...',
+    });
+    const imgValid = await verifyImageBlobReadable(finalBlob);
+    if (!imgValid) {
+      throw new Error('Gambar hasil kompresi gagal diverifikasi.');
+    }
 
     const ext = finalBlob.type.includes('png')
       ? 'png'
@@ -662,7 +647,10 @@ export async function compressMediaFile(
     onProgress({
       phase: 'done',
       percent: 100,
-      label: `Kompresi selesai! Berkurang -${savedPercent}% (${formatBytes(savedBytes)} lebih hemat).`,
+      label:
+        savedBytes > 0
+          ? `Kompresi selesai! Berkurang -${savedPercent}% (${formatBytes(savedBytes)} lebih hemat).`
+          : 'Gambar sudah dalam ukuran optimal — metadata dibersihkan tanpa kerusakan.',
     });
 
     return {
@@ -685,47 +673,98 @@ export async function compressMediaFile(
       durationSec: 0,
       plan,
       engineLabel: chosen.engine,
-      qualityBadge: `Hemat -${savedPercent}% · ${chosen.engine}`,
+      qualityBadge:
+        savedBytes > 0
+          ? `Hemat -${savedPercent}% · ${chosen.engine}`
+          : `Optimal (${chosen.engine})`,
     };
   }
 
-  // Real Video Compression Pipeline
+  // Real Video Compression Pipeline via FFmpeg WebAssembly H.264 / AAC (+ MediaRecorder fallback)
   onProgress({
-    phase: 'strip',
-    percent: 35,
-    label: 'Membersihkan atom padding MP4/MOV & mengompresi aliran bitrate video...',
-  });
-  const rawBuffer = await file.arrayBuffer();
-  onProgress({
-    phase: 'optimize',
-    percent: 72,
-    label: `Mengompresi stream video ke target ${plan.presetLabel} (${plan.targetVideoMbps} Mbps)...`,
+    phase: 'video-init',
+    percent: 14,
+    label: `Memuat mesin kompresi video nyata (${plan.presetLabel})...`,
   });
 
-  const compressedVideoBuffer = compressVideoBufferDeterministic(
-    rawBuffer,
-    plan.targetSavingsRatio || 0.54
-  );
-  await new Promise((r) => setTimeout(r, 180));
+  const engineResult = await compressVideoWithRealEngine(file, plan, onProgress);
+  const candidateBlob = engineResult.blob;
 
-  const finalVideoBlob = new Blob([compressedVideoBuffer], { type: meta.mimeType || 'video/mp4' });
+  onProgress({
+    phase: 'verify',
+    percent: 96,
+    label: 'Memverifikasi pemutaran video hasil kompresi (durasi & resolusi)...',
+  });
+
+  const playable = await verifyPlayableMediaBlob(candidateBlob, 'video');
+  if (!playable) {
+    throw new Error('Video hasil kompresi tidak lulus verifikasi pemutaran.');
+  }
+
+  let finalVideoBlob = candidateBlob;
+  let ext = engineResult.ext || 'mp4';
+  let engineLabel = engineResult.engineLabel || 'FFmpeg WebAssembly H.264 / AAC Real Transcoder';
+
+  if (candidateBlob.size >= file.size) {
+    // Do NOT inflate file size or return truncated garbage; check lossless MP4 atom strip or keep verified original
+    const origAb = await file.arrayBuffer();
+    const strippedOrig = stripMp4AtomsLossless(origAb);
+    if (strippedOrig.byteLength < origAb.byteLength) {
+      finalVideoBlob = new Blob([strippedOrig], { type: meta.mimeType || 'video/mp4' });
+      engineLabel = 'Lossless MP4 Atom Optimizer (Video Sumber Sudah Padat)';
+    } else {
+      finalVideoBlob = file;
+      const origExtMatch = String(file.name || '').match(/\.([a-z0-9]+)$/i);
+      ext = origExtMatch ? origExtMatch[1].toLowerCase() : 'mp4';
+      engineLabel = `${engineLabel} (File Sumber Sudah Sangat Padat)`;
+    }
+  }
+
+  // Read actual output dimensions
+  const outUrl = URL.createObjectURL(finalVideoBlob);
+  let actualW = plan.targetWidth;
+  let actualH = plan.targetHeight;
+  let actualDur = meta.durationSec;
+  if (typeof document !== 'undefined') {
+    await new Promise((resolve) => {
+      const v = document.createElement('video');
+      v.preload = 'metadata';
+      v.muted = true;
+      const t = setTimeout(resolve, 2500);
+      v.onloadedmetadata = () => {
+        clearTimeout(t);
+        if (v.videoWidth > 0) actualW = v.videoWidth;
+        if (v.videoHeight > 0) actualH = v.videoHeight;
+        if (Number.isFinite(v.duration) && v.duration > 0) {
+          actualDur = Math.round(v.duration * 10) / 10;
+        }
+        resolve();
+      };
+      v.onerror = () => {
+        clearTimeout(t);
+        resolve();
+      };
+      v.src = outUrl;
+    });
+  }
+
   const savedBytes = Math.max(0, file.size - finalVideoBlob.size);
   const savedPercent =
     file.size > 0 ? Math.max(0, Math.round((savedBytes / file.size) * 1000) / 10) : 0;
 
-  const extMatch = String(file.name || '').match(/\.([a-z0-9]+)$/i);
-  const ext = extMatch ? extMatch[1].toLowerCase() : 'mp4';
-
   onProgress({
     phase: 'done',
     percent: 100,
-    label: `Video berhasil dikompresi -${savedPercent}% (${formatBytes(savedBytes)} lebih ringan)!`,
+    label:
+      savedBytes > 0
+        ? `Video berhasil dikompresi -${savedPercent}% (${formatBytes(savedBytes)} lebih ringan)!`
+        : 'Video sumber sudah optimal & lolos verifikasi pemutaran!',
   });
 
   return {
     mediaKind: 'video',
     blob: finalVideoBlob,
-    outputUrl: URL.createObjectURL(finalVideoBlob),
+    outputUrl: outUrl,
     previewUrl: meta.previewUrl,
     fileName: `${baseName}-${plan.presetId}.${ext}`,
     originalSize: file.size,
@@ -737,12 +776,15 @@ export async function compressMediaFile(
     savedPercent,
     originalWidth: meta.width,
     originalHeight: meta.height,
-    targetWidth: plan.targetWidth,
-    targetHeight: plan.targetHeight,
-    durationSec: meta.durationSec,
+    targetWidth: actualW,
+    targetHeight: actualH,
+    durationSec: actualDur,
     plan,
-    engineLabel: 'Open-Source ISO BMFF Video Stream Compactor',
-    qualityBadge: `Hemat -${savedPercent}% · Target ${plan.targetVideoMbps} Mbps`,
+    engineLabel,
+    qualityBadge:
+      savedBytes > 0
+        ? `Hemat -${savedPercent}% · ${actualW}×${actualH}`
+        : `Bit-Optimal · ${actualW}×${actualH}`,
   };
 }
 

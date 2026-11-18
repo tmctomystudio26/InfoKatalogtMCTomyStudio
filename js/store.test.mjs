@@ -136,12 +136,15 @@ import {
 } from './tools-logic.js';
 import {
   buildOpenSourceWeservCompressUrl,
-  compressVideoBufferDeterministic,
   quantizeRgbaBufferOpenSource,
   stripJpegExifLossless,
   stripMp4AtomsLossless,
   stripPngChunksLossless,
 } from './compressor.js';
+import {
+  buildFfmpegTranscodeArgs,
+  buildFfmpegVideoCompressArgs,
+} from './media-engine.js';
 import {
   CONVERTER_CATEGORIES,
   CONVERTER_PRESETS,
@@ -2646,7 +2649,7 @@ test('51. isMobileTouchPlatform & shouldStopSilentHoldAndPauseNotification never
   );
 });
 
-test('52. Real Open-Source Media Compressor quantizes RGBA palettes, builds Weserv Libvips URLs, and deterministically compacts video bitstreams', () => {
+test('52. Real Open-Source Media Compressor & FFmpeg Transcode/Compress Argument Builders produce valid args and lossless MP4 atom cleanup', () => {
   const weservUrl = buildOpenSourceWeservCompressUrl('https://manifestudio.my.id/assets/hero-banner.jpg', {
     width: 1080,
     height: 1080,
@@ -2667,27 +2670,62 @@ test('52. Real Open-Source Media Compressor quantizes RGBA palettes, builds Wese
   const qAlpha = quantizeRgbaBufferOpenSource(alphaPixels, 5);
   assert.equal(qAlpha.hasAlpha, true);
 
-  // Deterministic MP4 video stream compactor genuinely reduces byte size while keeping ftyp + mdat header valid
-  const mdatPayload = new Uint8Array(2000).fill(0x55);
+  // Lossless MP4 atom stripping removes padding ('free') without corrupting mdat media samples
+  const mdatPayload = new Uint8Array(200).fill(0x55);
   const sampleMp4 = new Uint8Array(8 + 8 + 8 + mdatPayload.length);
   const dv = new DataView(sampleMp4.buffer);
-  // ftyp (8 bytes)
   dv.setUint32(0, 8, false);
   sampleMp4.set([0x66, 0x74, 0x79, 0x70], 4);
-  // free (8 bytes - stripped)
   dv.setUint32(8, 8, false);
   sampleMp4.set([0x66, 0x72, 0x65, 0x65], 12);
-  // mdat (8 + 2000 bytes)
   dv.setUint32(16, 8 + mdatPayload.length, false);
   sampleMp4.set([0x6d, 0x64, 0x61, 0x74], 20);
   sampleMp4.set(mdatPayload, 24);
 
-  const compressedMp4 = new Uint8Array(compressVideoBufferDeterministic(sampleMp4.buffer, 0.5));
-  assert.ok(compressedMp4.byteLength < sampleMp4.byteLength * 0.6);
-  // Starts with valid ftyp box
-  assert.equal(String.fromCharCode(compressedMp4[4], compressedMp4[5], compressedMp4[6], compressedMp4[7]), 'ftyp');
-  // Followed by compacted mdat box (free box stripped)
-  assert.equal(String.fromCharCode(compressedMp4[12], compressedMp4[13], compressedMp4[14], compressedMp4[15]), 'mdat');
+  const strippedMp4 = new Uint8Array(stripMp4AtomsLossless(sampleMp4.buffer));
+  assert.equal(strippedMp4.byteLength, 8 + 8 + mdatPayload.length);
+  assert.equal(String.fromCharCode(strippedMp4[4], strippedMp4[5], strippedMp4[6], strippedMp4[7]), 'ftyp');
+  assert.equal(String.fromCharCode(strippedMp4[12], strippedMp4[13], strippedMp4[14], strippedMp4[15]), 'mdat');
+
+  // Verify real FFmpeg WebAssembly CLI transcoding arguments for audio, video, and frame extraction
+  assert.deepEqual(buildFfmpegTranscodeArgs('in.mp4', 'out.mp3', 'mp3'), [
+    '-i', 'in.mp4', '-vn', '-c:a', 'libmp3lame', '-b:a', '192k', '-ar', '44100', '-ac', '2', '-y', 'out.mp3',
+  ]);
+  const m4aArgs = buildFfmpegTranscodeArgs('in.mp4', 'out.m4a', 'm4a');
+  assert.ok(m4aArgs.includes('aac') && m4aArgs.includes('+faststart') && m4aArgs.includes('ipod'));
+  const mp4aArgs = buildFfmpegTranscodeArgs('in.mp4', 'out.m4a', 'mp4a');
+  assert.deepEqual(mp4aArgs, m4aArgs);
+  assert.ok(buildFfmpegTranscodeArgs('in.mp4', 'out.aac', 'aac').includes('adts'));
+  assert.ok(buildFfmpegTranscodeArgs('in.mp4', 'out.wav', 'wav').includes('pcm_s16le'));
+  assert.ok(buildFfmpegTranscodeArgs('in.mp4', 'out.ogg', 'ogg').includes('libvorbis'));
+  assert.ok(buildFfmpegTranscodeArgs('in.mp4', 'out.flac', 'flac').includes('flac'));
+  assert.ok(buildFfmpegTranscodeArgs('in.mov', 'out.mp4', 'mp4').includes('libx264'));
+  assert.ok(buildFfmpegTranscodeArgs('in.mp4', 'out.webm', 'webm').includes('libvpx'));
+  assert.ok(buildFfmpegTranscodeArgs('in.mp4', 'out.gif', 'gif').some((a) => a.includes('lanczos')));
+  assert.ok(buildFfmpegTranscodeArgs('in.mp4', 'out.jpg', 'jpg').includes('-frames:v'));
+
+  // Verify real FFmpeg H.264/AAC video compression arguments ensure even dimensions & +faststart
+  const vArgs = buildFfmpegVideoCompressArgs('src.mp4', 'cmp.mp4', {
+    methodId: 'social-shield',
+    targetWidth: 1081,
+    targetHeight: 1921,
+    targetVideoMbps: 4.5,
+    tighterPass: false,
+  });
+  assert.ok(vArgs.includes('libx264'));
+  assert.ok(vArgs.includes('yuv420p'));
+  assert.ok(vArgs.includes('aac'));
+  assert.ok(vArgs.includes('+faststart'));
+  const vfVal = vArgs[vArgs.indexOf('-vf') + 1];
+  assert.ok(vfVal.includes('1082') && vfVal.includes('1922') && vfVal.includes('trunc(iw/2)*2'));
+  const vArgsPass2 = buildFfmpegVideoCompressArgs('src.mp4', 'cmp2.mp4', {
+    methodId: 'aggressive-slim',
+    targetWidth: 720,
+    targetHeight: 1280,
+    targetVideoMbps: 2.0,
+    tighterPass: true,
+  });
+  assert.equal(vArgsPass2[vArgsPass2.indexOf('-crf') + 1], '33');
 });
 
 test('53. Universal File Converter (converter.js) converts DOCX->PDF, Excel->PDF/CSV/JSON, PDF->JPG/PNG/TXT, JPG->PNG/ZIP, and MP4->M4A/WAV with verified binary signatures', async () => {
