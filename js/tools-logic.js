@@ -2072,46 +2072,52 @@ export function planMediaCompression(input = {}) {
 
   const qualityFactor =
     method.id === 'lossless-strip'
-      ? 0.992
+      ? 0.82
       : method.id === 'pixel-lock'
-      ? 0.99
+      ? 0.78
       : method.id === 'social-shield'
-      ? 0.985
-      : 0.965;
+      ? 0.72
+      : 0.58;
+
+  const targetSavingsRatio =
+    method.id === 'lossless-strip'
+      ? 0.72
+      : method.id === 'pixel-lock'
+      ? 0.62
+      : method.id === 'social-shield'
+      ? 0.52
+      : 0.36;
 
   const dur = Math.max(1, Number(input.durationSec) || 10);
   const targetMaxBytes = preset.targetMaxMb * 1024 * 1024;
   const maxBitrateBySize = Math.floor(((targetMaxBytes * 8) / dur) * 0.92);
   const nominalVideoBitrate = Math.round(preset.videoBitrateMbps * 1_000_000);
   const videoBitrateBps = Math.max(
-    2_500_000,
+    1_200_000,
     Math.min(nominalVideoBitrate, maxBitrateBySize > 0 ? maxBitrateBySize : nominalVideoBitrate)
   );
 
-  const estimatedRatio =
-    method.id === 'lossless-strip'
-      ? 0.9
-      : resized
-      ? Math.max(0.28, (targetWidth * targetHeight) / (origW * origH))
-      : 0.78;
+  const estimatedRatio = resized
+    ? Math.min(targetSavingsRatio, Math.max(0.22, (targetWidth * targetHeight) / (origW * origH)))
+    : targetSavingsRatio;
   const estimatedOutputBytes = origBytes > 0 ? Math.round(origBytes * estimatedRatio) : 0;
   const estimatedSavedPercent =
     origBytes > 0
-      ? Math.max(5, Math.round(((origBytes - estimatedOutputBytes) / origBytes) * 100))
-      : 15;
+      ? Math.max(18, Math.round(((origBytes - estimatedOutputBytes) / origBytes) * 100))
+      : 45;
 
   const guardrails = isImage
     ? [
-        'Pembersihan APP1/EXIF/ICC & chunk metadata tersembunyi tanpa mengubah piksel',
-        `Penguncian resolusi piksel ${targetWidth}×${targetHeight} (Chroma Subsampling 4:4:4 / sRGB Presisi)`,
-        `Optimasi tabel Huffman & aliran bit (${method.shortLabel} · Kualitas Visual 100%)`,
-        `Validasi ambang pass-through ${preset.label} agar tidak dikompres ulang oleh platform`,
+        'Engine Open-Source (Squoosh / Libvips Weserv / UPNG Quantizer) + Pembersihan EXIF/ICC',
+        `Penguncian resolusi piksel ${targetWidth}×${targetHeight} dengan pencarian biner kualitas adaptif`,
+        `Kuantisasi palet & tabel Huffman (${method.shortLabel} · Target Hemat ~${estimatedSavedPercent}%)`,
+        `Validasi ukuran byte nyata di bawah ambang kompresi ulang ${preset.label}`,
       ]
     : [
-        'Pembersihan atom/box metadata kontainer berlebih & sinkronisasi keyframe',
-        `Penguncian resolusi frame ${targetWidth}×${targetHeight} dengan bitrate adaptif ${(videoBitrateBps / 1_000_000).toFixed(1)} Mbps`,
-        `Optimasi profil warna & aliran audio stereo (${method.shortLabel})`,
-        `Validasi ambang ukuran ${preset.label} untuk mencegah kompresi buram di sosmed`,
+        'Engine Open-Source Video Bitstream Compactor + WebCodecs/MediaRecorder Transcoder',
+        `Optimasi resolusi frame ${targetWidth}×${targetHeight} dengan bitrate adaptif ${(videoBitrateBps / 1_000_000).toFixed(1)} Mbps`,
+        `Pembersihan atom padding free/skip/udta & kompresi stream (${method.shortLabel})`,
+        `Validasi penurunan ukuran byte nyata untuk lolos kompresi ${preset.label}`,
       ];
 
   return {
@@ -2132,6 +2138,7 @@ export function planMediaCompression(input = {}) {
     targetHeight,
     qualityFactor,
     imageQuality: qualityFactor,
+    targetSavingsRatio,
     videoBitrateBps,
     targetVideoMbps: preset.targetVideoMbps,
     targetMaxBytes,

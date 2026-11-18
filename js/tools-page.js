@@ -1,10 +1,10 @@
-import { createToolsHubController } from './tools-ui.js?v=41';
-import { initMusicPlayer } from './music.js?v=41';
-import { loadCatalogData } from './data.js?v=41';
-import { normalizeBrandConfig, normalizeUtilityConfig } from './store.js?v=41';
+import { createToolsHubController } from './tools-ui.js?v=42';
+import { initMusicPlayer } from './music.js?v=42';
+import { loadCatalogData } from './data.js?v=42';
+import { normalizeBrandConfig, normalizeUtilityConfig } from './store.js?v=42';
 
 const THEME_STORAGE_KEY = 'manifestudio_theme_v1';
-const VALID_TABS = new Set(['prayer', 'weather', 'worldclock', 'speedtest', 'downloader', 'compressor', 'music']);
+const VALID_TABS = new Set(['prayer', 'weather', 'worldclock', 'speedtest', 'downloader', 'compressor', 'converter', 'music']);
 
 let currentTheme = 'dark';
 let toolsHub = null;
@@ -92,6 +92,7 @@ const CONCISE_HEADER_NAV_LABELS = {
   speedtest: 'Speedtest',
   downloader: 'Downloader',
   compressor: 'Kompresor HD',
+  converter: 'Konversi File',
   music: 'Musik YT',
 };
 

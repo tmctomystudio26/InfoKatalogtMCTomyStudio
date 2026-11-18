@@ -135,10 +135,32 @@ import {
   wrapCorsMediaProxyIfNeeded,
 } from './tools-logic.js';
 import {
+  buildOpenSourceWeservCompressUrl,
+  compressVideoBufferDeterministic,
+  quantizeRgbaBufferOpenSource,
   stripJpegExifLossless,
   stripMp4AtomsLossless,
   stripPngChunksLossless,
 } from './compressor.js';
+import {
+  CONVERTER_CATEGORIES,
+  CONVERTER_PRESETS,
+  buildPdfDocumentBuffer,
+  convertAnyFile,
+  createSampleDocxBuffer,
+  createSampleFileForConversion,
+  createSampleXlsxBuffer,
+  createZipArchive,
+  detectSourceFormat,
+  encodePcmToWavBuffer,
+  encodeRgbaToPngBuffer,
+  extractTextFromPdfBuffer,
+  extractZipEntries,
+  getAvailableTargetFormats,
+  parseDocxBuffer,
+  parseExcelBuffer,
+  verifyConvertedBinarySignature,
+} from './converter.js';
 
 test('formatRupiah formats Indonesian currency accurately', () => {
   assert.equal(formatRupiah(22500), 'Rp22.500');
@@ -1658,10 +1680,11 @@ test('normalizeYtMusicTrack supports hybrid tracks with both videoId and backgro
 test('normalizeUtilityConfig, upsertUtilityItemInCatalog, and describeCatalogChanges manage utility icons, labels, page headers, and YT Music hero card', () => {
   const base = getDefaultCatalogSnapshot();
   const util = normalizeUtilityConfig(base.utilities);
-  assert.equal(util.items.length, 7);
+  assert.equal(util.items.length, 8);
   assert.equal(util.items.some((i) => i.id === 'downloader' && i.label === 'Downloader'), true);
+  assert.equal(util.items.some((i) => i.id === 'converter' && i.label === 'Konversi File'), true);
   assert.equal(util.musicHero.icon, './assets/icons/tool-music.svg');
-  assert.ok(DEFAULT_UTILITY_CONFIG.items.length === 7);
+  assert.ok(DEFAULT_UTILITY_CONFIG.items.length === 8);
 
   let next = upsertUtilityItemInCatalog(base, {
     id: 'downloader',
@@ -2622,6 +2645,130 @@ test('51. isMobileTouchPlatform & shouldStopSilentHoldAndPauseNotification never
     true
   );
 });
+
+test('52. Real Open-Source Media Compressor quantizes RGBA palettes, builds Weserv Libvips URLs, and deterministically compacts video bitstreams', () => {
+  const weservUrl = buildOpenSourceWeservCompressUrl('https://manifestudio.my.id/assets/hero-banner.jpg', {
+    width: 1080,
+    height: 1080,
+    quality: 74,
+    output: 'webp',
+  });
+  assert.ok(weservUrl.startsWith('https://wsrv.nl/?'));
+  assert.ok(weservUrl.includes('q=74'));
+  assert.ok(weservUrl.includes('output=webp'));
+
+  // UPNG-inspired RGBA palette quantization reduces entropy and detects alpha accurately
+  const opaquePixels = new Uint8Array([123, 211, 89, 255, 125, 213, 91, 255]);
+  const qOpaque = quantizeRgbaBufferOpenSource(opaquePixels, 5);
+  assert.equal(qOpaque.hasAlpha, false);
+  assert.equal(qOpaque.quantized[0], qOpaque.quantized[4]);
+
+  const alphaPixels = new Uint8Array([123, 211, 89, 128, 125, 213, 91, 255]);
+  const qAlpha = quantizeRgbaBufferOpenSource(alphaPixels, 5);
+  assert.equal(qAlpha.hasAlpha, true);
+
+  // Deterministic MP4 video stream compactor genuinely reduces byte size while keeping ftyp + mdat header valid
+  const mdatPayload = new Uint8Array(2000).fill(0x55);
+  const sampleMp4 = new Uint8Array(8 + 8 + 8 + mdatPayload.length);
+  const dv = new DataView(sampleMp4.buffer);
+  // ftyp (8 bytes)
+  dv.setUint32(0, 8, false);
+  sampleMp4.set([0x66, 0x74, 0x79, 0x70], 4);
+  // free (8 bytes - stripped)
+  dv.setUint32(8, 8, false);
+  sampleMp4.set([0x66, 0x72, 0x65, 0x65], 12);
+  // mdat (8 + 2000 bytes)
+  dv.setUint32(16, 8 + mdatPayload.length, false);
+  sampleMp4.set([0x6d, 0x64, 0x61, 0x74], 20);
+  sampleMp4.set(mdatPayload, 24);
+
+  const compressedMp4 = new Uint8Array(compressVideoBufferDeterministic(sampleMp4.buffer, 0.5));
+  assert.ok(compressedMp4.byteLength < sampleMp4.byteLength * 0.6);
+  // Starts with valid ftyp box
+  assert.equal(String.fromCharCode(compressedMp4[4], compressedMp4[5], compressedMp4[6], compressedMp4[7]), 'ftyp');
+  // Followed by compacted mdat box (free box stripped)
+  assert.equal(String.fromCharCode(compressedMp4[12], compressedMp4[13], compressedMp4[14], compressedMp4[15]), 'mdat');
+});
+
+test('53. Universal File Converter (converter.js) converts DOCX->PDF, Excel->PDF/CSV/JSON, PDF->JPG/PNG/TXT, JPG->PNG/ZIP, and MP4->M4A/WAV with verified binary signatures', async () => {
+  assert.ok(CONVERTER_CATEGORIES.length >= 5);
+  assert.ok(CONVERTER_PRESETS.length >= 12);
+
+  // 1. DOCX -> PDF
+  const docxFile = await createSampleFileForConversion('docx-to-pdf');
+  const parsedDocx = await parseDocxBuffer(await docxFile.arrayBuffer());
+  assert.ok(parsedDocx.paragraphs.length >= 3);
+  assert.ok(parsedDocx.tables.length >= 1);
+
+  const docxToPdf = await convertAnyFile(docxFile, { targetFormat: 'pdf' });
+  assert.equal(docxToPdf.verified, true);
+  assert.equal(docxToPdf.targetFormat, 'PDF');
+  assert.ok(docxToPdf.outputBytes > 250);
+  assert.ok(docxToPdf.signatureLabel.includes('%PDF-1.4'));
+
+  // 2. Excel (.xlsx) -> PDF, CSV, and JSON
+  const excelFile = await createSampleFileForConversion('excel-to-pdf');
+  const parsedRows = await parseExcelBuffer(await excelFile.arrayBuffer(), excelFile.name);
+  assert.equal(parsedRows.length, 5);
+  assert.equal(parsedRows[1][1], 'Canva Pro 1 Tahun Full Garansi');
+
+  const excelToPdf = await convertAnyFile(excelFile, { targetFormat: 'pdf' });
+  assert.equal(excelToPdf.verified, true);
+  assert.equal(excelToPdf.targetFormat, 'PDF');
+  assert.ok(excelToPdf.signatureLabel.includes('%PDF-1.4'));
+
+  const excelToCsv = await convertAnyFile(excelFile, { targetFormat: 'csv' });
+  const csvText = await excelToCsv.blob.text();
+  assert.ok(csvText.includes('Canva Pro 1 Tahun Full Garansi'));
+
+  const excelToJson = await convertAnyFile(excelFile, { targetFormat: 'json' });
+  const jsonRecords = JSON.parse(await excelToJson.blob.text());
+  assert.equal(jsonRecords.length, 4);
+  assert.equal(jsonRecords[0]['ID Produk'], 'MF-01');
+
+  // 3. PDF -> JPG, PNG, and TXT
+  const pdfFile = await createSampleFileForConversion('pdf-to-jpg');
+  const pdfLines = extractTextFromPdfBuffer(await pdfFile.arrayBuffer());
+  assert.ok(pdfLines.some((l) => l.includes('Manifestudio')));
+
+  const pdfToJpg = await convertAnyFile(pdfFile, { targetFormat: 'jpg' });
+  assert.equal(pdfToJpg.verified, true);
+  assert.equal(pdfToJpg.targetFormat, 'JPG');
+
+  const pdfToPng = await convertAnyFile(pdfFile, { targetFormat: 'png' });
+  assert.equal(pdfToPng.verified, true);
+  assert.equal(pdfToPng.targetFormat, 'PNG');
+
+  // 4. Image -> PNG, JPEG, ICO, PDF, and ZIP (with PKZIP roundtrip extraction!)
+  const sampleImg = await createSampleFileForConversion('jpg-to-png');
+  const imgToPng = await convertAnyFile(sampleImg, { targetFormat: 'png' });
+  assert.equal(imgToPng.verified, true);
+  assert.equal(imgToPng.targetFormat, 'PNG');
+
+  const imgToIco = await convertAnyFile(sampleImg, { targetFormat: 'ico' });
+  assert.equal(imgToIco.verified, true);
+  assert.equal(imgToIco.targetFormat, 'ICO');
+
+  const imgToZip = await convertAnyFile(sampleImg, { targetFormat: 'zip' });
+  assert.equal(imgToZip.verified, true);
+  assert.equal(imgToZip.targetFormat, 'ZIP');
+  const extractedEntries = await extractZipEntries(await imgToZip.blob.arrayBuffer());
+  assert.equal(extractedEntries.has(sampleImg.name), true);
+  assert.equal(extractedEntries.get(sampleImg.name).byteLength, sampleImg.size);
+
+  // 5. MP4 -> M4A (MP4A) and MP4 -> WAV
+  const mp4File = await createSampleFileForConversion('mp4-to-m4a');
+  const mp4ToM4a = await convertAnyFile(mp4File, { targetFormat: 'm4a' });
+  assert.equal(mp4ToM4a.verified, true);
+  assert.equal(mp4ToM4a.targetFormat, 'M4A');
+  assert.ok(mp4ToM4a.signatureLabel.includes('ftypM4A'));
+
+  const mp4ToWav = await convertAnyFile(mp4File, { targetFormat: 'wav' });
+  assert.equal(mp4ToWav.verified, true);
+  assert.equal(mp4ToWav.targetFormat, 'WAV');
+  assert.ok(mp4ToWav.signatureLabel.includes('RIFF WAVE'));
+});
+
 
 
 

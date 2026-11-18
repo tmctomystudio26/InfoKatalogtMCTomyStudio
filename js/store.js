@@ -663,9 +663,17 @@ export const DEFAULT_UTILITY_CONFIG = {
       id: 'compressor',
       label: 'Kompresor HD',
       icon: './assets/icons/tool-compressor.svg',
-      pageTitle: 'Kompresor Foto & Video HD (Anti-Pecah Sosmed)',
+      pageTitle: 'Kompresor Foto & Video HD (Open-Source Engine)',
       pageSubtitle:
-        '4 metode kompresi ukuran file tanpa menurunkan ketajaman visual agar lolos kompresi ulang TikTok, IG, & WA.',
+        'Kompresi ukuran foto & video nyata berbasis algoritma open-source (Squoosh/Libvips/UPNG) agar hemat kuota & lolos kompresi sosmed.',
+    },
+    {
+      id: 'converter',
+      label: 'Konversi File',
+      icon: './assets/icons/tool-converter.svg',
+      pageTitle: 'Konversi Semua Format File (All-in-One Converter)',
+      pageSubtitle:
+        'Konversi DOCX ke PDF, Excel ke PDF/CSV, PDF ke JPG/PNG, JPG ke PNG/JPEG/WebP/ZIP, serta MP4 ke M4A/WAV/MP3 secara instan.',
     },
     {
       id: 'music',

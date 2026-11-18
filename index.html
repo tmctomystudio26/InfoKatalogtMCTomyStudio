@@ -88,11 +88,11 @@ Dilengkapi Jadwal Sholat, Prakiraan Cuaca, Jam Dunia, Speedtest, Social Media Do
     />
 
     <!-- Styles -->
-    <link rel="stylesheet" href="./css/tokens.css?v=41" />
-    <link rel="stylesheet" href="./css/styles.css?v=41" />
+    <link rel="stylesheet" href="./css/tokens.css?v=42" />
+    <link rel="stylesheet" href="./css/styles.css?v=42" />
     <script>
       (function () {
-        var CURRENT_CACHE = 'manifestudio-cache-v41';
+        var CURRENT_CACHE = 'manifestudio-cache-v42';
         if ('caches' in window) {
           caches.keys().then(function (keys) {
             keys.forEach(function (k) {
@@ -101,7 +101,7 @@ Dilengkapi Jadwal Sholat, Prakiraan Cuaca, Jam Dunia, Speedtest, Social Media Do
           });
         }
         if ('serviceWorker' in navigator) {
-          navigator.serviceWorker.register('./sw.js?v=41').then(function (reg) {
+          navigator.serviceWorker.register('./sw.js?v=42').then(function (reg) {
             reg.update();
           }).catch(function () {});
         }
@@ -146,6 +146,7 @@ Dilengkapi Jadwal Sholat, Prakiraan Cuaca, Jam Dunia, Speedtest, Social Media Do
           <a href="./tools.html?tab=speedtest" class="header-nav-link">Speedtest</a>
           <a href="./tools.html?tab=downloader" class="header-nav-link">Downloader</a>
           <a href="./tools.html?tab=compressor" class="header-nav-link">Kompresor HD</a>
+          <a href="./tools.html?tab=converter" class="header-nav-link">Konversi File</a>
           <a href="./tools.html?tab=music" class="header-nav-link">Musik YT</a>
         </nav>
 
@@ -509,6 +510,6 @@ Dilengkapi Jadwal Sholat, Prakiraan Cuaca, Jam Dunia, Speedtest, Social Media Do
     <div id="cart-drawer-root" class="drawer-root" hidden></div>
     <div id="toast-notification" class="toast-notification" role="status" aria-live="polite" hidden></div>
 
-    <script type="module" src="./js/app.js?v=41"></script>
+    <script type="module" src="./js/app.js?v=42"></script>
   </body>
 </html>

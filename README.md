@@ -28,12 +28,13 @@ Platform web statis resmi **Manifestudio** (*by Tomy*) berbasis **100% Static HT
    - **Jam Dunia & Globe 3D Interaktif**: Waktu UTC internasional, konversi WIB/WITA/WIT, dan globe yang dapat diputar serta diklik per negara target.
    - **Speedtest Internet**: Meter kecepatan real-time 60fps, ping, jitter, loaded latency, download/upload berbobot berkelanjutan (Cloudflare Speed Edge), server node, ISP, dan info perangkat.
    - **Downloader Sosmed All-in-One + Bar Progres Live (`v23`)**: Unduh **Video MP4 HD & Audio M4A/MP3 bersamaan** pada YouTube (`Siputzx Ummy` + `4-node Tioo` + `vidsnap.app/proxy` CORS), serta **Reels, Foto HD, Carousel Multi-Slide, Story & Salin Caption** pada Instagram (`Siputzx sssinstagram` + `Ummy` + `fastdl`/`igram` fallback), bebas jebakan redirect HTML (`sf-converter`/`savetube`), lengkap dengan **Bar Progres Konversi & Streaming Download Real-Time** + pemutar pratinjau `<video>` / `<audio>` + ekstraksi `.wav` lokal.
-   - **Kompresor Foto & Video HD (Anti-Pecah Sosmed)**: 4 metode kompresi *zero-loss* dengan preset TikTok HD, Instagram HD, WhatsApp HD, dan Original 1:1 untuk mencegah penurunan kualitas saat unggah.
-4. **Pemutar YT Music Lengkap, Animasi Progres Live, Drawer Kategori Ikon, Mode Headset & Background Audio Desktop/Mobile Anti-Mati (`tools.html?tab=music` & Floating Dock, `v40`)**:
+   - **Kompresor Foto & Video HD Open-Source (`v42`)**: Menggabungkan kuantisasi iteratif *binary-search* (*Squoosh / Browser-Image-Compression*), kuantisasi palet RGBA 8-bit (*UPNG*), *deterministic MP4 bitstream compactor*, dan integrasi **Weserv/Images Libvips Cloud API (`wsrv.nl`)** untuk menghasilkan penghematan byte nyata (`30%–80%`) pada foto & video dengan preset TikTok HD, Instagram HD, WhatsApp HD, dan Original 1:1.
+   - **Konversi Semua File Multi-Format (`tools.html?tab=converter`, `v42`)**: Konversi biner terverifikasi untuk **DOCX → PDF/TXT/HTML**, **Excel (`.xlsx`/`.csv`) → PDF/CSV/JSON/HTML**, **PDF → JPG/PNG/TXT**, **JPG ↔ PNG ↔ JPEG ↔ WebP → PDF/ICO/SVG**, **File/JPG → Arsip ZIP (CRC-32)**, serta **MP4 → M4A (`mp4a`)/WAV/MP3/JPG**, lengkap dengan 7 tombol uji sampel instan dan lencana verifikasi *magic bytes*.
+4. **Pemutar YT Music Lengkap, Animasi Progres Live, Drawer Kategori Ikon, Mode Headset & Background Audio Desktop/Mobile Anti-Mati (`tools.html?tab=music` & Floating Dock, `v42`)**:
    - Menggabungkan **YT Music Community API** (`Siputzx YT Search` & `Ummy`), **Stream Full-Length Terverifikasi (`api.audius.co` dengan probe `/stream` + Katalog Viral Indonesia Single-Song `75s–900s`)**, dan **YouTube IFrame Audio Engine** — bebas preview 30 detik (`>= 75 detik` wajib) dan menyaring kompilasi multi-jam dari daftar kategori.
    - **Animasi Progres Loading & Drawer Kategori Slide-Out (`v39`)**: Dilengkapi indikator progres `%` animasi + *shimmer skeleton* saat mencari/memuat, serta tombol ikon **Kategori (14)** yang membuka panel kategori horizontal slide-out lengkap dengan tombol **Minimize**, lencana `LIVE`/`HOT`, dan 8 chip **Tren Saat Ini** real-time.
    - **Tetap Menyala di Laptop/Desktop & HP Saat Layar Mati / Pindah Tab / Minimize / Pindah Aplikasi (`v40`)**: Deteksi platform desktop vs mobile (`isMobileTouchPlatform`) menjaga pemutar YouTube IFrame & native `<audio>` tetap menyala tanpa jeda di laptop/desktop saat pindah tab, minimize, atau pindah aplikasi, dipadukan dengan *Silent-Hold Audio Bridge* PCM micro-dither + `pickBackgroundSafeNextTrack` untuk mobile, **Gambar-dalam-Gambar (PiP)**, **🎧 Mode Headset**, dan **MediaSession Lock-Screen Controls**.
-   - **Tata Letak Responsif Standar YT Music Mobile & Desktop (`v41`)**: Seluruh 7 menu utilitas mobile tampil sekaligus dalam kisi ikon 2 baris simetris bebas geser horizontal, stage pemutar tetap tampil di atas lipatan layar HP, tab bebas terpotong, PiP bebas bertumpuk dengan FAB, serta Mode Gelap & Terang bebas overflow.
+   - **Tata Letak Responsif Standar YT Music Mobile & Desktop (`v41–v42`)**: Seluruh 8 menu utilitas mobile tampil sekaligus dalam kisi ikon 2 baris (4×2 simetris) bebas geser horizontal, stage pemutar tetap tampil di atas lipatan layar HP, tab bebas terpotong, PiP bebas bertumpuk dengan FAB, serta Mode Gelap & Terang bebas overflow.
 5. **Panel Admin Terenkripsi AES-256-GCM (`admin.html`)**:
    - Dilindungi PBKDF2-SHA256 + verifikasi token GitHub PAT.
    - Kelola produk, sub-varian, harga, stok, kategori layanan custom, **kuota pemakaian voucher**, **logo brand**, **tagline/footer**, **biaya layanan**, **kontak & logo sosmed**, **FAQ**, **OpenGraph & Meta Tag Live** (otomatis menyinkronkan `index.html`), **Slide Banner**, bar progres publikasi GitHub, serta **Riwayat Perubahan Terperinci per Aksi (maks 12 log + Restore 1-klik)**.
@@ -45,15 +46,15 @@ Platform web statis resmi **Manifestudio** (*by Tomy*) berbasis **100% Static HT
 ```text
 ├── index.html            # Beranda katalog toko, multi-banner carousel, drawer checkout & FAQ
 ├── order.html            # Halaman konfirmasi invoice dedikasi & unduh struk Canvas 2D
-├── tools.html            # Halaman Menu Utilitas (Sholat, Cuaca, Jam Dunia, Speedtest, Downloader, Kompresor HD)
+├── tools.html            # Halaman Menu Utilitas (Sholat, Cuaca, Jam Dunia, Speedtest, Downloader, Kompresor HD, Konversi File, Musik YT)
 ├── admin.html            # Panel Admin terenkripsi AES-256-GCM (Kendali penuh toko & CMS)
 ├── BLUEPRINT.md          # Arsitektur teknis lengkap, tujuan proyek, daftar API & storage keys
-├── ROADMAP.md            # Pencapaian milestone (Fase 1-7) & rencana fase berikutnya
+├── ROADMAP.md            # Pencapaian milestone (Fase 1-9) & rencana fase berikutnya
 ├── data/
 │   ├── catalog.json      # Single Source of Truth katalog, brand, OpenGraph, banners, kategori, voucher & FAQ
 │   └── catalog-history.json # Log riwayat perubahan katalog (maks 12 snapshot + rincian aksi)
 ├── css/                  # Design tokens & responsive styles
-├── js/                   # Native ES Modules (store, tools-logic, downloader, compressor, speedtest, music, vault, admin)
+├── js/                   # Native ES Modules (store, tools-logic, downloader, compressor, converter, speedtest, music, vault, admin)
 └── assets/               # Ikon SVG, gambar banner, logo produk, uploads & og-manifestudio.jpg (1200×630)
 ```
 

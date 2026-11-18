@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none">
+  <defs>
+    <linearGradient id="convBg" x1="6" y1="6" x2="58" y2="58" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#7C3AED" />
+      <stop offset="52%" stop-color="#EC4899" />
+      <stop offset="100%" stop-color="#F97316" />
+    </linearGradient>
+    <linearGradient id="convAccent" x1="14" y1="14" x2="50" y2="50" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#FDE047" />
+      <stop offset="100%" stop-color="#FBCFE8" />
+    </linearGradient>
+  </defs>
+  <rect x="4" y="4" width="56" height="56" rx="16" fill="url(#convBg)" />
+  <rect x="13" y="13" width="19" height="24" rx="4" stroke="#FFFFFF" stroke-width="2.4" fill="rgba(255,255,255,0.14)" />
+  <path d="M17 21H28M17 26H25" stroke="#FFFFFF" stroke-width="2.2" stroke-linecap="round" />
+  <rect x="32" y="27" width="19" height="24" rx="4" stroke="url(#convAccent)" stroke-width="2.4" fill="rgba(15,23,42,0.28)" />
+  <path d="M36 35H47M36 40H44M36 45H42" stroke="#FDE047" stroke-width="2.2" stroke-linecap="round" />
+  <path d="M36 16H45C47.2091 16 49 17.7909 49 20V23" stroke="#FFFFFF" stroke-width="2.4" stroke-linecap="round" />
+  <path d="M45 20L49 24L53 20" stroke="#FFFFFF" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" />
+  <path d="M28 48H19C16.7909 48 15 46.2091 15 44V41" stroke="#FDE047" stroke-width="2.4" stroke-linecap="round" />
+  <path d="M19 44L15 40L11 44" stroke="#FDE047" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" />
+</svg>
