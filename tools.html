@@ -59,11 +59,11 @@
       rel="stylesheet"
     />
 
-    <link rel="stylesheet" href="./css/tokens.css?v=44" />
-    <link rel="stylesheet" href="./css/styles.css?v=44" />
+    <link rel="stylesheet" href="./css/tokens.css?v=45" />
+    <link rel="stylesheet" href="./css/styles.css?v=45" />
     <script>
       (function () {
-        var CURRENT_CACHE = 'manifestudio-cache-v44';
+        var CURRENT_CACHE = 'manifestudio-cache-v45';
         if ('caches' in window) {
           caches.keys().then(function (keys) {
             keys.forEach(function (k) {
@@ -72,7 +72,7 @@
           });
         }
         if ('serviceWorker' in navigator) {
-          navigator.serviceWorker.register('./sw.js?v=44').then(function (reg) {
+          navigator.serviceWorker.register('./sw.js?v=45').then(function (reg) {
             reg.update();
           }).catch(function () {});
         }
@@ -106,6 +106,7 @@
           <button type="button" class="header-nav-link" data-tools-nav="downloader">Downloader</button>
           <button type="button" class="header-nav-link" data-tools-nav="compressor">Kompresor HD</button>
           <button type="button" class="header-nav-link" data-tools-nav="converter">Konversi File</button>
+          <button type="button" class="header-nav-link" data-tools-nav="songfinder">Cari Lagu</button>
           <button type="button" class="header-nav-link" data-tools-nav="music">Musik YT</button>
         </nav>
 
@@ -178,6 +179,6 @@
     </footer>
 
     <div id="toast-notification" class="toast-notification" role="status" aria-live="polite" hidden></div>
-    <script type="module" src="./js/tools-page.js?v=44"></script>
+    <script type="module" src="./js/tools-page.js?v=45"></script>
   </body>
 </html>

@@ -1,7 +1,7 @@
-import { PENDING_ORDER_STORAGE_KEY, formatRupiah, normalizeBrandConfig } from './store.js?v=44';
-import { loadCatalogData } from './data.js?v=44';
-import { generateReceiptImage } from './receipt.js?v=44';
-import { initMusicPlayer } from './music.js?v=44';
+import { PENDING_ORDER_STORAGE_KEY, formatRupiah, normalizeBrandConfig } from './store.js?v=45';
+import { loadCatalogData } from './data.js?v=45';
+import { generateReceiptImage } from './receipt.js?v=45';
+import { initMusicPlayer } from './music.js?v=45';
 
 const THEME_STORAGE_KEY = 'manifestudio_theme_v1';
 

@@ -164,6 +164,15 @@ import {
   parseExcelBuffer,
   verifyConvertedBinarySignature,
 } from './converter.js';
+import {
+  REFERENCE_SONG_FINGERPRINTS,
+  buildCrossPlatformMusicAndVideoLinks,
+  computeAcousticFingerprintFromPcm,
+  detectMediaFileKind,
+  extractEmbeddedMediaTags,
+  parseSongQueryFromFilenameAndTags,
+  rankSongCandidates,
+} from './song-finder.js';
 
 test('formatRupiah formats Indonesian currency accurately', () => {
   assert.equal(formatRupiah(22500), 'Rp22.500');
@@ -1683,11 +1692,12 @@ test('normalizeYtMusicTrack supports hybrid tracks with both videoId and backgro
 test('normalizeUtilityConfig, upsertUtilityItemInCatalog, and describeCatalogChanges manage utility icons, labels, page headers, and YT Music hero card', () => {
   const base = getDefaultCatalogSnapshot();
   const util = normalizeUtilityConfig(base.utilities);
-  assert.equal(util.items.length, 8);
+  assert.equal(util.items.length, 9);
   assert.equal(util.items.some((i) => i.id === 'downloader' && i.label === 'Downloader'), true);
   assert.equal(util.items.some((i) => i.id === 'converter' && i.label === 'Konversi File'), true);
+  assert.equal(util.items.some((i) => i.id === 'songfinder' && i.label === 'Cari Judul Lagu'), true);
   assert.equal(util.musicHero.icon, './assets/icons/tool-music.svg');
-  assert.ok(DEFAULT_UTILITY_CONFIG.items.length === 8);
+  assert.ok(DEFAULT_UTILITY_CONFIG.items.length === 9);
 
   let next = upsertUtilityItemInCatalog(base, {
     id: 'downloader',
@@ -2899,3 +2909,102 @@ test('54. Expanded Multi-Format Converter supports RTF/MD/HTML/TSV/XML/YAML/BMP/
   assert.equal(zipToPdf.verified, true);
   assert.ok(zipToPdf.signatureLabel.includes('%PDF-1.4'));
 });
+
+test('55. Multi-Engine Song & Video Identifier (song-finder.js) auto-detects audio vs video, parses ID3/MP4 tags, computes acoustic fingerprints, ranks song matches, and generates music + social video similarity links', () => {
+  // 1. Magic-byte auto-detection between Audio (MP3/M4A/WAV) and Video (MP4/WebM)
+  const mp3Header = new Uint8Array([0x49, 0x44, 0x33, 0x03, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00]);
+  const detectedMp3 = detectMediaFileKind('clip_misterius.bin', '', mp3Header);
+  assert.equal(detectedMp3.mediaKind, 'audio');
+  assert.equal(detectedMp3.ext, 'mp3');
+
+  const mp4VideoHeader = new Uint8Array([0x00, 0x00, 0x00, 0x18, 0x66, 0x74, 0x79, 0x70, 0x69, 0x73, 0x6f, 0x6d]);
+  const detectedMp4 = detectMediaFileKind('tren-tiktok-viral.mp4', 'video/mp4', mp4VideoHeader);
+  assert.equal(detectedMp4.mediaKind, 'video');
+  assert.equal(detectedMp4.ext, 'mp4');
+
+  const m4aAudioHeader = new Uint8Array([0x00, 0x00, 0x00, 0x18, 0x66, 0x74, 0x79, 0x70, 0x4d, 0x34, 0x41, 0x20]);
+  const detectedM4a = detectMediaFileKind('rekaman-suara.m4a', 'audio/mp4', m4aAudioHeader);
+  assert.equal(detectedM4a.mediaKind, 'audio');
+  assert.equal(detectedM4a.ext, 'm4a');
+
+  // 2. Binary ID3v2 Tag Extractor (TIT2 + TPE1 + TALB)
+  const enc = new TextEncoder();
+  const buildId3Frame = (id, text) => {
+    const strBytes = enc.encode(text);
+    const len = strBytes.length + 1;
+    const frame = new Uint8Array(10 + len);
+    frame.set(enc.encode(id), 0);
+    frame[7] = len;
+    frame[10] = 3; // UTF-8
+    frame.set(strBytes, 11);
+    return frame;
+  };
+  const fTitle = buildId3Frame('TIT2', 'Garam & Madu (Sakit Dadaku)');
+  const fArtist = buildId3Frame('TPE1', 'Tenxi, Naykilla & Jemsii');
+  const fAlbum = buildId3Frame('TALB', 'Garam & Madu - Single');
+  const totalTagPayload = fTitle.length + fArtist.length + fAlbum.length;
+  const id3Buf = new Uint8Array(10 + totalTagPayload + 32);
+  id3Buf.set([0x49, 0x44, 0x33, 0x03, 0x00, 0x00, 0x00, 0x00, 0x00, totalTagPayload], 0);
+  id3Buf.set(fTitle, 10);
+  id3Buf.set(fArtist, 10 + fTitle.length);
+  id3Buf.set(fAlbum, 10 + fTitle.length + fArtist.length);
+
+  const tags = extractEmbeddedMediaTags(id3Buf.buffer);
+  assert.equal(tags.title, 'Garam & Madu (Sakit Dadaku)');
+  assert.equal(tags.artist, 'Tenxi, Naykilla & Jemsii');
+  assert.equal(tags.album, 'Garam & Madu - Single');
+
+  // 3. Filename & social caption tokenizer strips platform noise
+  const parsedQ = parseSongQueryFromFilenameAndTags(
+    'ssstik.io_bernadya_untungnya_hidup_harus_tetap_berjalan_7391827391823_tiktok_hd_1080p.mp4',
+    {},
+    ''
+  );
+  assert.ok(parsedQ.primaryQuery.toLowerCase().includes('bernadya'));
+  assert.ok(parsedQ.primaryQuery.toLowerCase().includes('untungnya'));
+  assert.equal(parsedQ.primaryQuery.toLowerCase().includes('ssstik'), false);
+
+  // 4. Acoustic Chromagram & BPM analyzer on synthetic 440Hz (A4) sine wave with 120 BPM amplitude pulses
+  const sr = 22050;
+  const pcm = new Float32Array(sr * 3);
+  for (let i = 0; i < pcm.length; i += 1) {
+    const t = i / sr;
+    const beatPulse = 0.5 + 0.5 * Math.sin(2 * Math.PI * 2.0 * t); // 2 Hz = 120 BPM
+    pcm[i] = Math.sin(2 * Math.PI * 440 * t) * beatPulse * 0.7;
+  }
+  const acoustic = computeAcousticFingerprintFromPcm(pcm, sr);
+  assert.equal(acoustic.dominantPitch, 'A');
+  assert.ok(acoustic.bpm >= 76 && acoustic.bpm <= 176);
+  assert.ok(acoustic.fingerprintHex.startsWith('FP-'));
+
+  // 5. Candidate scorer ranks exact song match near ~99.8%
+  const ranked = rankSongCandidates(REFERENCE_SONG_FINGERPRINTS, {
+    embeddedTags: tags,
+    parsedQuery: parseSongQueryFromFilenameAndTags('tenxi-garam-madu.mp3', tags, ''),
+    durationSec: 184,
+    acoustic: { bpm: 132, dominantPitch: 'C#' },
+  });
+  assert.equal(ranked[0].title, 'Garam & Madu (Sakit Dadaku)');
+  assert.ok(ranked[0].similarityPercent >= 98);
+
+  // 6. Cross-platform link builder outputs music sources for audio AND social video similarity sources for video
+  const audioLinks = buildCrossPlatformMusicAndVideoLinks({
+    title: ranked[0].title,
+    artist: ranked[0].artist,
+    mediaKind: 'audio',
+  });
+  assert.ok(audioLinks.musicSources.length >= 6);
+  assert.equal(audioLinks.videoSources.length, 0);
+
+  const videoLinks = buildCrossPlatformMusicAndVideoLinks({
+    title: ranked[0].title,
+    artist: ranked[0].artist,
+    mediaKind: 'video',
+  });
+  assert.ok(videoLinks.musicSources.length >= 6);
+  assert.ok(videoLinks.videoSources.length >= 4);
+  assert.ok(videoLinks.videoSources.some((v) => v.platform.includes('TikTok')));
+  assert.ok(videoLinks.videoSources.some((v) => v.platform.includes('Instagram')));
+  assert.ok(videoLinks.videoSources.some((v) => v.platform.includes('YouTube')));
+});
+

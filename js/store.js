@@ -608,9 +608,9 @@ export const DEFAULT_UTILITY_CONFIG = {
   callout: {
     icon: './assets/icons/menu-utilitas.svg',
     title: 'Menu Utilitas',
-    badge: '7 Fitur Gratis',
+    badge: '9 Fitur Gratis',
     description:
-      'Jadwal Sholat · Cuaca · Jam Dunia & Globe · Speedtest · Downloader (Video/Foto/Story/Caption) · Kompres HD · YT Music',
+      'Jadwal Sholat · Cuaca · Jam Dunia & Globe · Speedtest · Downloader · Kompres HD · Konversi File · Cari Judul Lagu & Video · YT Music',
   },
   musicHero: {
     icon: './assets/icons/tool-music.svg',
@@ -665,7 +665,7 @@ export const DEFAULT_UTILITY_CONFIG = {
       icon: './assets/icons/tool-compressor.svg',
       pageTitle: 'Kompresor Foto & Video HD (Open-Source Engine)',
       pageSubtitle:
-        'Kompresi ukuran foto & video nyata berbasis algoritma open-source (Squoosh/Libvips/UPNG) agar hemat kuota & lolos kompresi sosmed.',
+        'Kompresi ukuran foto & video nyata berbasis algoritma open-source (FFmpeg WASM/Squoosh/UPNG) agar hemat kuota & lolos kompresi sosmed.',
     },
     {
       id: 'converter',
@@ -674,6 +674,14 @@ export const DEFAULT_UTILITY_CONFIG = {
       pageTitle: 'Konversi Semua Format File (All-in-One Converter)',
       pageSubtitle:
         'Konversi DOCX ke PDF, Excel ke PDF/CSV, PDF ke JPG/PNG, JPG ke PNG/JPEG/WebP/ZIP, serta MP4 ke M4A/WAV/MP3 secara instan.',
+    },
+    {
+      id: 'songfinder',
+      label: 'Cari Judul Lagu',
+      icon: './assets/icons/tool-songfinder.svg',
+      pageTitle: 'Cari Judul Lagu, Musik & Sumber Video (Multi-API & AI Identifier)',
+      pageSubtitle:
+        'Unggah file audio atau video untuk mendeteksi judul lagu dengan kemiripan hingga ~100%, lengkap dengan link YouTube, Spotify, Apple Music, TikTok, IG Reels & sumber video mirip.',
     },
     {
       id: 'music',

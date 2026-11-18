@@ -22,36 +22,40 @@ import {
   matchIndonesianCityQuery,
   planMediaCompression,
   resolveAccurateWeatherCondition,
-} from './tools-logic.js?v=44';
+} from './tools-logic.js?v=45';
 import {
   describeLocationSource,
   resolveUserLocation,
   searchCitiesOnline,
   setManualLocation,
-} from './location.js?v=44';
-import { createInteractiveGlobe } from './globe.js?v=44';
+} from './location.js?v=45';
+import { createInteractiveGlobe } from './globe.js?v=45';
 import {
   createSpeedometerGauge,
   fetchSpeedtestEnvironment,
   readClientDeviceTelemetry,
   runInternetSpeedtest,
-} from './speedtest.js?v=44';
+} from './speedtest.js?v=45';
 import {
   extractAudioFromVideoUrl,
   fetchMediaDownload,
   triggerBatchPhotoDownload,
   triggerDirectMediaSave,
-} from './downloader.js?v=44';
-import { compressMediaFile, inspectMediaFile } from './compressor.js?v=44';
+} from './downloader.js?v=45';
+import { compressMediaFile, inspectMediaFile } from './compressor.js?v=45';
 import {
   ALL_TARGET_FORMATS,
   convertAnyFile,
   detectSourceFormat,
   getAvailableTargetFormats,
-} from './converter.js?v=44';
-import { formatAudioTime, getLoadingProgressMeta, isTrackInWatchLater } from './music-logic.js?v=44';
-import { MUSIC_PRESET_CATEGORIES, getMusicController, initMusicPlayer } from './music.js?v=44';
-import { normalizeUtilityConfig } from './store.js?v=44';
+} from './converter.js?v=45';
+import {
+  detectMediaFileKind,
+  identifyMediaSongAndVideo,
+} from './song-finder.js?v=45';
+import { formatAudioTime, getLoadingProgressMeta, isTrackInWatchLater } from './music-logic.js?v=45';
+import { MUSIC_PRESET_CATEGORIES, getMusicController, initMusicPlayer } from './music.js?v=45';
+import { normalizeUtilityConfig } from './store.js?v=45';
 
 const PRAYER_CACHE_KEY = 'manifestudio_prayer_cache_v1';
 const MYQURAN_CITIES_KEY = 'manifestudio_myquran_cities_v1';
@@ -439,6 +443,15 @@ export function createToolsHubController({
     convProgressLabel: '',
     convError: '',
     convResult: null,
+    sfFile: null,
+    sfKindInfo: null,
+    sfPreviewUrl: '',
+    sfUserHint: '',
+    sfLoading: false,
+    sfProgressPct: 0,
+    sfProgressLabel: '',
+    sfError: '',
+    sfResult: null,
     musicBrowserTab: 'queue', // 'queue' | 'playlists' | 'watch-later'
     musicCategoryDrawerOpen: false,
     musicSelectedPlaylistId: '',
@@ -2117,6 +2130,402 @@ export function createToolsHubController({
     `;
   }
 
+  function renderSongFinderPanel() {
+    const file = toolState.sfFile;
+    const kindInfo = toolState.sfKindInfo;
+    const res = toolState.sfResult;
+    const showProgress = Boolean(toolState.sfLoading || res || file);
+    const pct = toolState.sfLoading
+      ? Math.max(6, Math.min(99, Math.round(toolState.sfProgressPct || 12)))
+      : res
+      ? 100
+      : 0;
+    const progressText = toolState.sfLoading
+      ? toolState.sfProgressLabel || 'Mengidentifikasi sidik jari lagu & video...'
+      : res
+      ? `Identifikasi selesai! "${res.bestMatch.title}" — ${res.bestMatch.artist} (${res.bestMatch.similarityPercent}% cocok)`
+      : file && kindInfo
+      ? `Terdeteksi ${kindInfo.formatLabel} — Klik "Cari Judul Lagu & Sumber Sekarang"`
+      : 'Masukkan file audio atau video untuk membaca jenis media & mencari judul lagu otomatis';
+
+    return `
+      <div class="tool-panel" data-testid="songfinder-panel">
+        <div class="compressor-hero-card">
+          <div class="compressor-head">
+            <div>
+              <span class="tool-kicker">Multi-API &amp; Public AI Music + Social Video Identifier · 7 Engine Paralel</span>
+              <h3 class="tool-subhead">Cari Judul Lagu, Musik &amp; Sumber Video Mirip (Audio / Video Otomatis)</h3>
+              <p class="tool-hint">
+                Masukkan file <strong>Audio</strong> (MP3, WAV, M4A, AAC, OGG, FLAC) maupun <strong>Video</strong> (MP4, MOV, WebM, MKV). Sistem otomatis mendeteksi jenis file, menganalisis sidik jari akustik + metadata + AI publik + multi-API musik (iTunes, YouTube Music, Spotify, Audius, MusicBrainz), serta khusus untuk file <strong>Video</strong> juga menganalisis kemiripan frame visual lintas <strong>YouTube, TikTok, Instagram Reels, &amp; Sosmed</strong>.
+              </p>
+            </div>
+          </div>
+
+          <!-- 1. File Upload / Dropzone at the very top right after Title & Description -->
+          <div class="comp-section-block" style="margin-top:0.35rem;">
+            <label class="comp-block-label">1. Masukkan atau Pilih File Audio / Video yang Ingin Dicari Judul Lagu &amp; Sumbernya:</label>
+            <div class="comp-dropzone" id="sf-dropzone" data-testid="sf-dropzone">
+              <input
+                type="file"
+                id="sf-file-input"
+                data-testid="sf-file-input"
+                class="visually-hidden-file"
+                accept="audio/*,video/*,.mp3,.wav,.m4a,.mp4a,.aac,.ogg,.flac,.opus,.mp4,.mov,.webm,.mkv,.avi"
+              />
+              <div class="comp-dropzone-inner">
+                <div class="comp-dropzone-icon">
+                  <img src="./assets/icons/tool-songfinder.svg" alt="" width="44" height="44" />
+                </div>
+                <div class="comp-dropzone-copy">
+                  <strong>${file ? escapeHtml(file.name) : 'Pilih atau Tarik File Audio / Video ke Sini'}</strong>
+                  <span>
+                    ${
+                      file && kindInfo
+                        ? `${escapeHtml(kindInfo.badge)} · ${escapeHtml(kindInfo.formatLabel)} · ${formatBytes(file.size)}`
+                        : 'Mendukung semua Audio (MP3, M4A, WAV, AAC, OGG, FLAC) & Video (MP4, MOV, WebM, MKV) — Deteksi Otomatis Audio vs Video'
+                    }
+                  </span>
+                </div>
+                <div class="comp-dropzone-actions">
+                  <label for="sf-file-input" class="btn btn-secondary btn-sm admin-file-trigger">
+                    ${file ? 'Ganti File' : 'Pilih Audio / Video'}
+                  </label>
+                  ${
+                    file
+                      ? `<button type="button" class="btn btn-primary btn-sm" id="sf-run-btn" data-testid="sf-run-btn" ${toolState.sfLoading ? 'disabled' : ''}>
+                          ${toolState.sfLoading ? 'Mengidentifikasi...' : 'Cari Judul Lagu & Sumber'}
+                        </button>`
+                      : ''
+                  }
+                </div>
+              </div>
+            </div>
+
+            <!-- Auto-detected Media Type & Optional Lyrics/Caption Context Input -->
+            <div class="conv-auto-dropdown-bar">
+              <div class="conv-detected-box ${kindInfo ? 'is-detected' : ''}" data-testid="sf-detected-box">
+                <span class="conv-detected-icon mono-num">
+                  ${kindInfo ? (kindInfo.mediaKind === 'video' ? 'VID' : 'AUD') : 'AUTO'}
+                </span>
+                <div class="conv-detected-copy">
+                  <span class="conv-detected-kicker" data-testid="sf-detected-kind">
+                    ${
+                      kindInfo
+                        ? kindInfo.mediaKind === 'video'
+                          ? '✓ FILE VIDEO TERDETEKSI (Mode Lagu + Analisis Kemiripan Video Sosmed)'
+                          : '✓ FILE AUDIO TERDETEKSI (Mode Identifikasi Lagu & Sumber Musik)'
+                        : 'Deteksi Otomatis Audio / Video'
+                    }
+                  </span>
+                  <strong class="conv-detected-title" data-testid="sf-detected-label">
+                    ${
+                      file && kindInfo
+                        ? `${escapeHtml(kindInfo.formatLabel)} (${formatBytes(file.size)})`
+                        : 'Belum ada file audio/video dipilih'
+                    }
+                  </strong>
+                  <span class="conv-detected-sub">
+                    ${
+                      kindInfo?.mediaKind === 'video'
+                        ? 'Mengekstrak spektrum audio + 3 keyframe visual untuk mencari lagu & sumber video mirip di YT, TikTok, IG'
+                        : 'Menggabungkan Acoustic Chromagram, ID3/MP4 Tag, Apple iTunes, YT Music, Audius, MusicBrainz & AI Publik'
+                    }
+                  </span>
+                </div>
+              </div>
+
+              <div class="conv-select-controls">
+                <label for="sf-hint-input" class="conv-select-label">
+                  2. Petunjuk Tambahan / Potongan Lirik / Konteks Video (Opsional, Memperkuat Akurasi AI):
+                </label>
+                <div class="conv-select-row">
+                  <input
+                    type="text"
+                    id="sf-hint-input"
+                    data-testid="sf-hint-input"
+                    class="conv-target-select"
+                    placeholder="Contoh: potongan lirik, nama penyanyi, atau tren TikTok/Reels (kosongkan jika tidak tahu)..."
+                    value="${escapeHtml(toolState.sfUserHint)}"
+                  />
+                  <button
+                    type="button"
+                    class="btn btn-primary btn-sm"
+                    id="sf-run-secondary-btn"
+                    data-testid="sf-run-secondary-btn"
+                    ${!file || toolState.sfLoading ? 'disabled' : ''}
+                  >
+                    ${toolState.sfLoading ? 'Mencari...' : 'Identifikasi Sekarang'}
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            ${
+              showProgress
+                ? `
+              <div
+                class="tool-live-progress-box ${toolState.sfLoading ? 'is-active' : res ? 'is-done' : ''}"
+                id="sf-progress-box"
+                data-testid="sf-progress-box"
+                role="progressbar"
+                aria-valuemin="0"
+                aria-valuemax="100"
+                aria-valuenow="${pct}"
+              >
+                <div class="tool-live-progress-head">
+                  <span class="tool-live-progress-label" id="sf-progress-label">${escapeHtml(progressText)}</span>
+                  <strong class="tool-live-progress-pct mono-num" id="sf-progress-pct" data-testid="sf-progress-pct">${pct}%</strong>
+                </div>
+                <div class="tool-live-progress-track">
+                  <div class="tool-live-progress-fill" id="sf-progress-fill" style="width: ${pct}%"></div>
+                </div>
+              </div>
+            `
+                : ''
+            }
+
+            ${
+              toolState.sfError
+                ? `<div class="form-error" role="alert">${escapeHtml(toolState.sfError)}</div>`
+                : ''
+            }
+          </div>
+
+          ${
+            res
+              ? `
+            <div class="comp-result-card sf-result-card" data-testid="sf-result-card" style="margin-top:0.9rem;">
+              <div class="comp-result-preview sf-result-preview">
+                ${
+                  res.mediaKind === 'video' && toolState.sfPreviewUrl
+                    ? `<video class="dl-video-preview" controls playsinline preload="metadata" src="${escapeHtml(toolState.sfPreviewUrl)}"></video>`
+                    : `<img src="${escapeHtml(res.bestMatch.thumbnail || './assets/icons/tool-songfinder.svg')}" alt="${escapeHtml(res.bestMatch.title)}" class="dl-thumb-img" />`
+                }
+                ${
+                  res.mediaKind === 'audio' && toolState.sfPreviewUrl
+                    ? `<div style="padding:0.65rem 0.75rem;width:100%;">
+                        <audio controls preload="metadata" src="${escapeHtml(toolState.sfPreviewUrl)}" style="width:100%;"></audio>
+                      </div>`
+                    : ''
+                }
+              </div>
+
+              <div class="comp-result-body">
+                <div class="dl-result-badges">
+                  <span class="dl-plat-pill is-detected" data-testid="sf-similarity-badge">
+                    ✓ Kemiripan ${res.bestMatch.similarityPercent}% · ${res.mediaKind === 'video' ? 'VIDEO + AUDIO COCOK' : 'AUDIO LAGU COCOK'}
+                  </span>
+                  <span class="dl-dur-pill">${escapeHtml(res.formatLabel)}</span>
+                  <span class="dl-dur-pill">${escapeHtml(res.bestMatch.provider || 'Multi-API Music Engine')}</span>
+                  <span class="dl-dur-pill mono-num">${escapeHtml(res.acoustic.fingerprintHex)}</span>
+                </div>
+
+                <h4 class="dl-result-title" data-testid="sf-song-title" style="font-size:1.22rem;margin-top:0.25rem;">
+                  ${escapeHtml(res.bestMatch.title)}
+                </h4>
+                <p style="margin:0.15rem 0 0.65rem;font-size:0.94rem;font-weight:600;color:var(--accent);" data-testid="sf-song-artist">
+                  Penyanyi / Artis: ${escapeHtml(res.bestMatch.artist)}
+                </p>
+
+                <div class="comp-stats-grid">
+                  <div class="comp-stat-box is-highlight">
+                    <span>Judul Lagu &amp; Album</span>
+                    <strong data-testid="sf-album-label">${escapeHtml(res.bestMatch.album || 'Single Resmi')}</strong>
+                    <small>${escapeHtml(res.bestMatch.genre || 'Pop / Musik')} ${res.bestMatch.releaseYear ? `· ${escapeHtml(String(res.bestMatch.releaseYear))}` : ''}</small>
+                  </div>
+                  <div class="comp-stat-box">
+                    <span>Analisis Spektrum Audio</span>
+                    <strong class="mono-num">${res.acoustic.bpm} BPM · Nada ${escapeHtml(res.acoustic.dominantPitch)}</strong>
+                    <small class="mono-num">Durasi ${res.durationSec || 0}s · ${res.sampleRate} Hz</small>
+                  </div>
+                  <div class="comp-stat-box">
+                    <span>Tingkat Kecocokan</span>
+                    <strong class="mono-num">${res.bestMatch.similarityPercent}% Valid</strong>
+                    <small>${res.activeEngines.length} Metode &amp; API Digabungkan</small>
+                  </div>
+                </div>
+
+                ${
+                  res.bestMatch.aiSummary
+                    ? `<div class="sf-ai-summary-box" data-testid="sf-ai-summary">
+                        <strong>Ringkasan Identifikasi Multi-API &amp; AI:</strong>
+                        <p>${escapeHtml(res.bestMatch.aiSummary)}</p>
+                      </div>`
+                    : ''
+                }
+
+                <!-- Music / Audio Platform Sources (Always Shown for Both Audio & Video) -->
+                <div class="sf-links-section">
+                  <h5 class="sf-section-title">
+                    Sumber Musik &amp; Lagu yang Relevan 100% (YouTube, Spotify, Apple Music, YT Music, TikTok):
+                  </h5>
+                  <div class="sf-sources-grid" data-testid="sf-music-sources">
+                    ${res.musicSources
+                      .map(
+                        (src) => `
+                      <a
+                        href="${escapeHtml(src.url)}"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        class="sf-source-card"
+                        data-testid="sf-music-link-${escapeHtml(src.id)}"
+                      >
+                        <div class="sf-source-top">
+                          <strong>${escapeHtml(src.platform)}</strong>
+                          <span class="comp-method-badge">${escapeHtml(src.badge)}</span>
+                        </div>
+                        <span class="sf-source-label">${escapeHtml(src.label)} ↗</span>
+                      </a>
+                    `
+                      )
+                      .join('')}
+                  </div>
+                </div>
+
+                ${
+                  res.mediaKind === 'video'
+                    ? `
+                  <!-- Video-Exclusive Visual & Social Media Similarity Section -->
+                  <div class="sf-links-section sf-video-exclusive-box" data-testid="sf-video-analysis-section">
+                    <div class="sf-video-head">
+                      <h5 class="sf-section-title">
+                        Analisis Kecocokan &amp; Kemiripan Video Lintas Sosmed (YouTube, TikTok, Instagram Reels, FB):
+                      </h5>
+                      ${
+                        res.videoAnalysis
+                          ? `<span class="mono-num sf-video-hash-pill">
+                              ${res.videoAnalysis.width}×${res.videoAnalysis.height}px · ${escapeHtml(res.videoAnalysis.orientationLabel)} · Hash ${escapeHtml(res.videoAnalysis.visualHash)}
+                            </span>`
+                          : ''
+                      }
+                    </div>
+
+                    ${
+                      res.videoAnalysis?.frames?.length
+                        ? `
+                      <div class="sf-keyframes-strip" data-testid="sf-video-keyframes">
+                        ${res.videoAnalysis.frames
+                          .map(
+                            (f, idx) => `
+                          <div class="sf-keyframe-item">
+                            <img src="${escapeHtml(f.dataUrl)}" alt="Keyframe ${idx + 1}" />
+                            <span class="mono-num">Frame #${idx + 1} (${f.timestampSec}s)</span>
+                          </div>
+                        `
+                          )
+                          .join('')}
+                      </div>
+                    `
+                        : ''
+                    }
+
+                    <div class="sf-sources-grid" data-testid="sf-video-platform-links" style="margin-top:0.6rem;">
+                      ${res.videoSources
+                        .map(
+                          (vsrc) => `
+                        <a
+                          href="${escapeHtml(vsrc.url)}"
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          class="sf-source-card is-video-source"
+                          data-testid="sf-video-link-${escapeHtml(vsrc.id)}"
+                        >
+                          <div class="sf-source-top">
+                            <strong>${escapeHtml(vsrc.platform)}</strong>
+                            <span class="comp-method-badge">${escapeHtml(vsrc.badge)}</span>
+                          </div>
+                          <span class="sf-source-label">${escapeHtml(vsrc.label)} ↗</span>
+                        </a>
+                      `
+                        )
+                        .join('')}
+                    </div>
+
+                    ${
+                      res.matchedVideos?.length
+                        ? `
+                      <h6 class="sf-sublist-title">Daftar Sumber Video yang Mirip / Menggunakan Lagu &amp; Visual Serupa:</h6>
+                      <div class="sf-matched-videos-list" data-testid="sf-matched-videos-list">
+                        ${res.matchedVideos
+                          .map(
+                            (mv) => `
+                          <a
+                            href="${escapeHtml(mv.url)}"
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            class="sf-matched-video-row"
+                          >
+                            <img src="${escapeHtml(mv.thumbnail || './assets/icons/tool-songfinder.svg')}" alt="" class="sf-matched-video-thumb" />
+                            <div class="sf-matched-video-copy">
+                              <div class="sf-matched-video-badges">
+                                <span class="comp-method-badge">${escapeHtml(mv.platform)}</span>
+                                <span class="mono-num sf-sim-pill">${mv.similarityPercent}% Mirip</span>
+                                <span class="mono-num">${escapeHtml(mv.durationLabel)}</span>
+                              </div>
+                              <strong>${escapeHtml(mv.title)}</strong>
+                              <small>${escapeHtml(mv.author)} · ${escapeHtml(mv.viewsLabel)}</small>
+                            </div>
+                          </a>
+                        `
+                          )
+                          .join('')}
+                      </div>
+                    `
+                        : ''
+                    }
+                  </div>
+                `
+                    : ''
+                }
+
+                ${
+                  res.alternativeMatches?.length
+                    ? `
+                  <div class="sf-links-section">
+                    <h5 class="sf-section-title">Kandidat Lagu / Versi Lain yang Mirip (Remix / Cover / Rilis Terkait):</h5>
+                    <div class="sf-alt-list" data-testid="sf-alt-matches">
+                      ${res.alternativeMatches
+                        .map(
+                          (alt) => `
+                        <div class="sf-alt-row">
+                          <div>
+                            <strong>${escapeHtml(alt.title)}</strong>
+                            <span> — ${escapeHtml(alt.artist)} (${escapeHtml(alt.provider || 'Music API')})</span>
+                          </div>
+                          <span class="mono-num sf-sim-pill">${alt.similarityPercent}%</span>
+                        </div>
+                      `
+                        )
+                        .join('')}
+                    </div>
+                  </div>
+                `
+                    : ''
+                }
+
+                <div class="comp-result-actions" style="margin-top:0.85rem;">
+                  <button
+                    type="button"
+                    class="btn btn-primary btn-sm"
+                    id="sf-play-in-ytmusic-btn"
+                    data-testid="sf-play-in-ytmusic-btn"
+                  >
+                    Putar "${escapeHtml(res.bestMatch.title)}" di Pemutar YT Music Web Ini
+                  </button>
+                  <button type="button" class="btn btn-ghost btn-sm" id="sf-reset-btn">
+                    Cari Lagu / Video Lain
+                  </button>
+                </div>
+              </div>
+            </div>
+          `
+              : ''
+          }
+        </div>
+      </div>
+    `;
+  }
+
   function syncSpeedtestLiveDom(update) {
     if (!mounted || toolState.activeSubTab !== 'speedtest') return;
     const phaseBadge = rootEl.querySelector('#speed-phase-badge');
@@ -2343,6 +2752,80 @@ export function createToolsHubController({
       toolState.convError = err?.message || 'Gagal mengonversi berkas.';
     } finally {
       toolState.convLoading = false;
+      render();
+    }
+  }
+
+  function syncSongFinderProgressDom(pct, label) {
+    if (!mounted || toolState.activeSubTab !== 'songfinder') return;
+    const safePct = Math.max(0, Math.min(100, Math.round(Number(pct) || 0)));
+    const box = rootEl.querySelector('#sf-progress-box');
+    const lblEl = rootEl.querySelector('#sf-progress-label');
+    const pctEl = rootEl.querySelector('#sf-progress-pct');
+    const fillEl = rootEl.querySelector('#sf-progress-fill');
+    if (box) box.setAttribute('aria-valuenow', String(safePct));
+    if (lblEl && label) lblEl.textContent = label;
+    if (pctEl) pctEl.textContent = `${safePct}%`;
+    if (fillEl) fillEl.style.width = `${safePct}%`;
+  }
+
+  async function handleSelectSongFinderFile(file) {
+    if (!file) return;
+    toolState.sfError = '';
+    toolState.sfResult = null;
+    toolState.sfProgressPct = 0;
+    toolState.sfProgressLabel = '';
+    if (toolState.sfPreviewUrl) {
+      try {
+        URL.revokeObjectURL(toolState.sfPreviewUrl);
+      } catch {
+        // Ignore
+      }
+    }
+    let headerBytes = null;
+    try {
+      const sliceBuf = await file.slice(0, 32).arrayBuffer();
+      headerBytes = new Uint8Array(sliceBuf);
+    } catch {
+      // Ignore
+    }
+    toolState.sfFile = file;
+    toolState.sfKindInfo = detectMediaFileKind(file.name, file.type, headerBytes);
+    try {
+      toolState.sfPreviewUrl = URL.createObjectURL(file);
+    } catch {
+      toolState.sfPreviewUrl = '';
+    }
+    render();
+    // Automatically run identification immediately when user inserts an audio or video file
+    await runActiveSongFinder();
+  }
+
+  async function runActiveSongFinder() {
+    if (!toolState.sfFile || toolState.sfLoading) return;
+    toolState.sfLoading = true;
+    toolState.sfError = '';
+    toolState.sfProgressPct = 10;
+    toolState.sfProgressLabel = 'Membaca jenis berkas (Audio/Video) & mengekstrak sidik jari musik...';
+    render();
+
+    try {
+      const result = await identifyMediaSongAndVideo(toolState.sfFile, {
+        userHint: toolState.sfUserHint,
+        onProgress: (p) => {
+          toolState.sfProgressPct = p.percent || 50;
+          toolState.sfProgressLabel = p.label || 'Mencari kecocokan lagu & video...';
+          syncSongFinderProgressDom(toolState.sfProgressPct, toolState.sfProgressLabel);
+        },
+      });
+      toolState.sfProgressPct = 100;
+      toolState.sfProgressLabel = `Identifikasi berhasil: ${result.bestMatch.title} — ${result.bestMatch.artist} (${result.bestMatch.similarityPercent}% cocok)`;
+      toolState.sfResult = result;
+      onToast(`Lagu teridentifikasi: ${result.bestMatch.title} — ${result.bestMatch.artist}`);
+    } catch (err) {
+      toolState.sfError = err?.message || 'Gagal mengidentifikasi lagu dari file media.';
+    } finally {
+      toolState.sfLoading = false;
       render();
     }
   }
@@ -4401,6 +4884,78 @@ export function createToolsHubController({
       });
     }
 
+    if (toolState.activeSubTab === 'songfinder') {
+      const fileInput = rootEl.querySelector('#sf-file-input');
+      fileInput?.addEventListener('change', (e) => {
+        const file = e.target.files?.[0];
+        if (file) handleSelectSongFinderFile(file);
+      });
+
+      const dropzone = rootEl.querySelector('#sf-dropzone');
+      dropzone?.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        dropzone.classList.add('is-dragover');
+      });
+      dropzone?.addEventListener('dragleave', () => {
+        dropzone.classList.remove('is-dragover');
+      });
+      dropzone?.addEventListener('drop', (e) => {
+        e.preventDefault();
+        dropzone.classList.remove('is-dragover');
+        const file = e.dataTransfer?.files?.[0];
+        if (file) handleSelectSongFinderFile(file);
+      });
+
+      const hintInput = rootEl.querySelector('#sf-hint-input');
+      hintInput?.addEventListener('input', (e) => {
+        toolState.sfUserHint = e.target.value;
+      });
+      hintInput?.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' && toolState.sfFile && !toolState.sfLoading) {
+          e.preventDefault();
+          runActiveSongFinder();
+        }
+      });
+
+      rootEl.querySelector('#sf-run-btn')?.addEventListener('click', () => {
+        runActiveSongFinder();
+      });
+      rootEl.querySelector('#sf-run-secondary-btn')?.addEventListener('click', () => {
+        runActiveSongFinder();
+      });
+
+      rootEl.querySelector('#sf-play-in-ytmusic-btn')?.addEventListener('click', () => {
+        const best = toolState.sfResult?.bestMatch;
+        if (!best) return;
+        const query = `${best.artist || ''} ${best.title || ''}`.trim();
+        toolState.activeSubTab = 'music';
+        toolState.musicBrowserTab = 'queue';
+        onSubTabChange('music');
+        render();
+        const ctrl = ensureMusicHubController();
+        ctrl?.search(query, { autoPlayFirst: true });
+      });
+
+      rootEl.querySelector('#sf-reset-btn')?.addEventListener('click', () => {
+        if (toolState.sfPreviewUrl) {
+          try {
+            URL.revokeObjectURL(toolState.sfPreviewUrl);
+          } catch {
+            // Ignore
+          }
+        }
+        toolState.sfFile = null;
+        toolState.sfKindInfo = null;
+        toolState.sfPreviewUrl = '';
+        toolState.sfUserHint = '';
+        toolState.sfResult = null;
+        toolState.sfError = '';
+        toolState.sfProgressPct = 0;
+        toolState.sfProgressLabel = '';
+        render();
+      });
+    }
+
     if (toolState.activeSubTab === 'music') {
       const ctrl = ensureMusicHubController();
       if (ctrl) {
@@ -4538,6 +5093,8 @@ export function createToolsHubController({
         ? renderCompressorPanel()
         : toolState.activeSubTab === 'converter'
         ? renderConverterPanel()
+        : toolState.activeSubTab === 'songfinder'
+        ? renderSongFinderPanel()
         : toolState.activeSubTab === 'music'
         ? renderMusicPanel()
         : renderDownloaderPanel();
@@ -4584,6 +5141,7 @@ export function createToolsHubController({
         subTab === 'downloader' ||
         subTab === 'compressor' ||
         subTab === 'converter' ||
+        subTab === 'songfinder' ||
         subTab === 'music'
       ) {
         toolState.activeSubTab = subTab;
@@ -4604,7 +5162,14 @@ export function createToolsHubController({
     },
     setUtilitiesConfig(nextUtilities) {
       toolState.utilities = normalizeUtilityConfig(nextUtilities);
-      if (mounted && !toolState.dlLoading && !toolState.compLoading && !toolState.convLoading && !toolState.speedRunning) {
+      if (
+        mounted &&
+        !toolState.dlLoading &&
+        !toolState.compLoading &&
+        !toolState.convLoading &&
+        !toolState.sfLoading &&
+        !toolState.speedRunning
+      ) {
         render();
       }
     },

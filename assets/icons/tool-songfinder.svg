@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64" fill="none">
+  <defs>
+    <linearGradient id="songIdBg" x1="6" y1="6" x2="58" y2="58" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#06B6D4" />
+      <stop offset="50%" stop-color="#3B82F6" />
+      <stop offset="100%" stop-color="#8B5CF6" />
+    </linearGradient>
+    <linearGradient id="songIdGloss" x1="10" y1="6" x2="50" y2="46" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#FFFFFF" stop-opacity="0.34" />
+      <stop offset="100%" stop-color="#FFFFFF" stop-opacity="0" />
+    </linearGradient>
+    <linearGradient id="songIdAccent" x1="18" y1="16" x2="48" y2="48" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#FDE047" />
+      <stop offset="100%" stop-color="#A5F3FC" />
+    </linearGradient>
+  </defs>
+  <rect x="4" y="4" width="56" height="56" rx="16" fill="url(#songIdBg)" />
+  <rect x="6" y="6" width="52" height="52" rx="14" fill="url(#songIdGloss)" />
+  <!-- Acoustic Fingerprint Wave Bars -->
+  <path d="M15 32V28M15 32V36" stroke="#FFFFFF" stroke-width="2.8" stroke-linecap="round" />
+  <path d="M21 32V21M21 32V43" stroke="url(#songIdAccent)" stroke-width="3" stroke-linecap="round" />
+  <path d="M27 32V16M27 32V46" stroke="#FFFFFF" stroke-width="3.2" stroke-linecap="round" />
+  <path d="M33 32V23M33 32V41" stroke="url(#songIdAccent)" stroke-width="3" stroke-linecap="round" />
+  <!-- Radar / Search Ring + Musical Note -->
+  <circle cx="41" cy="30" r="9.5" stroke="#FFFFFF" stroke-width="2.8" fill="rgba(15,23,42,0.28)" />
+  <path d="M48 37L53 42" stroke="#FDE047" stroke-width="3.2" stroke-linecap="round" />
+  <path d="M40 33V25.5L44.5 24.5V31.5" stroke="#FDE047" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" />
+  <circle cx="38.5" cy="33" r="1.9" fill="#FDE047" />
+  <circle cx="43" cy="31.8" r="1.9" fill="#FDE047" />
+</svg>
