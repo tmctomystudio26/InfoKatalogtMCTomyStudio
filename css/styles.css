@@ -7993,3 +7993,200 @@ a {
     bottom: 78px;
   }
 }
+
+/* ==========================================================================
+   v43 — Top Upload Dropzone, Auto-Detect Format & Dropdown Converter Bar,
+         and Real-Time Percentage Progress Bar
+   ========================================================================== */
+.conv-auto-dropdown-bar {
+  display: grid;
+  grid-template-columns: minmax(0, 1.15fr) minmax(0, 1.35fr);
+  gap: 0.9rem;
+  align-items: stretch;
+  margin-top: 0.85rem;
+  padding: 0.95rem 1.05rem;
+  border-radius: 14px;
+  border: 1px solid var(--border);
+  background: var(--surface-elevated);
+}
+
+.conv-detected-box {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.65rem 0.85rem;
+  border-radius: 11px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  min-width: 0;
+}
+
+.conv-detected-box.is-detected {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.conv-detected-icon {
+  width: 34px;
+  height: 34px;
+  border-radius: 9px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--surface-elevated);
+  border: 1px solid var(--border);
+  font-size: 0.72rem;
+  font-weight: 800;
+  color: var(--accent);
+  flex-shrink: 0;
+}
+
+.conv-detected-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 0.14rem;
+  min-width: 0;
+}
+
+.conv-detected-kicker {
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--accent);
+}
+
+.conv-detected-title {
+  font-size: 0.86rem;
+  font-weight: 700;
+  color: var(--ink);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.conv-detected-sub {
+  font-size: 0.74rem;
+  color: var(--ink-secondary);
+  line-height: 1.35;
+}
+
+.conv-select-controls {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 0.42rem;
+  min-width: 0;
+}
+
+.conv-select-label {
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: var(--ink-secondary);
+}
+
+.conv-select-row {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  min-width: 0;
+}
+
+.conv-target-select {
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 40px;
+  padding: 0 0.8rem;
+  border-radius: 10px;
+  border: 1px solid var(--border-strong);
+  background-color: var(--surface);
+  color: var(--ink);
+  font-size: 0.84rem;
+  font-weight: 600;
+  cursor: pointer;
+  outline: none;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.conv-target-select:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+.tool-live-progress-box {
+  margin-top: 0.85rem;
+  padding: 0.82rem 1rem;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  background: var(--surface-elevated);
+}
+
+.tool-live-progress-box.is-active {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.tool-live-progress-box.is-done {
+  border-color: rgba(16, 185, 129, 0.45);
+}
+
+.tool-live-progress-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 0.48rem;
+}
+
+.tool-live-progress-label {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--ink);
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+}
+
+.tool-live-progress-pct {
+  font-size: 0.86rem;
+  font-weight: 800;
+  color: var(--accent);
+  padding: 0.14rem 0.52rem;
+  border-radius: 999px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+}
+
+.tool-live-progress-track {
+  width: 100%;
+  height: 10px;
+  border-radius: 999px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  overflow: hidden;
+}
+
+.tool-live-progress-fill {
+  height: 100%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #2563eb 0%, #4f46e5 55%, #10b981 100%);
+  transition: width 0.22s ease;
+}
+
+@media (max-width: 768px) {
+  .conv-auto-dropdown-bar {
+    grid-template-columns: 1fr;
+    gap: 0.7rem;
+    padding: 0.8rem;
+  }
+  .conv-select-row {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .conv-target-select,
+  .conv-select-row .btn {
+    width: 100%;
+    justify-content: center;
+  }
+}
+

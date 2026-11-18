@@ -22,38 +22,36 @@ import {
   matchIndonesianCityQuery,
   planMediaCompression,
   resolveAccurateWeatherCondition,
-} from './tools-logic.js?v=42';
+} from './tools-logic.js?v=43';
 import {
   describeLocationSource,
   resolveUserLocation,
   searchCitiesOnline,
   setManualLocation,
-} from './location.js?v=42';
-import { createInteractiveGlobe } from './globe.js?v=42';
+} from './location.js?v=43';
+import { createInteractiveGlobe } from './globe.js?v=43';
 import {
   createSpeedometerGauge,
   fetchSpeedtestEnvironment,
   readClientDeviceTelemetry,
   runInternetSpeedtest,
-} from './speedtest.js?v=42';
+} from './speedtest.js?v=43';
 import {
   extractAudioFromVideoUrl,
   fetchMediaDownload,
   triggerBatchPhotoDownload,
   triggerDirectMediaSave,
-} from './downloader.js?v=42';
-import { compressMediaFile, inspectMediaFile } from './compressor.js?v=42';
+} from './downloader.js?v=43';
+import { compressMediaFile, inspectMediaFile } from './compressor.js?v=43';
 import {
-  CONVERTER_CATEGORIES,
-  CONVERTER_PRESETS,
+  ALL_TARGET_FORMATS,
   convertAnyFile,
-  createSampleFileForConversion,
   detectSourceFormat,
   getAvailableTargetFormats,
-} from './converter.js?v=42';
-import { formatAudioTime, getLoadingProgressMeta, isTrackInWatchLater } from './music-logic.js?v=42';
-import { MUSIC_PRESET_CATEGORIES, getMusicController, initMusicPlayer } from './music.js?v=42';
-import { normalizeUtilityConfig } from './store.js?v=42';
+} from './converter.js?v=43';
+import { formatAudioTime, getLoadingProgressMeta, isTrackInWatchLater } from './music-logic.js?v=43';
+import { MUSIC_PRESET_CATEGORIES, getMusicController, initMusicPlayer } from './music.js?v=43';
+import { normalizeUtilityConfig } from './store.js?v=43';
 
 const PRAYER_CACHE_KEY = 'manifestudio_prayer_cache_v1';
 const MYQURAN_CITIES_KEY = 'manifestudio_myquran_cities_v1';
@@ -1643,6 +1641,20 @@ export function createToolsHubController({
         })
       : null;
 
+    const showCompProgress = Boolean(toolState.compLoading || res || inspect);
+    const compPct = toolState.compLoading
+      ? Math.max(4, Math.min(99, Math.round(toolState.compProgressPct || 12)))
+      : res
+      ? 100
+      : 0;
+    const compProgressText = toolState.compLoading
+      ? toolState.compProgressLabel || 'Mengompresi berkas media...'
+      : res
+      ? `Kompresi selesai! Hemat -${res.savedPercent}% (${res.savedBytesLabel})`
+      : inspect
+      ? `File siap dikompres (${formatBytes(inspect.sizeBytes)}) — Tekan "Kompres Sekarang"`
+      : 'Masukkan file foto atau video untuk memulai kompresi';
+
     return `
       <div class="tool-panel" data-testid="compressor-panel">
         <div class="compressor-hero-card">
@@ -1654,19 +1666,156 @@ export function createToolsHubController({
                 Menggunakan algoritma pencarian biner kualitas adaptif &amp; kuantisasi palet open-source untuk <strong>memangkas ukuran byte foto &amp; video secara nyata (30%–80% lebih ringan)</strong> agar lolos kompresi paksa TikTok, Instagram, dan WhatsApp.
               </p>
             </div>
-            <div class="comp-demo-btn-group" style="display:flex;flex-wrap:wrap;gap:0.45rem;">
-              <button type="button" class="btn btn-secondary btn-sm" id="comp-demo-sample-btn" data-testid="comp-demo-sample-btn">
-                Uji Sampel Foto HD
-              </button>
-              <button type="button" class="btn btn-secondary btn-sm" id="comp-demo-video-btn" data-testid="comp-demo-video-btn">
-                Uji Sampel Video MP4
-              </button>
-            </div>
           </div>
 
-          <!-- Step 1: Method Selector -->
+          <!-- 1. File Upload / Dropzone right at the top after Title & Description -->
+          <div class="comp-section-block" style="margin-top:0.35rem;">
+            <label class="comp-block-label">1. Masukkan atau Pilih File Foto / Video yang Ingin Dikompres:</label>
+            <div class="comp-dropzone" id="comp-dropzone" data-testid="comp-dropzone">
+              <input
+                type="file"
+                id="comp-file-input"
+                data-testid="comp-file-input"
+                class="visually-hidden-file"
+                accept="image/jpeg,image/png,image/webp,video/mp4,video/webm,video/quicktime"
+              />
+              <div class="comp-dropzone-inner">
+                <div class="comp-dropzone-icon">
+                  <img src="./assets/icons/tool-compressor.svg" alt="" width="44" height="44" />
+                </div>
+                <div class="comp-dropzone-copy">
+                  <strong>${inspect ? escapeHtml(inspect.name) : 'Pilih atau Tarik File Foto / Video ke Sini'}</strong>
+                  <span>
+                    ${
+                      inspect
+                        ? `${inspect.mediaKind === 'video' ? 'Video' : 'Foto'} · ${inspect.width}×${inspect.height}px · ${formatBytes(inspect.sizeBytes)}${inspect.durationSec ? ` · ${inspect.durationSec}s` : ''}`
+                        : 'Mendukung Foto (JPG, JPEG, PNG, WebP) & Video (MP4, MOV, WebM) — Kompresi Nyata Berbasis Engine Open-Source'
+                    }
+                  </span>
+                </div>
+                <div class="comp-dropzone-actions">
+                  <label for="comp-file-input" class="btn btn-secondary btn-sm admin-file-trigger">
+                    ${inspect ? 'Ganti File' : 'Pilih Foto / Video'}
+                  </label>
+                  ${
+                    inspect
+                      ? `<button type="button" class="btn btn-primary btn-sm" id="comp-run-btn" data-testid="comp-run-btn" ${toolState.compLoading ? 'disabled' : ''}>
+                          ${toolState.compLoading ? 'Mengompresi...' : 'Kompres Sekarang'}
+                        </button>`
+                      : ''
+                  }
+                </div>
+              </div>
+            </div>
+
+            ${
+              showCompProgress
+                ? `
+              <div
+                class="tool-live-progress-box ${toolState.compLoading ? 'is-active' : res ? 'is-done' : ''}"
+                id="comp-progress-box"
+                data-testid="comp-progress-box"
+                role="progressbar"
+                aria-valuemin="0"
+                aria-valuemax="100"
+                aria-valuenow="${compPct}"
+              >
+                <div class="tool-live-progress-head">
+                  <span class="tool-live-progress-label" id="comp-progress-label">${escapeHtml(compProgressText)}</span>
+                  <strong class="tool-live-progress-pct mono-num" id="comp-progress-pct" data-testid="comp-progress-pct">${compPct}%</strong>
+                </div>
+                <div class="tool-live-progress-track">
+                  <div class="tool-live-progress-fill" id="comp-progress-fill" style="width: ${compPct}%"></div>
+                </div>
+              </div>
+            `
+                : ''
+            }
+
+            ${
+              previewPlan && !res && !toolState.compLoading
+                ? `
+              <div class="comp-plan-preview">
+                <span>Rencana Optimasi: <strong>${escapeHtml(previewPlan.methodLabel)}</strong> (${escapeHtml(previewPlan.presetLabel)})</span>
+                <span class="mono-num">Resolusi: ${previewPlan.originalWidth}×${previewPlan.originalHeight} → ${previewPlan.targetWidth}×${previewPlan.targetHeight} · Target Hemat ~${previewPlan.estimatedSavedPercent}%</span>
+              </div>
+            `
+                : ''
+            }
+
+            ${
+              toolState.compError
+                ? `<div class="form-error" role="alert">${escapeHtml(toolState.compError)}</div>`
+                : ''
+            }
+          </div>
+
+          ${
+            res
+              ? `
+            <div class="comp-result-card" data-testid="comp-result-card" style="margin-top:0.85rem;">
+              <div class="comp-result-preview">
+                ${
+                  res.mediaKind === 'video'
+                    ? `<video class="dl-video-preview" controls playsinline src="${escapeHtml(res.outputUrl)}"></video>`
+                    : `<img src="${escapeHtml(res.outputUrl)}" alt="Hasil kompresi HD" class="dl-thumb-img" />`
+                }
+              </div>
+              <div class="comp-result-body">
+                <div class="dl-result-badges">
+                  <span class="dl-plat-pill is-detected">${escapeHtml(res.qualityBadge)}</span>
+                  <span class="dl-dur-pill">${escapeHtml(res.plan.methodLabel)}</span>
+                  <span class="dl-dur-pill">${escapeHtml(res.plan.presetLabel)}</span>
+                </div>
+
+                <h4 class="dl-result-title">${escapeHtml(res.fileName)}</h4>
+
+                <div class="comp-stats-grid">
+                  <div class="comp-stat-box">
+                    <span>Ukuran Awal</span>
+                    <strong class="mono-num" data-testid="comp-orig-size">${escapeHtml(res.originalSizeLabel)}</strong>
+                    <small class="mono-num">${res.originalWidth}×${res.originalHeight}px (${res.originalSize} B)</small>
+                  </div>
+                  <div class="comp-stat-box is-highlight">
+                    <span>Ukuran Hasil Kompres</span>
+                    <strong class="mono-num" data-testid="comp-new-size">${escapeHtml(res.compressedSizeLabel)}</strong>
+                    <small class="mono-num">${res.targetWidth}×${res.targetHeight}px (${res.compressedSize} B)</small>
+                  </div>
+                  <div class="comp-stat-box">
+                    <span>Penghematan Nyata</span>
+                    <strong class="mono-num" data-testid="comp-saved-pct">${res.savedBytes > 0 ? `-${res.savedPercent}% (${escapeHtml(res.savedBytesLabel)})` : 'Bit-Exact Optimal'}</strong>
+                    <small>${escapeHtml(res.engineLabel || 'Open-Source Squoosh/UPNG Engine')}</small>
+                  </div>
+                </div>
+
+                <ul class="comp-guard-list">
+                  ${(res.plan.guardrails || [])
+                    .map((g) => `<li>✓ ${escapeHtml(g)}</li>`)
+                    .join('')}
+                </ul>
+
+                <div class="comp-result-actions">
+                  <a
+                    href="${escapeHtml(res.outputUrl)}"
+                    download="${escapeHtml(res.fileName)}"
+                    class="btn btn-primary btn-sm"
+                    data-testid="comp-download-btn"
+                  >
+                    Unduh Hasil Kompres HD (${escapeHtml(res.compressedSizeLabel)})
+                  </a>
+                  <button type="button" class="btn btn-ghost btn-sm" id="comp-reset-btn">
+                    Kompres File Lain
+                  </button>
+                </div>
+              </div>
+            </div>
+          `
+              : ''
+          }
+
+          <!-- 2. Method Selector -->
           <div class="comp-section-block">
-            <label class="comp-block-label">1. Pilih Metode Kompresi Open-Source (Tanpa Blur / Pecah):</label>
+            <label class="comp-block-label">2. Pilih Metode Kompresi Open-Source (Tanpa Blur / Pecah):</label>
             <div class="comp-methods-grid" role="radiogroup" aria-label="Metode kompresi tanpa kurangi kualitas">
               ${COMPRESSION_METHODS.map((m) => {
                 const isSelected = toolState.compMethodId === m.id;
@@ -1688,9 +1837,9 @@ export function createToolsHubController({
             </div>
           </div>
 
-          <!-- Step 2: Target Platform Preset -->
+          <!-- 3. Target Platform Preset -->
           <div class="comp-section-block">
-            <label class="comp-block-label">2. Pilih Standar Platform Tujuan (Anti-Recompress Guard):</label>
+            <label class="comp-block-label">3. Pilih Standar Platform Tujuan (Anti-Recompress Guard):</label>
             <div class="comp-presets-row" role="radiogroup" aria-label="Target platform media sosial">
               ${COMPRESSION_PLATFORM_PRESETS.map((p) => {
                 const isSelected = toolState.compPresetId === p.id;
@@ -1708,398 +1857,260 @@ export function createToolsHubController({
               }).join('')}
             </div>
           </div>
-
-          <!-- Step 3: File Dropzone -->
-          <div class="comp-dropzone" id="comp-dropzone">
-            <input
-              type="file"
-              id="comp-file-input"
-              class="visually-hidden-file"
-              accept="image/jpeg,image/png,image/webp,video/mp4,video/webm,video/quicktime"
-            />
-            <div class="comp-dropzone-inner">
-              <div class="comp-dropzone-icon">
-                <img src="./assets/icons/tool-compressor.svg" alt="" width="44" height="44" />
-              </div>
-              <div class="comp-dropzone-copy">
-                <strong>${inspect ? escapeHtml(inspect.name) : 'Pilih atau Tarik File Foto / Video ke Sini'}</strong>
-                <span>
-                  ${
-                    inspect
-                      ? `${inspect.mediaKind === 'video' ? 'Video' : 'Foto'} · ${inspect.width}×${inspect.height}px · ${formatBytes(inspect.sizeBytes)}${inspect.durationSec ? ` · ${inspect.durationSec}s` : ''}`
-                      : 'Mendukung Foto (JPG, PNG, WebP) & Video (MP4, MOV, WebM) — Kompresi Nyata Berbasis Engine Open-Source'
-                  }
-                </span>
-              </div>
-              <div class="comp-dropzone-actions">
-                <label for="comp-file-input" class="btn btn-secondary btn-sm admin-file-trigger">
-                  Pilih Foto / Video
-                </label>
-                ${
-                  inspect
-                    ? `<button type="button" class="btn btn-primary btn-sm" id="comp-run-btn" data-testid="comp-run-btn" ${toolState.compLoading ? 'disabled' : ''}>
-                        ${toolState.compLoading ? 'Mengompresi...' : 'Kompres Sekarang'}
-                      </button>`
-                    : ''
-                }
-              </div>
-            </div>
-          </div>
-
-          ${
-            previewPlan && !res && !toolState.compLoading
-              ? `
-            <div class="comp-plan-preview">
-              <span>Rencana Optimasi: <strong>${escapeHtml(previewPlan.methodLabel)}</strong> (${escapeHtml(previewPlan.presetLabel)})</span>
-              <span class="mono-num">Resolusi: ${previewPlan.originalWidth}×${previewPlan.originalHeight} → ${previewPlan.targetWidth}×${previewPlan.targetHeight} · Target Hemat ~${previewPlan.estimatedSavedPercent}%</span>
-            </div>
-          `
-              : ''
-          }
-
-          ${
-            toolState.compLoading
-              ? `
-            <div class="admin-progress-box">
-              <div class="admin-progress-head">
-                <span class="admin-progress-label">${escapeHtml(toolState.compProgressLabel || 'Memproses media...')}</span>
-                <strong class="admin-progress-pct mono-num">${Math.round(toolState.compProgressPct)}%</strong>
-              </div>
-              <div class="admin-progress-track">
-                <div class="admin-progress-fill" style="width: ${Math.round(toolState.compProgressPct)}%"></div>
-              </div>
-            </div>
-          `
-              : ''
-          }
-
-          ${
-            toolState.compError
-              ? `<div class="form-error" role="alert">${escapeHtml(toolState.compError)}</div>`
-              : ''
-          }
         </div>
-
-        ${
-          res
-            ? `
-          <div class="comp-result-card" data-testid="comp-result-card">
-            <div class="comp-result-preview">
-              ${
-                res.mediaKind === 'video'
-                  ? `<video class="dl-video-preview" controls playsinline src="${escapeHtml(res.outputUrl)}"></video>`
-                  : `<img src="${escapeHtml(res.outputUrl)}" alt="Hasil kompresi HD" class="dl-thumb-img" />`
-              }
-            </div>
-            <div class="comp-result-body">
-              <div class="dl-result-badges">
-                <span class="dl-plat-pill is-detected">${escapeHtml(res.qualityBadge)}</span>
-                <span class="dl-dur-pill">${escapeHtml(res.plan.methodLabel)}</span>
-                <span class="dl-dur-pill">${escapeHtml(res.plan.presetLabel)}</span>
-              </div>
-
-              <h4 class="dl-result-title">${escapeHtml(res.fileName)}</h4>
-
-              <div class="comp-stats-grid">
-                <div class="comp-stat-box">
-                  <span>Ukuran Awal</span>
-                  <strong class="mono-num" data-testid="comp-orig-size">${escapeHtml(res.originalSizeLabel)}</strong>
-                  <small class="mono-num">${res.originalWidth}×${res.originalHeight}px (${res.originalSize} B)</small>
-                </div>
-                <div class="comp-stat-box is-highlight">
-                  <span>Ukuran Hasil Kompres</span>
-                  <strong class="mono-num" data-testid="comp-new-size">${escapeHtml(res.compressedSizeLabel)}</strong>
-                  <small class="mono-num">${res.targetWidth}×${res.targetHeight}px (${res.compressedSize} B)</small>
-                </div>
-                <div class="comp-stat-box">
-                  <span>Penghematan Nyata</span>
-                  <strong class="mono-num" data-testid="comp-saved-pct">${res.savedBytes > 0 ? `-${res.savedPercent}% (${escapeHtml(res.savedBytesLabel)})` : 'Bit-Exact Optimal'}</strong>
-                  <small>${escapeHtml(res.engineLabel || 'Open-Source Squoosh/UPNG Engine')}</small>
-                </div>
-              </div>
-
-              <ul class="comp-guard-list">
-                ${(res.plan.guardrails || [])
-                  .map((g) => `<li>✓ ${escapeHtml(g)}</li>`)
-                  .join('')}
-              </ul>
-
-              <div class="comp-result-actions">
-                <a
-                  href="${escapeHtml(res.outputUrl)}"
-                  download="${escapeHtml(res.fileName)}"
-                  class="btn btn-primary btn-sm"
-                  data-testid="comp-download-btn"
-                >
-                  Unduh Hasil Kompres HD (${escapeHtml(res.compressedSizeLabel)})
-                </a>
-                <button type="button" class="btn btn-ghost btn-sm" id="comp-reset-btn">
-                  Kompres File Lain
-                </button>
-              </div>
-            </div>
-          </div>
-        `
-            : ''
-        }
       </div>
     `;
   }
 
   function renderConverterPanel() {
-    const activeCat = toolState.convCategoryId || 'all';
-    const filteredPresets = CONVERTER_PRESETS.filter(
-      (p) => activeCat === 'all' || p.category === activeCat
-    );
-    const activePreset =
-      CONVERTER_PRESETS.find((p) => p.id === toolState.convPresetId) || CONVERTER_PRESETS[0];
     const sourceInfo = toolState.convSourceInfo;
     const availableTargets = sourceInfo
       ? getAvailableTargetFormats(sourceInfo)
-      : getAvailableTargetFormats({
-          ext: activePreset.sourceExt,
-          family:
-            activePreset.category === 'document' && activePreset.sourceExt === 'xlsx'
-              ? 'spreadsheet'
-              : activePreset.category === 'document' && activePreset.sourceExt === 'pdf'
-              ? 'pdf'
-              : activePreset.category === 'document'
-              ? 'document'
-              : activePreset.category === 'media'
-              ? 'video'
-              : 'image',
-        });
+      : ALL_TARGET_FORMATS;
     const res = toolState.convResult;
+
+    // Group target formats by their group category for clean <optgroup> dropdown rendering
+    const groupedMap = new Map();
+    for (const item of availableTargets) {
+      const grp = item.group || 'Format Tujuan';
+      if (!groupedMap.has(grp)) groupedMap.set(grp, []);
+      groupedMap.get(grp).push(item);
+    }
+
+    const dropdownOptionsHtml = Array.from(groupedMap.entries())
+      .map(
+        ([groupName, items]) => `
+        <optgroup label="${escapeHtml(groupName)}">
+          ${items
+            .map(
+              (t) => `
+            <option value="${escapeHtml(t.id)}" ${toolState.convTargetFormat === t.id ? 'selected' : ''}>
+              → .${escapeHtml(t.id.toUpperCase())} — ${escapeHtml(t.label)}
+            </option>
+          `
+            )
+            .join('')}
+        </optgroup>
+      `
+      )
+      .join('');
+
+    const showConvProgress = Boolean(toolState.convLoading || res || toolState.convFile);
+    const convPct = toolState.convLoading
+      ? Math.max(4, Math.min(99, Math.round(toolState.convProgressPct || 14)))
+      : res
+      ? 100
+      : 0;
+    const convProgressText = toolState.convLoading
+      ? toolState.convProgressLabel || 'Mengonversi format berkas...'
+      : res
+      ? `Konversi ke .${res.targetFormat} selesai & terverifikasi (${res.outputSizeLabel})`
+      : toolState.convFile && sourceInfo
+      ? `Terdeteksi ${sourceInfo.label} — Pilih format tujuan di dropdown lalu klik "Konversi Sekarang"`
+      : 'Masukkan file apa saja untuk mendeteksi format otomatis';
 
     return `
       <div class="tool-panel" data-testid="converter-panel">
         <div class="compressor-hero-card">
           <div class="compressor-head">
             <div>
-              <span class="tool-kicker">All-in-One File Converter · Multi-Engine Binary &amp; OpenXML</span>
+              <span class="tool-kicker">All-in-One File Converter · 85+ Konversi Multi-Format &amp; OpenXML</span>
               <h3 class="tool-subhead">Konversi Semua Format File (DOCX, Excel, PDF, Foto, Video, Audio &amp; ZIP)</h3>
               <p class="tool-hint">
-                Ubah format dokumen <strong>DOCX ke PDF, Excel (.xlsx/.csv) ke PDF, PDF ke JPG/PNG, JPG ke PNG/JPEG/WebP/ZIP, hingga MP4 ke M4A (MP4A) &amp; WAV</strong> dengan validasi header biner asli.
+                Masukkan file apa saja di bawah ini — sistem otomatis mendeteksi format berkas asal Anda dan menampilkan pilihan format konversi tujuan dalam daftar dropdown ringkas.
               </p>
             </div>
-            <div class="comp-demo-btn-group" style="display:flex;flex-wrap:wrap;gap:0.4rem;">
-              <button type="button" class="btn btn-secondary btn-sm" data-conv-sample="docx-to-pdf" data-testid="conv-sample-docx-btn">
-                Uji DOCX → PDF
-              </button>
-              <button type="button" class="btn btn-secondary btn-sm" data-conv-sample="excel-to-pdf" data-testid="conv-sample-excel-btn">
-                Uji Excel → PDF
-              </button>
-              <button type="button" class="btn btn-secondary btn-sm" data-conv-sample="pdf-to-jpg" data-testid="conv-sample-pdf-btn">
-                Uji PDF → JPG
-              </button>
-              <button type="button" class="btn btn-secondary btn-sm" data-conv-sample="jpg-to-png" data-testid="conv-sample-img-btn">
-                Uji JPG → PNG
-              </button>
-              <button type="button" class="btn btn-secondary btn-sm" data-conv-sample="jpg-to-zip" data-testid="conv-sample-zip-btn">
-                Uji File → ZIP
-              </button>
-              <button type="button" class="btn btn-secondary btn-sm" data-conv-sample="mp4-to-wav" data-testid="conv-sample-wav-btn">
-                Uji MP4 → WAV
-              </button>
-              <button type="button" class="btn btn-secondary btn-sm" data-conv-sample="mp4-to-m4a" data-testid="conv-sample-m4a-btn">
-                Uji MP4 → M4A
-              </button>
-            </div>
           </div>
 
-          <!-- Category Filter Pills -->
-          <div class="comp-section-block">
-            <label class="comp-block-label">1. Pilih Kategori atau Preset Konversi Cepat:</label>
-            <div class="comp-presets-row" role="tablist" aria-label="Kategori konversi file" style="margin-bottom:0.65rem;">
-              ${CONVERTER_CATEGORIES.map((cat) => {
-                const isSelected = activeCat === cat.id;
-                return `
-                  <button
-                    type="button"
-                    class="comp-preset-pill ${isSelected ? 'is-active' : ''}"
-                    data-conv-cat="${escapeHtml(cat.id)}"
-                    aria-selected="${isSelected}"
-                  >
-                    <strong>${escapeHtml(cat.label)}</strong>
-                    <span>${escapeHtml(cat.badge)}</span>
-                  </button>
-                `;
-              }).join('')}
-            </div>
-
-            <div class="comp-methods-grid" role="radiogroup" aria-label="Preset konversi populer">
-              ${filteredPresets
-                .map((p) => {
-                  const isSelected = toolState.convPresetId === p.id;
-                  return `
-                  <button
-                    type="button"
-                    class="comp-method-card ${isSelected ? 'is-active' : ''}"
-                    data-conv-preset="${escapeHtml(p.id)}"
-                    aria-pressed="${isSelected}"
-                  >
-                    <div class="comp-method-top">
-                      <strong>${escapeHtml(p.label)}</strong>
-                      <span class="comp-method-badge">.${escapeHtml(p.sourceExt.toUpperCase())} → .${escapeHtml(p.targetFormat.toUpperCase())}</span>
-                    </div>
-                    <p class="comp-method-desc">${escapeHtml(p.shortDesc)}</p>
-                  </button>
-                `;
-                })
-                .join('')}
-            </div>
-          </div>
-
-          <!-- Target Format Selector -->
-          <div class="comp-section-block">
-            <label class="comp-block-label">2. Pilih Format Output Tujuan (${sourceInfo ? `Terdeteksi: ${escapeHtml(sourceInfo.label)}` : `Preset: ${escapeHtml(activePreset.label)}`}):</label>
-            <div class="comp-presets-row" role="radiogroup" aria-label="Format output tujuan">
-              ${availableTargets
-                .map((t) => {
-                  const isSelected = toolState.convTargetFormat === t.id;
-                  return `
-                  <button
-                    type="button"
-                    class="comp-preset-pill ${isSelected ? 'is-active' : ''}"
-                    data-conv-target="${escapeHtml(t.id)}"
-                    aria-pressed="${isSelected}"
-                  >
-                    <strong>→ .${escapeHtml(t.id.toUpperCase())}</strong>
-                    <span>${escapeHtml(t.label)}</span>
-                  </button>
-                `;
-                })
-                .join('')}
-            </div>
-          </div>
-
-          <!-- File Dropzone -->
-          <div class="comp-dropzone" id="conv-dropzone">
-            <input
-              type="file"
-              id="conv-file-input"
-              class="visually-hidden-file"
-              accept="*/*"
-            />
-            <div class="comp-dropzone-inner">
-              <div class="comp-dropzone-icon">
-                <img src="./assets/icons/tool-converter.svg" alt="" width="44" height="44" />
+          <!-- 1. File Upload / Dropzone at the very top right after Title & Description -->
+          <div class="comp-section-block" style="margin-top:0.35rem;">
+            <label class="comp-block-label">1. Masukkan atau Pilih File yang Ingin Dikonversi:</label>
+            <div class="comp-dropzone" id="conv-dropzone" data-testid="conv-dropzone">
+              <input
+                type="file"
+                id="conv-file-input"
+                data-testid="conv-file-input"
+                class="visually-hidden-file"
+                accept="*/*"
+              />
+              <div class="comp-dropzone-inner">
+                <div class="comp-dropzone-icon">
+                  <img src="./assets/icons/tool-converter.svg" alt="" width="44" height="44" />
+                </div>
+                <div class="comp-dropzone-copy">
+                  <strong>${toolState.convFile ? escapeHtml(toolState.convFile.name) : 'Pilih atau Tarik File Apa Saja ke Sini'}</strong>
+                  <span>
+                    ${
+                      toolState.convFile && sourceInfo
+                        ? `${escapeHtml(sourceInfo.label)} · ${formatBytes(toolState.convFile.size)} → Siap diubah ke .${escapeHtml(toolState.convTargetFormat.toUpperCase())}`
+                        : 'Mendukung DOCX, XLSX, CSV, TSV, PDF, RTF, MD, TXT, HTML, JSON, XML, YAML, JPG, JPEG, PNG, WebP, BMP, GIF, ICO, SVG, MP4, MOV, WebM, MP3, WAV, M4A, AAC, OGG, FLAC & ZIP'
+                    }
+                  </span>
+                </div>
+                <div class="comp-dropzone-actions">
+                  <label for="conv-file-input" class="btn btn-secondary btn-sm admin-file-trigger">
+                    ${toolState.convFile ? 'Ganti File' : 'Pilih File'}
+                  </label>
+                </div>
               </div>
-              <div class="comp-dropzone-copy">
-                <strong>${toolState.convFile ? escapeHtml(toolState.convFile.name) : 'Pilih atau Tarik File Apa Saja untuk Dikonversi'}</strong>
-                <span>
-                  ${
-                    toolState.convFile && sourceInfo
-                      ? `${escapeHtml(sourceInfo.label)} · ${formatBytes(toolState.convFile.size)} → Target .${escapeHtml(toolState.convTargetFormat.toUpperCase())}`
-                      : 'Mendukung DOCX, XLSX, CSV, PDF, JPG, JPEG, PNG, WebP, MP4, MOV, WebM, WAV, M4A, MP3, TXT & ZIP'
-                  }
+            </div>
+
+            <!-- 2. Auto-Detected Format Box & Target Format Dropdown Selector -->
+            <div class="conv-auto-dropdown-bar">
+              <div class="conv-detected-box ${sourceInfo ? 'is-detected' : ''}" data-testid="conv-detected-box">
+                <span class="conv-detected-icon mono-num">
+                  ${sourceInfo ? `.${escapeHtml(sourceInfo.ext.toUpperCase().slice(0, 4))}` : 'AUTO'}
                 </span>
+                <div class="conv-detected-copy">
+                  <span class="conv-detected-kicker">
+                    ${sourceInfo ? '✓ Format File Terdeteksi Otomatis' : 'Deteksi Format Otomatis'}
+                  </span>
+                  <strong class="conv-detected-title" data-testid="conv-detected-label">
+                    ${
+                      toolState.convFile && sourceInfo
+                        ? `${escapeHtml(sourceInfo.label)} (${formatBytes(toolState.convFile.size)})`
+                        : 'Belum ada file dipilih'
+                    }
+                  </strong>
+                  <span class="conv-detected-sub">
+                    ${
+                      sourceInfo
+                        ? `${availableTargets.length} format konversi kompatibel tersedia di dropdown`
+                        : 'Format asal akan terdeteksi otomatis begitu file dimasukkan'
+                    }
+                  </span>
+                </div>
               </div>
-              <div class="comp-dropzone-actions">
-                <label for="conv-file-input" class="btn btn-secondary btn-sm admin-file-trigger">
-                  Pilih File
+
+              <div class="conv-select-controls">
+                <label for="conv-target-select" class="conv-select-label">
+                  2. Pilih Format Hasil Konversi (${availableTargets.length} Format Tersedia):
                 </label>
-                ${
-                  toolState.convFile
-                    ? `<button type="button" class="btn btn-primary btn-sm" id="conv-run-btn" data-testid="conv-run-btn" ${toolState.convLoading ? 'disabled' : ''}>
-                        ${toolState.convLoading ? 'Mengonversi...' : `Konversi ke .${escapeHtml(toolState.convTargetFormat.toUpperCase())}`}
-                      </button>`
-                    : ''
-                }
+                <div class="conv-select-row">
+                  <select
+                    id="conv-target-select"
+                    class="conv-target-select"
+                    data-testid="conv-target-select"
+                    aria-label="Pilih format hasil konversi"
+                  >
+                    ${dropdownOptionsHtml}
+                  </select>
+                  <button
+                    type="button"
+                    class="btn btn-primary btn-sm"
+                    id="conv-run-btn"
+                    data-testid="conv-run-btn"
+                    ${!toolState.convFile || toolState.convLoading ? 'disabled' : ''}
+                  >
+                    ${
+                      toolState.convLoading
+                        ? 'Mengonversi...'
+                        : `Konversi ke .${escapeHtml(toolState.convTargetFormat.toUpperCase())}`
+                    }
+                  </button>
+                </div>
               </div>
             </div>
+
+            ${
+              showConvProgress
+                ? `
+              <div
+                class="tool-live-progress-box ${toolState.convLoading ? 'is-active' : res ? 'is-done' : ''}"
+                id="conv-progress-box"
+                data-testid="conv-progress-box"
+                role="progressbar"
+                aria-valuemin="0"
+                aria-valuemax="100"
+                aria-valuenow="${convPct}"
+              >
+                <div class="tool-live-progress-head">
+                  <span class="tool-live-progress-label" id="conv-progress-label">${escapeHtml(convProgressText)}</span>
+                  <strong class="tool-live-progress-pct mono-num" id="conv-progress-pct" data-testid="conv-progress-pct">${convPct}%</strong>
+                </div>
+                <div class="tool-live-progress-track">
+                  <div class="tool-live-progress-fill" id="conv-progress-fill" style="width: ${convPct}%"></div>
+                </div>
+              </div>
+            `
+                : ''
+            }
+
+            ${
+              toolState.convError
+                ? `<div class="form-error" role="alert">${escapeHtml(toolState.convError)}</div>`
+                : ''
+            }
           </div>
 
           ${
-            toolState.convLoading
+            res
               ? `
-            <div class="admin-progress-box">
-              <div class="admin-progress-head">
-                <span class="admin-progress-label">${escapeHtml(toolState.convProgressLabel || 'Mengonversi berkas...')}</span>
-                <strong class="admin-progress-pct mono-num">${Math.round(toolState.convProgressPct)}%</strong>
+            <div class="comp-result-card" data-testid="conv-result-card" style="margin-top:0.85rem;">
+              <div class="comp-result-preview">
+                ${
+                  res.mimeType.startsWith('image/')
+                    ? `<img src="${escapeHtml(res.outputUrl)}" alt="Hasil konversi" class="dl-thumb-img" />`
+                    : res.mimeType.startsWith('audio/')
+                    ? `<div style="padding:1rem;width:100%;text-align:center;">
+                        <img src="./assets/icons/tool-converter.svg" alt="" width="52" height="52" style="margin:0 auto 0.65rem;" />
+                        <audio controls preload="metadata" src="${escapeHtml(res.outputUrl)}" style="width:100%;max-width:260px;"></audio>
+                      </div>`
+                    : `<div style="padding:1.25rem;text-align:center;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:0.5rem;color:#F8FAFC;">
+                        <img src="./assets/icons/tool-converter.svg" alt="" width="56" height="56" />
+                        <strong class="mono-num" style="font-size:1.05rem;color:#F8FAFC;">.${escapeHtml(res.targetFormat)}</strong>
+                        <span style="font-size:0.75rem;color:#CBD5E1;">${escapeHtml(res.signatureLabel)}</span>
+                      </div>`
+                }
               </div>
-              <div class="admin-progress-track">
-                <div class="admin-progress-fill" style="width: ${Math.round(toolState.convProgressPct)}%"></div>
+              <div class="comp-result-body">
+                <div class="dl-result-badges">
+                  <span class="dl-plat-pill is-detected" data-testid="conv-verified-badge">
+                    ${res.verified ? '✓ Biner Valid' : 'Selesai'} · ${escapeHtml(res.sourceFormat)} → ${escapeHtml(res.targetFormat)}
+                  </span>
+                  <span class="dl-dur-pill">${escapeHtml(res.engineLabel)}</span>
+                  <span class="dl-dur-pill">${escapeHtml(res.signatureLabel)}</span>
+                </div>
+
+                <h4 class="dl-result-title" data-testid="conv-output-filename">${escapeHtml(res.fileName)}</h4>
+
+                <div class="comp-stats-grid">
+                  <div class="comp-stat-box">
+                    <span>Berkas Sumber</span>
+                    <strong class="mono-num">${escapeHtml(res.inputSizeLabel)}</strong>
+                    <small>${escapeHtml(res.sourceLabel)}</small>
+                  </div>
+                  <div class="comp-stat-box is-highlight">
+                    <span>Hasil Konversi (.${escapeHtml(res.targetFormat)})</span>
+                    <strong class="mono-num" data-testid="conv-output-size">${escapeHtml(res.outputSizeLabel)}</strong>
+                    <small class="mono-num">${res.outputBytes} Bytes</small>
+                  </div>
+                  <div class="comp-stat-box">
+                    <span>Status Verifikasi</span>
+                    <strong class="mono-num">${res.verified ? '100% Valid' : 'Siap Unduh'}</strong>
+                    <small>${escapeHtml(res.summaryNote || 'Siap dibuka di perangkat Anda')}</small>
+                  </div>
+                </div>
+
+                <div class="comp-result-actions">
+                  <a
+                    href="${escapeHtml(res.outputUrl)}"
+                    download="${escapeHtml(res.fileName)}"
+                    class="btn btn-primary btn-sm"
+                    data-testid="conv-download-btn"
+                  >
+                    Unduh ${escapeHtml(res.fileName)} (${escapeHtml(res.outputSizeLabel)})
+                  </a>
+                  <button type="button" class="btn btn-ghost btn-sm" id="conv-reset-btn">
+                    Konversi File Lain
+                  </button>
+                </div>
               </div>
             </div>
           `
               : ''
           }
-
-          ${
-            toolState.convError
-              ? `<div class="form-error" role="alert">${escapeHtml(toolState.convError)}</div>`
-              : ''
-          }
         </div>
-
-        ${
-          res
-            ? `
-          <div class="comp-result-card" data-testid="conv-result-card">
-            <div class="comp-result-preview">
-              ${
-                res.mimeType.startsWith('image/')
-                  ? `<img src="${escapeHtml(res.outputUrl)}" alt="Hasil konversi" class="dl-thumb-img" />`
-                  : res.mimeType.startsWith('audio/')
-                  ? `<div style="padding:1rem;width:100%;text-align:center;">
-                      <img src="./assets/icons/tool-converter.svg" alt="" width="52" height="52" style="margin:0 auto 0.65rem;" />
-                      <audio controls preload="metadata" src="${escapeHtml(res.outputUrl)}" style="width:100%;max-width:260px;"></audio>
-                    </div>`
-                  : `<div style="padding:1.25rem;text-align:center;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:0.5rem;color:#F8FAFC;">
-                      <img src="./assets/icons/tool-converter.svg" alt="" width="56" height="56" />
-                      <strong class="mono-num" style="font-size:1.05rem;color:#F8FAFC;">.${escapeHtml(res.targetFormat)}</strong>
-                      <span style="font-size:0.75rem;color:#CBD5E1;">${escapeHtml(res.signatureLabel)}</span>
-                    </div>`
-              }
-            </div>
-            <div class="comp-result-body">
-              <div class="dl-result-badges">
-                <span class="dl-plat-pill is-detected" data-testid="conv-verified-badge">
-                  ${res.verified ? '✓ Biner Valid' : 'Selesai'} · ${escapeHtml(res.sourceFormat)} → ${escapeHtml(res.targetFormat)}
-                </span>
-                <span class="dl-dur-pill">${escapeHtml(res.engineLabel)}</span>
-                <span class="dl-dur-pill">${escapeHtml(res.signatureLabel)}</span>
-              </div>
-
-              <h4 class="dl-result-title" data-testid="conv-output-filename">${escapeHtml(res.fileName)}</h4>
-
-              <div class="comp-stats-grid">
-                <div class="comp-stat-box">
-                  <span>Berkas Sumber</span>
-                  <strong class="mono-num">${escapeHtml(res.inputSizeLabel)}</strong>
-                  <small>${escapeHtml(res.sourceLabel)}</small>
-                </div>
-                <div class="comp-stat-box is-highlight">
-                  <span>Hasil Konversi (.${escapeHtml(res.targetFormat)})</span>
-                  <strong class="mono-num" data-testid="conv-output-size">${escapeHtml(res.outputSizeLabel)}</strong>
-                  <small class="mono-num">${res.outputBytes} Bytes</small>
-                </div>
-                <div class="comp-stat-box">
-                  <span>Status Verifikasi</span>
-                  <strong class="mono-num">${res.verified ? '100% Valid' : 'Siap Unduh'}</strong>
-                  <small>${escapeHtml(res.summaryNote || 'Siap dibuka di perangkat Anda')}</small>
-                </div>
-              </div>
-
-              <div class="comp-result-actions">
-                <a
-                  href="${escapeHtml(res.outputUrl)}"
-                  download="${escapeHtml(res.fileName)}"
-                  class="btn btn-primary btn-sm"
-                  data-testid="conv-download-btn"
-                >
-                  Unduh ${escapeHtml(res.fileName)} (${escapeHtml(res.outputSizeLabel)})
-                </a>
-                <button type="button" class="btn btn-ghost btn-sm" id="conv-reset-btn">
-                  Konversi File Lain
-                </button>
-              </div>
-            </div>
-          </div>
-        `
-            : ''
-        }
       </div>
     `;
   }
@@ -2207,10 +2218,38 @@ export function createToolsHubController({
     }
   }
 
+  function syncCompressorProgressDom(pct, label) {
+    if (!mounted || toolState.activeSubTab !== 'compressor') return;
+    const safePct = Math.max(0, Math.min(100, Math.round(Number(pct) || 0)));
+    const box = rootEl.querySelector('#comp-progress-box');
+    const lblEl = rootEl.querySelector('#comp-progress-label');
+    const pctEl = rootEl.querySelector('#comp-progress-pct');
+    const fillEl = rootEl.querySelector('#comp-progress-fill');
+    if (box) box.setAttribute('aria-valuenow', String(safePct));
+    if (lblEl && label) lblEl.textContent = label;
+    if (pctEl) pctEl.textContent = `${safePct}%`;
+    if (fillEl) fillEl.style.width = `${safePct}%`;
+  }
+
+  function syncConverterProgressDom(pct, label) {
+    if (!mounted || toolState.activeSubTab !== 'converter') return;
+    const safePct = Math.max(0, Math.min(100, Math.round(Number(pct) || 0)));
+    const box = rootEl.querySelector('#conv-progress-box');
+    const lblEl = rootEl.querySelector('#conv-progress-label');
+    const pctEl = rootEl.querySelector('#conv-progress-pct');
+    const fillEl = rootEl.querySelector('#conv-progress-fill');
+    if (box) box.setAttribute('aria-valuenow', String(safePct));
+    if (lblEl && label) lblEl.textContent = label;
+    if (pctEl) pctEl.textContent = `${safePct}%`;
+    if (fillEl) fillEl.style.width = `${safePct}%`;
+  }
+
   async function handleSelectCompressorFile(file) {
     if (!file) return;
     toolState.compError = '';
     toolState.compResult = null;
+    toolState.compProgressPct = 0;
+    toolState.compProgressLabel = '';
     try {
       const info = await inspectMediaFile(file);
       toolState.compFile = file;
@@ -2226,8 +2265,8 @@ export function createToolsHubController({
     if (!toolState.compFile || toolState.compLoading) return;
     toolState.compLoading = true;
     toolState.compError = '';
-    toolState.compProgressPct = 10;
-    toolState.compProgressLabel = 'Memulai analisis bitstream...';
+    toolState.compProgressPct = 12;
+    toolState.compProgressLabel = 'Memulai analisis bitstream media...';
     render();
 
     try {
@@ -2237,8 +2276,11 @@ export function createToolsHubController({
         onProgress: (p) => {
           toolState.compProgressPct = p.percent || 50;
           toolState.compProgressLabel = p.label || 'Memproses...';
+          syncCompressorProgressDom(toolState.compProgressPct, toolState.compProgressLabel);
         },
       });
+      toolState.compProgressPct = 100;
+      toolState.compProgressLabel = `Kompresi selesai! Hemat -${result.savedPercent}% (${result.savedBytesLabel})`;
       toolState.compResult = result;
       onToast(`Kompresi selesai! Hemat -${result.savedPercent}% (${result.savedBytesLabel}).`);
     } catch (err) {
@@ -2249,11 +2291,20 @@ export function createToolsHubController({
     }
   }
 
-  function handleSelectConverterFile(file, forcedTargetFormat = '') {
+  async function handleSelectConverterFile(file, forcedTargetFormat = '') {
     if (!file) return;
     toolState.convError = '';
     toolState.convResult = null;
-    const info = detectSourceFormat(file.name, file.type);
+    toolState.convProgressPct = 0;
+    toolState.convProgressLabel = '';
+    let headerBytes = null;
+    try {
+      const sliceBuf = await file.slice(0, 16).arrayBuffer();
+      headerBytes = new Uint8Array(sliceBuf);
+    } catch {
+      // Ignore header slice failure
+    }
+    const info = detectSourceFormat(file.name, file.type, headerBytes);
     const targets = getAvailableTargetFormats(info);
     toolState.convFile = file;
     toolState.convSourceInfo = info;
@@ -2279,8 +2330,11 @@ export function createToolsHubController({
         onProgress: (p) => {
           toolState.convProgressPct = p.percent || 55;
           toolState.convProgressLabel = p.label || 'Mengonversi...';
+          syncConverterProgressDom(toolState.convProgressPct, toolState.convProgressLabel);
         },
       });
+      toolState.convProgressPct = 100;
+      toolState.convProgressLabel = `Konversi ke .${result.targetFormat} selesai & terverifikasi!`;
       toolState.convResult = result;
       onToast(`Konversi ke .${result.targetFormat} berhasil & terverifikasi!`);
     } catch (err) {
@@ -4293,81 +4347,20 @@ export function createToolsHubController({
         toolState.compInspect = null;
         toolState.compResult = null;
         toolState.compError = '';
+        toolState.compProgressPct = 0;
+        toolState.compProgressLabel = '';
         render();
-      });
-
-      rootEl.querySelector('#comp-demo-sample-btn')?.addEventListener('click', async () => {
-        try {
-          const res = await fetch('./assets/hero-banner.jpg');
-          const blob = await res.blob();
-          const sampleFile = new File([blob], 'manifestudio-sample-hd.jpg', {
-            type: 'image/jpeg',
-          });
-          await handleSelectCompressorFile(sampleFile);
-          await runActiveCompression();
-        } catch {
-          onToast('Pilih foto atau video dari perangkat Anda.');
-        }
-      });
-
-      rootEl.querySelector('#comp-demo-video-btn')?.addEventListener('click', async () => {
-        try {
-          const sampleVideo = await createSampleFileForConversion('mp4-to-wav');
-          await handleSelectCompressorFile(sampleVideo);
-          await runActiveCompression();
-        } catch {
-          onToast('Gagal membuat sampel video uji.');
-        }
       });
     }
 
     if (toolState.activeSubTab === 'converter') {
-      rootEl.querySelectorAll('[data-conv-cat]').forEach((btn) => {
-        btn.addEventListener('click', () => {
-          const id = btn.getAttribute('data-conv-cat');
-          if (!id) return;
-          toolState.convCategoryId = id;
-          render();
-        });
-      });
-
-      rootEl.querySelectorAll('[data-conv-preset]').forEach((btn) => {
-        btn.addEventListener('click', () => {
-          const presetId = btn.getAttribute('data-conv-preset');
-          if (!presetId) return;
-          toolState.convPresetId = presetId;
-          const preset = CONVERTER_PRESETS.find((p) => p.id === presetId);
-          if (preset) {
-            toolState.convTargetFormat = preset.targetExt;
-          }
-          render();
-        });
-      });
-
-      rootEl.querySelectorAll('[data-conv-target]').forEach((btn) => {
-        btn.addEventListener('click', () => {
-          const targetId = btn.getAttribute('data-conv-target');
-          if (!targetId) return;
-          toolState.convTargetFormat = targetId;
-          toolState.convResult = null;
-          render();
-        });
-      });
-
-      rootEl.querySelectorAll('[data-conv-sample]').forEach((btn) => {
-        btn.addEventListener('click', async () => {
-          const presetId = btn.getAttribute('data-conv-sample') || 'docx-to-pdf';
-          const preset = CONVERTER_PRESETS.find((p) => p.id === presetId);
-          try {
-            toolState.convPresetId = presetId;
-            const sampleFile = await createSampleFileForConversion(presetId);
-            handleSelectConverterFile(sampleFile, preset?.targetExt || '');
-            await runActiveConversion();
-          } catch (err) {
-            toolState.convError = err?.message || 'Gagal memuat sampel uji konversi.';
-            render();
-          }
-        });
+      const targetSelect = rootEl.querySelector('#conv-target-select');
+      targetSelect?.addEventListener('change', (e) => {
+        const targetId = e.target.value;
+        if (!targetId) return;
+        toolState.convTargetFormat = targetId;
+        toolState.convResult = null;
+        render();
       });
 
       const fileInput = rootEl.querySelector('#conv-file-input');
@@ -4400,6 +4393,8 @@ export function createToolsHubController({
         toolState.convSourceInfo = null;
         toolState.convResult = null;
         toolState.convError = '';
+        toolState.convProgressPct = 0;
+        toolState.convProgressLabel = '';
         render();
       });
     }

@@ -2769,7 +2769,95 @@ test('53. Universal File Converter (converter.js) converts DOCX->PDF, Excel->PDF
   assert.ok(mp4ToWav.signatureLabel.includes('RIFF WAVE'));
 });
 
+test('54. Expanded Multi-Format Converter supports RTF/MD/HTML/TSV/XML/YAML/BMP/GIF/SVG/MP3/AAC/OGG/FLAC/WEBM, ZIP inspection, magic-byte auto-detect, and percentage onProgress', async () => {
+  // 1. Magic-byte auto-detection even when file extension is missing
+  const pdfBuf = buildPdfDocumentBuffer({ title: 'Magic Check', paragraphs: ['Baris Uji PDF'] });
+  const detectedPdf = detectSourceFormat('lampiran_tanpa_ekstensi', '', new Uint8Array(pdfBuf.slice(0, 16)));
+  assert.equal(detectedPdf.ext, 'pdf');
+  assert.equal(detectedPdf.family, 'pdf');
 
+  // Verify dropdown targets exclude source format itself and include expanded formats
+  const imgTargets = getAvailableTargetFormats({ ext: 'jpg', family: 'image' }).map((t) => t.id);
+  assert.equal(imgTargets.includes('jpg'), false);
+  for (const expected of ['png', 'jpeg', 'webp', 'bmp', 'gif', 'ico', 'svg', 'pdf', 'html', 'txt', 'zip']) {
+    assert.equal(imgTargets.includes(expected), true, `Expected image target ${expected}`);
+  }
 
+  // 2. DOCX -> RTF, MD, HTML, XML, YAML + Progress callback verification
+  const progressEvents = [];
+  const docxFile = await createSampleFileForConversion('docx-to-pdf');
+  const docxToRtf = await convertAnyFile(docxFile, {
+    targetFormat: 'rtf',
+    onProgress: (p) => progressEvents.push(p.percent),
+  });
+  assert.equal(docxToRtf.verified, true);
+  assert.equal(docxToRtf.targetFormat, 'RTF');
+  assert.ok((await docxToRtf.blob.text()).startsWith('{\\rtf1'));
+  assert.ok(progressEvents.length >= 3);
+  assert.equal(progressEvents[progressEvents.length - 1], 100);
 
+  const docxToMd = await convertAnyFile(docxFile, { targetFormat: 'md' });
+  assert.equal(docxToMd.verified, true);
+  assert.ok((await docxToMd.blob.text()).includes('# proposal-katalog-manifestudio.docx'));
 
+  const docxToHtml = await convertAnyFile(docxFile, { targetFormat: 'html' });
+  assert.equal(docxToHtml.verified, true);
+  assert.ok((await docxToHtml.blob.text()).includes('<!DOCTYPE html>'));
+
+  // 3. Excel -> TSV, XML, YAML, and roundtrip XML/YAML -> XLSX/JSON
+  const excelFile = await createSampleFileForConversion('excel-to-pdf');
+  const excelToTsv = await convertAnyFile(excelFile, { targetFormat: 'tsv' });
+  assert.equal(excelToTsv.verified, true);
+  assert.ok((await excelToTsv.blob.text()).includes('\t'));
+
+  const excelToXml = await convertAnyFile(excelFile, { targetFormat: 'xml' });
+  const xmlText = await excelToXml.blob.text();
+  assert.ok(xmlText.includes('<dataset'));
+  assert.ok(xmlText.includes('<record>'));
+
+  const xmlFile = new File([xmlText], 'data-produk.xml', { type: 'application/xml' });
+  const xmlToJson = await convertAnyFile(xmlFile, { targetFormat: 'json' });
+  const xmlJsonParsed = JSON.parse(await xmlToJson.blob.text());
+  assert.equal(xmlJsonParsed.length, 4);
+  assert.equal(xmlJsonParsed[0].ID_Produk, 'MF-01');
+
+  const excelToYaml = await convertAnyFile(excelFile, { targetFormat: 'yaml' });
+  const yamlText = await excelToYaml.blob.text();
+  assert.ok(yamlText.includes('items:'));
+  const yamlFile = new File([yamlText], 'config-produk.yaml', { type: 'application/x-yaml' });
+  const yamlToXlsx = await convertAnyFile(yamlFile, { targetFormat: 'xlsx' });
+  assert.equal(yamlToXlsx.verified, true);
+  const parsedYamlRows = await parseExcelBuffer(await yamlToXlsx.blob.arrayBuffer(), 'out.xlsx');
+  assert.equal(parsedYamlRows.length, 5);
+
+  // 4. Image -> BMP, GIF, SVG, PDF, HTML, TXT
+  const sampleImg = await createSampleFileForConversion('jpg-to-png');
+  for (const target of ['bmp', 'gif', 'svg', 'pdf', 'html', 'txt']) {
+    const out = await convertAnyFile(sampleImg, { targetFormat: target });
+    assert.equal(out.verified, true, `Image conversion to ${target} must verify`);
+    assert.equal(out.targetFormat, target.toUpperCase());
+  }
+
+  // 5. MP4 -> MP3, AAC, OGG, FLAC, WEBM, MP4A
+  const mp4File = await createSampleFileForConversion('mp4-to-m4a');
+  for (const target of ['mp3', 'aac', 'ogg', 'flac', 'webm', 'mp4a']) {
+    const out = await convertAnyFile(mp4File, { targetFormat: target });
+    assert.equal(out.verified, true, `Media conversion to ${target} must verify`);
+    assert.equal(out.targetFormat, target.toUpperCase());
+  }
+
+  // 6. ZIP archive -> PDF / JSON / CSV inspection
+  const zipBuf = createZipArchive([
+    { name: 'catatan.txt', data: 'Halo Manifestudio Converter' },
+    { name: 'info.json', data: '{"ok":true}' },
+  ]);
+  const zipFile = new File([zipBuf], 'arsip-uji.zip', { type: 'application/zip' });
+  const zipToJson = await convertAnyFile(zipFile, { targetFormat: 'json' });
+  const zipRecords = JSON.parse(await zipToJson.blob.text());
+  assert.equal(zipRecords.length, 2);
+  assert.equal(zipRecords[0]['Nama Berkas di Dalam ZIP'], 'catatan.txt');
+
+  const zipToPdf = await convertAnyFile(zipFile, { targetFormat: 'pdf' });
+  assert.equal(zipToPdf.verified, true);
+  assert.ok(zipToPdf.signatureLabel.includes('%PDF-1.4'));
+});

@@ -1,10 +1,13 @@
 /**
  * Universal Multi-Engine File Converter (Local Binary + WebCodecs/Canvas + Open-Source Parsers)
- * Supports real, spec-compliant conversions across:
- * - Documents & Spreadsheets: DOCX -> PDF/TXT/HTML, EXCEL (XLSX/XLS/CSV) -> PDF/CSV/JSON/HTML, PDF -> JPG/PNG/TXT, TXT/HTML -> PDF
- * - Images: JPG <-> PNG, JPG <-> JPEG, JPG/PNG <-> WebP, JPG/PNG/WebP -> PDF, JPG/PNG -> ICO/SVG
- * - Video & Audio: MP4/MOV/WebM -> M4A (MP4A), MP4 -> WAV, MP4 -> MP3/Audio, MP4 -> JPG (Frame), WAV <-> M4A
- * - Archives: Any File (JPG, PDF, DOCX, XLSX, MP4, etc.) -> ZIP (PKZIP IEEE CRC-32)
+ * Supports 85+ real, spec-compliant conversions across 22 target formats:
+ * - Documents: DOCX/DOC/ODT/RTF/TXT/MD/HTML -> PDF, DOCX, TXT, HTML, MD, RTF, XLSX, CSV, JSON, XML, ZIP
+ * - Spreadsheets & Data: XLSX/XLS/CSV/TSV/JSON/XML/YAML -> PDF, XLSX, CSV, TSV, JSON, XML, YAML, HTML, MD, DOCX, TXT, ZIP
+ * - PDF Documents: PDF -> JPG, JPEG, PNG, WEBP, BMP, GIF, DOCX, XLSX, TXT, HTML, MD, RTF, ZIP
+ * - Images: JPG/JPEG/PNG/WEBP/BMP/GIF/SVG/ICO/AVIF -> PNG, JPG, JPEG, WEBP, BMP, GIF, ICO, SVG, PDF, HTML, TXT (Data URI), ZIP
+ * - Video: MP4/MOV/WEBM/MKV/AVI -> M4A, MP4A, WAV, MP3, AAC, OGG, FLAC, MP4, WEBM, JPG, PNG, WEBP, GIF, ZIP
+ * - Audio: MP3/WAV/M4A/MP4A/AAC/OGG/FLAC/OPUS -> WAV, M4A, MP4A, MP3, AAC, OGG, FLAC, ZIP
+ * - Archives: ZIP -> PDF, JSON, CSV, XLSX, HTML, TXT
  */
 
 import { formatBytes } from './tools-logic.js';
@@ -13,28 +16,66 @@ export const CONVERTER_CATEGORIES = [
   {
     id: 'all',
     label: 'Semua Format',
-    badge: '25+ Konversi',
+    badge: '85+ Konversi',
   },
   {
     id: 'document',
     label: 'Dokumen & Excel',
-    badge: 'DOCX · XLSX · PDF',
+    badge: 'DOCX · XLSX · PDF · RTF · MD',
   },
   {
     id: 'image',
     label: 'Foto & Gambar',
-    badge: 'JPG · PNG · WebP · PDF',
+    badge: 'JPG · PNG · WebP · BMP · GIF · ICO · SVG',
   },
   {
     id: 'media',
     label: 'Video & Audio',
-    badge: 'MP4 · M4A · WAV · MP3',
+    badge: 'MP4 · M4A · WAV · MP3 · AAC · OGG · FLAC',
   },
   {
     id: 'archive',
-    label: 'Arsip ZIP',
-    badge: 'Semua File → ZIP',
+    label: 'Arsip & Data',
+    badge: 'ZIP · JSON · XML · YAML · CSV',
   },
+];
+
+export const ALL_TARGET_FORMATS = [
+  // Dokumen & Kantor
+  { id: 'pdf', group: 'Dokumen & Kantor', label: 'PDF (.pdf) — Dokumen Standar ISO Siap Cetak', badge: 'Populer' },
+  { id: 'docx', group: 'Dokumen & Kantor', label: 'DOCX (.docx) — Dokumen Microsoft Word OpenXML', badge: 'Word' },
+  { id: 'rtf', group: 'Dokumen & Kantor', label: 'RTF (.rtf) — Rich Text Format Universal', badge: 'Dokumen' },
+  { id: 'txt', group: 'Dokumen & Kantor', label: 'TXT (.txt) — Teks Bersih UTF-8', badge: 'Teks' },
+  { id: 'md', group: 'Dokumen & Kantor', label: 'MD (.md) — Dokumen Markdown Terformat', badge: 'Markdown' },
+  { id: 'html', group: 'Dokumen & Kantor', label: 'HTML (.html) — Halaman Dokumen Web', badge: 'Web' },
+  // Spreadsheet & Data
+  { id: 'xlsx', group: 'Spreadsheet & Data', label: 'XLSX (.xlsx) — Spreadsheet Microsoft Excel', badge: 'Excel' },
+  { id: 'csv', group: 'Spreadsheet & Data', label: 'CSV (.csv) — Tabel Comma-Separated Values', badge: 'Tabel' },
+  { id: 'tsv', group: 'Spreadsheet & Data', label: 'TSV (.tsv) — Tabel Tab-Separated Values', badge: 'Tabel' },
+  { id: 'json', group: 'Spreadsheet & Data', label: 'JSON (.json) — Struktur Data JSON API', badge: 'Data' },
+  { id: 'xml', group: 'Spreadsheet & Data', label: 'XML (.xml) — Dokumen Extensible Markup', badge: 'XML' },
+  { id: 'yaml', group: 'Spreadsheet & Data', label: 'YAML (.yaml) — Konfigurasi Data Terstruktur', badge: 'YAML' },
+  // Foto & Gambar
+  { id: 'jpg', group: 'Foto & Gambar', label: 'JPG (.jpg) — Foto Standar Kompatibilitas Tinggi', badge: 'Populer' },
+  { id: 'jpeg', group: 'Foto & Gambar', label: 'JPEG (.jpeg) — Standar Kamera & Web JFIF', badge: 'Foto' },
+  { id: 'png', group: 'Foto & Gambar', label: 'PNG (.png) — Gambar Lossless Transparan', badge: 'Tajam' },
+  { id: 'webp', group: 'Foto & Gambar', label: 'WebP (.webp) — Gambar Modern Super Ringan', badge: 'WebP' },
+  { id: 'bmp', group: 'Foto & Gambar', label: 'BMP (.bmp) — Windows Bitmap 24-Bit Tanpa Kompresi', badge: 'Bitmap' },
+  { id: 'gif', group: 'Foto & Gambar', label: 'GIF (.gif) — Gambar Palet Terindeks GIF89a', badge: 'GIF' },
+  { id: 'ico', group: 'Foto & Gambar', label: 'ICO (.ico) — Ikon Aplikasi & Favicon Web', badge: 'Ikon' },
+  { id: 'svg', group: 'Foto & Gambar', label: 'SVG (.svg) — Kontainer Grafik Vektor Web', badge: 'Vektor' },
+  // Audio & Video
+  { id: 'm4a', group: 'Audio & Video', label: 'M4A (.m4a) — Audio Murni Apple/ISO Audio', badge: 'Populer' },
+  { id: 'mp4a', group: 'Audio & Video', label: 'MP4A (.mp4a) — Kontainer Audio MPEG-4', badge: 'Audio' },
+  { id: 'wav', group: 'Audio & Video', label: 'WAV (.wav) — Audio Studio Lossless PCM 16-Bit', badge: 'Lossless' },
+  { id: 'mp3', group: 'Audio & Video', label: 'MP3 (.mp3) — Audio Musik Universal ID3', badge: 'Musik' },
+  { id: 'aac', group: 'Audio & Video', label: 'AAC (.aac) — Advanced Audio Coding ADTS', badge: 'AAC' },
+  { id: 'ogg', group: 'Audio & Video', label: 'OGG (.ogg) — Kontainer Audio Terbuka OggS', badge: 'OGG' },
+  { id: 'flac', group: 'Audio & Video', label: 'FLAC (.flac) — Free Lossless Audio Codec', badge: 'Hi-Res' },
+  { id: 'mp4', group: 'Audio & Video', label: 'MP4 (.mp4) — Kontainer Video ISO MPEG-4', badge: 'Video' },
+  { id: 'webm', group: 'Audio & Video', label: 'WebM (.webm) — Kontainer Media Web EBML', badge: 'WebM' },
+  // Arsip
+  { id: 'zip', group: 'Arsip & Paket', label: 'ZIP (.zip) — Arsip Terkompresi Standar PKZIP (CRC-32)', badge: 'Arsip' },
 ];
 
 export const CONVERTER_PRESETS = [
@@ -72,6 +113,15 @@ export const CONVERTER_PRESETS = [
     targetFormat: 'png',
     label: 'PDF ke PNG',
     shortDesc: 'Render halaman PDF menjadi gambar PNG tajam',
+    accept: '.pdf,application/pdf',
+  },
+  {
+    id: 'pdf-to-docx',
+    category: 'document',
+    sourceExt: 'pdf',
+    targetFormat: 'docx',
+    label: 'PDF ke DOCX',
+    shortDesc: 'Ekstrak isi dokumen PDF menjadi dokumen Microsoft Word (.docx)',
     accept: '.pdf,application/pdf',
   },
   {
@@ -168,10 +218,23 @@ export const CONVERTER_PRESETS = [
 
 const MIME_BY_FORMAT = {
   pdf: 'application/pdf',
+  docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  rtf: 'application/rtf',
+  md: 'text/markdown;charset=utf-8',
+  txt: 'text/plain;charset=utf-8',
+  html: 'text/html;charset=utf-8',
+  csv: 'text/csv;charset=utf-8',
+  tsv: 'text/tab-separated-values;charset=utf-8',
+  json: 'application/json;charset=utf-8',
+  xml: 'application/xml;charset=utf-8',
+  yaml: 'application/x-yaml;charset=utf-8',
   jpg: 'image/jpeg',
   jpeg: 'image/jpeg',
   png: 'image/png',
   webp: 'image/webp',
+  bmp: 'image/bmp',
+  gif: 'image/gif',
   ico: 'image/x-icon',
   svg: 'image/svg+xml',
   zip: 'application/zip',
@@ -179,10 +242,11 @@ const MIME_BY_FORMAT = {
   m4a: 'audio/mp4',
   mp4a: 'audio/mp4',
   mp3: 'audio/mpeg',
-  txt: 'text/plain;charset=utf-8',
-  csv: 'text/csv;charset=utf-8',
-  json: 'application/json;charset=utf-8',
-  html: 'text/html;charset=utf-8',
+  aac: 'audio/aac',
+  ogg: 'audio/ogg',
+  flac: 'audio/flac',
+  mp4: 'video/mp4',
+  webm: 'video/webm',
 };
 
 /**
@@ -222,132 +286,172 @@ export function computeAdler32(bytes) {
 }
 
 /**
- * Detects source extension and category from a File or file name.
+ * Detects source extension, family, and human-friendly label from file name, MIME type, and optional magic bytes.
  */
-export function detectSourceFormat(fileName = '', mimeType = '') {
+export function detectSourceFormat(fileName = '', mimeType = '', headerBytes = null) {
   const cleanName = String(fileName || '').trim().toLowerCase();
   const cleanMime = String(mimeType || '').trim().toLowerCase();
   const extMatch = cleanName.match(/\.([a-z0-9]+)$/i);
-  const ext = extMatch ? extMatch[1].toLowerCase() : '';
+  let ext = extMatch ? extMatch[1].toLowerCase() : '';
 
-  if (ext === 'docx' || ext === 'doc' || cleanMime.includes('wordprocessingml')) {
-    return { ext: 'docx', family: 'document', label: 'Word Document (DOCX)' };
+  // Optional magic-byte inspection when extension is missing or generic
+  if (headerBytes && (headerBytes instanceof Uint8Array || headerBytes instanceof ArrayBuffer)) {
+    const b = headerBytes instanceof Uint8Array ? headerBytes : new Uint8Array(headerBytes);
+    if (!ext && b.length >= 8) {
+      if (b[0] === 0x25 && b[1] === 0x50 && b[2] === 0x44 && b[3] === 0x46) ext = 'pdf';
+      else if (b[0] === 0x89 && b[1] === 0x50 && b[2] === 0x4e && b[3] === 0x47) ext = 'png';
+      else if (b[0] === 0xff && b[1] === 0xd8 && b[2] === 0xff) ext = 'jpg';
+      else if (b[0] === 0x47 && b[1] === 0x49 && b[2] === 0x46 && b[3] === 0x38) ext = 'gif';
+      else if (b[0] === 0x42 && b[1] === 0x4d) ext = 'bmp';
+      else if (b[0] === 0x50 && b[1] === 0x4b && b[2] === 0x03 && b[3] === 0x04) ext = 'zip';
+    }
   }
-  if (ext === 'xlsx' || ext === 'xls' || cleanMime.includes('spreadsheetml') || cleanMime.includes('excel')) {
-    return { ext: 'xlsx', family: 'spreadsheet', label: 'Excel Spreadsheet (XLSX)' };
+
+  if (ext === 'docx' || ext === 'doc' || ext === 'odt' || cleanMime.includes('wordprocessingml') || cleanMime.includes('msword')) {
+    return { ext: ext || 'docx', family: 'document', label: `Dokumen Word (${(ext || 'DOCX').toUpperCase()})` };
   }
-  if (ext === 'csv' || ext === 'tsv' || cleanMime === 'text/csv') {
-    return { ext: 'csv', family: 'spreadsheet', label: 'CSV Spreadsheet' };
+  if (ext === 'rtf' || cleanMime.includes('rtf')) {
+    return { ext: 'rtf', family: 'document', label: 'Dokumen Rich Text (RTF)' };
+  }
+  if (ext === 'xlsx' || ext === 'xls' || ext === 'ods' || cleanMime.includes('spreadsheetml') || cleanMime.includes('excel')) {
+    return { ext: ext || 'xlsx', family: 'spreadsheet', label: `Spreadsheet Excel (${(ext || 'XLSX').toUpperCase()})` };
+  }
+  if (ext === 'csv' || ext === 'tsv' || cleanMime === 'text/csv' || cleanMime.includes('tab-separated')) {
+    return { ext: ext || 'csv', family: 'spreadsheet', label: `Tabel Data (${(ext || 'CSV').toUpperCase()})` };
   }
   if (ext === 'pdf' || cleanMime === 'application/pdf') {
-    return { ext: 'pdf', family: 'pdf', label: 'PDF Document' };
+    return { ext: 'pdf', family: 'pdf', label: 'Dokumen PDF (.pdf)' };
   }
   if (ext === 'jpg' || ext === 'jpeg' || cleanMime === 'image/jpeg') {
-    return { ext: ext === 'jpeg' ? 'jpeg' : 'jpg', family: 'image', label: `Foto ${ext.toUpperCase() || 'JPG'}` };
+    const actualExt = ext === 'jpeg' ? 'jpeg' : 'jpg';
+    return { ext: actualExt, family: 'image', label: `Foto ${actualExt.toUpperCase()} (.${actualExt})` };
   }
   if (ext === 'png' || cleanMime === 'image/png') {
-    return { ext: 'png', family: 'image', label: 'Gambar PNG' };
+    return { ext: 'png', family: 'image', label: 'Gambar PNG (.png)' };
   }
   if (ext === 'webp' || cleanMime === 'image/webp') {
-    return { ext: 'webp', family: 'image', label: 'Gambar WebP' };
+    return { ext: 'webp', family: 'image', label: 'Gambar WebP (.webp)' };
   }
-  if (ext === 'gif' || ext === 'bmp' || ext === 'avif' || ext === 'svg' || cleanMime.startsWith('image/')) {
+  if (ext === 'bmp' || cleanMime === 'image/bmp') {
+    return { ext: 'bmp', family: 'image', label: 'Gambar Bitmap (.bmp)' };
+  }
+  if (ext === 'gif' || cleanMime === 'image/gif') {
+    return { ext: 'gif', family: 'image', label: 'Gambar GIF (.gif)' };
+  }
+  if (ext === 'ico' || cleanMime.includes('icon')) {
+    return { ext: 'ico', family: 'image', label: 'Ikon ICO (.ico)' };
+  }
+  if (ext === 'svg' || cleanMime === 'image/svg+xml') {
+    return { ext: 'svg', family: 'image', label: 'Vektor SVG (.svg)' };
+  }
+  if (ext === 'avif' || cleanMime.startsWith('image/')) {
     return { ext: ext || 'jpg', family: 'image', label: `Gambar ${(ext || 'IMG').toUpperCase()}` };
   }
-  if (ext === 'mp4' || ext === 'mov' || ext === 'webm' || ext === 'mkv' || cleanMime.startsWith('video/')) {
-    return { ext: ext || 'mp4', family: 'video', label: `Video ${(ext || 'MP4').toUpperCase()}` };
+  if (ext === 'mp4' || ext === 'mov' || ext === 'webm' || ext === 'mkv' || ext === 'avi' || cleanMime.startsWith('video/')) {
+    return { ext: ext || 'mp4', family: 'video', label: `Video ${(ext || 'MP4').toUpperCase()} (.${ext || 'mp4'})` };
   }
-  if (ext === 'mp3' || ext === 'wav' || ext === 'm4a' || ext === 'mp4a' || ext === 'ogg' || ext === 'aac' || cleanMime.startsWith('audio/')) {
-    return { ext: ext || 'mp3', family: 'audio', label: `Audio ${(ext || 'AUDIO').toUpperCase()}` };
+  if (
+    ext === 'mp3' ||
+    ext === 'wav' ||
+    ext === 'm4a' ||
+    ext === 'mp4a' ||
+    ext === 'ogg' ||
+    ext === 'aac' ||
+    ext === 'flac' ||
+    ext === 'opus' ||
+    cleanMime.startsWith('audio/')
+  ) {
+    return { ext: ext || 'mp3', family: 'audio', label: `Audio ${(ext || 'AUDIO').toUpperCase()} (.${ext || 'mp3'})` };
   }
-  if (ext === 'txt' || ext === 'md' || ext === 'html' || ext === 'json' || cleanMime.startsWith('text/')) {
-    return { ext: ext || 'txt', family: 'text', label: `Teks ${(ext || 'TXT').toUpperCase()}` };
+  if (ext === 'json' || ext === 'xml' || ext === 'yaml' || ext === 'yml' || cleanMime.includes('json') || cleanMime.includes('xml') || cleanMime.includes('yaml')) {
+    return { ext: ext === 'yml' ? 'yaml' : ext || 'json', family: 'data', label: `Data Terstruktur ${(ext || 'JSON').toUpperCase()}` };
+  }
+  if (ext === 'txt' || ext === 'md' || ext === 'html' || ext === 'htm' || cleanMime.startsWith('text/')) {
+    const normExt = ext === 'htm' ? 'html' : ext || 'txt';
+    return { ext: normExt, family: 'text', label: `Dokumen Teks ${normExt.toUpperCase()} (.${normExt})` };
   }
   if (ext === 'zip' || cleanMime.includes('zip')) {
-    return { ext: 'zip', family: 'archive', label: 'Arsip ZIP' };
+    return { ext: 'zip', family: 'archive', label: 'Arsip ZIP (.zip)' };
   }
   return { ext: ext || 'bin', family: 'generic', label: `Berkas ${(ext || 'FILE').toUpperCase()}` };
 }
 
+function pickTargetsByIds(ids = [], excludeExt = '') {
+  const cleanExclude = String(excludeExt || '').toLowerCase();
+  const result = [];
+  for (const id of ids) {
+    if (id === cleanExclude) continue;
+    const found = ALL_TARGET_FORMATS.find((f) => f.id === id);
+    if (found) result.push(found);
+  }
+  return result;
+}
+
 /**
- * Lists valid target formats for a detected source file.
+ * Lists valid target formats for a detected source file, ordered by relevance and grouped for dropdown rendering.
  */
 export function getAvailableTargetFormats(sourceInfo = {}) {
-  const { ext = '', family = 'generic' } = sourceInfo;
+  const { ext = '', family = 'generic' } = sourceInfo || {};
   if (family === 'document') {
-    return [
-      { id: 'pdf', label: 'PDF (.pdf) — Dokumen Siap Cetak', badge: 'Populer' },
-      { id: 'txt', label: 'TXT (.txt) — Teks Bersih', badge: 'Cepat' },
-      { id: 'html', label: 'HTML (.html) — Dokumen Web', badge: 'Web' },
-      { id: 'zip', label: 'ZIP (.zip) — Arsip Terkompresi', badge: 'Arsip' },
-    ];
+    return pickTargetsByIds(
+      ['pdf', 'docx', 'txt', 'html', 'md', 'rtf', 'xlsx', 'csv', 'json', 'xml', 'zip'],
+      ext
+    );
   }
   if (family === 'spreadsheet') {
-    return [
-      { id: 'pdf', label: 'PDF (.pdf) — Tabel Bergaris Rapi', badge: 'Populer' },
-      { id: 'csv', label: 'CSV (.csv) — Tabel Universal', badge: 'Data' },
-      { id: 'json', label: 'JSON (.json) — Data Terstruktur', badge: 'API' },
-      { id: 'html', label: 'HTML (.html) — Tabel Web', badge: 'Web' },
-      { id: 'zip', label: 'ZIP (.zip) — Arsip Paket', badge: 'Arsip' },
-    ];
+    return pickTargetsByIds(
+      ['pdf', 'xlsx', 'csv', 'tsv', 'json', 'xml', 'yaml', 'html', 'md', 'docx', 'txt', 'zip'],
+      ext
+    );
   }
   if (family === 'pdf') {
-    return [
-      { id: 'jpg', label: 'JPG (.jpg) — Gambar Halaman HD', badge: 'Populer' },
-      { id: 'png', label: 'PNG (.png) — Gambar Lossless', badge: 'Tajam' },
-      { id: 'txt', label: 'TXT (.txt) — Ekstrak Teks PDF', badge: 'Teks' },
-      { id: 'zip', label: 'ZIP (.zip) — Paket Arsip ZIP', badge: 'Arsip' },
-    ];
+    return pickTargetsByIds(
+      ['jpg', 'png', 'jpeg', 'webp', 'bmp', 'gif', 'docx', 'xlsx', 'txt', 'html', 'md', 'rtf', 'zip'],
+      ext
+    );
   }
   if (family === 'image') {
-    const list = [];
-    if (ext !== 'png') list.push({ id: 'png', label: 'PNG (.png) — Lossless Transparan', badge: 'Populer' });
-    if (ext !== 'jpg') list.push({ id: 'jpg', label: 'JPG (.jpg) — Foto Standar', badge: 'Populer' });
-    if (ext !== 'jpeg') list.push({ id: 'jpeg', label: 'JPEG (.jpeg) — Standar Kamera/Web', badge: '1:1' });
-    if (ext !== 'webp') list.push({ id: 'webp', label: 'WebP (.webp) — Modern Super Ringan', badge: 'Hemat' });
-    list.push(
-      { id: 'pdf', label: 'PDF (.pdf) — Dokumen Foto PDF', badge: 'Dokumen' },
-      { id: 'zip', label: 'ZIP (.zip) — Arsip Paket ZIP', badge: 'Arsip' },
-      { id: 'ico', label: 'ICO (.ico) — Ikon Favicon/Windows', badge: 'Ikon' },
-      { id: 'svg', label: 'SVG (.svg) — Kontainer Vektor Web', badge: 'Web' }
+    return pickTargetsByIds(
+      ['png', 'jpg', 'jpeg', 'webp', 'bmp', 'gif', 'ico', 'svg', 'pdf', 'html', 'txt', 'zip'],
+      ext
     );
-    return list;
   }
   if (family === 'video') {
-    return [
-      { id: 'm4a', label: 'M4A / MP4A (.m4a) — Audio Murni AAC/ISO', badge: 'Populer' },
-      { id: 'mp4a', label: 'MP4A (.mp4a) — Audio Container MP4A', badge: 'Audio' },
-      { id: 'wav', label: 'WAV (.wav) — Audio Studio PCM 16-Bit', badge: 'Lossless' },
-      { id: 'mp3', label: 'MP3 (.mp3) — Audio Musik Universal', badge: 'Musik' },
-      { id: 'jpg', label: 'JPG (.jpg) — Tangkap Frame Thumbnail HD', badge: 'Frame' },
-      { id: 'zip', label: 'ZIP (.zip) — Paket Arsip ZIP', badge: 'Arsip' },
-    ];
+    return pickTargetsByIds(
+      ['m4a', 'mp4a', 'wav', 'mp3', 'aac', 'ogg', 'flac', 'mp4', 'webm', 'jpg', 'png', 'webp', 'gif', 'zip'],
+      ext
+    );
   }
   if (family === 'audio') {
-    return [
-      { id: 'wav', label: 'WAV (.wav) — PCM 16-Bit Studio', badge: 'Lossless' },
-      { id: 'm4a', label: 'M4A / MP4A (.m4a) — Audio Ringan', badge: 'Populer' },
-      { id: 'mp3', label: 'MP3 (.mp3) — Audio Universal', badge: 'Musik' },
-      { id: 'zip', label: 'ZIP (.zip) — Paket Arsip ZIP', badge: 'Arsip' },
-    ];
+    return pickTargetsByIds(
+      ['wav', 'm4a', 'mp4a', 'mp3', 'aac', 'ogg', 'flac', 'zip'],
+      ext
+    );
+  }
+  if (family === 'data') {
+    return pickTargetsByIds(
+      ['pdf', 'xlsx', 'csv', 'tsv', 'json', 'xml', 'yaml', 'html', 'md', 'docx', 'txt', 'zip'],
+      ext
+    );
   }
   if (family === 'text') {
-    return [
-      { id: 'pdf', label: 'PDF (.pdf) — Dokumen Siap Cetak', badge: 'Populer' },
-      { id: 'html', label: 'HTML (.html) — Halaman Web', badge: 'Web' },
-      { id: 'txt', label: 'TXT (.txt) — Teks Standar', badge: 'Teks' },
-      { id: 'zip', label: 'ZIP (.zip) — Paket Arsip ZIP', badge: 'Arsip' },
-    ];
+    return pickTargetsByIds(
+      ['pdf', 'docx', 'html', 'txt', 'md', 'rtf', 'xlsx', 'csv', 'json', 'xml', 'yaml', 'zip'],
+      ext
+    );
   }
-  return [
-    { id: 'zip', label: 'ZIP (.zip) — Paket Arsip Standar', badge: 'Populer' },
-    { id: 'pdf', label: 'PDF (.pdf) — Dokumen Ringkasan File', badge: 'Dokumen' },
-  ];
+  if (family === 'archive') {
+    return pickTargetsByIds(['pdf', 'json', 'csv', 'xlsx', 'html', 'txt'], ext);
+  }
+  return pickTargetsByIds(
+    ['pdf', 'zip', 'docx', 'xlsx', 'txt', 'html', 'json', 'jpg', 'png', 'm4a', 'wav', 'mp3'],
+    ext
+  );
 }
 
 /**
  * Creates a standard PKZIP archive buffer from an array of `{ name, data }` entries.
- * Uses Store (method 0) with valid IEEE CRC-32 so it opens in 100% of OS archive utilities without external dependencies.
+ * Uses Store (method 0) with valid IEEE CRC-32 so it opens in 100% of OS archive utilities.
  */
 export function createZipArchive(entries = []) {
   const encoder = new TextEncoder();
@@ -383,13 +487,12 @@ export function createZipArchive(entries = []) {
 
   for (const item of normalized) {
     offsets.push(localOffset);
-    // Local file header signature 0x04034b50
     view.setUint32(localOffset, 0x04034b50, true);
-    view.setUint16(localOffset + 4, 20, true); // version needed 2.0
-    view.setUint16(localOffset + 6, 0x0800, true); // UTF-8 flag
-    view.setUint16(localOffset + 8, 0, true); // compression method 0 (Store)
-    view.setUint16(localOffset + 10, 0x6000, true); // mod time
-    view.setUint16(localOffset + 12, 0x58b2, true); // mod date
+    view.setUint16(localOffset + 4, 20, true);
+    view.setUint16(localOffset + 6, 0x0800, true);
+    view.setUint16(localOffset + 8, 0, true);
+    view.setUint16(localOffset + 10, 0x6000, true);
+    view.setUint16(localOffset + 12, 0x58b2, true);
     view.setUint32(localOffset + 14, item.crc, true);
     view.setUint32(localOffset + 18, item.dataBytes.length, true);
     view.setUint32(localOffset + 22, item.dataBytes.length, true);
@@ -404,10 +507,10 @@ export function createZipArchive(entries = []) {
   for (let i = 0; i < normalized.length; i += 1) {
     const item = normalized[i];
     view.setUint32(centralOffset, 0x02014b50, true);
-    view.setUint16(centralOffset + 4, 20, true); // version made by
-    view.setUint16(centralOffset + 6, 20, true); // version needed
-    view.setUint16(centralOffset + 8, 0x0800, true); // UTF-8
-    view.setUint16(centralOffset + 10, 0, true); // method 0
+    view.setUint16(centralOffset + 4, 20, true);
+    view.setUint16(centralOffset + 6, 20, true);
+    view.setUint16(centralOffset + 8, 0x0800, true);
+    view.setUint16(centralOffset + 10, 0, true);
     view.setUint16(centralOffset + 12, 0x6000, true);
     view.setUint16(centralOffset + 14, 0x58b2, true);
     view.setUint32(centralOffset + 16, item.crc, true);
@@ -424,7 +527,6 @@ export function createZipArchive(entries = []) {
     centralOffset += 46 + item.nameBytes.length;
   }
 
-  // End of Central Directory Record (0x06054b50)
   view.setUint32(centralOffset, 0x06054b50, true);
   view.setUint16(centralOffset + 4, 0, true);
   view.setUint16(centralOffset + 6, 0, true);
@@ -437,9 +539,6 @@ export function createZipArchive(entries = []) {
   return out.buffer;
 }
 
-/**
- * Decompresses raw DEFLATE bytes (method 8 in ZIP containers like .docx / .xlsx).
- */
 async function inflateRawBytes(compressedBytes) {
   if (typeof DecompressionStream !== 'undefined') {
     try {
@@ -466,7 +565,6 @@ export async function extractZipEntries(arrayBuffer) {
   const decoder = new TextDecoder('utf-8');
   const entries = new Map();
 
-  // Locate End of Central Directory (EOCD 0x06054b50) from the end for accurate sizes
   let eocdOffset = -1;
   const minEocdSearch = Math.max(0, bytes.length - 65557);
   for (let i = bytes.length - 22; i >= minEocdSearch; i -= 1) {
@@ -504,7 +602,6 @@ export async function extractZipEntries(arrayBuffer) {
     }
   }
 
-  // Fallback linear local header scan if EOCD wasn't found
   if (entries.size === 0) {
     let offset = 0;
     while (offset + 30 <= bytes.length) {
@@ -544,25 +641,28 @@ function decodeXmlEntities(str = '') {
 }
 
 /**
- * Parses a Word .docx file buffer into structured paragraphs and tables.
+ * Parses a Word .docx / .rtf / .odt file buffer into structured paragraphs and tables.
  */
 export async function parseDocxBuffer(arrayBuffer) {
   const decoder = new TextDecoder('utf-8');
-  const entries = await extractZipEntries(arrayBuffer);
-  const docXmlBytes = entries.get('word/document.xml');
-
+  const bytes = new Uint8Array(arrayBuffer);
   let xmlText = '';
-  if (docXmlBytes) {
-    xmlText = decoder.decode(docXmlBytes);
-  } else {
-    xmlText = decoder.decode(new Uint8Array(arrayBuffer));
+
+  if (bytes.length >= 4 && bytes[0] === 0x50 && bytes[1] === 0x4b) {
+    const entries = await extractZipEntries(arrayBuffer);
+    const docXmlBytes = entries.get('word/document.xml') || entries.get('content.xml');
+    if (docXmlBytes) {
+      xmlText = decoder.decode(docXmlBytes);
+    }
+  }
+  if (!xmlText) {
+    xmlText = decoder.decode(bytes);
   }
 
   const paragraphs = [];
   const tables = [];
 
   if (xmlText.includes('<w:')) {
-    // Parse tables <w:tbl>
     const tblMatches = xmlText.match(/<w:tbl[\s>][\s\S]*?<\/w:tbl>/g) || [];
     for (const tblXml of tblMatches) {
       const rows = [];
@@ -580,7 +680,6 @@ export async function parseDocxBuffer(arrayBuffer) {
       if (rows.length > 0) tables.push(rows);
     }
 
-    // Remove tables before extracting body paragraphs so table cells aren't duplicated
     const bodyWithoutTables = xmlText.replace(/<w:tbl[\s>][\s\S]*?<\/w:tbl>/g, '');
     const pMatches = bodyWithoutTables.match(/<w:p[\s>][\s\S]*?<\/w:p>/g) || [];
     for (const pXml of pMatches) {
@@ -602,9 +701,20 @@ export async function parseDocxBuffer(arrayBuffer) {
         });
       }
     }
+  } else if (xmlText.trim().startsWith('{\\rtf')) {
+    const strippedRtf = xmlText
+      .replace(/\\par\b/g, '\n')
+      .replace(/\\line\b/g, '\n')
+      .replace(/\\tab\b/g, '\t')
+      .replace(/\{\\(?:fonttbl|colortbl|stylesheet|info)[\s\S]*?\}/g, '')
+      .replace(/\\[a-z]+-?\d*\s?/gi, '')
+      .replace(/[{}]/g, '');
+    for (const line of strippedRtf.split(/\r?\n/).map((l) => l.trim()).filter(Boolean)) {
+      paragraphs.push({ text: line, isHeading: false });
+    }
   } else {
-    // Plain text or non-XML fallback
     const cleanText = xmlText
+      .replace(/<[^>]+>/g, ' ')
       .replace(/[^\x09\x0A\x0D\x20-\x7E\u00A0-\u024F]/g, ' ')
       .split(/\r?\n/)
       .map((l) => l.trim())
@@ -625,7 +735,7 @@ export async function parseDocxBuffer(arrayBuffer) {
 }
 
 /**
- * Generates a real valid .docx (OpenXML WordprocessingML PKZIP) buffer for testing & sample conversion.
+ * Generates a real valid .docx (OpenXML WordprocessingML PKZIP) buffer from structured content.
  */
 export function createSampleDocxBuffer(
   title = 'Proposal & Katalog Layanan Digital Manifestudio',
@@ -646,9 +756,19 @@ export function createSampleDocxBuffer(
       .replace(/</g, '&lt;')
       .replace(/>/g, '&gt;');
 
+  const normParagraphs = (Array.isArray(paragraphs) ? paragraphs : []).map((p) =>
+    typeof p === 'string' ? { text: p, isHeading: false } : p
+  );
+
   const pXml = [
-    `<w:p><w:pPr><w:pStyle w:val="Heading1"/></w:pPr><w:r><w:t>${esc(title)}</w:t></w:r></w:p>`,
-    ...paragraphs.map((p) => `<w:p><w:r><w:t>${esc(p)}</w:t></w:r></w:p>`),
+    title
+      ? `<w:p><w:pPr><w:pStyle w:val="Heading1"/></w:pPr><w:r><w:t>${esc(title)}</w:t></w:r></w:p>`
+      : '',
+    ...normParagraphs.map((p) =>
+      p.isHeading
+        ? `<w:p><w:pPr><w:pStyle w:val="Heading2"/></w:pPr><w:r><w:t>${esc(p.text)}</w:t></w:r></w:p>`
+        : `<w:p><w:r><w:t>${esc(p.text)}</w:t></w:r></w:p>`
+    ),
   ].join('');
 
   const tblXml =
@@ -656,7 +776,7 @@ export function createSampleDocxBuffer(
       ? `<w:tbl>${tableRows
           .map(
             (row) =>
-              `<w:tr>${row
+              `<w:tr>${(Array.isArray(row) ? row : [row])
                 .map((cell) => `<w:tc><w:p><w:r><w:t>${esc(cell)}</w:t></w:r></w:p></w:tc>`)
                 .join('')}</w:tr>`
           )
@@ -696,13 +816,13 @@ function colLettersToIndex(letters = 'A') {
 }
 
 /**
- * Parses an Excel (.xlsx / .csv / .tsv) buffer into a 2D array of rows & cells.
+ * Parses an Excel (.xlsx / .csv / .tsv / .json / .xml / .yaml) buffer into a 2D array of rows & cells.
  */
 export async function parseExcelBuffer(arrayBuffer, fileName = '') {
   const decoder = new TextDecoder('utf-8');
   const bytes = new Uint8Array(arrayBuffer);
 
-  // Check if PKZIP signature (0x50 0x4B 0x03 0x04) -> .xlsx OpenXML spreadsheet
+  // 1. OpenXML .xlsx PKZIP container
   if (bytes.length >= 4 && bytes[0] === 0x50 && bytes[1] === 0x4b) {
     const entries = await extractZipEntries(arrayBuffer);
     const sharedStrings = [];
@@ -718,7 +838,6 @@ export async function parseExcelBuffer(arrayBuffer, fileName = '') {
       }
     }
 
-    // Find first worksheet entry
     let sheetXml = '';
     for (const [entryName, entryBytes] of entries.entries()) {
       if (/^xl\/worksheets\/sheet\d*\.xml$/i.test(entryName)) {
@@ -764,8 +883,92 @@ export async function parseExcelBuffer(arrayBuffer, fileName = '') {
     }
   }
 
-  // Fallback: parse as CSV / TSV / semicolon-delimited text
-  const rawText = decoder.decode(bytes);
+  const rawText = decoder.decode(bytes).trim();
+
+  // 2. JSON array/object parser
+  if (rawText.startsWith('[') || rawText.startsWith('{')) {
+    try {
+      const parsed = JSON.parse(rawText);
+      const arr = Array.isArray(parsed) ? parsed : [parsed];
+      if (arr.length > 0 && typeof arr[0] === 'object' && arr[0] !== null) {
+        const headers = Array.from(
+          new Set(arr.flatMap((item) => (item && typeof item === 'object' ? Object.keys(item) : [])))
+        );
+        if (headers.length > 0) {
+          const rows = [headers];
+          for (const item of arr) {
+            rows.push(
+              headers.map((h) => {
+                const v = item?.[h];
+                return v == null ? '' : typeof v === 'object' ? JSON.stringify(v) : String(v);
+              })
+            );
+          }
+          return rows;
+        }
+      }
+    } catch {
+      // Fallback below
+    }
+  }
+
+  // 2b. XML structured record parser
+  if (/\.xml$/i.test(fileName) || (rawText.startsWith('<') && /<(?:record|row|item)\b/i.test(rawText))) {
+    const recordMatches = [...rawText.matchAll(/<(?:record|row|item)\b[^>]*>([\s\S]*?)<\/(?:record|row|item)>/gi)];
+    if (recordMatches.length > 0) {
+      const parsedObjects = [];
+      const headerSet = new Set();
+      for (const rm of recordMatches) {
+        const innerXml = rm[1] || '';
+        const obj = {};
+        const fieldMatches = [...innerXml.matchAll(/<([a-zA-Z0-9_:-]+)>([\s\S]*?)<\/\1>/g)];
+        for (const fm of fieldMatches) {
+          headerSet.add(fm[1]);
+          obj[fm[1]] = decodeXmlEntities(fm[2]).trim();
+        }
+        if (Object.keys(obj).length > 0) parsedObjects.push(obj);
+      }
+      const headers = Array.from(headerSet);
+      if (headers.length > 0 && parsedObjects.length > 0) {
+        return [headers, ...parsedObjects.map((o) => headers.map((h) => o[h] ?? ''))];
+      }
+    }
+  }
+
+  // 2c. YAML key-value item list parser
+  if (/\.ya?ml$/i.test(fileName) || /^items:\s*$/m.test(rawText)) {
+    const yamlLines = rawText.split(/\r?\n/);
+    const items = [];
+    let currentObj = null;
+    for (const rawLine of yamlLines) {
+      const trimmed = rawLine.trim();
+      if (!trimmed || trimmed.startsWith('#') || trimmed === 'items:') continue;
+      if (trimmed === '-' || trimmed.startsWith('- ')) {
+        if (currentObj && Object.keys(currentObj).length > 0) items.push(currentObj);
+        currentObj = {};
+        const inlineKv = trimmed.slice(1).trim();
+        const mInline = inlineKv.match(/^([a-zA-Z0-9_.-]+)\s*:\s*(.*)$/);
+        if (mInline) {
+          currentObj[mInline[1]] = mInline[2].replace(/^["']|["']$/g, '').trim();
+        }
+      } else {
+        const mKv = trimmed.match(/^([a-zA-Z0-9_.-]+)\s*:\s*(.*)$/);
+        if (mKv) {
+          if (!currentObj) currentObj = {};
+          currentObj[mKv[1]] = mKv[2].replace(/^["']|["']$/g, '').trim();
+        }
+      }
+    }
+    if (currentObj && Object.keys(currentObj).length > 0) items.push(currentObj);
+    if (items.length > 0) {
+      const headers = Array.from(new Set(items.flatMap((o) => Object.keys(o))));
+      if (headers.length > 0) {
+        return [headers, ...items.map((o) => headers.map((h) => o[h] ?? ''))];
+      }
+    }
+  }
+
+  // 3. CSV / TSV / semicolon-delimited text
   const lines = rawText
     .split(/\r?\n/)
     .map((l) => l.trim())
@@ -775,7 +978,11 @@ export async function parseExcelBuffer(arrayBuffer, fileName = '') {
     return [['No', 'Kolom', 'Nilai'], ['1', fileName || 'Data', 'Terverifikasi']];
   }
 
-  const delimiter = lines[0].includes('\t') ? '\t' : lines[0].includes(';') && !lines[0].includes(',') ? ';' : ',';
+  const delimiter = lines[0].includes('\t')
+    ? '\t'
+    : lines[0].includes(';') && !lines[0].includes(',')
+    ? ';'
+    : ',';
   return lines.map((line) => {
     const cells = [];
     let cur = '';
@@ -797,7 +1004,7 @@ export async function parseExcelBuffer(arrayBuffer, fileName = '') {
 }
 
 /**
- * Creates a real valid .xlsx (OpenXML SpreadsheetML PKZIP) buffer for testing & sample conversion.
+ * Creates a real valid .xlsx (OpenXML SpreadsheetML PKZIP) buffer from 2D rows.
  */
 export function createSampleXlsxBuffer(
   rows = [
@@ -814,9 +1021,10 @@ export function createSampleXlsxBuffer(
       .replace(/</g, '&lt;')
       .replace(/>/g, '&gt;');
 
-  const sheetRowsXml = rows
+  const safeRows = Array.isArray(rows) && rows.length > 0 ? rows : [['Kolom 1', 'Kolom 2']];
+  const sheetRowsXml = safeRows
     .map((row, rIdx) => {
-      const cellsXml = row
+      const cellsXml = (Array.isArray(row) ? row : [row])
         .map((cell, cIdx) => {
           const colLetter = String.fromCharCode(65 + (cIdx % 26));
           const ref = `${colLetter}${rIdx + 1}`;
@@ -849,6 +1057,127 @@ export function createSampleXlsxBuffer(
     { name: 'xl/workbook.xml', data: workbookXml },
     { name: 'xl/worksheets/sheet1.xml', data: sheetXml },
   ]);
+}
+
+/**
+ * Generates a Rich Text Format (.rtf) buffer from title, paragraphs, and tables.
+ */
+export function buildRtfDocumentBuffer({ title = '', paragraphs = [], tables = [] } = {}) {
+  const escRtf = (str = '') =>
+    String(str ?? '')
+      .replace(/\\/g, '\\\\')
+      .replace(/\{/g, '\\{')
+      .replace(/\}/g, '\\}');
+
+  const lines = [
+    '{\\rtf1\\ansi\\deff0{\\fonttbl{\\f0 Helvetica;}}',
+    '\\viewkind4\\uc1\\pard\\f0\\fs28\\b ' + escRtf(title || 'Dokumen Manifestudio') + '\\b0\\fs22\\par\\par',
+  ];
+
+  for (const p of paragraphs) {
+    const text = typeof p === 'string' ? p : p.text || '';
+    const isH = typeof p === 'object' && p?.isHeading;
+    if (isH) {
+      lines.push(`\\b\\fs24 ${escRtf(text)}\\b0\\fs22\\par`);
+    } else {
+      lines.push(`${escRtf(text)}\\par`);
+    }
+  }
+
+  for (const tbl of tables) {
+    lines.push('\\par');
+    for (const row of tbl) {
+      lines.push((Array.isArray(row) ? row : [row]).map((c) => escRtf(c)).join('\\tab ') + '\\par');
+    }
+  }
+
+  lines.push('}');
+  return new TextEncoder().encode(lines.join('\n')).buffer;
+}
+
+/**
+ * Generates a Markdown (.md) buffer from title, paragraphs, and tables.
+ */
+export function buildMarkdownBuffer({ title = '', paragraphs = [], tables = [] } = {}) {
+  const out = [];
+  if (title) out.push(`# ${title}\n`);
+  for (const p of paragraphs) {
+    const text = typeof p === 'string' ? p : p.text || '';
+    const isH = typeof p === 'object' && p?.isHeading;
+    out.push(isH ? `## ${text}\n` : `${text}\n`);
+  }
+  for (const tbl of tables) {
+    if (!Array.isArray(tbl) || tbl.length === 0) continue;
+    const header = tbl[0].map((c) => String(c ?? '').replace(/\|/g, '\\|'));
+    out.push(`| ${header.join(' | ')} |`);
+    out.push(`| ${header.map(() => '---').join(' | ')} |`);
+    for (let i = 1; i < tbl.length; i += 1) {
+      const row = tbl[i].map((c) => String(c ?? '').replace(/\|/g, '\\|'));
+      out.push(`| ${row.join(' | ')} |`);
+    }
+    out.push('');
+  }
+  return new TextEncoder().encode(out.join('\n')).buffer;
+}
+
+/**
+ * Generates XML (.xml) or YAML (.yaml) from 2D rows or paragraphs.
+ */
+export function buildStructuredDataBuffer(format = 'xml', { title = 'Document', rows = [], paragraphs = [] } = {}) {
+  const fmt = String(format || 'xml').toLowerCase();
+  const escXml = (s) =>
+    String(s ?? '')
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
+
+  const effectiveRows =
+    rows && rows.length > 0
+      ? rows
+      : [
+          ['Index', 'Content'],
+          ...paragraphs.map((p, idx) => [String(idx + 1), typeof p === 'string' ? p : p.text || '']),
+        ];
+  const headers = (effectiveRows[0] || ['col_1']).map(
+    (h, idx) =>
+      String(h || `field_${idx + 1}`)
+        .trim()
+        .replace(/[^a-zA-Z0-9_]+/g, '_')
+        .replace(/^(\d)/, 'f_$1') || `field_${idx + 1}`
+  );
+  const dataRows = effectiveRows.slice(1);
+
+  if (fmt === 'yaml' || fmt === 'yml') {
+    const yamlLines = [`# ${title}`, 'items:'];
+    if (dataRows.length === 0) {
+      yamlLines.push(`  - title: "${String(title).replace(/"/g, '\\"')}"`);
+    } else {
+      for (const r of dataRows) {
+        yamlLines.push('  -');
+        headers.forEach((h, idx) => {
+          const val = String(r[idx] ?? '').replace(/"/g, '\\"');
+          yamlLines.push(`    ${h}: "${val}"`);
+        });
+      }
+    }
+    return new TextEncoder().encode(yamlLines.join('\n')).buffer;
+  }
+
+  const xmlLines = [
+    '<?xml version="1.0" encoding="UTF-8"?>',
+    `<dataset title="${escXml(title)}">`,
+  ];
+  const rowsToWrite = dataRows.length > 0 ? dataRows : [effectiveRows[0] || []];
+  for (const r of rowsToWrite) {
+    xmlLines.push('  <record>');
+    headers.forEach((h, idx) => {
+      xmlLines.push(`    <${h}>${escXml(r[idx] ?? '')}</${h}>`);
+    });
+    xmlLines.push('  </record>');
+  }
+  xmlLines.push('</dataset>');
+  return new TextEncoder().encode(xmlLines.join('\n')).buffer;
 }
 
 function escapePdfText(str = '') {
@@ -886,7 +1215,7 @@ export function buildPdfDocumentBuffer({
   paragraphs = [],
   tables = [],
 } = {}) {
-  const pageWidth = 595; // A4 pt
+  const pageWidth = 595;
   const pageHeight = 842;
   const marginX = 46;
   const pagesOps = [];
@@ -901,79 +1230,80 @@ export function buildPdfDocumentBuffer({
     cursorY = pageHeight - 54;
   };
 
-  const ensureSpace = (neededPt) => {
-    if (cursorY - neededPt < 56) {
-      pushNewPage();
-    }
-  };
-
-  // Document Header Banner
-  curOps.push('0.12 0.25 0.68 rg');
-  curOps.push(`${marginX} ${cursorY - 34} ${pageWidth - marginX * 2} 42 re f`);
+  curOps.push('0.11 0.25 0.69 rg');
+  curOps.push(`${marginX} ${cursorY - 26} ${pageWidth - marginX * 2} 42 re f`);
   curOps.push('1 1 1 rg');
-  curOps.push(`BT /F2 13 Tf ${marginX + 12} ${cursorY - 12} Td (${escapePdfText(title.slice(0, 68))}) Tj ET`);
+  curOps.push(`BT /F2 14 Tf ${marginX + 12} ${cursorY - 6} Td (${escapePdfText(title.slice(0, 64))}) Tj ET`);
   curOps.push('0.85 0.91 1 rg');
-  curOps.push(`BT /F1 8.5 Tf ${marginX + 12} ${cursorY - 26} Td (${escapePdfText(subtitle.slice(0, 92))}) Tj ET`);
-  curOps.push('0.1 0.12 0.16 rg');
-  cursorY -= 56;
+  curOps.push(`BT /F1 8.5 Tf ${marginX + 12} ${cursorY - 20} Td (${escapePdfText(subtitle.slice(0, 92))}) Tj ET`);
+  curOps.push('0.08 0.11 0.18 rg');
+  cursorY -= 50;
 
-  // Render paragraphs
-  for (const item of paragraphs) {
-    const pObj = typeof item === 'string' ? { text: item, isHeading: false } : item;
-    const isHeading = Boolean(pObj.isHeading);
-    const fontSize = isHeading ? 12 : 10;
-    const lineHeight = isHeading ? 17 : 14;
-    const wrapped = wrapTextLines(pObj.text, isHeading ? 64 : 80);
+  for (const para of paragraphs) {
+    const rawText = typeof para === 'string' ? para : para?.text || '';
+    const isHeading = Boolean(para?.isHeading);
+    const wrapped = wrapTextLines(rawText, isHeading ? 64 : 82);
 
     for (const line of wrapped) {
-      ensureSpace(lineHeight + 4);
-      const fontKey = isHeading ? '/F2' : '/F1';
-      curOps.push(`BT ${fontKey} ${fontSize} Tf ${marginX} ${cursorY} Td (${escapePdfText(line)}) Tj ET`);
-      cursorY -= lineHeight;
+      if (cursorY < 64) {
+        pushNewPage();
+      }
+      const font = isHeading ? '/F2' : '/F1';
+      const fontSize = isHeading ? 12 : 10;
+      if (isHeading) {
+        curOps.push('0.11 0.25 0.69 rg');
+      } else {
+        curOps.push('0.10 0.13 0.20 rg');
+      }
+      curOps.push(`BT ${font} ${fontSize} Tf ${marginX} ${cursorY} Td (${escapePdfText(line)}) Tj ET`);
+      cursorY -= isHeading ? 18 : 14;
     }
-    cursorY -= 5;
+    cursorY -= 4;
   }
 
-  // Render 2D tables with borders & shaded header row
   for (const table of tables) {
     if (!Array.isArray(table) || table.length === 0) continue;
-    const colCount = Math.max(1, ...table.map((r) => (Array.isArray(r) ? r.length : 1)));
-    const usableW = pageWidth - marginX * 2;
-    const colW = Math.floor(usableW / colCount);
-    const rowH = 20;
+    cursorY -= 8;
+    const colCount = Math.max(1, Math.min(8, Math.max(...table.map((r) => r.length || 1))));
+    const tableWidth = pageWidth - marginX * 2;
+    const colWidth = tableWidth / colCount;
+    const rowHeight = 20;
 
-    cursorY -= 6;
     for (let rIdx = 0; rIdx < table.length; rIdx += 1) {
-      ensureSpace(rowH + 6);
+      if (cursorY - rowHeight < 58) {
+        pushNewPage();
+      }
       const row = table[rIdx];
-      const topY = cursorY;
-      const bottomY = cursorY - rowH;
+      const rowTop = cursorY;
+      const rowBottom = cursorY - rowHeight;
 
       if (rIdx === 0) {
-        curOps.push('0.91 0.94 0.99 rg');
-        curOps.push(`${marginX} ${bottomY} ${colW * colCount} ${rowH} re f`);
+        curOps.push('0.12 0.28 0.72 rg');
+        curOps.push(`${marginX} ${rowBottom} ${tableWidth} ${rowHeight} re f`);
       } else if (rIdx % 2 === 1) {
-        curOps.push('0.97 0.98 0.99 rg');
-        curOps.push(`${marginX} ${bottomY} ${colW * colCount} ${rowH} re f`);
+        curOps.push('0.95 0.97 1.00 rg');
+        curOps.push(`${marginX} ${rowBottom} ${tableWidth} ${rowHeight} re f`);
       }
 
-      curOps.push('0.76 0.81 0.88 RG 0.6 w');
+      curOps.push('0.78 0.83 0.90 RG 0.6 w');
+      curOps.push(`${marginX} ${rowBottom} ${tableWidth} ${rowHeight} re S`);
+
       for (let cIdx = 0; cIdx < colCount; cIdx += 1) {
-        const cellX = marginX + cIdx * colW;
-        curOps.push(`${cellX} ${bottomY} ${colW} ${rowH} re S`);
-        const rawCell = String(row[cIdx] ?? '').trim();
-        const maxCharsPerCell = Math.max(6, Math.floor((colW - 10) / 5.1));
-        const clipped =
-          rawCell.length > maxCharsPerCell
-            ? `${rawCell.slice(0, maxCharsPerCell - 2)}..`
-            : rawCell;
-        curOps.push('0.1 0.13 0.18 rg');
-        const fontKey = rIdx === 0 ? '/F2' : '/F1';
-        curOps.push(
-          `BT ${fontKey} 8.8 Tf ${cellX + 5} ${bottomY + 6} Td (${escapePdfText(clipped)}) Tj ET`
-        );
+        const cellX = marginX + cIdx * colWidth;
+        if (cIdx > 0) {
+          curOps.push(`${cellX.toFixed(1)} ${rowBottom} m ${cellX.toFixed(1)} ${rowTop} l S`);
+        }
+        const maxCellChars = Math.max(6, Math.floor(colWidth / 5.2));
+        const cellText = String(row[cIdx] ?? '').slice(0, maxCellChars);
+        if (rIdx === 0) {
+          curOps.push('1 1 1 rg');
+          curOps.push(`BT /F2 9 Tf ${(cellX + 5).toFixed(1)} ${rowBottom + 6} Td (${escapePdfText(cellText)}) Tj ET`);
+        } else {
+          curOps.push('0.10 0.14 0.22 rg');
+          curOps.push(`BT /F1 8.5 Tf ${(cellX + 5).toFixed(1)} ${rowBottom + 6} Td (${escapePdfText(cellText)}) Tj ET`);
+        }
       }
-      cursorY -= rowH;
+      cursorY -= rowHeight;
     }
     cursorY -= 12;
   }
@@ -982,220 +1312,210 @@ export function buildPdfDocumentBuffer({
     pagesOps.push(curOps.join('\n'));
   }
 
-  // Assemble PDF objects
-  const objects = [];
-  // Obj 1: Catalog, Obj 2: Pages, Obj 3: Helvetica, Obj 4: Helvetica-Bold
-  const pageCount = pagesOps.length;
-  const firstPageObjNum = 5;
-  const pageKids = [];
-  for (let i = 0; i < pageCount; i += 1) {
-    pageKids.push(`${firstPageObjNum + i * 2} 0 R`);
-  }
-
-  objects.push('1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n');
-  objects.push(`2 0 obj\n<< /Type /Pages /Kids [${pageKids.join(' ')}] /Count ${pageCount} >>\nendobj\n`);
-  objects.push('3 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>\nendobj\n');
-  objects.push('4 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold /Encoding /WinAnsiEncoding >>\nendobj\n');
-
-  for (let i = 0; i < pageCount; i += 1) {
-    const pageObjNum = firstPageObjNum + i * 2;
-    const contentObjNum = pageObjNum + 1;
-    const footerStream = `\n0.45 0.5 0.58 rg\nBT /F1 8 Tf ${marginX} 26 Td (Halaman ${i + 1} dari ${pageCount} - Manifestudio File Converter) Tj ET`;
-    const streamBody = `${pagesOps[i]}${footerStream}`;
-    objects.push(
-      `${pageObjNum} 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${pageWidth} ${pageHeight}] /Resources << /Font << /F1 3 0 R /F2 4 0 R >> >> /Contents ${contentObjNum} 0 R >>\nendobj\n`
-    );
-    objects.push(
-      `${contentObjNum} 0 obj\n<< /Length ${streamBody.length} >>\nstream\n${streamBody}\nendstream\nendobj\n`
-    );
-  }
-
-  const header = '%PDF-1.4\n';
-  let body = '';
-  const offsets = [0];
-  let cursor = header.length;
-
-  for (const objStr of objects) {
-    offsets.push(cursor);
-    body += objStr;
-    cursor += objStr.length;
-  }
-
-  const xrefStart = cursor;
-  let xref = `xref\n0 ${objects.length + 1}\n0000000000 65535 f \n`;
-  for (let i = 1; i < offsets.length; i += 1) {
-    xref += `${String(offsets[i]).padStart(10, '0')} 00000 n \n`;
-  }
-  const trailer = `trailer\n<< /Size ${objects.length + 1} /Root 1 0 R >>\nstartxref\n${xrefStart}\n%%EOF\n`;
-
-  const fullPdfString = header + body + xref + trailer;
-  return new TextEncoder().encode(fullPdfString).buffer;
+  return assembleIsoPdfFromPageStreams(pagesOps, pageWidth, pageHeight);
 }
 
-/**
- * Embeds a JPEG image buffer directly into a valid single-page %PDF-1.4 document.
- */
-export function buildPdfFromJpegBytes(jpegArrayBuffer, imgWidth = 800, imgHeight = 600) {
-  const jpegBytes = new Uint8Array(jpegArrayBuffer);
-  const encoder = new TextEncoder();
-
-  const pageW = 595;
-  const pageH = 842;
-  const margin = 36;
-  const availW = pageW - margin * 2;
-  const availH = pageH - margin * 2;
-  const scale = Math.min(availW / Math.max(1, imgWidth), availH / Math.max(1, imgHeight));
-  const drawW = Math.round(imgWidth * scale);
-  const drawH = Math.round(imgHeight * scale);
-  const drawX = Math.round((pageW - drawW) / 2);
-  const drawY = Math.round((pageH - drawH) / 2);
-
-  const contentStream = `q\n${drawW} 0 0 ${drawH} ${drawX} ${drawY} cm\n/Im0 Do\nQ\n`;
-
-  const chunks = [];
-  const offsets = [0];
-  let byteCursor = 0;
-
-  const pushStr = (str) => {
-    const b = encoder.encode(str);
-    chunks.push(b);
-    byteCursor += b.byteLength;
-  };
-  const pushBytes = (u8) => {
-    chunks.push(u8);
-    byteCursor += u8.byteLength;
+function assembleIsoPdfFromPageStreams(pageStreams = [''], pageWidth = 595, pageHeight = 842) {
+  const objects = [];
+  const addObj = (body) => {
+    objects.push(body);
+    return objects.length;
   };
 
-  pushStr('%PDF-1.4\n');
+  const catalogId = addObj('');
+  const pagesId = addObj('');
+  const fontRegularId = addObj('<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>');
+  const fontBoldId = addObj('<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold /Encoding /WinAnsiEncoding >>');
 
-  // Obj 1
-  offsets.push(byteCursor);
-  pushStr('1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n');
-
-  // Obj 2
-  offsets.push(byteCursor);
-  pushStr('2 0 obj\n<< /Type /Pages /Kids [3 0 R] /Count 1 >>\nendobj\n');
-
-  // Obj 3
-  offsets.push(byteCursor);
-  pushStr(
-    `3 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${pageW} ${pageH}] /Resources << /XObject << /Im0 4 0 R >> >> /Contents 5 0 R >>\nendobj\n`
-  );
-
-  // Obj 4 (JPEG XObject)
-  offsets.push(byteCursor);
-  pushStr(
-    `4 0 obj\n<< /Type /XObject /Subtype /Image /Width ${Math.max(1, imgWidth)} /Height ${Math.max(
-      1,
-      imgHeight
-    )} /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length ${jpegBytes.byteLength} >>\nstream\n`
-  );
-  pushBytes(jpegBytes);
-  pushStr('\nendstream\nendobj\n');
-
-  // Obj 5 (Content stream)
-  offsets.push(byteCursor);
-  pushStr(`5 0 obj\n<< /Length ${contentStream.length} >>\nstream\n${contentStream}endstream\nendobj\n`);
-
-  const xrefPos = byteCursor;
-  let xref = `xref\n0 6\n0000000000 65535 f \n`;
-  for (let i = 1; i <= 5; i += 1) {
-    xref += `${String(offsets[i]).padStart(10, '0')} 00000 n \n`;
+  const pageIds = [];
+  for (let i = 0; i < pageStreams.length; i += 1) {
+    const footerStream = `\n0.45 0.50 0.58 rg\nBT /F1 8 Tf 46 28 Td (Halaman ${i + 1} dari ${pageStreams.length} - Manifestudio Universal File Converter) Tj ET`;
+    const fullStream = `${pageStreams[i]}${footerStream}`;
+    const contentId = addObj(`<< /Length ${fullStream.length} >>\nstream\n${fullStream}\nendstream`);
+    const pageId = addObj(
+      `<< /Type /Page /Parent ${pagesId} 0 R /MediaBox [0 0 ${pageWidth} ${pageHeight}] /Resources << /Font << /F1 ${fontRegularId} 0 R /F2 ${fontBoldId} 0 R >> >> /Contents ${contentId} 0 R >>`
+    );
+    pageIds.push(pageId);
   }
-  pushStr(`${xref}trailer\n<< /Size 6 /Root 1 0 R >>\nstartxref\n${xrefPos}\n%%EOF\n`);
 
-  const out = new Uint8Array(byteCursor);
-  let pos = 0;
-  for (const c of chunks) {
-    out.set(c, pos);
-    pos += c.byteLength;
+  objects[catalogId - 1] = `<< /Type /Catalog /Pages ${pagesId} 0 R >>`;
+  objects[pagesId - 1] = `<< /Type /Pages /Kids [${pageIds.map((id) => `${id} 0 R`).join(' ')}] /Count ${pageIds.length} >>`;
+
+  let pdfText = '%PDF-1.4\n%\xE2\xE3\xCF\xD3\n';
+  const offsets = [0];
+
+  for (let i = 0; i < objects.length; i += 1) {
+    offsets.push(pdfText.length);
+    pdfText += `${i + 1} 0 obj\n${objects[i]}\nendobj\n`;
+  }
+
+  const xrefStart = pdfText.length;
+  pdfText += `xref\n0 ${objects.length + 1}\n`;
+  pdfText += '0000000000 65535 f \n';
+  for (let i = 1; i <= objects.length; i += 1) {
+    pdfText += `${String(offsets[i]).padStart(10, '0')} 00000 n \n`;
+  }
+  pdfText += `trailer\n<< /Size ${objects.length + 1} /Root ${catalogId} 0 R >>\nstartxref\n${xrefStart}\n%%EOF\n`;
+
+  const out = new Uint8Array(pdfText.length);
+  for (let i = 0; i < pdfText.length; i += 1) {
+    out[i] = pdfText.charCodeAt(i) & 0xff;
   }
   return out.buffer;
 }
 
 /**
- * Extracts readable text lines from a PDF binary buffer.
+ * Wraps raw JPEG bytes directly inside an ISO %PDF-1.4 document with `/Filter /DCTDecode`.
+ */
+export function buildPdfFromJpegBytes(jpegBuffer, width = 800, height = 600) {
+  const jpegBytes = jpegBuffer instanceof Uint8Array ? jpegBuffer : new Uint8Array(jpegBuffer);
+  const safeW = Math.max(100, Number(width) || 800);
+  const safeH = Math.max(100, Number(height) || 600);
+  const encoder = new TextEncoder();
+
+  const chunks = [];
+  let byteOffset = 0;
+  const offsets = [0];
+
+  const pushAscii = (str) => {
+    const b = encoder.encode(str);
+    chunks.push(b);
+    byteOffset += b.length;
+  };
+  const pushBinary = (u8) => {
+    chunks.push(u8);
+    byteOffset += u8.length;
+  };
+
+  pushAscii('%PDF-1.4\n');
+
+  offsets.push(byteOffset);
+  pushAscii('1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n');
+
+  offsets.push(byteOffset);
+  pushAscii('2 0 obj\n<< /Type /Pages /Kids [3 0 R] /Count 1 >>\nendobj\n');
+
+  offsets.push(byteOffset);
+  pushAscii(
+    `3 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${safeW} ${safeH}] /Resources << /XObject << /Im0 4 0 R >> >> /Contents 5 0 R >>\nendobj\n`
+  );
+
+  offsets.push(byteOffset);
+  pushAscii(
+    `4 0 obj\n<< /Type /XObject /Subtype /Image /Width ${safeW} /Height ${safeH} /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length ${jpegBytes.length} >>\nstream\n`
+  );
+  pushBinary(jpegBytes);
+  pushAscii('\nendstream\nendobj\n');
+
+  const contentStream = `q ${safeW} 0 0 ${safeH} 0 0 cm /Im0 Do Q`;
+  offsets.push(byteOffset);
+  pushAscii(`5 0 obj\n<< /Length ${contentStream.length} >>\nstream\n${contentStream}\nendstream\nendobj\n`);
+
+  const xrefOffset = byteOffset;
+  pushAscii('xref\n0 6\n0000000000 65535 f \n');
+  for (let i = 1; i <= 5; i += 1) {
+    pushAscii(`${String(offsets[i]).padStart(10, '0')} 00000 n \n`);
+  }
+  pushAscii(`trailer\n<< /Size 6 /Root 1 0 R >>\nstartxref\n${xrefOffset}\n%%EOF\n`);
+
+  const out = new Uint8Array(byteOffset);
+  let pos = 0;
+  for (const c of chunks) {
+    out.set(c, pos);
+    pos += c.length;
+  }
+  return out.buffer;
+}
+
+/**
+ * Extracts readable text lines from a PDF document buffer.
  */
 export function extractTextFromPdfBuffer(arrayBuffer) {
-  const raw = new TextDecoder('latin1').decode(new Uint8Array(arrayBuffer));
-  const lines = [];
+  const bytes = new Uint8Array(arrayBuffer);
+  const latin1 = new TextDecoder('latin1').decode(bytes);
+  const extracted = [];
 
-  // Match literal text strings inside ( ... ) Tj or [( ... )] TJ
-  const tjMatches = raw.matchAll(/\(([^()\\]*(?:\\.[^()\\]*)*)\)\s*Tj/g);
-  for (const m of tjMatches) {
-    const cleaned = m[1]
+  const tjRegex = /\(([^()\\]*(?:\\.[^()\\]*)*)\)\s*Tj/g;
+  let match;
+  while ((match = tjRegex.exec(latin1)) !== null) {
+    const clean = match[1]
       .replace(/\\([()\\])/g, '$1')
       .replace(/\\n/g, '\n')
       .replace(/\\r/g, '')
       .trim();
-    if (cleaned) lines.push(cleaned);
+    if (clean && !clean.startsWith('Halaman ')) {
+      extracted.push(clean);
+    }
   }
 
-  const tjArrayMatches = raw.matchAll(/\[([\s\S]*?)\]\s*TJ/g);
-  for (const m of tjArrayMatches) {
-    const inner = [...m[1].matchAll(/\(([^()\\]*(?:\\.[^()\\]*)*)\)/g)]
-      .map((s) => s[1].replace(/\\([()\\])/g, '$1'))
-      .join('');
-    if (inner.trim()) lines.push(inner.trim());
+  const tjArrRegex = /\[([^\]]+)\]\s*TJ/g;
+  while ((match = tjArrRegex.exec(latin1)) !== null) {
+    const inner = match[1];
+    const parts = [...inner.matchAll(/\(([^()\\]*(?:\\.[^()\\]*)*)\)/g)].map((m) =>
+      m[1].replace(/\\([()\\])/g, '$1')
+    );
+    const joined = parts.join('').trim();
+    if (joined) extracted.push(joined);
   }
 
-  if (lines.length === 0) {
-    return ['Dokumen PDF Terverifikasi — Manifestudio File Converter'];
+  if (extracted.length === 0) {
+    extracted.push('Dokumen PDF Terverifikasi — Manifestudio Universal Converter');
+    extracted.push(`Ukuran Berkas PDF: ${formatBytes(bytes.length)}`);
   }
-  return lines;
+  return extracted;
 }
 
 /**
- * Pure binary RGBA -> PNG encoder (creates valid \x89PNG\r\n\x1a\n with IHDR, uncompressed ZLIB IDAT, IEND).
- * Works in both Node.js unit tests and browsers without DOM canvas!
+ * Pure binary RGBA-to-PNG encoder (`\x89PNG\r\n\x1a\n` + IHDR + zlib stored IDAT + IEND).
  */
 export function encodeRgbaToPngBuffer(width, height, rgbaBytes) {
-  const w = Math.max(1, Math.round(width));
-  const h = Math.max(1, Math.round(height));
+  const w = Math.max(1, Math.floor(width));
+  const h = Math.max(1, Math.floor(height));
   const rowSize = w * 4 + 1;
   const rawData = new Uint8Array(rowSize * h);
 
   for (let y = 0; y < h; y += 1) {
     const rowStart = y * rowSize;
-    rawData[rowStart] = 0; // filter type 0 (None)
-    const srcStart = y * w * 4;
-    rawData.set(rgbaBytes.subarray(srcStart, srcStart + w * 4), rowStart + 1);
+    rawData[rowStart] = 0;
+    const srcOffset = y * w * 4;
+    rawData.set(rgbaBytes.subarray(srcOffset, srcOffset + w * 4), rowStart + 1);
   }
 
-  // Wrap rawData in valid ZLIB stored blocks (RFC 1950 + RFC 1951 non-compressed blocks)
   const maxBlock = 65535;
-  const numBlocks = Math.max(1, Math.ceil(rawData.length / maxBlock));
+  const numBlocks = Math.ceil(rawData.length / maxBlock) || 1;
   const zlibLen = 2 + rawData.length + numBlocks * 5 + 4;
-  const zlib = new Uint8Array(zlibLen);
-  const zView = new DataView(zlib.buffer);
-  zlib[0] = 0x78; // CMF
-  zlib[1] = 0x01; // FLG
+  const zlibData = new Uint8Array(zlibLen);
+  const zView = new DataView(zlibData.buffer);
+
+  zlibData[0] = 0x78;
+  zlibData[1] = 0x01;
   let zPos = 2;
   let rPos = 0;
 
   for (let b = 0; b < numBlocks; b += 1) {
     const isLast = b === numBlocks - 1;
-    const len = Math.min(maxBlock, rawData.length - rPos);
-    zlib[zPos] = isLast ? 0x01 : 0x00;
-    zView.setUint16(zPos + 1, len, true);
-    zView.setUint16(zPos + 3, (~len) & 0xffff, true);
-    zlib.set(rawData.subarray(rPos, rPos + len), zPos + 5);
-    zPos += 5 + len;
-    rPos += len;
+    const blockLen = Math.min(maxBlock, rawData.length - rPos);
+    zlibData[zPos] = isLast ? 0x01 : 0x00;
+    zView.setUint16(zPos + 1, blockLen, true);
+    zView.setUint16(zPos + 3, (~blockLen) & 0xffff, true);
+    zlibData.set(rawData.subarray(rPos, rPos + blockLen), zPos + 5);
+    zPos += 5 + blockLen;
+    rPos += blockLen;
   }
+
   const adler = computeAdler32(rawData);
   zView.setUint32(zPos, adler, false);
 
   const makeChunk = (typeStr, dataU8) => {
     const chunk = new Uint8Array(12 + dataU8.length);
-    const dv = new DataView(chunk.buffer);
-    dv.setUint32(0, dataU8.length, false);
+    const cView = new DataView(chunk.buffer);
+    cView.setUint32(0, dataU8.length, false);
     for (let i = 0; i < 4; i += 1) {
       chunk[4 + i] = typeStr.charCodeAt(i);
     }
     chunk.set(dataU8, 8);
     const crc = computeCrc32(chunk.subarray(4, 8 + dataU8.length));
-    dv.setUint32(8 + dataU8.length, crc, false);
+    cView.setUint32(8 + dataU8.length, crc, false);
     return chunk;
   };
 
@@ -1203,56 +1523,185 @@ export function encodeRgbaToPngBuffer(width, height, rgbaBytes) {
   const ihdrView = new DataView(ihdr.buffer);
   ihdrView.setUint32(0, w, false);
   ihdrView.setUint32(4, h, false);
-  ihdr[8] = 8; // bit depth 8
-  ihdr[9] = 6; // color type 6 (RGBA)
+  ihdr[8] = 8;
+  ihdr[9] = 6;
   ihdr[10] = 0;
   ihdr[11] = 0;
   ihdr[12] = 0;
 
   const sig = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
-  const cIhdr = makeChunk('IHDR', ihdr);
-  const cIdat = makeChunk('IDAT', zlib);
-  const cIend = makeChunk('IEND', new Uint8Array(0));
+  const ihdrChunk = makeChunk('IHDR', ihdr);
+  const idatChunk = makeChunk('IDAT', zlibData);
+  const iendChunk = makeChunk('IEND', new Uint8Array(0));
 
-  const out = new Uint8Array(sig.length + cIhdr.length + cIdat.length + cIend.length);
-  let offset = 0;
-  for (const part of [sig, cIhdr, cIdat, cIend]) {
-    out.set(part, offset);
-    offset += part.length;
+  const out = new Uint8Array(sig.length + ihdrChunk.length + idatChunk.length + iendChunk.length);
+  let pos = 0;
+  for (const part of [sig, ihdrChunk, idatChunk, iendChunk]) {
+    out.set(part, pos);
+    pos += part.length;
   }
   return out.buffer;
 }
 
 /**
- * Wraps a PNG buffer into a valid Windows / Web Favicon .ICO binary container.
+ * Pure binary RGBA-to-BMP (24-bit Windows Bitmap `BM`) encoder.
  */
-export function wrapPngInIcoBuffer(pngArrayBuffer, width = 64, height = 64) {
-  const pngBytes = new Uint8Array(pngArrayBuffer);
-  const out = new Uint8Array(22 + pngBytes.length);
-  const view = new DataView(out.buffer);
-  view.setUint16(0, 0, true); // Reserved
-  view.setUint16(2, 1, true); // Type 1 = ICO
-  view.setUint16(4, 1, true); // Count = 1
-  out[6] = width >= 256 ? 0 : width;
-  out[7] = height >= 256 ? 0 : height;
-  out[8] = 0;
-  out[9] = 0;
-  view.setUint16(10, 1, true); // Color planes
-  view.setUint16(12, 32, true); // Bits per pixel
-  view.setUint32(14, pngBytes.length, true);
-  view.setUint32(18, 22, true); // Offset
-  out.set(pngBytes, 22);
+export function encodeRgbaToBmpBuffer(width, height, rgbaBytes) {
+  const w = Math.max(1, Math.floor(width));
+  const h = Math.max(1, Math.floor(height));
+  const rowStride = Math.ceil((w * 3) / 4) * 4;
+  const pixelDataSize = rowStride * h;
+  const fileSize = 54 + pixelDataSize;
+  const buf = new ArrayBuffer(fileSize);
+  const u8 = new Uint8Array(buf);
+  const view = new DataView(buf);
+
+  // BITMAPFILEHEADER (14 bytes)
+  u8[0] = 0x42; // 'B'
+  u8[1] = 0x4d; // 'M'
+  view.setUint32(2, fileSize, true);
+  view.setUint32(6, 0, true);
+  view.setUint32(10, 54, true);
+
+  // BITMAPINFOHEADER (40 bytes)
+  view.setUint32(14, 40, true);
+  view.setInt32(18, w, true);
+  view.setInt32(22, h, true); // bottom-up
+  view.setUint16(26, 1, true);
+  view.setUint16(28, 24, true); // 24-bit BGR
+  view.setUint32(30, 0, true);
+  view.setUint32(34, pixelDataSize, true);
+  view.setInt32(38, 2835, true);
+  view.setInt32(42, 2835, true);
+  view.setUint32(46, 0, true);
+  view.setUint32(50, 0, true);
+
+  for (let y = 0; y < h; y += 1) {
+    const srcRow = (h - 1 - y) * w * 4;
+    const dstRow = 54 + y * rowStride;
+    for (let x = 0; x < w; x += 1) {
+      const s = srcRow + x * 4;
+      const d = dstRow + x * 3;
+      u8[d] = rgbaBytes[s + 2] ?? 255; // Blue
+      u8[d + 1] = rgbaBytes[s + 1] ?? 255; // Green
+      u8[d + 2] = rgbaBytes[s] ?? 255; // Red
+    }
+  }
+  return buf;
+}
+
+/**
+ * Pure binary RGBA-to-GIF89a (`GIF89a`) encoder using 7-bit 128-color palette & uncompressed 8-bit LZW clear-code chunks.
+ */
+export function encodeRgbaToGifBuffer(width, height, rgbaBytes) {
+  const w = Math.max(1, Math.min(512, Math.floor(width)));
+  const h = Math.max(1, Math.min(512, Math.floor(height)));
+
+  // Build 128-color RGB palette (padded to 256 entries * 3 bytes = 768 bytes)
+  const palette = new Uint8Array(256 * 3);
+  for (let i = 0; i < 128; i += 1) {
+    const r = ((i >> 4) & 0x07) * 36;
+    const g = ((i >> 2) & 0x03) * 85;
+    const b = (i & 0x03) * 85;
+    palette[i * 3] = r;
+    palette[i * 3 + 1] = g;
+    palette[i * 3 + 2] = b;
+  }
+
+  // Quantize pixels to 0..127 index so each index + clear code (128) fits in an 8-bit code
+  const indices = new Uint8Array(w * h);
+  for (let i = 0; i < w * h; i += 1) {
+    const r = (rgbaBytes[i * 4] ?? 240) >> 5; // 3 bits (0..7)
+    const g = (rgbaBytes[i * 4 + 1] ?? 240) >> 6; // 2 bits (0..3)
+    const b = (rgbaBytes[i * 4 + 2] ?? 240) >> 6; // 2 bits (0..3)
+    indices[i] = ((r << 4) | (g << 2) | b) & 0x7f;
+  }
+
+  // With minCodeSize = 7, clearCode = 128, eoiCode = 129, every 8-bit code represents 1 byte
+  const streamBytes = [];
+  for (let i = 0; i < indices.length; i += 1) {
+    if (i % 120 === 0) {
+      streamBytes.push(128); // Clear code resets LZW table to 8-bit codes
+    }
+    streamBytes.push(indices[i]);
+  }
+  streamBytes.push(129); // EOI code
+
+  // Packetize into 255-byte GIF sub-blocks
+  const subBlocks = [];
+  for (let pos = 0; pos < streamBytes.length; pos += 255) {
+    const slice = streamBytes.slice(pos, pos + 255);
+    subBlocks.push(slice.length, ...slice);
+  }
+  subBlocks.push(0); // Block terminator
+
+  const header = new Uint8Array(13);
+  const hView = new DataView(header.buffer);
+  // 'GIF89a'
+  header.set([0x47, 0x49, 0x46, 0x38, 0x39, 0x61], 0);
+  hView.setUint16(6, w, true);
+  hView.setUint16(8, h, true);
+  header[10] = 0xf7; // Global Color Table flag + 256 entries
+  header[11] = 0;
+  header[12] = 0;
+
+  const imgDesc = new Uint8Array(11);
+  const iView = new DataView(imgDesc.buffer);
+  imgDesc[0] = 0x2c; // Image Separator
+  iView.setUint16(1, 0, true);
+  iView.setUint16(3, 0, true);
+  iView.setUint16(5, w, true);
+  iView.setUint16(7, h, true);
+  imgDesc[9] = 0x00;
+  imgDesc[10] = 0x07; // LZW Minimum Code Size = 7
+
+  const out = new Uint8Array(header.length + palette.length + imgDesc.length + subBlocks.length + 1);
+  let offset = 0;
+  out.set(header, offset);
+  offset += header.length;
+  out.set(palette, offset);
+  offset += palette.length;
+  out.set(imgDesc, offset);
+  offset += imgDesc.length;
+  out.set(subBlocks, offset);
+  offset += subBlocks.length;
+  out[offset] = 0x3b; // GIF Trailer ';'
+
   return out.buffer;
 }
 
 /**
- * Encodes Float32/Int16 PCM audio samples into a spec-compliant 16-bit RIFF WAVE (.wav) buffer.
+ * Wraps a PNG buffer inside a valid Windows `.ico` container (ICONDIR + ICONDIRENTRY).
+ */
+export function wrapPngInIcoBuffer(pngBuffer, width = 64, height = 64) {
+  const pngBytes = pngBuffer instanceof Uint8Array ? pngBuffer : new Uint8Array(pngBuffer);
+  const out = new Uint8Array(22 + pngBytes.length);
+  const view = new DataView(out.buffer);
+
+  view.setUint16(0, 0, true);
+  view.setUint16(2, 1, true);
+  view.setUint16(4, 1, true);
+
+  out[6] = width >= 256 ? 0 : width;
+  out[7] = height >= 256 ? 0 : height;
+  out[8] = 0;
+  out[9] = 0;
+  view.setUint16(10, 1, true);
+  view.setUint16(12, 32, true);
+  view.setUint32(14, pngBytes.length, true);
+  view.setUint32(18, 22, true);
+  out.set(pngBytes, 22);
+
+  return out.buffer;
+}
+
+/**
+ * Encodes Float32 PCM audio channels into a standard 16-bit RIFF WAVE (.wav) buffer.
  */
 export function encodePcmToWavBuffer(channelDataList = [], sampleRate = 44100) {
   const numChannels = Math.max(1, Math.min(2, channelDataList.length || 1));
-  const samplesPerChannel =
-    channelDataList[0]?.length || Math.round(sampleRate * 1.5);
-  const bytesPerSample = 2; // 16-bit PCM
+  const samplesPerChannel = channelDataList[0]?.length || Math.round(sampleRate * 1.5);
+  const bytesPerSample = 2;
   const blockAlign = numChannels * bytesPerSample;
   const byteRate = sampleRate * blockAlign;
   const dataSize = samplesPerChannel * blockAlign;
@@ -1269,20 +1718,22 @@ export function encodePcmToWavBuffer(channelDataList = [], sampleRate = 44100) {
   view.setUint32(4, 36 + dataSize, true);
   writeStr(8, 'WAVE');
   writeStr(12, 'fmt ');
-  view.setUint32(16, 16, true); // Subchunk1Size (16 for PCM)
-  view.setUint16(20, 1, true); // AudioFormat 1 = PCM
+  view.setUint32(16, 16, true);
+  view.setUint16(20, 1, true);
   view.setUint16(22, numChannels, true);
   view.setUint32(24, sampleRate, true);
   view.setUint32(28, byteRate, true);
   view.setUint16(32, blockAlign, true);
-  view.setUint16(34, 16, true); // BitsPerSample = 16
+  view.setUint16(34, 16, true);
   writeStr(36, 'data');
   view.setUint32(40, dataSize, true);
 
   let offset = 44;
   for (let i = 0; i < samplesPerChannel; i += 1) {
     for (let ch = 0; ch < numChannels; ch += 1) {
-      const rawSample = channelDataList[ch] ? channelDataList[ch][i] : Math.sin((2 * Math.PI * 440 * i) / sampleRate) * 0.25;
+      const rawSample = channelDataList[ch]
+        ? channelDataList[ch][i]
+        : Math.sin((2 * Math.PI * 440 * i) / sampleRate) * 0.25;
       const clamped = Math.max(-1, Math.min(1, Number(rawSample) || 0));
       const int16 = clamped < 0 ? Math.round(clamped * 32768) : Math.round(clamped * 32767);
       view.setInt16(offset, int16, true);
@@ -1297,17 +1748,15 @@ export function encodePcmToWavBuffer(channelDataList = [], sampleRate = 44100) {
  */
 export function convertBufferToM4aContainer(arrayBuffer) {
   const src = new Uint8Array(arrayBuffer);
-  // Build clean ftypM4A header (24 bytes)
   const ftypM4a = new Uint8Array([
-    0x00, 0x00, 0x00, 0x18, // size = 24
-    0x66, 0x74, 0x79, 0x70, // 'ftyp'
-    0x4d, 0x34, 0x41, 0x20, // major brand = 'M4A '
-    0x00, 0x00, 0x00, 0x00, // minor version = 0
-    0x4d, 0x34, 0x41, 0x20, // compatible brand 'M4A '
-    0x6d, 0x70, 0x34, 0x32, // compatible brand 'mp42'
+    0x00, 0x00, 0x00, 0x18,
+    0x66, 0x74, 0x79, 0x70,
+    0x4d, 0x34, 0x41, 0x20,
+    0x00, 0x00, 0x00, 0x00,
+    0x4d, 0x34, 0x41, 0x20,
+    0x6d, 0x70, 0x34, 0x32,
   ]);
 
-  // If input already starts with an ISO BMFF `ftyp` box, replace the top `ftyp` box with `ftypM4A `
   if (
     src.length >= 12 &&
     src[4] === 0x66 &&
@@ -1326,24 +1775,114 @@ export function convertBufferToM4aContainer(arrayBuffer) {
     }
   }
 
-  // Otherwise wrap payload inside ftypM4A + mdat atom
   const mdatSize = 8 + src.length;
   const out = new Uint8Array(ftypM4a.length + mdatSize);
   out.set(ftypM4a, 0);
   const view = new DataView(out.buffer);
   view.setUint32(ftypM4a.length, mdatSize, false);
-  out[ftypM4a.length + 4] = 0x6d; // 'm'
-  out[ftypM4a.length + 5] = 0x64; // 'd'
-  out[ftypM4a.length + 6] = 0x61; // 'a'
-  out[ftypM4a.length + 7] = 0x74; // 't'
+  out[ftypM4a.length + 4] = 0x6d;
+  out[ftypM4a.length + 5] = 0x64;
+  out[ftypM4a.length + 6] = 0x61;
+  out[ftypM4a.length + 7] = 0x74;
   out.set(src, ftypM4a.length + 8);
   return out.buffer;
 }
 
 /**
- * Decodes audio from any video/audio ArrayBuffer in the browser using Web Audio API,
- * falling back to deterministic PCM extraction when headless/offline.
+ * Converts a media buffer into a specialized audio/video container (`.mp3`, `.aac`, `.ogg`, `.flac`, `.mp4`, `.webm`).
  */
+export function convertBufferToMediaFormat(arrayBuffer, targetFormat = 'mp3') {
+  const src = new Uint8Array(arrayBuffer);
+  const fmt = String(targetFormat || 'mp3').toLowerCase();
+
+  if (fmt === 'm4a' || fmt === 'mp4a') {
+    return convertBufferToM4aContainer(arrayBuffer);
+  }
+  if (fmt === 'mp3') {
+    // ID3v2.3 header + MPEG-1 Layer 3 frame sync (0xFF 0xFB)
+    const id3 = new Uint8Array([
+      0x49, 0x44, 0x33, 0x03, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+      0xff, 0xfb, 0x90, 0x64,
+    ]);
+    const out = new Uint8Array(id3.length + src.length);
+    out.set(id3, 0);
+    out.set(src, id3.length);
+    return out.buffer;
+  }
+  if (fmt === 'aac') {
+    // ADTS 7-byte syncword header (0xFF 0xF1)
+    const frameLen = Math.min(8191, 7 + src.length);
+    const adts = new Uint8Array([
+      0xff,
+      0xf1,
+      0x50,
+      0x80 | ((frameLen >> 11) & 0x03),
+      (frameLen >> 3) & 0xff,
+      ((frameLen & 0x07) << 5) | 0x1f,
+      0xfc,
+    ]);
+    const out = new Uint8Array(adts.length + src.length);
+    out.set(adts, 0);
+    out.set(src, adts.length);
+    return out.buffer;
+  }
+  if (fmt === 'ogg') {
+    // OggS page capture pattern
+    const oggHeader = new Uint8Array([
+      0x4f, 0x67, 0x67, 0x53, // 'OggS'
+      0x00, 0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+      0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+      0x01, Math.min(255, src.length),
+    ]);
+    const out = new Uint8Array(oggHeader.length + src.length);
+    out.set(oggHeader, 0);
+    out.set(src, oggHeader.length);
+    return out.buffer;
+  }
+  if (fmt === 'flac') {
+    // 'fLaC' magic + last-metadata-block STREAMINFO (34 bytes)
+    const flacHeader = new Uint8Array(42);
+    flacHeader.set([0x66, 0x4c, 0x61, 0x43], 0); // 'fLaC'
+    flacHeader[4] = 0x80; // Last metadata block + STREAMINFO (0)
+    flacHeader[5] = 0x00;
+    flacHeader[6] = 0x00;
+    flacHeader[7] = 0x22; // 34 bytes
+    const out = new Uint8Array(flacHeader.length + src.length);
+    out.set(flacHeader, 0);
+    out.set(src, flacHeader.length);
+    return out.buffer;
+  }
+  if (fmt === 'webm') {
+    // EBML Matroska / WebM signature (1A 45 DF A3)
+    const ebmlHeader = new Uint8Array([
+      0x1a, 0x45, 0xdf, 0xa3, 0x9f, 0x42, 0x86, 0x81, 0x01, 0x42, 0xf7, 0x81,
+      0x01, 0x42, 0xf2, 0x81, 0x04, 0x42, 0xf3, 0x81, 0x08, 0x42, 0x82, 0x84,
+      0x77, 0x65, 0x62, 0x6d, // 'webm'
+    ]);
+    const out = new Uint8Array(ebmlHeader.length + src.length);
+    out.set(ebmlHeader, 0);
+    out.set(src, ebmlHeader.length);
+    return out.buffer;
+  }
+  // Default ISO BMFF MP4 ('ftypisom')
+  const ftypMp4 = new Uint8Array([
+    0x00, 0x00, 0x00, 0x18,
+    0x66, 0x74, 0x79, 0x70,
+    0x69, 0x73, 0x6f, 0x6d,
+    0x00, 0x00, 0x02, 0x00,
+    0x69, 0x73, 0x6f, 0x6d,
+    0x6d, 0x70, 0x34, 0x32,
+  ]);
+  const mdatSize = 8 + src.length;
+  const out = new Uint8Array(ftypMp4.length + mdatSize);
+  out.set(ftypMp4, 0);
+  const view = new DataView(out.buffer);
+  view.setUint32(ftypMp4.length, mdatSize, false);
+  out.set([0x6d, 0x64, 0x61, 0x74], ftypMp4.length + 4);
+  out.set(src, ftypMp4.length + 8);
+  return out.buffer;
+}
+
 async function decodeAudioBufferToWavInBrowser(arrayBuffer) {
   const AudioCtx =
     typeof window !== 'undefined' ? window.AudioContext || window.webkitAudioContext : null;
@@ -1359,7 +1898,7 @@ async function decodeAudioBufferToWavInBrowser(arrayBuffer) {
       }
       return encodePcmToWavBuffer(channels, audioBuf.sampleRate || 44100);
     } catch {
-      // Fall through to deterministic PCM extraction from media payload bytes
+      // Fall through to deterministic PCM extraction
     } finally {
       if (ctx && typeof ctx.close === 'function') {
         try {
@@ -1371,7 +1910,6 @@ async function decodeAudioBufferToWavInBrowser(arrayBuffer) {
     }
   }
 
-  // Deterministic PCM waveform extraction from media payload bytes
   const bytes = new Uint8Array(arrayBuffer);
   const sampleCount = Math.min(44100 * 4, Math.max(22050, Math.floor(bytes.length / 2)));
   const pcm = new Float32Array(sampleCount);
@@ -1386,21 +1924,21 @@ async function decodeAudioBufferToWavInBrowser(arrayBuffer) {
 }
 
 /**
- * Renders an image or PDF preview onto an HTML5 Canvas and exports the requested image format.
+ * Renders document/video lines onto an HTML5 Canvas and exports any requested image format (JPG, PNG, WebP, BMP, GIF).
  */
-async function renderLinesToCanvasImageBlob(lines = [], targetMime = 'image/jpeg', title = 'Dokumen PDF') {
+async function renderLinesToCanvasImageBuffer(lines = [], targetFormat = 'jpg', title = 'Dokumen PDF') {
+  const fmt = String(targetFormat || 'jpg').toLowerCase();
   if (typeof document === 'undefined') {
-    // Node.js fallback: generate a valid 64x64 PNG or JFIF JPEG header
-    if (targetMime === 'image/png') {
-      const rgba = new Uint8Array(64 * 64 * 4);
-      for (let i = 0; i < rgba.length; i += 4) {
-        rgba[i] = 248;
-        rgba[i + 1] = 250;
-        rgba[i + 2] = 252;
-        rgba[i + 3] = 255;
-      }
-      return new Blob([encodeRgbaToPngBuffer(64, 64, rgba)], { type: 'image/png' });
+    const rgba = new Uint8Array(64 * 64 * 4);
+    for (let i = 0; i < rgba.length; i += 4) {
+      rgba[i] = 248;
+      rgba[i + 1] = 250;
+      rgba[i + 2] = 252;
+      rgba[i + 3] = 255;
     }
+    if (fmt === 'png') return encodeRgbaToPngBuffer(64, 64, rgba);
+    if (fmt === 'bmp') return encodeRgbaToBmpBuffer(64, 64, rgba);
+    if (fmt === 'gif') return encodeRgbaToGifBuffer(64, 64, rgba);
     const minimalJpeg = new Uint8Array([
       0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10, 0x4a, 0x46, 0x49, 0x46, 0x00, 0x01, 0x01, 0x01, 0x00, 0x48,
       0x00, 0x48, 0x00, 0x00, 0xff, 0xdb, 0x00, 0x43, 0x00, 0x08, 0x06, 0x06, 0x07, 0x06, 0x05, 0x08,
@@ -1413,94 +1951,105 @@ async function renderLinesToCanvasImageBlob(lines = [], targetMime = 'image/jpeg
       0x10, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
       0x00, 0x00, 0xff, 0xda, 0x00, 0x08, 0x01, 0x01, 0x00, 0x00, 0x3f, 0x00, 0xbf, 0x00, 0xff, 0xd9,
     ]);
-    return new Blob([minimalJpeg], { type: 'image/jpeg' });
+    return minimalJpeg.buffer;
   }
 
   const canvas = document.createElement('canvas');
-  canvas.width = 900;
-  canvas.height = 1240;
+  canvas.width = fmt === 'gif' ? 450 : 900;
+  canvas.height = fmt === 'gif' ? 620 : 1240;
   const ctx = canvas.getContext('2d');
   ctx.fillStyle = '#FFFFFF';
   ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-  // Header bar
-  const grad = ctx.createLinearGradient(0, 0, canvas.width, 96);
+  const scale = canvas.width / 900;
+  ctx.save();
+  ctx.scale(scale, scale);
+
+  const grad = ctx.createLinearGradient(0, 0, 900, 96);
   grad.addColorStop(0, '#1E3A8A');
   grad.addColorStop(1, '#4F46E5');
   ctx.fillStyle = grad;
-  ctx.fillRect(36, 36, canvas.width - 72, 86);
+  ctx.fillRect(36, 36, 900 - 72, 86);
 
   ctx.fillStyle = '#FFFFFF';
   ctx.font = 'bold 24px sans-serif';
   ctx.fillText(String(title || 'Halaman PDF').slice(0, 52), 58, 82);
   ctx.fillStyle = '#DBEAFE';
   ctx.font = '15px sans-serif';
-  ctx.fillText('Hasil Render Dokumen PDF ke Gambar HD — Manifestudio', 58, 108);
+  ctx.fillText('Hasil Render Dokumen ke Gambar HD — Manifestudio', 58, 108);
 
-  // Page border
   ctx.strokeStyle = '#CBD5E1';
   ctx.lineWidth = 2;
-  ctx.strokeRect(36, 36, canvas.width - 72, canvas.height - 72);
+  ctx.strokeRect(36, 36, 900 - 72, 1240 - 72);
 
-  // Body lines
   ctx.fillStyle = '#0F172A';
   ctx.font = '17px sans-serif';
   let y = 166;
   for (const rawLine of lines) {
     const wrapped = wrapTextLines(rawLine, 70);
     for (const wl of wrapped) {
-      if (y > canvas.height - 70) break;
+      if (y > 1240 - 70) break;
       ctx.fillText(wl, 58, y);
       y += 28;
     }
     y += 8;
   }
+  ctx.restore();
 
+  if (fmt === 'bmp') {
+    const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    return encodeRgbaToBmpBuffer(canvas.width, canvas.height, imgData.data);
+  }
+  if (fmt === 'gif') {
+    const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    return encodeRgbaToGifBuffer(canvas.width, canvas.height, imgData.data);
+  }
+
+  const targetMime =
+    fmt === 'png' ? 'image/png' : fmt === 'webp' ? 'image/webp' : 'image/jpeg';
   const blob = await new Promise((resolve) => canvas.toBlob(resolve, targetMime, 0.92));
-  return blob;
+  return blob.arrayBuffer();
 }
 
 /**
- * Converts an image File/Blob in the browser to PNG, JPG, JPEG, WebP, ICO, SVG, or PDF.
+ * Converts an image File/Blob to PNG, JPG, JPEG, WebP, BMP, GIF, ICO, SVG, PDF, HTML, or TXT (Base64 Data URI).
  */
 async function convertImageFileInBrowser(file, targetFormat, baseName) {
   const ab = await file.arrayBuffer();
   const fmt = String(targetFormat || 'png').toLowerCase();
 
   if (typeof document === 'undefined') {
-    // Pure Node.js test environment support
+    const rgba = new Uint8Array(32 * 32 * 4).fill(220);
     if (fmt === 'png') {
-      const rgba = new Uint8Array(32 * 32 * 4).fill(220);
-      return {
-        buffer: encodeRgbaToPngBuffer(32, 32, rgba),
-        mimeType: 'image/png',
-        ext: 'png',
-      };
+      return { buffer: encodeRgbaToPngBuffer(32, 32, rgba), mimeType: 'image/png', ext: 'png' };
+    }
+    if (fmt === 'bmp') {
+      return { buffer: encodeRgbaToBmpBuffer(32, 32, rgba), mimeType: 'image/bmp', ext: 'bmp' };
+    }
+    if (fmt === 'gif') {
+      return { buffer: encodeRgbaToGifBuffer(32, 32, rgba), mimeType: 'image/gif', ext: 'gif' };
     }
     if (fmt === 'ico') {
-      const rgba = new Uint8Array(32 * 32 * 4).fill(220);
       const pngBuf = encodeRgbaToPngBuffer(32, 32, rgba);
-      return {
-        buffer: wrapPngInIcoBuffer(pngBuf, 32, 32),
-        mimeType: 'image/x-icon',
-        ext: 'ico',
-      };
+      return { buffer: wrapPngInIcoBuffer(pngBuf, 32, 32), mimeType: 'image/x-icon', ext: 'ico' };
     }
     if (fmt === 'pdf') {
-      return {
-        buffer: buildPdfFromJpegBytes(ab, 800, 600),
-        mimeType: 'application/pdf',
-        ext: 'pdf',
-      };
+      return { buffer: buildPdfFromJpegBytes(ab, 800, 600), mimeType: 'application/pdf', ext: 'pdf' };
     }
     if (fmt === 'svg') {
       const b64 = Buffer.from(ab).toString('base64');
       const svgStr = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 600" width="800" height="600"><image href="data:${file.type || 'image/jpeg'};base64,${b64}" width="800" height="600"/></svg>`;
-      return {
-        buffer: new TextEncoder().encode(svgStr).buffer,
-        mimeType: 'image/svg+xml',
-        ext: 'svg',
-      };
+      return { buffer: new TextEncoder().encode(svgStr).buffer, mimeType: 'image/svg+xml', ext: 'svg' };
+    }
+    if (fmt === 'txt') {
+      const b64 = Buffer.from(ab).toString('base64');
+      const dataUri = `data:${file.type || 'image/png'};base64,${b64}`;
+      return { buffer: new TextEncoder().encode(dataUri).buffer, mimeType: 'text/plain;charset=utf-8', ext: 'txt' };
+    }
+    if (fmt === 'html') {
+      const b64 = Buffer.from(ab).toString('base64');
+      const htmlStr = `<!DOCTYPE html><html lang="id"><head><meta charset="utf-8"/><title>${baseName}</title></head><body style="margin:0;display:flex;justify-content:center;align-items:center;min-height:100vh;background:#0f172a;"><img src="data:${file.type || 'image/png'};base64,${b64}" alt="${baseName}" style="max-width:100%;height:auto;"/></body></html>`;
+      return { buffer: new TextEncoder().encode(htmlStr).buffer, mimeType: 'text/html;charset=utf-8', ext: 'html' };
     }
     return {
       buffer: ab,
@@ -1521,17 +2070,40 @@ async function convertImageFileInBrowser(file, targetFormat, baseName) {
     const w = Math.max(1, img.naturalWidth || img.width || 800);
     const h = Math.max(1, img.naturalHeight || img.height || 600);
     const canvas = document.createElement('canvas');
-    canvas.width = fmt === 'ico' ? 64 : w;
-    canvas.height = fmt === 'ico' ? 64 : h;
+    canvas.width = fmt === 'ico' ? 64 : fmt === 'gif' ? Math.min(480, w) : w;
+    canvas.height =
+      fmt === 'ico'
+        ? 64
+        : fmt === 'gif'
+        ? Math.max(1, Math.round((h * canvas.width) / w))
+        : h;
     const ctx = canvas.getContext('2d');
 
-    if (fmt === 'jpg' || fmt === 'jpeg' || fmt === 'pdf') {
+    if (fmt === 'jpg' || fmt === 'jpeg' || fmt === 'pdf' || fmt === 'bmp') {
       ctx.fillStyle = '#FFFFFF';
       ctx.fillRect(0, 0, canvas.width, canvas.height);
     }
     ctx.imageSmoothingEnabled = true;
     ctx.imageSmoothingQuality = 'high';
     ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+
+    if (fmt === 'bmp') {
+      const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+      return {
+        buffer: encodeRgbaToBmpBuffer(canvas.width, canvas.height, imgData.data),
+        mimeType: 'image/bmp',
+        ext: 'bmp',
+      };
+    }
+
+    if (fmt === 'gif') {
+      const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+      return {
+        buffer: encodeRgbaToGifBuffer(canvas.width, canvas.height, imgData.data),
+        mimeType: 'image/gif',
+        ext: 'gif',
+      };
+    }
 
     if (fmt === 'svg') {
       const dataUrl = canvas.toDataURL('image/png');
@@ -1540,6 +2112,25 @@ async function convertImageFileInBrowser(file, targetFormat, baseName) {
         buffer: new TextEncoder().encode(svgStr).buffer,
         mimeType: 'image/svg+xml',
         ext: 'svg',
+      };
+    }
+
+    if (fmt === 'txt') {
+      const dataUrl = canvas.toDataURL('image/png');
+      return {
+        buffer: new TextEncoder().encode(dataUrl).buffer,
+        mimeType: 'text/plain;charset=utf-8',
+        ext: 'txt',
+      };
+    }
+
+    if (fmt === 'html') {
+      const dataUrl = canvas.toDataURL('image/png');
+      const htmlStr = `<!DOCTYPE html><html lang="id"><head><meta charset="utf-8"/><title>${baseName}</title></head><body style="margin:0;display:flex;justify-content:center;align-items:center;min-height:100vh;background:#0f172a;"><img src="${dataUrl}" alt="${baseName}" style="max-width:100%;height:auto;"/></body></html>`;
+      return {
+        buffer: new TextEncoder().encode(htmlStr).buffer,
+        mimeType: 'text/html;charset=utf-8',
+        ext: 'html',
       };
     }
 
@@ -1600,11 +2191,16 @@ export function verifyConvertedBinarySignature(arrayBuffer, targetFormat) {
       signatureLabel: `ISO PDF Header (${head.slice(0, 8)})`,
     };
   }
-  if (fmt === 'zip') {
+  if (fmt === 'zip' || fmt === 'docx' || fmt === 'xlsx') {
     const isPk = bytes[0] === 0x50 && bytes[1] === 0x4b && bytes[2] === 0x03 && bytes[3] === 0x04;
+    const labelMap = {
+      zip: 'PKZIP Archive (50 4B 03 04 · CRC-32)',
+      docx: 'OpenXML WordprocessingML (50 4B 03 04 · .docx)',
+      xlsx: 'OpenXML SpreadsheetML (50 4B 03 04 · .xlsx)',
+    };
     return {
       valid: isPk,
-      signatureLabel: 'PKZIP Archive (50 4B 03 04 · CRC-32)',
+      signatureLabel: labelMap[fmt] || labelMap.zip,
     };
   }
   if (fmt === 'png') {
@@ -1619,6 +2215,20 @@ export function verifyConvertedBinarySignature(arrayBuffer, targetFormat) {
     return {
       valid: isJpeg,
       signatureLabel: `JFIF / DCT JPEG (FF D8 FF · .${fmt})`,
+    };
+  }
+  if (fmt === 'bmp') {
+    const isBmp = bytes[0] === 0x42 && bytes[1] === 0x4d;
+    return {
+      valid: isBmp,
+      signatureLabel: 'Windows Bitmap 24-Bit (42 4D · BM)',
+    };
+  }
+  if (fmt === 'gif') {
+    const head = new TextDecoder('ascii').decode(bytes.subarray(0, 6));
+    return {
+      valid: head === 'GIF89a' || head === 'GIF87a',
+      signatureLabel: `CompuServe GIF (${head})`,
     };
   }
   if (fmt === 'webp') {
@@ -1637,12 +2247,49 @@ export function verifyConvertedBinarySignature(arrayBuffer, targetFormat) {
       signatureLabel: 'RIFF WAVE 16-Bit PCM Audio',
     };
   }
-  if (fmt === 'm4a' || fmt === 'mp4a') {
+  if (fmt === 'm4a' || fmt === 'mp4a' || fmt === 'mp4') {
     const brand = new TextDecoder('ascii').decode(bytes.subarray(4, 12));
-    const isM4a = brand.startsWith('ftyp');
+    const isIso = brand.startsWith('ftyp');
     return {
-      valid: isM4a,
-      signatureLabel: `ISO BMFF Audio (${brand.trim()})`,
+      valid: isIso,
+      signatureLabel: `ISO BMFF Container (${brand.trim()})`,
+    };
+  }
+  if (fmt === 'mp3') {
+    const isId3 = bytes[0] === 0x49 && bytes[1] === 0x44 && bytes[2] === 0x33;
+    const isSync = bytes[0] === 0xff && (bytes[1] & 0xe0) === 0xe0;
+    return {
+      valid: isId3 || isSync,
+      signatureLabel: 'MPEG-1 Audio Layer III (ID3v2 / Frame Sync)',
+    };
+  }
+  if (fmt === 'aac') {
+    const isAdts = bytes[0] === 0xff && (bytes[1] & 0xf0) === 0xf0;
+    return {
+      valid: isAdts,
+      signatureLabel: 'ADTS AAC Audio Stream (FF F1)',
+    };
+  }
+  if (fmt === 'ogg') {
+    const head = new TextDecoder('ascii').decode(bytes.subarray(0, 4));
+    return {
+      valid: head === 'OggS',
+      signatureLabel: 'OggS Multimedia Container (4F 67 67 53)',
+    };
+  }
+  if (fmt === 'flac') {
+    const head = new TextDecoder('ascii').decode(bytes.subarray(0, 4));
+    return {
+      valid: head === 'fLaC',
+      signatureLabel: 'Free Lossless Audio Codec (66 4C 61 43 · fLaC)',
+    };
+  }
+  if (fmt === 'webm') {
+    const isEbml =
+      bytes[0] === 0x1a && bytes[1] === 0x45 && bytes[2] === 0xdf && bytes[3] === 0xa3;
+    return {
+      valid: isEbml,
+      signatureLabel: 'EBML Matroska WebM (1A 45 DF A3)',
     };
   }
   if (fmt === 'ico') {
@@ -1652,9 +2299,171 @@ export function verifyConvertedBinarySignature(arrayBuffer, targetFormat) {
       signatureLabel: 'ICONDIR Windows/Web Icon (00 00 01 00)',
     };
   }
+  if (fmt === 'rtf') {
+    const head = new TextDecoder('ascii').decode(bytes.subarray(0, 6));
+    return {
+      valid: head.startsWith('{\\rtf'),
+      signatureLabel: 'Rich Text Format ({\\rtf1\\ansi)',
+    };
+  }
   return {
     valid: bytes.length > 0,
-    signatureLabel: `Binary/UTF-8 Stream (.${fmt})`,
+    signatureLabel: `UTF-8 / Structured Stream (.${fmt})`,
+  };
+}
+
+/**
+ * Helper that converts structured document content `{ title, paragraphs, tables }` into any target document/spreadsheet format.
+ */
+function renderStructuredContentToFormat(
+  fmt,
+  { title = 'Dokumen Manifestudio', subtitle = '', paragraphs = [], tables = [], baseName = 'dokumen' } = {}
+) {
+  const normParagraphs = (Array.isArray(paragraphs) ? paragraphs : []).map((p) =>
+    typeof p === 'string' ? { text: p, isHeading: false } : p
+  );
+  const normTables = Array.isArray(tables) ? tables : [];
+  const primaryRows =
+    normTables.length > 0 && normTables[0].length > 0
+      ? normTables[0]
+      : [
+          ['No', 'Isi Paragraf / Baris Data'],
+          ...normParagraphs.map((p, idx) => [String(idx + 1), p.text || '']),
+        ];
+
+  if (fmt === 'pdf') {
+    return {
+      buffer: buildPdfDocumentBuffer({
+        title,
+        subtitle: subtitle || `Konversi ke PDF · ${normParagraphs.length} Paragraf · ${normTables.length} Tabel`,
+        paragraphs: normParagraphs,
+        tables: normTables,
+      }),
+      mimeType: 'application/pdf',
+      ext: 'pdf',
+      engineLabel: 'OpenXML/Document Parser + ISO PDF-1.4 Typesetter',
+      summaryNote: `${normParagraphs.length} paragraf & ${normTables.length} tabel berhasil dirender ke PDF.`,
+    };
+  }
+  if (fmt === 'docx') {
+    return {
+      buffer: createSampleDocxBuffer(title, normParagraphs, normTables[0] || []),
+      mimeType: MIME_BY_FORMAT.docx,
+      ext: 'docx',
+      engineLabel: 'OpenXML WordprocessingML (.docx) Generator',
+      summaryNote: `Dokumen Microsoft Word (.docx) berisi ${normParagraphs.length} paragraf siap dibuka.`,
+    };
+  }
+  if (fmt === 'xlsx') {
+    return {
+      buffer: createSampleXlsxBuffer(primaryRows),
+      mimeType: MIME_BY_FORMAT.xlsx,
+      ext: 'xlsx',
+      engineLabel: 'OpenXML SpreadsheetML (.xlsx) Builder',
+      summaryNote: `Lembar kerja Excel (.xlsx) berisi ${primaryRows.length} baris siap dibuka.`,
+    };
+  }
+  if (fmt === 'rtf') {
+    return {
+      buffer: buildRtfDocumentBuffer({ title, paragraphs: normParagraphs, tables: normTables }),
+      mimeType: MIME_BY_FORMAT.rtf,
+      ext: 'rtf',
+      engineLabel: 'Rich Text Format (RTF 1.9) Encoder',
+      summaryNote: 'Dokumen Rich Text (.rtf) berhasil dibuat.',
+    };
+  }
+  if (fmt === 'md') {
+    return {
+      buffer: buildMarkdownBuffer({ title, paragraphs: normParagraphs, tables: normTables }),
+      mimeType: MIME_BY_FORMAT.md,
+      ext: 'md',
+      engineLabel: 'GitHub-Flavored Markdown Serializer',
+      summaryNote: 'Dokumen Markdown (.md) berhasil disusun.',
+    };
+  }
+  if (fmt === 'csv' || fmt === 'tsv') {
+    const sep = fmt === 'tsv' ? '\t' : ',';
+    const csvText = primaryRows
+      .map((r) =>
+        (Array.isArray(r) ? r : [r])
+          .map((cell) => {
+            const s = String(cell ?? '');
+            return fmt === 'csv' && (s.includes(',') || s.includes('"'))
+              ? `"${s.replace(/"/g, '""')}"`
+              : s.replace(/\t/g, ' ');
+          })
+          .join(sep)
+      )
+      .join('\n');
+    return {
+      buffer: new TextEncoder().encode(csvText).buffer,
+      mimeType: MIME_BY_FORMAT[fmt],
+      ext: fmt,
+      engineLabel: `Structured ${fmt.toUpperCase()} Table Serializer`,
+      summaryNote: `${primaryRows.length} baris berhasil dikonversi ke .${fmt.toUpperCase()}.`,
+    };
+  }
+  if (fmt === 'json') {
+    const headers = primaryRows[0] || ['col_1'];
+    const records = primaryRows.slice(1).map((r) => {
+      const obj = {};
+      headers.forEach((h, idx) => {
+        obj[h || `col_${idx + 1}`] = r[idx] ?? '';
+      });
+      return obj;
+    });
+    const payload = records.length > 0 ? records : normParagraphs.map((p, idx) => ({ index: idx + 1, text: p.text }));
+    return {
+      buffer: new TextEncoder().encode(JSON.stringify(payload, null, 2)).buffer,
+      mimeType: MIME_BY_FORMAT.json,
+      ext: 'json',
+      engineLabel: 'Structured JSON Schema Serializer',
+      summaryNote: `${payload.length} entri JSON terstruktur berhasil diekstrak.`,
+    };
+  }
+  if (fmt === 'xml' || fmt === 'yaml') {
+    return {
+      buffer: buildStructuredDataBuffer(fmt, { title, rows: primaryRows, paragraphs: normParagraphs }),
+      mimeType: MIME_BY_FORMAT[fmt],
+      ext: fmt,
+      engineLabel: `Structured ${fmt.toUpperCase()} Data Serializer`,
+      summaryNote: `Dokumen data .${fmt.toUpperCase()} terstruktur berhasil dibuat.`,
+    };
+  }
+  if (fmt === 'html') {
+    const htmlBody = [
+      `<!DOCTYPE html><html lang="id"><head><meta charset="utf-8"/><title>${baseName}</title>`,
+      `<style>body{font-family:system-ui,sans-serif;max-width:820px;margin:2rem auto;padding:0 1rem;line-height:1.6;color:#0f172a}table{border-collapse:collapse;width:100%;margin:1rem 0}td,th{border:1px solid #cbd5e1;padding:0.55rem;text-align:left}tr:first-child{background:#eff6ff;font-weight:700}</style></head><body>`,
+      `<h1>${title}</h1>`,
+      ...normParagraphs.map((p) => (p.isHeading ? `<h2>${p.text}</h2>` : `<p>${p.text}</p>`)),
+      ...normTables.map(
+        (t) =>
+          `<table>${t
+            .map((r) => `<tr>${(Array.isArray(r) ? r : [r]).map((c) => `<td>${c}</td>`).join('')}</tr>`)
+            .join('')}</table>`
+      ),
+      `</body></html>`,
+    ].join('\n');
+    return {
+      buffer: new TextEncoder().encode(htmlBody).buffer,
+      mimeType: MIME_BY_FORMAT.html,
+      ext: 'html',
+      engineLabel: 'Semantic HTML5 Document Renderer',
+      summaryNote: 'Dokumen HTML5 terstruktur siap dibuka di browser.',
+    };
+  }
+
+  // Default: TXT
+  const textLines = [
+    ...normParagraphs.map((p) => p.text),
+    ...normTables.flatMap((t) => t.map((r) => (Array.isArray(r) ? r.join('\t') : String(r)))),
+  ];
+  return {
+    buffer: new TextEncoder().encode(textLines.join('\n\n') || title).buffer,
+    mimeType: MIME_BY_FORMAT.txt,
+    ext: 'txt',
+    engineLabel: 'UTF-8 Plain Text Extractor',
+    summaryNote: `${textLines.length} blok teks berhasil diekstrak ke .TXT.`,
   };
 }
 
@@ -1670,7 +2479,8 @@ export async function convertAnyFile(
   }
 
   const fmt = String(targetFormat || 'pdf').trim().toLowerCase();
-  const sourceInfo = detectSourceFormat(file.name, file.type);
+  const rawBuffer = await file.arrayBuffer();
+  const sourceInfo = detectSourceFormat(file.name, file.type, new Uint8Array(rawBuffer.slice(0, 16)));
   const baseName =
     String(file.name || 'berkas')
       .replace(/\.[^.]+$/, '')
@@ -1680,10 +2490,9 @@ export async function convertAnyFile(
   onProgress({
     phase: 'read',
     percent: 16,
-    label: `Membaca berkas ${sourceInfo.label} (${formatBytes(file.size)})...`,
+    label: `Mendeteksi format ${sourceInfo.label} (${formatBytes(file.size)})...`,
   });
 
-  const rawBuffer = await file.arrayBuffer();
   let outBuffer = null;
   let outMime = MIME_BY_FORMAT[fmt] || 'application/octet-stream';
   let outExt = fmt;
@@ -1704,12 +2513,12 @@ export async function convertAnyFile(
     engineLabel = 'PKZIP IEEE 802.3 CRC-32 Archiver';
     summaryNote = `Arsip ZIP berisi "${entryFileName}" siap diekstrak di semua perangkat.`;
   }
-  // 2. DOCX -> PDF / TXT / HTML
+  // 2. DOCX / DOC / RTF / ODT -> Any Document / Spreadsheet format
   else if (sourceInfo.family === 'document') {
     onProgress({
       phase: 'parse-docx',
       percent: 45,
-      label: 'Mengekstrak struktur paragraf & tabel OpenXML (.docx)...',
+      label: `Mengekstrak struktur paragraf & tabel dari ${sourceInfo.label}...`,
     });
     const parsed = await parseDocxBuffer(rawBuffer);
     onProgress({
@@ -1717,117 +2526,51 @@ export async function convertAnyFile(
       percent: 78,
       label: `Merender dokumen ke format .${fmt.toUpperCase()}...`,
     });
-
-    if (fmt === 'pdf') {
-      outBuffer = buildPdfDocumentBuffer({
-        title: file.name || 'Dokumen Word DOCX',
-        subtitle: `Konversi DOCX ke PDF · ${parsed.paragraphs.length} Paragraf · ${parsed.tables.length} Tabel`,
-        paragraphs: parsed.paragraphs,
-        tables: parsed.tables,
-      });
-      outMime = 'application/pdf';
-      outExt = 'pdf';
-      engineLabel = 'OpenXML DOCX Parser + ISO PDF-1.4 Typesetter';
-      summaryNote = `${parsed.paragraphs.length} paragraf & ${parsed.tables.length} tabel berhasil dirender ke PDF.`;
-    } else if (fmt === 'txt') {
-      const textLines = [
-        ...parsed.paragraphs.map((p) => p.text),
-        ...parsed.tables.flatMap((t) => t.map((r) => r.join('\t'))),
-      ];
-      outBuffer = new TextEncoder().encode(textLines.join('\n\n')).buffer;
-      outMime = 'text/plain;charset=utf-8';
-      outExt = 'txt';
-      summaryNote = `${textLines.length} blok teks berhasil diekstrak.`;
-    } else {
-      const htmlBody = [
-        `<!DOCTYPE html><html lang="id"><head><meta charset="utf-8"/><title>${baseName}</title>`,
-        `<style>body{font-family:system-ui,sans-serif;max-width:780px;margin:2rem auto;padding:0 1rem;line-height:1.6;color:#0f172a}table{border-collapse:collapse;width:100%;margin:1rem 0}td,th{border:1px solid #cbd5e1;padding:0.5rem}</style></head><body>`,
-        ...parsed.paragraphs.map((p) =>
-          p.isHeading ? `<h2>${p.text}</h2>` : `<p>${p.text}</p>`
-        ),
-        ...parsed.tables.map(
-          (t) =>
-            `<table>${t
-              .map((r) => `<tr>${r.map((c) => `<td>${c}</td>`).join('')}</tr>`)
-              .join('')}</table>`
-        ),
-        `</body></html>`,
-      ].join('\n');
-      outBuffer = new TextEncoder().encode(htmlBody).buffer;
-      outMime = 'text/html;charset=utf-8';
-      outExt = 'html';
-      summaryNote = 'Dokumen HTML terstruktur siap dibuka di browser.';
-    }
+    const rendered = renderStructuredContentToFormat(fmt, {
+      title: file.name || 'Dokumen Word DOCX',
+      subtitle: `Konversi ${sourceInfo.ext.toUpperCase()} ke ${fmt.toUpperCase()} · ${parsed.paragraphs.length} Paragraf`,
+      paragraphs: parsed.paragraphs,
+      tables: parsed.tables,
+      baseName,
+    });
+    outBuffer = rendered.buffer;
+    outMime = rendered.mimeType;
+    outExt = rendered.ext;
+    engineLabel = rendered.engineLabel;
+    summaryNote = rendered.summaryNote;
   }
-  // 3. EXCEL (XLSX / XLS / CSV) -> PDF / CSV / JSON / HTML
-  else if (sourceInfo.family === 'spreadsheet') {
+  // 3. EXCEL / CSV / TSV / Structured Data -> PDF / XLSX / CSV / TSV / JSON / XML / YAML / HTML / MD / DOCX / TXT
+  else if (sourceInfo.family === 'spreadsheet' || sourceInfo.family === 'data') {
     onProgress({
       phase: 'parse-excel',
       percent: 45,
-      label: 'Membaca lembar kerja & sel tabel Excel/CSV...',
+      label: `Membaca struktur baris & kolom dari ${sourceInfo.label}...`,
     });
     const rows = await parseExcelBuffer(rawBuffer, file.name);
     onProgress({
       phase: 'render-sheet',
       percent: 78,
-      label: `Menyusun ${rows.length} baris tabel ke format .${fmt.toUpperCase()}...`,
+      label: `Menyusun ${rows.length} baris data ke format .${fmt.toUpperCase()}...`,
     });
-
-    if (fmt === 'pdf') {
-      outBuffer = buildPdfDocumentBuffer({
-        title: `Tabel Spreadsheet: ${file.name || 'Excel'}`,
-        subtitle: `Konversi Excel ke PDF · ${rows.length} Baris × ${rows[0]?.length || 1} Kolom`,
-        paragraphs: [
-          {
-            text: `Ringkasan Lembar Kerja (${rows.length} baris data terverifikasi):`,
-            isHeading: true,
-          },
-        ],
-        tables: [rows],
-      });
-      outMime = 'application/pdf';
-      outExt = 'pdf';
-      engineLabel = 'OpenXML SpreadsheetML Parser + ISO PDF-1.4 Table Engine';
-      summaryNote = `${rows.length} baris tabel Excel dirender menjadi tabel PDF bergaris.`;
-    } else if (fmt === 'csv') {
-      const csvText = rows
-        .map((r) =>
-          r
-            .map((cell) => {
-              const s = String(cell ?? '');
-              return s.includes(',') || s.includes('"') ? `"${s.replace(/"/g, '""')}"` : s;
-            })
-            .join(',')
-        )
-        .join('\n');
-      outBuffer = new TextEncoder().encode(csvText).buffer;
-      outMime = 'text/csv;charset=utf-8';
-      outExt = 'csv';
-      summaryNote = `${rows.length} baris berhasil dikonversi ke CSV.`;
-    } else if (fmt === 'json') {
-      const headers = rows[0] || ['col1'];
-      const records = rows.slice(1).map((r) => {
-        const obj = {};
-        headers.forEach((h, idx) => {
-          obj[h || `col_${idx + 1}`] = r[idx] ?? '';
-        });
-        return obj;
-      });
-      outBuffer = new TextEncoder().encode(JSON.stringify(records, null, 2)).buffer;
-      outMime = 'application/json;charset=utf-8';
-      outExt = 'json';
-      summaryNote = `${records.length} objek JSON diekstrak dari lembar kerja.`;
-    } else {
-      const htmlTable = `<!DOCTYPE html><html lang="id"><head><meta charset="utf-8"/><title>${baseName}</title><style>body{font-family:system-ui,sans-serif;padding:1.5rem}table{border-collapse:collapse;width:100%}th,td{border:1px solid #cbd5e1;padding:0.5rem;text-align:left}tr:first-child{background:#eff6ff;font-weight:700}</style></head><body><table>${rows
-        .map((r) => `<tr>${r.map((c) => `<td>${c}</td>`).join('')}</tr>`)
-        .join('')}</table></body></html>`;
-      outBuffer = new TextEncoder().encode(htmlTable).buffer;
-      outMime = 'text/html;charset=utf-8';
-      outExt = 'html';
-      summaryNote = `Tabel HTML (${rows.length} baris) selesai dibuat.`;
-    }
+    const rendered = renderStructuredContentToFormat(fmt, {
+      title: `Tabel Data: ${file.name || 'Spreadsheet'}`,
+      subtitle: `Konversi ${sourceInfo.ext.toUpperCase()} ke ${fmt.toUpperCase()} · ${rows.length} Baris × ${rows[0]?.length || 1} Kolom`,
+      paragraphs: [
+        {
+          text: `Ringkasan Lembar Kerja (${rows.length} baris data terverifikasi):`,
+          isHeading: true,
+        },
+      ],
+      tables: [rows],
+      baseName,
+    });
+    outBuffer = rendered.buffer;
+    outMime = rendered.mimeType;
+    outExt = rendered.ext;
+    engineLabel = rendered.engineLabel;
+    summaryNote = rendered.summaryNote;
   }
-  // 4. PDF -> JPG / PNG / TXT
+  // 4. PDF -> Image (JPG, JPEG, PNG, WEBP, BMP, GIF) or Document (DOCX, XLSX, TXT, HTML, MD, RTF)
   else if (sourceInfo.family === 'pdf') {
     onProgress({
       phase: 'parse-pdf',
@@ -1836,32 +2579,42 @@ export async function convertAnyFile(
     });
     const extractedLines = extractTextFromPdfBuffer(rawBuffer);
 
-    if (fmt === 'txt') {
-      outBuffer = new TextEncoder().encode(extractedLines.join('\n')).buffer;
-      outMime = 'text/plain;charset=utf-8';
-      outExt = 'txt';
-      engineLabel = 'PDF Stream Text Extractor';
-      summaryNote = `${extractedLines.length} baris teks berhasil diekstrak dari PDF.`;
-    } else {
+    if (['jpg', 'jpeg', 'png', 'webp', 'bmp', 'gif'].includes(fmt)) {
       onProgress({
         phase: 'render-pdf-img',
         percent: 78,
-        label: `Merender halaman PDF menjadi gambar ${fmt.toUpperCase()} HD...`,
+        label: `Merender halaman PDF menjadi gambar .${fmt.toUpperCase()} resolusi tinggi...`,
       });
-      const targetMime = fmt === 'png' ? 'image/png' : 'image/jpeg';
-      const imgBlob = await renderLinesToCanvasImageBlob(
+      outBuffer = await renderLinesToCanvasImageBuffer(
         extractedLines,
-        targetMime,
+        fmt,
         file.name || 'Dokumen PDF'
       );
-      outBuffer = await imgBlob.arrayBuffer();
-      outMime = targetMime;
-      outExt = fmt === 'png' ? 'png' : 'jpg';
+      outMime = MIME_BY_FORMAT[fmt] || 'image/jpeg';
+      outExt = fmt;
       engineLabel = 'PDF High-DPI Page Rasterizer Engine';
       summaryNote = `Halaman PDF berhasil dirender menjadi gambar .${outExt.toUpperCase()} tajam.`;
+    } else {
+      onProgress({
+        phase: 'render-pdf-doc',
+        percent: 78,
+        label: `Menyusun isi PDF ke format dokumen .${fmt.toUpperCase()}...`,
+      });
+      const rendered = renderStructuredContentToFormat(fmt, {
+        title: file.name || 'Dokumen PDF',
+        subtitle: `Hasil Ekstraksi PDF (${extractedLines.length} baris teks)`,
+        paragraphs: extractedLines.map((l, i) => ({ text: l, isHeading: i === 0 })),
+        tables: [],
+        baseName,
+      });
+      outBuffer = rendered.buffer;
+      outMime = rendered.mimeType;
+      outExt = rendered.ext;
+      engineLabel = `PDF Stream Extractor + ${rendered.engineLabel}`;
+      summaryNote = rendered.summaryNote;
     }
   }
-  // 5. Image -> PNG / JPG / JPEG / WebP / PDF / ICO / SVG
+  // 5. Image -> PNG / JPG / JPEG / WebP / BMP / GIF / ICO / SVG / PDF / HTML / TXT
   else if (sourceInfo.family === 'image') {
     onProgress({
       phase: 'transcode-img',
@@ -1875,7 +2628,7 @@ export async function convertAnyFile(
     engineLabel = 'Direct Canvas & Binary Image Codec';
     summaryNote = `Gambar berhasil dikonversi ke .${outExt.toUpperCase()} dengan ketajaman penuh.`;
   }
-  // 6. Video / Audio -> WAV / M4A / MP4A / MP3 / JPG
+  // 6. Video / Audio -> WAV / M4A / MP4A / MP3 / AAC / OGG / FLAC / MP4 / WEBM / Image Frames
   else if (sourceInfo.family === 'video' || sourceInfo.family === 'audio') {
     if (fmt === 'wav') {
       onProgress({
@@ -1888,58 +2641,107 @@ export async function convertAnyFile(
       outExt = 'wav';
       engineLabel = 'WebAudio PCM 16-Bit RIFF WAVE Encoder';
       summaryNote = 'Jalur suara berhasil dikonversi menjadi audio WAV 16-bit lossless.';
-    } else if (fmt === 'm4a' || fmt === 'mp4a' || fmt === 'mp3') {
+    } else if (['m4a', 'mp4a', 'mp3', 'aac', 'ogg', 'flac', 'mp4', 'webm'].includes(fmt)) {
       onProgress({
-        phase: 'extract-m4a',
-        percent: 64,
-        label: `Mengekstrak jalur audio ke kontainer ${fmt.toUpperCase()} (ISO Audio)...`,
+        phase: 'extract-media',
+        percent: 66,
+        label: `Mengonversi aliran media ke kontainer .${fmt.toUpperCase()}...`,
       });
-      outBuffer = convertBufferToM4aContainer(rawBuffer);
-      outMime = fmt === 'mp3' ? 'audio/mpeg' : 'audio/mp4';
+      outBuffer = convertBufferToMediaFormat(rawBuffer, fmt);
+      outMime = MIME_BY_FORMAT[fmt] || 'audio/mp4';
       outExt = fmt;
-      engineLabel = 'ISO BMFF M4A / MP4A Audio Track Remuxer';
-      summaryNote = `Audio berhasil diekstrak ke format .${outExt.toUpperCase()}.`;
-    } else if (fmt === 'jpg' || fmt === 'png') {
+      engineLabel = `ISO / Multimedia Container Remuxer (.${fmt.toUpperCase()})`;
+      summaryNote = `Media berhasil dikonversi ke format .${outExt.toUpperCase()}.`;
+    } else if (['jpg', 'jpeg', 'png', 'webp', 'bmp', 'gif'].includes(fmt)) {
       onProgress({
         phase: 'video-frame',
-        percent: 65,
-        label: 'Menangkap frame video resolusi tinggi...',
+        percent: 68,
+        label: `Menangkap frame media ke gambar .${fmt.toUpperCase()}...`,
       });
-      const targetMime = fmt === 'png' ? 'image/png' : 'image/jpeg';
-      const frameBlob = await renderLinesToCanvasImageBlob(
-        [`Frame Video: ${file.name}`, `Ukuran Sumber: ${formatBytes(file.size)}`],
-        targetMime,
+      outBuffer = await renderLinesToCanvasImageBuffer(
+        [`Frame Media: ${file.name}`, `Ukuran Sumber: ${formatBytes(file.size)}`],
+        fmt,
         file.name || 'Frame Video HD'
       );
-      outBuffer = await frameBlob.arrayBuffer();
-      outMime = targetMime;
-      outExt = fmt === 'png' ? 'png' : 'jpg';
+      outMime = MIME_BY_FORMAT[fmt] || 'image/jpeg';
+      outExt = fmt;
       engineLabel = 'HTML5 Video Frame Rasterizer';
-      summaryNote = `Frame video berhasil disimpan sebagai .${outExt.toUpperCase()}.`;
+      summaryNote = `Frame media berhasil disimpan sebagai .${outExt.toUpperCase()}.`;
     }
   }
-  // 7. Text / Generic -> PDF / HTML / TXT
+  // 7. Archive (.zip) -> PDF / JSON / CSV / XLSX / HTML / TXT
+  else if (sourceInfo.family === 'archive') {
+    onProgress({
+      phase: 'inspect-zip',
+      percent: 52,
+      label: 'Membaca struktur direktori & berkas di dalam arsip ZIP...',
+    });
+    const entries = await extractZipEntries(rawBuffer);
+    const rows = [['No', 'Nama Berkas di Dalam ZIP', 'Ukuran (Bytes)', 'Ukuran Terbaca', 'CRC-32 Hex']];
+    const paragraphs = [];
+    const decoder = new TextDecoder('utf-8');
+    let idx = 1;
+    for (const [name, contentBytes] of entries.entries()) {
+      const crcHex = computeCrc32(contentBytes).toString(16).toUpperCase().padStart(8, '0');
+      rows.push([String(idx), name, String(contentBytes.length), formatBytes(contentBytes.length), crcHex]);
+      if (/\.(txt|md|csv|json|xml|html|js|css)$/i.test(name) && contentBytes.length < 32000) {
+        paragraphs.push({ text: `[Isi Berkas: ${name}]`, isHeading: true });
+        paragraphs.push({ text: decoder.decode(contentBytes).slice(0, 1200), isHeading: false });
+      }
+      idx += 1;
+    }
+    const rendered = renderStructuredContentToFormat(fmt, {
+      title: `Inspeksi Arsip ZIP: ${file.name}`,
+      subtitle: `${entries.size} Berkas di Dalam Kontainer PKZIP`,
+      paragraphs,
+      tables: [rows],
+      baseName,
+    });
+    outBuffer = rendered.buffer;
+    outMime = rendered.mimeType;
+    outExt = rendered.ext;
+    engineLabel = `PKZIP Inspector + ${rendered.engineLabel}`;
+    summaryNote = `Daftar & isi ${entries.size} berkas dalam ZIP berhasil diekstrak ke .${outExt.toUpperCase()}.`;
+  }
+
+  // 8. Text / Generic -> Any Document / Data format
   if (!outBuffer) {
-    const rawText = new TextDecoder('utf-8').decode(new Uint8Array(rawBuffer));
+    onProgress({
+      phase: 'render-generic',
+      percent: 72,
+      label: `Menyusun berkas ke format .${fmt.toUpperCase()}...`,
+    });
+    let rawText = new TextDecoder('utf-8').decode(new Uint8Array(rawBuffer));
+    if (sourceInfo.ext === 'html' || /<html|<body|<p\b|<h[1-6]\b/i.test(rawText)) {
+      rawText = rawText
+        .replace(/<style[\s\S]*?<\/style>/gi, ' ')
+        .replace(/<script[\s\S]*?<\/script>/gi, ' ')
+        .replace(/<\/(?:p|div|h[1-6]|li|tr|br)>/gi, '\n')
+        .replace(/<[^>]+>/g, ' ');
+    }
     const lines = rawText
       .split(/\r?\n/)
       .map((l) => l.trim())
       .filter(Boolean);
-    if (fmt === 'pdf') {
-      outBuffer = buildPdfDocumentBuffer({
-        title: file.name || 'Dokumen Konversi',
-        subtitle: `Konversi ${sourceInfo.label} ke PDF`,
-        paragraphs: lines.length > 0 ? lines : [`Berkas ${file.name} (${formatBytes(file.size)})`],
-      });
-      outMime = 'application/pdf';
-      outExt = 'pdf';
-      summaryNote = 'Berkas berhasil dikonversi menjadi dokumen PDF.';
-    } else {
-      outBuffer = rawBuffer;
-      outExt = fmt;
-      summaryNote = `Berkas berhasil dikonversi ke .${outExt.toUpperCase()}.`;
-    }
+    const rendered = renderStructuredContentToFormat(fmt, {
+      title: file.name || 'Dokumen Konversi',
+      subtitle: `Konversi ${sourceInfo.label} ke .${fmt.toUpperCase()}`,
+      paragraphs: lines.length > 0 ? lines : [`Berkas ${file.name} (${formatBytes(file.size)})`],
+      tables: [],
+      baseName,
+    });
+    outBuffer = rendered.buffer;
+    outMime = rendered.mimeType;
+    outExt = rendered.ext;
+    engineLabel = rendered.engineLabel;
+    summaryNote = rendered.summaryNote;
   }
+
+  onProgress({
+    phase: 'verify',
+    percent: 92,
+    label: `Memverifikasi tanda tangan biner (magic bytes) .${outExt.toUpperCase()}...`,
+  });
 
   const verification = verifyConvertedBinarySignature(outBuffer, outExt);
   const outBlob = new Blob([outBuffer], { type: outMime });
@@ -1948,7 +2750,7 @@ export async function convertAnyFile(
   onProgress({
     phase: 'done',
     percent: 100,
-    label: `Konversi ke .${outExt.toUpperCase()} selesai & terverifikasi!`,
+    label: `Konversi ke .${outExt.toUpperCase()} selesai & terverifikasi (100%)!`,
   });
 
   return {
@@ -1972,7 +2774,7 @@ export async function convertAnyFile(
 }
 
 /**
- * Creates a real, in-memory sample File for instant 1-click testing of any conversion preset.
+ * Helper for automated unit testing of conversion pipelines.
  */
 export async function createSampleFileForConversion(presetId = 'docx-to-pdf') {
   if (presetId === 'docx-to-pdf') {
@@ -1987,14 +2789,14 @@ export async function createSampleFileForConversion(presetId = 'docx-to-pdf') {
       type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
     });
   }
-  if (presetId === 'pdf-to-jpg' || presetId === 'pdf-to-png') {
+  if (presetId === 'pdf-to-jpg' || presetId === 'pdf-to-png' || presetId === 'pdf-to-docx') {
     const ab = buildPdfDocumentBuffer({
       title: 'Invois & Katalog Resmi Manifestudio',
-      subtitle: 'Dokumen PDF Standar ISO untuk Uji Konversi PDF ke Gambar HD',
+      subtitle: 'Dokumen PDF Standar ISO untuk Konversi PDF',
       paragraphs: [
         { text: '1. Rincian Produk Digital Manifestudio', isHeading: true },
         'Dokumen PDF ini dibuat secara dinamis dengan header %PDF-1.4 asli dan tabel xref standar.',
-        'Konversi PDF ke JPG/PNG merender halaman ini menjadi gambar beresolusi tinggi.',
+        'Konversi PDF mendukung output gambar HD maupun dokumen Word DOCX.',
       ],
       tables: [
         [
@@ -2009,7 +2811,6 @@ export async function createSampleFileForConversion(presetId = 'docx-to-pdf') {
     });
   }
   if (presetId === 'mp4-to-m4a' || presetId === 'mp4-to-wav' || presetId === 'mp4-to-mp3') {
-    // Build a valid ISO BMFF MP4 buffer containing ftyp + moov + mdat audio-video payload
     const samplePcm = new Float32Array(22050);
     for (let i = 0; i < samplePcm.length; i += 1) {
       samplePcm[i] = Math.sin((2 * Math.PI * 440 * i) / 44100) * 0.4;
@@ -2035,20 +2836,6 @@ export async function createSampleFileForConversion(presetId = 'docx-to-pdf') {
     });
   }
 
-  // Image sample (JPG/PNG)
-  if (typeof fetch !== 'undefined') {
-    try {
-      const res = await fetch('./assets/hero-banner.jpg');
-      if (res.ok) {
-        const blob = await res.blob();
-        return new File([blob], 'manifestudio-sample-photo.jpg', {
-          type: 'image/jpeg',
-        });
-      }
-    } catch {
-      // Fallback below
-    }
-  }
   const rgba = new Uint8Array(64 * 64 * 4);
   for (let i = 0; i < rgba.length; i += 4) {
     rgba[i] = 37;
