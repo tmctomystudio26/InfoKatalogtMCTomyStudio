@@ -2,7 +2,7 @@ import {
   CATALOG_PREVIEW_STORAGE_KEY,
   getDefaultCatalogSnapshot,
   loadCatalogData,
-} from './data.js?v=47';
+} from './data.js?v=48';
 import {
   DEFAULT_UTILITY_CONFIG,
   MAX_HISTORY_LOGS,
@@ -37,12 +37,12 @@ import {
   upsertProductInCatalog,
   upsertSocialInCatalog,
   upsertUtilityItemInCatalog,
-} from './store.js?v=47';
+} from './store.js?v=48';
 import {
   decryptVault,
   encryptVault,
   verifyGitHubTokenAccess,
-} from './vault.js?v=47';
+} from './vault.js?v=48';
 
 const THEME_STORAGE_KEY = 'manifestudio_theme_v1';
 const ADMIN_VAULT_STORAGE_KEY = 'manifestudio_admin_vault_v1';
@@ -942,8 +942,40 @@ function renderBannerList() {
         queueManagedLogoForDeletion(target.image);
         delete adminState.pendingUploads[`__banner__${banId}`];
         target.image = nextImg;
-        const thumb = container.querySelector(`[data-banner-thumb="${banId}"]`);
-        if (thumb && nextImg) thumb.src = nextImg;
+        const card = container.querySelector(`[data-banner-card="${banId}"]`);
+        const preview = card?.querySelector('.admin-banner-preview-mini');
+        if (preview) {
+          const existingImg = preview.querySelector(`[data-banner-thumb="${banId}"]`);
+          const existingGrad = preview.querySelector(`[data-banner-thumb-grad="${banId}"]`);
+          if (nextImg) {
+            if (existingGrad) existingGrad.remove();
+            if (existingImg) {
+              existingImg.src = nextImg;
+            } else {
+              const imgEl = document.createElement('img');
+              imgEl.src = nextImg;
+              imgEl.alt = '';
+              imgEl.className = 'admin-banner-preview-img';
+              imgEl.setAttribute('data-banner-thumb', banId);
+              preview.prepend(imgEl);
+            }
+          } else {
+            if (existingImg) existingImg.remove();
+            if (!existingGrad) {
+              const gradEl = document.createElement('div');
+              gradEl.className = 'admin-banner-preview-grad';
+              gradEl.setAttribute('data-banner-thumb-grad', banId);
+              preview.prepend(gradEl);
+            }
+          }
+        }
+      } else if (field === 'scrim') {
+        target.scrim = e.target.value;
+        const card = container.querySelector(`[data-banner-card="${banId}"]`);
+        const preview = card?.querySelector('.admin-banner-preview-mini');
+        if (preview) {
+          preview.className = `admin-banner-preview-mini ${e.target.value || ''}`.trim();
+        }
       } else if (field === 'heading') {
         target.heading = e.target.value;
         const titlePreview = container.querySelector(`[data-banner-title-preview="${banId}"]`);

@@ -1,7 +1,7 @@
-import { createToolsHubController } from './tools-ui.js?v=47';
-import { initMusicPlayer } from './music.js?v=47';
-import { loadCatalogData } from './data.js?v=47';
-import { normalizeBrandConfig, normalizeUtilityConfig } from './store.js?v=47';
+import { createToolsHubController } from './tools-ui.js?v=48';
+import { initMusicPlayer } from './music.js?v=48';
+import { loadCatalogData } from './data.js?v=48';
+import { normalizeBrandConfig, normalizeUtilityConfig } from './store.js?v=48';
 
 const THEME_STORAGE_KEY = 'manifestudio_theme_v1';
 const VALID_TABS = new Set(['prayer', 'weather', 'worldclock', 'speedtest', 'downloader', 'compressor', 'converter', 'songfinder', 'music']);
