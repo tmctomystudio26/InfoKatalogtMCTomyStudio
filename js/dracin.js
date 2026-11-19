@@ -1,26 +1,80 @@
 /**
- * Browser Runtime Multi-API Parallel Aggregator, Auto-Failover Stream Resolver,
- * Keyless Multi-AI Engine (Gemini / ChatGPT / Claude-Mistral / Pollinations),
- * Free Multi-Language Subtitle Auto-Translator, and Visual Video/Screenshot Analyzer
- * for Manifestudio Drama China (Dracin) Gratis Tanpa Iklan.
+ * Real-Time Multi-Platform Drama China (Dracin) API Client & Stream Resolver:
+ * - Connects live to 16+ real short-drama platforms (DramaBox, Melolo, ReelShort,
+ *   ShortMax, NetShort, GoodShort, DramaWave, FlickReels, FreeReels, iDrama,
+ *   DramaBite, MoboReels, StardustTV, DramaNova, StarShort, Anichin) with real
+ *   poster thumbnails, real episode lists, real MP4/HLS/CENC video + audio streams,
+ *   and real WebVTT/SRT subtitles.
+ * - Includes keyless Dailymotion HD failover, real subtitle auto-translation,
+ *   and keyless Multi-AI clip/screenshot drama identifier.
  */
 
 import {
+  ANICHIN_UNIFIED_SOURCES,
   CURATED_DRACIN_CATALOG,
   DRACIN_PLATFORMS,
-  buildEpisodeSubtitleCues,
   extractTokens,
   inferPlatformFromText,
   mergeParallelDracinFeeds,
+  normalizeAnichinDramaItem,
   normalizeDracinItem,
   parseAiDramaIdentification,
+  parseSubtitleText,
+  pickBestPlaybackServer,
   rankClipIdentifierCandidates,
-} from './dracin-logic.js?v=51';
+  resolveAnichinMediaUrl,
+} from './dracin-logic.js?v=52';
 
-const API_TIMEOUT_MS = 3200;
-const AI_TIMEOUT_MS = 3600;
+const ANICHIN_API_BASE = 'https://api.anichin.bio';
+const API_TIMEOUT_MS = 9500;
+const EPISODE_TIMEOUT_MS = 13000;
+const AI_TIMEOUT_MS = 4500;
+
+const FLAGSHIP_HOME_PLATFORMS = ['dramabox', 'melolo', 'netshort', 'reelshort'];
+const PLATFORM_ALT_ENDPOINTS = {
+  melolo: ['foryou', 'latest', 'trending'],
+  dramabox: ['foryou', 'trending', 'hotrank'],
+  reelshort: ['foryou', 'trending', 'homepage'],
+  shortmax: ['foryou', 'trending', 'homepage'],
+  netshort: ['foryou', 'trending', 'recommended'],
+  goodshort: ['foryou', 'trending', 'homepage'],
+  dramawave: ['foryou', 'trending', 'recommended'],
+  flickreels: ['foryou', 'trending', 'hotrank'],
+  freereels: ['foryou', 'trending', 'homepage'],
+  idrama: ['foryou', 'trending'],
+  dramabite: ['foryou', 'latest', 'trending'],
+  moboreels: ['foryou', 'trending'],
+  stardusttv: ['foryou', 'trending'],
+  dramanova: ['foryou', 'hot', 'new', 'trending'],
+  starshort: ['foryou', 'latest', 'hotrank', 'trending'],
+  flareflow: ['foryou', 'trending'],
+};
+
+const feedCache = new Map();
+const detailCache = new Map();
+const episodeCache = new Map();
+const subtitleTextCache = new Map();
 const translationCache = new Map();
-const searchCache = new Map();
+
+function readSessionCache(key, ttlMs = 8 * 60_000) {
+  try {
+    const raw = sessionStorage.getItem(`dracin_cache_v52_${key}`);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (!parsed || Date.now() - parsed.ts > ttlMs) return null;
+    return parsed.data;
+  } catch {
+    return null;
+  }
+}
+
+function writeSessionCache(key, data) {
+  try {
+    sessionStorage.setItem(`dracin_cache_v52_${key}`, JSON.stringify({ ts: Date.now(), data }));
+  } catch {
+    // Ignore storage quota
+  }
+}
 
 async function fetchJsonWithTimeout(url, options = {}, timeoutMs = API_TIMEOUT_MS) {
   const controller = new AbortController();
@@ -30,244 +84,464 @@ async function fetchJsonWithTimeout(url, options = {}, timeoutMs = API_TIMEOUT_M
     if (!res.ok) {
       throw new Error(`HTTP ${res.status}`);
     }
-    return await res.json();
+    const text = await res.text();
+    try {
+      return JSON.parse(text);
+    } catch {
+      throw new Error('Invalid JSON response');
+    }
   } finally {
     clearTimeout(timer);
   }
 }
 
-/**
- * Provider 1: Dailymotion Public API (Keyless, CORS-friendly, rich DramaBox/ReelShort/NetShort/Sub Indo library)
- */
-async function fetchDailymotionDracin(query = 'drama china sub indo dramabox', limit = 14) {
-  const q = encodeURIComponent(query);
-  const url = `https://api.dailymotion.com/videos?search=${q}&fields=id,title,thumbnail_720_url,duration,views_total,description&limit=${limit}`;
-  const data = await fetchJsonWithTimeout(url);
-  const list = Array.isArray(data?.list) ? data.list : [];
-  const items = list
-    .filter((v) => v && v.id && v.title)
-    .map((v) => {
-      const platformId = inferPlatformFromText(`${v.title} ${v.description || ''}`, 'dramabox');
-      return {
-        id: `dm-${v.id}`,
-        title: String(v.title)
-          .replace(/\[.*?\]/g, '')
-          .replace(/sub\s*indo/gi, '')
-          .replace(/full\s*episode/gi, '')
-          .replace(/\s{2,}/g, ' ')
-          .trim() || v.title,
-        altTitle: `Dailymotion HD · ${Math.max(1, Math.round((v.duration || 120) / 60))} mnt`,
-        platformId,
-        totalEpisodes: 60,
-        views_total: v.views_total || 420000,
-        thumbnail_720_url: v.thumbnail_720_url || '',
-        dailymotionId: v.id,
-        hasIndonesianDub: /dub\s*indo|sulih\s*suara/i.test(`${v.title} ${v.description || ''}`),
-        description: String(v.description || '').slice(0, 220),
-        sourceApi: 'dailymotion',
-      };
-    });
-  return { sourceId: 'dailymotion', label: 'Dailymotion Dracin API', items };
-}
-
-/**
- * Provider 2: Multi-Platform Short-Drama Open Video API (Dailymotion GoodShort / DramaWave / FlickReels / Melolo)
- */
-async function fetchPublicShortDramaApi(query = '') {
-  const search = query
-    ? `${query} dramabox goodshort sub indo`
-    : 'goodshort dramawave flickreels drama china sub indo';
-  const res = await fetchDailymotionDracin(search, 10);
-  return {
-    sourceId: 'shortdrama-open',
-    label: 'Multi-Platform Dracin Open API',
-    items: res.items.map((it) => ({ ...it, sourceApi: 'shortdrama-open' })),
-  };
-}
-
-/**
- * Provider 3: Anichin / Chinese Donghua & C-Drama Public APIs (Dailymotion Anichin + TVMaze C-Drama parallel failover)
- */
-async function fetchAnichinAndDonghuaApi(query = '') {
-  const anichinDm = fetchDailymotionDracin(
-    query ? `${query} donghua anichin sub indo` : 'anichin donghua sub indo episode',
-    8
-  );
-  const tvmazeUrl = `https://api.tvmaze.com/search/shows?q=${encodeURIComponent(query || 'chinese romance')}`;
-  const tvmazeReq = fetchJsonWithTimeout(tvmazeUrl, {}, 2600).then((rows) => {
-    const list = Array.isArray(rows) ? rows : [];
-    return list
-      .filter((r) => r?.show?.name)
-      .slice(0, 6)
-      .map((r) => ({
-        id: `tvmaze-${r.show.id}`,
-        title: r.show.name,
-        altTitle: `C-Drama Open Catalog · ${r.show.language || 'Mandarin'}`,
-        platformId: inferPlatformFromText(`${r.show.name} ${r.show.summary || ''}`, 'dramanova'),
-        totalEpisodes: 40,
-        rating: Number(r.show?.rating?.average) || 9.1,
-        poster: r.show?.image?.medium || r.show?.image?.original || '',
-        synopsis: String(r.show.summary || '').replace(/<[^>]+>/g, '').slice(0, 220),
-        sourceApi: 'tvmaze-open',
-      }));
-  });
-
-  const settled = await Promise.allSettled([anichinDm, tvmazeReq]);
-  const items = [];
-  if (settled[0].status === 'fulfilled' && Array.isArray(settled[0].value?.items)) {
-    for (const it of settled[0].value.items) {
-      items.push({ ...it, platformId: 'anichin', genre: 'donghua', sourceApi: 'anichin-api' });
-    }
+async function fetchTextWithTimeout(url, timeoutMs = 7000) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const res = await fetch(url, { signal: controller.signal });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    return await res.text();
+  } finally {
+    clearTimeout(timer);
   }
-  if (settled[1].status === 'fulfilled' && Array.isArray(settled[1].value)) {
-    items.push(...settled[1].value);
+}
+
+function extractItemsArray(json) {
+  if (!json) return [];
+  if (Array.isArray(json.items)) return json.items;
+  if (Array.isArray(json.data?.items)) return json.data.items;
+  if (Array.isArray(json.data)) return json.data;
+  if (Array.isArray(json.results)) return json.results;
+  if (Array.isArray(json)) return json;
+  return [];
+}
+
+/**
+ * Fetches real-time catalog items directly from a live platform via api.anichin.bio.
+ */
+export async function fetchAnichinPlatformFeed(platformId, { page = 1, query = '' } = {}) {
+  const src = String(platformId || '').toLowerCase();
+  if (!ANICHIN_UNIFIED_SOURCES.has(src)) {
+    return { sourceId: `live-${src}`, platformId: src, items: [], hasMore: false };
   }
 
-  return {
-    sourceId: 'anichin-api',
-    label: 'Anichin & C-Drama Open API',
-    items,
-    fallbackPlatformId: 'anichin',
-  };
-}
-
-/**
- * Provider 4: Secondary Dailymotion Short-Drama Channels (ReelShort / ShortMax / NetShort / GoodShort)
- */
-async function fetchMultiPlatformDailymotionFeed(query = '') {
-  const search = query
-    ? `${query} short drama sub indo`
-    : 'reelshort shortmax netshort drama china sub indo';
-  const res = await fetchDailymotionDracin(search, 10);
-  return {
-    sourceId: 'piped-yt',
-    label: 'Multi-Platform ShortDrama Feed',
-    items: res.items,
-  };
-}
-
-/**
- * Master Parallel Feed Aggregator (Rule #1 & #7):
- * Fires ALL API providers concurrently via Promise.allSettled with tight timeouts.
- * Any failing/hanging API is silently skipped while surviving APIs merge with
- * the curated 18-platform flagship catalog into one unified seamless experience.
- */
-export async function fetchUnifiedDracinCatalog({ query = '', platformId = 'all' } = {}) {
   const cleanQ = String(query || '').trim();
-  const cacheKey = `${platformId}::${cleanQ.toLowerCase()}`;
-  if (searchCache.has(cacheKey)) {
-    const cached = searchCache.get(cacheKey);
-    if (Date.now() - cached.ts < 5 * 60_000) {
-      return cached.payload;
+  const cacheKey = `${src}::p${page}::q:${cleanQ.toLowerCase()}`;
+  if (feedCache.has(cacheKey)) {
+    const cached = feedCache.get(cacheKey);
+    if (Date.now() - cached.ts < 8 * 60_000) return cached.payload;
+  }
+  const sessCached = readSessionCache(cacheKey);
+  if (sessCached && Array.isArray(sessCached.items) && sessCached.items.length > 0) {
+    feedCache.set(cacheKey, { ts: Date.now(), payload: sessCached });
+    return sessCached;
+  }
+
+  const endpoints = cleanQ
+    ? [`${ANICHIN_API_BASE}/${src}/search?query=${encodeURIComponent(cleanQ)}&page=${page}&lang=in`]
+    : (PLATFORM_ALT_ENDPOINTS[src] || ['foryou', 'trending']).map(
+        (ep) => `${ANICHIN_API_BASE}/${src}/${ep}?page=${page}&lang=in`
+      );
+
+  let rawItems = [];
+  let hasMore = false;
+
+  for (const url of endpoints) {
+    try {
+      const json = await fetchJsonWithTimeout(url, {}, API_TIMEOUT_MS);
+      const list = extractItemsArray(json);
+      if (list.length > 0) {
+        rawItems = list;
+        hasMore = Boolean(json?.hasMore ?? list.length >= 8);
+        break;
+      }
+    } catch {
+      // Try next endpoint for this platform
     }
   }
 
-  const platformName =
-    platformId !== 'all'
-      ? DRACIN_PLATFORMS.find((p) => p.id === platformId)?.name || ''
-      : '';
-  const dmQuery = cleanQ
-    ? `${cleanQ} ${platformName} drama china sub indo`.trim()
-    : platformName
-    ? `${platformName} drama china sub indo`
-    : 'dramabox drama china sub indo';
+  const normalized = rawItems
+    .filter((it) => it && (it.title || it.bookName || it.name))
+    .map((it) => normalizeAnichinDramaItem(it, src));
 
-  const jobs = [
-    fetchDailymotionDracin(dmQuery, 12),
-    fetchMultiPlatformDailymotionFeed(cleanQ || platformName),
-    fetchPublicShortDramaApi(cleanQ),
-    fetchAnichinAndDonghuaApi(cleanQ),
-  ];
-
-  const settled = await Promise.allSettled(jobs);
-  const buckets = [];
-  const activeSources = ['Katalog 18-Platform'];
-
-  for (const s of settled) {
-    if (s.status === 'fulfilled' && s.value && Array.isArray(s.value.items) && s.value.items.length > 0) {
-      buckets.push(s.value);
-      activeSources.push(s.value.label);
-    }
-  }
-
-  const items = mergeParallelDracinFeeds(buckets, CURATED_DRACIN_CATALOG);
+  const platformMeta = DRACIN_PLATFORMS.find((p) => p.id === src);
   const payload = {
-    items,
-    activeSources: Array.from(new Set(activeSources)),
-    liveCount: buckets.reduce((sum, b) => sum + b.items.length, 0),
-    fetchedAt: Date.now(),
+    sourceId: `live-${src}`,
+    platformId: src,
+    label: `${platformMeta?.name || src} Live API`,
+    fallbackPlatformId: src,
+    items: normalized,
+    hasMore,
   };
 
-  searchCache.set(cacheKey, { ts: Date.now(), payload });
+  if (normalized.length > 0) {
+    feedCache.set(cacheKey, { ts: Date.now(), payload });
+    writeSessionCache(cacheKey, payload);
+  }
   return payload;
 }
 
 /**
- * Resolves multi-server playback options for ANY drama & ANY episode (1..N)
- * with instant failover between Cinema Interactive Subtitled Stream, Dailymotion
- * Ad-Free Player, and Direct MP4/HTML5 Player.
+ * Secondary Real Video Provider: Dailymotion Public API (Keyless, CORS=*, real 720p thumbnails & embeds).
+ * Used for Anichin Donghua, FlexTV, KalosTV, and as live fallback if any platform upstream returns 502.
+ */
+export async function fetchDailymotionDracin(
+  query = 'drama china sub indo dramabox',
+  limit = 16,
+  forcedPlatformId = null
+) {
+  const q = encodeURIComponent(query);
+  const url = `https://api.dailymotion.com/videos?search=${q}&fields=id,title,thumbnail_720_url,duration,views_total,description&limit=${limit}`;
+  const data = await fetchJsonWithTimeout(url, {}, 7500);
+  const list = Array.isArray(data?.list) ? data.list : [];
+  const items = list
+    .filter((v) => v && v.id && v.title && (v.duration || 0) >= 35)
+    .map((v) => {
+      const platformId =
+        forcedPlatformId && forcedPlatformId !== 'all'
+          ? forcedPlatformId
+          : inferPlatformFromText(`${v.title} ${v.description || ''}`, 'dramabox');
+      const cleanedTitle =
+        String(v.title)
+          .replace(/\[.*?\]/g, '')
+          .replace(/\bsub\s*indo\b/gi, '')
+          .replace(/\bfull\s*episode\b/gi, '')
+          .replace(/\bdrama\s*china\b/gi, '')
+          .replace(/\s{2,}/g, ' ')
+          .trim() || v.title;
+      return normalizeDracinItem(
+        {
+          id: `dm::${platformId}::${v.id}`,
+          sourceId: v.id,
+          apiProvider: 'dailymotion',
+          title: cleanedTitle,
+          altTitle: `HD Stream · ${Math.max(1, Math.round((v.duration || 180) / 60))} mnt`,
+          platformId,
+          totalEpisodes: 20,
+          views_total: v.views_total || 320000,
+          poster: v.thumbnail_720_url || '',
+          dailymotionId: v.id,
+          hasIndonesianDub: /dub\s*indo|dubbing|sulih\s*suara/i.test(`${v.title} ${v.description || ''}`),
+          description: String(v.description || '').slice(0, 240),
+          sourceApi: 'dailymotion',
+        },
+        platformId
+      );
+    });
+  return {
+    sourceId: 'dailymotion',
+    label: 'Dailymotion HD Live API',
+    fallbackPlatformId: forcedPlatformId || 'dramabox',
+    items,
+    hasMore: false,
+  };
+}
+
+/**
+ * Master Real-Time Catalog Fetcher:
+ * - On "Semua": loads live feeds from top flagship platforms concurrently (70+ real dramas with real posters).
+ * - On any specific platform chip (e.g. Melolo, DramaBox, ReelShort, NetShort, ShortMax, GoodShort, etc.):
+ *   loads THAT platform's real-time catalog directly from the live platform API!
+ * - On search query: searches live platform endpoints directly!
+ */
+export async function fetchUnifiedDracinCatalog({ query = '', platformId = 'all', page = 1 } = {}) {
+  const cleanQ = String(query || '').trim();
+  const safePlatform = String(platformId || 'all').toLowerCase();
+
+  let jobs = [];
+
+  if (safePlatform === 'all') {
+    if (cleanQ) {
+      jobs = [
+        fetchAnichinPlatformFeed('dramabox', { page, query: cleanQ }),
+        fetchAnichinPlatformFeed('melolo', { page, query: cleanQ }),
+        fetchAnichinPlatformFeed('netshort', { page, query: cleanQ }),
+        fetchDailymotionDracin(`${cleanQ} drama china sub indo`, 12),
+      ];
+    } else {
+      jobs = FLAGSHIP_HOME_PLATFORMS.map((pid) => fetchAnichinPlatformFeed(pid, { page }));
+    }
+  } else if (ANICHIN_UNIFIED_SOURCES.has(safePlatform)) {
+    jobs = [fetchAnichinPlatformFeed(safePlatform, { page, query: cleanQ })];
+  } else {
+    const platformName = DRACIN_PLATFORMS.find((p) => p.id === safePlatform)?.name || safePlatform;
+    const dmQ =
+      safePlatform === 'anichin'
+        ? cleanQ
+          ? `${cleanQ} donghua anichin sub indo`
+          : 'anichin donghua sub indo episode'
+        : cleanQ
+        ? `${cleanQ} ${platformName} drama china sub indo`
+        : `${platformName} drama china sub indo`;
+    jobs = [fetchDailymotionDracin(dmQ, 20, safePlatform)];
+  }
+
+  const settled = await Promise.allSettled(jobs);
+  const buckets = [];
+  const activeSources = [];
+  let hasMore = false;
+
+  for (const s of settled) {
+    if (s.status === 'fulfilled' && s.value && Array.isArray(s.value.items) && s.value.items.length > 0) {
+      buckets.push(s.value);
+      activeSources.push(s.value.label || s.value.sourceId);
+      if (s.value.hasMore) hasMore = true;
+    }
+  }
+
+  // If a specific Anichin platform upstream returned 502/0 items (e.g. temporary upstream outage),
+  // fetch real playable videos with real thumbnails from Dailymotion for that platform instead of showing empty/fake data!
+  if (buckets.length === 0) {
+    const platformName =
+      safePlatform !== 'all'
+        ? DRACIN_PLATFORMS.find((p) => p.id === safePlatform)?.name || safePlatform
+        : 'DramaBox';
+    try {
+      const dmFallback = await fetchDailymotionDracin(
+        cleanQ ? `${cleanQ} ${platformName} drama china sub indo` : `${platformName} drama china sub indo`,
+        18,
+        safePlatform === 'all' ? null : safePlatform
+      );
+      if (dmFallback.items.length > 0) {
+        buckets.push(dmFallback);
+        activeSources.push(dmFallback.label);
+      }
+    } catch {
+      // Handled gracefully below
+    }
+  }
+
+  // Merge strictly real live items (pass empty baseline [] so ZERO fake SVG-letter placeholders pollute live feeds!)
+  const items = mergeParallelDracinFeeds(buckets, []);
+
+  return {
+    items,
+    activeSources: Array.from(new Set(activeSources)),
+    liveCount: items.length,
+    hasMore,
+    platformId: safePlatform,
+    page,
+    fetchedAt: Date.now(),
+  };
+}
+
+/**
+ * Fetches real drama detail (exact episode count, full Indonesian synopsis, HD cover, episode metadata).
+ */
+export async function fetchDramaDetail(drama) {
+  if (!drama || drama.apiProvider !== 'anichin-unified' || !drama.sourceId) {
+    return null;
+  }
+  const key = `${drama.platformId}::${drama.sourceId}`;
+  if (detailCache.has(key)) return detailCache.get(key);
+
+  try {
+    const url = `${ANICHIN_API_BASE}/${encodeURIComponent(drama.platformId)}/detail?id=${encodeURIComponent(
+      drama.sourceId
+    )}&lang=in`;
+    const json = await fetchJsonWithTimeout(url, {}, API_TIMEOUT_MS);
+    const data = json?.data || json;
+    if (!data || typeof data !== 'object') return null;
+
+    const rawEpisodes = Array.isArray(data.episodes) ? data.episodes : [];
+    const totalEpisodes =
+      rawEpisodes.length ||
+      Number(data.episodeCount || data.episodes || data.totalEpisodes || drama.totalEpisodes) ||
+      drama.totalEpisodes;
+
+    const detail = {
+      title: String(data.title || drama.title).trim(),
+      poster: String(data.cover || data.posterImg || drama.poster).trim(),
+      synopsis: String(data.description || data.synopsis || drama.synopsis).trim(),
+      totalEpisodes: Math.max(1, Math.min(300, Math.round(totalEpisodes))),
+      episodes: rawEpisodes.map((ep, idx) => ({
+        number: Number(ep.episodeNumber || ep.number || idx + 1),
+        title: String(ep.episodeTitle || ep.title || `Episode ${idx + 1}`),
+        videoUrl: resolveAnichinMediaUrl(ep.videoUrl || ''),
+        locked: false,
+      })),
+      tags: Array.isArray(data.categoryNames)
+        ? data.categoryNames
+        : Array.isArray(data.tags)
+        ? data.tags
+        : [],
+    };
+    detailCache.set(key, detail);
+    return detail;
+  } catch {
+    return null;
+  }
+}
+
+function classifyStreamKind(url = '', qualityObj = null) {
+  const lower = String(url || '').toLowerCase();
+  if (qualityObj?.drm && qualityObj?.contentKey) return 'cenc-mp4';
+  if (lower.includes('.m3u8') || lower.includes('/hls?') || lower.includes('/hls/')) return 'hls';
+  return 'video';
+}
+
+/**
+ * Resolves REAL video + audio playback servers & real subtitle tracks for ANY drama & episode.
+ * Never returns fake silent timer playback!
  */
 export async function resolveEpisodePlayback(drama, episodeNumber = 1) {
   const ep = Math.max(1, Math.round(Number(episodeNumber) || 1));
-  let dmId = drama?.dailymotionId || '';
+  const servers = [];
+  let subtitles = [];
+  let rawError = '';
 
-  // Try fetching episode-specific Dailymotion stream in parallel with a fast 2.4s timeout
-  if (!dmId || ep > 1) {
+  // 1. Primary: Real Platform Direct Stream (MP4 / HLS / Melolo CENC-MP4)
+  if (drama?.apiProvider === 'anichin-unified' && drama?.sourceId) {
+    const epKey = `${drama.platformId}::${drama.sourceId}::ep${ep}`;
+    let epData = episodeCache.get(epKey) || null;
+
+    if (!epData) {
+      try {
+        const url = `${ANICHIN_API_BASE}/${encodeURIComponent(drama.platformId)}/episode?id=${encodeURIComponent(
+          drama.sourceId
+        )}&ep=${ep}&lang=in`;
+        const json = await fetchJsonWithTimeout(url, {}, EPISODE_TIMEOUT_MS);
+        epData = json?.data && !json?.videoUrl ? json.data : json;
+        if (epData && (epData.videoUrl || (Array.isArray(epData.qualityList) && epData.qualityList.length))) {
+          episodeCache.set(epKey, epData);
+        }
+      } catch (err) {
+        rawError = err?.message || 'Timeout memuat stream episode';
+      }
+    }
+
+    if (epData) {
+      const qList = Array.isArray(epData.qualityList) ? epData.qualityList : [];
+      const seenUrls = new Set();
+
+      // Sort qualities preferring 720p -> 540p -> 1080p -> 480p -> 360p (fast start + crisp HD, especially for Melolo decrypt!)
+      const qualityRank = (label = '') => {
+        const l = String(label).toLowerCase();
+        if (l.includes('720')) return 1;
+        if (l.includes('540')) return 2;
+        if (l.includes('480')) return 3;
+        if (l.includes('1080')) return 4;
+        if (l.includes('auto')) return 0;
+        if (l.includes('360')) return 5;
+        return 6;
+      };
+
+      const sortedQualities = [...qList]
+        .filter((q) => q && q.url)
+        .sort((a, b) => qualityRank(a.label) - qualityRank(b.label));
+
+      // For Melolo CENC decryption, prefer 480p/540p first so download+WebCrypto decrypt takes <1.5s on mobile!
+      if (drama.platformId === 'melolo') {
+        sortedQualities.sort((a, b) => {
+          const meloloRank = (lbl = '') =>
+            lbl.includes('480') ? 0 : lbl.includes('540') ? 1 : lbl.includes('360') ? 2 : lbl.includes('720') ? 3 : 4;
+          return meloloRank(a.label) - meloloRank(b.label);
+        });
+      }
+
+      for (const q of sortedQualities) {
+        const resolvedUrl = resolveAnichinMediaUrl(q.url);
+        if (!resolvedUrl || seenUrls.has(resolvedUrl)) continue;
+        seenUrls.add(resolvedUrl);
+        const kind = classifyStreamKind(resolvedUrl, q);
+        const labelText = q.label ? String(q.label).toUpperCase() : 'HD';
+        servers.push({
+          id: `live-${drama.platformId}-${labelText.toLowerCase().replace(/[^a-z0-9]/g, '')}`,
+          label: `${drama.platformName} ${labelText}${kind === 'hls' ? ' (HLS)' : kind === 'cenc-mp4' ? ' (HD)' : ' (MP4)'}`,
+          kind,
+          url: resolvedUrl,
+          qualityLabel: labelText,
+          drm: q.drm || '',
+          kid: q.kid || '',
+          contentKey: q.contentKey || '',
+          codec: q.codec || '',
+        });
+      }
+
+      // Also include top-level videoUrl if not already in qualityList
+      const topUrl = resolveAnichinMediaUrl(epData.videoUrl || '');
+      if (topUrl && !seenUrls.has(topUrl)) {
+        seenUrls.add(topUrl);
+        const defaultDrm = qList.find((q) => q?.drm && q?.contentKey) || null;
+        const kind = classifyStreamKind(topUrl, defaultDrm);
+        servers.unshift({
+          id: `live-${drama.platformId}-hd`,
+          label: `${drama.platformName} HD${kind === 'hls' ? ' (HLS)' : ' (MP4)'}`,
+          kind,
+          url: topUrl,
+          qualityLabel: 'HD',
+          drm: defaultDrm?.drm || '',
+          kid: defaultDrm?.kid || '',
+          contentKey: defaultDrm?.contentKey || '',
+          codec: defaultDrm?.codec || '',
+        });
+      }
+
+      if (Array.isArray(epData.subtitles)) {
+        subtitles = epData.subtitles
+          .filter((s) => s && s.url)
+          .map((s) => ({
+            label: String(s.label || s.language || 'Subtitle'),
+            language: String(s.language || s.label || 'id').toLowerCase(),
+            url: resolveAnichinMediaUrl(s.url),
+          }));
+      }
+    }
+  }
+
+  // 2. Direct MP4 URL on drama item if present
+  if (drama?.directVideoUrl) {
+    servers.push({
+      id: 'direct-hd',
+      label: 'Server Direct HD (MP4)',
+      kind: classifyStreamKind(drama.directVideoUrl),
+      url: resolveAnichinMediaUrl(drama.directVideoUrl),
+      qualityLabel: 'HD',
+    });
+  }
+
+  // 3. Dailymotion Real Video + Audio Embed (Primary for Dailymotion-sourced dramas, Backup for others when needed)
+  let dmId = drama?.dailymotionId || '';
+  if (!dmId && servers.length === 0) {
     try {
-      const q = encodeURIComponent(
-        `${drama?.title || 'drama china'} episode ${ep} sub indo`
-      );
+      const q = encodeURIComponent(`${drama?.title || 'drama china'} episode ${ep} sub indo`);
       const data = await fetchJsonWithTimeout(
         `https://api.dailymotion.com/videos?search=${q}&fields=id,title,duration&limit=3`,
         {},
-        2400
+        4500
       );
       if (Array.isArray(data?.list) && data.list[0]?.id) {
         dmId = data.list[0].id;
       }
     } catch {
-      // Keep fallback dmId cleanly
+      // No Dailymotion fallback
     }
-  }
-
-  const servers = [];
-
-  if (drama?.directVideoUrl) {
-    servers.push({
-      id: 'direct-hd',
-      label: 'Server 1 · Direct HD',
-      kind: 'video',
-      url: drama.directVideoUrl,
-    });
   }
 
   if (dmId) {
     servers.push({
       id: 'dm-hd',
-      label: 'Server 1 · Stream HD (Multi-API)',
+      label: servers.length ? 'Server Cadangan · Dailymotion HD' : 'Dailymotion HD Stream',
       kind: 'dailymotion',
       videoId: dmId,
       embedUrl: `https://geo.dailymotion.com/player.html?video=${encodeURIComponent(dmId)}&mute=false&autoplay=true`,
     });
   }
 
-  servers.push({
-    id: 'cinema-sub',
-    label: servers.length ? 'Server 2 · Mode Bioskop Tanpa Iklan' : 'Server 1 · Mode Bioskop Tanpa Iklan',
-    kind: 'cinema',
-    poster: drama?.poster || drama?.fallbackPoster || '',
-  });
+  const best = pickBestPlaybackServer(servers);
 
   return {
     episode: ep,
     servers,
-    defaultServerId: servers[0]?.id || 'cinema-sub',
+    subtitles,
+    defaultServerId: best?.id || '',
+    error: servers.length === 0 ? rawError || 'Stream episode tidak tersedia dari server saat ini.' : '',
   };
 }
 
 /**
- * Free Keyless Multi-Language Auto-Translator (Google GTX + MyMemory parallel failover)
- * Used when translating dynamic API synopses or custom subtitle lines into Bahasa Indonesia / other languages.
+ * Free Keyless Multi-Language Auto-Translator (Google GTX + MyMemory parallel failover).
  */
 export async function translateTextParallel(text = '', targetLang = 'id') {
   const clean = String(text || '').trim();
@@ -276,9 +550,11 @@ export async function translateTextParallel(text = '', targetLang = 'id') {
   if (translationCache.has(cacheKey)) return translationCache.get(cacheKey);
 
   const gtxPromise = fetchJsonWithTimeout(
-    `https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=${encodeURIComponent(targetLang)}&dt=t&q=${encodeURIComponent(clean.slice(0, 500))}`,
+    `https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=${encodeURIComponent(
+      targetLang
+    )}&dt=t&q=${encodeURIComponent(clean.slice(0, 500))}`,
     {},
-    2600
+    3200
   ).then((json) => {
     if (Array.isArray(json?.[0])) {
       return json[0].map((seg) => seg?.[0] || '').join('').trim();
@@ -287,9 +563,11 @@ export async function translateTextParallel(text = '', targetLang = 'id') {
   });
 
   const myMemoryPromise = fetchJsonWithTimeout(
-    `https://api.mymemory.translated.net/get?q=${encodeURIComponent(clean.slice(0, 450))}&langpair=auto|${encodeURIComponent(targetLang)}`,
+    `https://api.mymemory.translated.net/get?q=${encodeURIComponent(
+      clean.slice(0, 450)
+    )}&langpair=auto|${encodeURIComponent(targetLang)}`,
     {},
-    2800
+    3400
   ).then((json) => {
     const out = String(json?.responseData?.translatedText || '').trim();
     if (!out || /INVALID LANGUAGE/i.test(out)) throw new Error('Invalid MyMemory');
@@ -303,38 +581,105 @@ export async function translateTextParallel(text = '', targetLang = 'id') {
       return translated;
     }
   } catch {
-    // Graceful local fallback
+    // Keep original
   }
   return clean;
 }
 
-export async function getEpisodeSubtitles(drama, episodeNumber = 1, lang = 'id') {
-  const cues = buildEpisodeSubtitleCues(drama, episodeNumber, lang);
-  if (lang === 'off') return [];
-  // Translate drama title cue when drama comes from English/Mandarin live API and target is ID
-  if (lang === 'id' && cues[0] && /[a-z]{4,}/i.test(drama?.title || '') && !/pewaris|nikah|kebangkitan|dokter|ratu|kaisar|rahasia|selir|kontrak|menantu|cahaya|taipan|detektif|tetangga|jenderal|warisan|cinta|legenda/i.test(drama?.title || '')) {
-    try {
-      const translatedTitle = await translateTextParallel(drama.title, 'id');
-      if (translatedTitle && translatedTitle !== drama.title) {
-        cues[0] = { ...cues[0], text: `[Ep ${episodeNumber}] ${translatedTitle}` };
-      }
-    } catch {
-      // Keep original cue
-    }
+/**
+ * Loads REAL episode subtitles (WebVTT / SRT) from the platform's subtitle tracks.
+ * Never overlays fake dialogue lines! If platform burns Indonesian subtitles directly into
+ * the video stream (like DramaBox/Melolo/ShortMax), reports that cleanly.
+ */
+export async function getEpisodeSubtitles(drama, episodeNumber = 1, lang = 'id', apiSubtitles = []) {
+  if (lang === 'off') {
+    return { cues: [], isRealTrack: false, reason: 'Subtitle dimatikan' };
   }
-  return cues;
+
+  const tracks = Array.isArray(apiSubtitles) ? apiSubtitles.filter((t) => t && t.url) : [];
+  if (tracks.length === 0) {
+    return {
+      cues: [],
+      isRealTrack: false,
+      reason: drama?.hasIndonesianDub
+        ? 'Sulih Suara Indonesia aktif pada audio video'
+        : 'Subtitle Bahasa Indonesia sudah tertanam langsung (hardsub) di dalam video',
+    };
+  }
+
+  // Match requested language (id -> id / in / indonesian)
+  const langMatch = (track, target) => {
+    const code = `${track.language || ''} ${track.label || ''}`.toLowerCase();
+    if (target === 'id') return /\b(id|in|ind|id_id|id-id|indo|indonesian)\b/.test(code);
+    return code.startsWith(target) || code.includes(`_${target}`) || code.includes(`-${target}`);
+  };
+
+  let picked = tracks.find((t) => langMatch(t, lang));
+  let needsTranslate = false;
+  if (!picked) {
+    picked = tracks.find((t) => langMatch(t, 'en')) || tracks[0];
+    needsTranslate = Boolean(picked && !langMatch(picked, lang));
+  }
+
+  try {
+    let rawSub = subtitleTextCache.get(picked.url);
+    if (!rawSub) {
+      rawSub = await fetchTextWithTimeout(picked.url, 6000);
+      subtitleTextCache.set(picked.url, rawSub);
+    }
+    const cues = parseSubtitleText(rawSub);
+    if (cues.length > 0) {
+      if (needsTranslate && lang === 'id') {
+        // Translate first batch quickly so opening dialogue is immediately in Indonesian
+        const translated = [...cues];
+        const batchSize = Math.min(25, translated.length);
+        const joined = translated
+          .slice(0, batchSize)
+          .map((c) => c.text.replace(/\n+/g, ' '))
+          .join('\n|||\n');
+        try {
+          const out = await translateTextParallel(joined, 'id');
+          const parts = out.split(/\s*\|\|\|\s*/);
+          if (parts.length === batchSize) {
+            for (let i = 0; i < batchSize; i += 1) {
+              if (parts[i]) translated[i] = { ...translated[i], text: parts[i].trim() };
+            }
+          }
+        } catch {
+          // Keep original real cues
+        }
+        return {
+          cues: translated,
+          isRealTrack: true,
+          reason: `Subtitle asli (${picked.label}) diterjemahkan otomatis ke Bahasa Indonesia`,
+        };
+      }
+      return {
+        cues,
+        isRealTrack: true,
+        reason: `Subtitle resmi ${picked.label} aktif (${cues.length} baris dialog)`,
+      };
+    }
+  } catch {
+    // External subtitle file blocked by CORS or unavailable
+  }
+
+  return {
+    cues: [],
+    isRealTrack: false,
+    reason: 'Audio asli & subtitle bawaan video aktif',
+  };
 }
 
 /**
- * Keyless Multi-AI Router (Rule #8):
- * Combines free keyless public AI endpoints representing Gemini (gemma-3-27b),
- * ChatGPT (gpt-oss / openai-fast), Claude/Mistral-class open models via api.llm7.io
- * & text.pollinations.ai in parallel failover, with zero API key needed!
+ * Keyless Multi-AI Router for Clip Identifier & Drama Companion Insights.
  */
-export async function queryKeylessMultiAi(prompt, systemPrompt = 'Anda adalah asisten ahli Drama China (Dracin) dari 18 platform short drama. Jawab ringkas dalam Bahasa Indonesia.') {
+export async function queryKeylessMultiAi(
+  prompt,
+  systemPrompt = 'Anda adalah asisten ahli Drama China (Dracin) dari 18 platform short drama. Jawab ringkas dalam Bahasa Indonesia.'
+) {
   const providers = [
     {
-      name: 'Gemini Open (Gemma-3)',
       run: async () => {
         const res = await fetchJsonWithTimeout(
           'https://api.llm7.io/v1/chat/completions',
@@ -359,32 +704,6 @@ export async function queryKeylessMultiAi(prompt, systemPrompt = 'Anda adalah as
       },
     },
     {
-      name: 'ChatGPT Open (GPT-OSS)',
-      run: async () => {
-        const res = await fetchJsonWithTimeout(
-          'https://api.llm7.io/v1/chat/completions',
-          {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              model: 'gpt-oss:20b',
-              messages: [
-                { role: 'system', content: systemPrompt },
-                { role: 'user', content: prompt },
-              ],
-              max_tokens: 240,
-              temperature: 0.4,
-            }),
-          },
-          AI_TIMEOUT_MS
-        );
-        const text = String(res?.choices?.[0]?.message?.content || '').trim();
-        if (!text) throw new Error('Empty AI');
-        return { text, engine: 'ChatGPT Open (LLM7)' };
-      },
-    },
-    {
-      name: 'Claude / Mistral Open',
       run: async () => {
         const res = await fetchJsonWithTimeout(
           'https://text.pollinations.ai/openai',
@@ -419,11 +738,6 @@ export async function queryKeylessMultiAi(prompt, systemPrompt = 'Anda adalah as
   }
 }
 
-/**
- * Extracts lightweight visual fingerprint (dimensions, aspect ratio, warmth,
- * brightness, dominant color hex, and preview thumbnail) from an uploaded
- * screenshot image OR short video clip directly in the browser.
- */
 export async function extractVisualProfileFromFile(file) {
   if (!file) return null;
   const isVideo = /^video\//i.test(file.type) || /\.(mp4|mov|webm|mkv|m4v)$/i.test(file.name || '');
@@ -455,7 +769,6 @@ export async function extractVisualProfileFromFile(file) {
     const warmth = Math.max(0, Math.min(1, (r - b + 255) / 510));
     const dominantHex = `#${[r, g, b].map((v) => v.toString(16).padStart(2, '0')).join('')}`;
 
-    // Make crisp small preview thumbnail
     const prevCanvas = document.createElement('canvas');
     const pw = 160;
     const ph = Math.max(90, Math.min(284, Math.round((h / Math.max(1, w)) * pw)));
@@ -539,10 +852,6 @@ export async function extractVisualProfileFromFile(file) {
   }
 }
 
-/**
- * Smart Drama Identifier from Uploaded Clip Video or Screenshot + Optional Clue (Rule #5 & #8)
- * Runs visual keyframe extraction + keyless Multi-AI + parallel Dailymotion/catalog search!
- */
 export async function identifyDracinFromMedia({
   file = null,
   clueText = '',
@@ -558,32 +867,38 @@ export async function identifyDracinFromMedia({
   const fileName = file?.name || '';
   const cleanClue = String(clueText || '').trim();
 
-  report(48, 'Menjalankan Multi-AI (Gemini/ChatGPT/Claude Open) & pencarian katalog paralel...');
-  const aiPrompt = `Identifikasi Drama China pendek (Dracin dari DramaBox, ReelShort, ShortMax, NetShort, GoodShort, Anichin, dll) berdasarkan data ini:
+  report(48, 'Menjalankan Multi-AI & pencarian live lintas platform...');
+  const aiPrompt = `Identifikasi Drama China pendek (Dracin dari DramaBox, Melolo, ReelShort, ShortMax, NetShort, GoodShort, FlickReels, FreeReels) berdasarkan data ini:
 - Nama file: "${fileName || 'cuplikan_dracin'}"
 - Deskripsi/teks subtitle/adegan dari user: "${cleanClue || 'cuplikan drama pendek vertikal'}"
-- Profil visual: ${visualProfile ? `${visualProfile.kind} ${visualProfile.width}x${visualProfile.height}, warna dominan ${visualProfile.dominantHex}, suasana ${visualProfile.warmth > 0.55 ? 'hangat/glamor' : 'gelap/dramatis'}` : 'tidak ada'}
+- Profil visual: ${
+    visualProfile
+      ? `${visualProfile.kind} ${visualProfile.width}x${visualProfile.height}, warna dominan ${visualProfile.dominantHex}, suasana ${
+          visualProfile.warmth > 0.55 ? 'hangat/glamor' : 'gelap/dramatis'
+        }`
+      : 'tidak ada'
+  }
 Balas singkat JSON: {"summary":"analisis singkat Bahasa Indonesia 1-2 kalimat","genre":"ceo|revenge|fantasy|historical|family|donghua","keywords":["kata1","kata2","kata3"]}`;
 
-  const [aiResult, liveSearch] = await Promise.allSettled([
+  const searchSeed = cleanClue || fileName.replace(/\.[^.]+$/, '');
+  const [aiResult, dbSearch, mlSearch, nsSearch] = await Promise.allSettled([
     queryKeylessMultiAi(aiPrompt),
-    cleanClue || fileName
-      ? fetchDailymotionDracin(`${cleanClue || fileName.replace(/\.[^.]+$/, '')} drama china sub indo`, 6)
-      : Promise.resolve({ items: [] }),
+    searchSeed ? fetchAnichinPlatformFeed('dramabox', { query: searchSeed }) : Promise.resolve({ items: [] }),
+    searchSeed ? fetchAnichinPlatformFeed('melolo', { query: searchSeed }) : Promise.resolve({ items: [] }),
+    searchSeed ? fetchAnichinPlatformFeed('netshort', { query: searchSeed }) : Promise.resolve({ items: [] }),
   ]);
 
-  report(82, 'Menghitung skor kemiripan lintas 18 platform...');
+  report(82, 'Menghitung skor kemiripan lintas katalog live...');
   const aiText = aiResult.status === 'fulfilled' ? aiResult.value?.text || '' : '';
   const aiEngine = aiResult.status === 'fulfilled' ? aiResult.value?.engine || 'Smart Local AI' : 'Smart Local AI';
   const parsedAi = parseAiDramaIdentification(aiText);
 
-  const liveItems =
-    liveSearch.status === 'fulfilled' && Array.isArray(liveSearch.value?.items)
-      ? liveSearch.value.items.map((it) => normalizeDracinItem(it))
-      : [];
+  const liveBuckets = [dbSearch, mlSearch, nsSearch]
+    .filter((r) => r.status === 'fulfilled' && r.value?.items?.length > 0)
+    .map((r) => r.value);
 
   const combinedPool = mergeParallelDracinFeeds(
-    liveItems.length ? [{ sourceId: 'dailymotion', items: liveItems }] : [],
+    liveBuckets,
     catalog && catalog.length ? catalog : CURATED_DRACIN_CATALOG
   );
 
@@ -597,7 +912,9 @@ Balas singkat JSON: {"summary":"analisis singkat Bahasa Indonesia 1-2 kalimat","
 
   const aiSummary =
     parsedAi.summary ||
-    `Analisis visual (${visualProfile?.width || 720}×${visualProfile?.height || 1280}, rasio ${visualProfile?.aspectRatio || '0.56'}) & pencocokan kata kunci menemukan ${matches.length} drama paling mirip lintas 18 platform.`;
+    `Analisis visual (${visualProfile?.width || 720}×${visualProfile?.height || 1280}, rasio ${
+      visualProfile?.aspectRatio || '0.56'
+    }) & pencocokan katalog live menemukan ${matches.length} drama paling mirip.`;
 
   report(100, 'Identifikasi selesai');
   return {
@@ -609,10 +926,6 @@ Balas singkat JSON: {"summary":"analisis singkat Bahasa Indonesia 1-2 kalimat","
   };
 }
 
-/**
- * Keyless Multi-AI Drama Companion: Generates Indonesian quick review / plot highlight
- * and picks similar dramas across the 18-platform catalog.
- */
 export async function fetchAiDramaInsights(drama, catalog = []) {
   const prompt = `Berikan ringkasan daya tarik Drama China "${drama?.title}" (${drama?.platformName}, genre ${drama?.genre}) dalam 2 kalimat singkat Bahasa Indonesia yang menarik tanpa spoiler akhir.`;
   const aiRes = await queryKeylessMultiAi(prompt);
@@ -625,7 +938,8 @@ export async function fetchAiDramaInsights(drama, catalog = []) {
     engine: aiRes.engine,
     insight:
       aiRes.text ||
-      `Drama unggulan ${drama?.platformName} dengan alur cepat per episode (1–3 menit), konflik intens, dan subtitle Bahasa Indonesia otomatis tanpa iklan.`,
+      drama?.synopsis ||
+      `Drama pilihan ${drama?.platformName} dengan alur cepat per episode (1–3 menit), gambar HD, dan audio/subtitle Bahasa Indonesia.`,
     similar,
   };
 }

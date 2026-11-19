@@ -52,12 +52,28 @@ export const DRACIN_SUBTITLE_LANGS = [
 
 export const DRACIN_PLAYBACK_SPEEDS = [0.75, 1, 1.25, 1.5, 2];
 
+export const ANICHIN_UNIFIED_SOURCES = new Set([
+  'dramabox',
+  'reelshort',
+  'shortmax',
+  'netshort',
+  'goodshort',
+  'dramawave',
+  'flickreels',
+  'freereels',
+  'stardusttv',
+  'idrama',
+  'dramanova',
+  'starshort',
+  'dramabite',
+  'melolo',
+  'moboreels',
+  'flareflow',
+]);
+
 export const DRACIN_API_SOURCES = [
-  { id: 'dailymotion', label: 'Dailymotion Dracin API', kind: 'video', priority: 1 },
-  { id: 'sansekai-dracin', label: 'Dracin & DramaBox Open API', kind: 'catalog', priority: 2 },
-  { id: 'anichin-api', label: 'Anichin & Donghua API', kind: 'catalog', priority: 3 },
-  { id: 'piped-yt', label: 'ShortDrama Open Video API', kind: 'video', priority: 4 },
-  { id: 'unified-vault', label: 'Katalog 18-Platform Terverifikasi', kind: 'catalog', priority: 5 },
+  { id: 'anichin-unified', label: 'Live Platform API (16 Platform)', kind: 'catalog', priority: 1 },
+  { id: 'dailymotion', label: 'Dailymotion HD Stream API', kind: 'video', priority: 2 },
 ];
 
 /**
@@ -580,35 +596,202 @@ export function normalizeDracinItem(raw = {}, fallbackPlatformId = 'dramabox') {
     episodes: totalEpisodes,
   });
 
+  const rawPoster = String(raw.poster || raw.cover || raw.posterImg || raw.thumbnail_720_url || '').trim();
+  const hasRealPoster = /^https?:\/\//i.test(rawPoster);
+  const rawEpNum = Number(raw.totalEpisodes ?? raw.episodes ?? raw.episodeCount ?? raw.chapterCount);
+  const hasKnownEpisodeCount = Number.isFinite(rawEpNum) && rawEpNum > 0;
+  const safeTotalEpisodes = hasKnownEpisodeCount
+    ? Math.max(1, Math.min(300, Math.round(rawEpNum)))
+    : raw.apiProvider === 'anichin-unified'
+    ? 40
+    : totalEpisodes;
+
   return {
     id,
+    sourceId: String(raw.sourceId || raw.dramaId || '').trim(),
+    apiProvider: String(raw.apiProvider || raw.sourceApi || 'unified-vault'),
     title,
     altTitle: String(raw.altTitle || raw.originalTitle || '').trim(),
     platformId: platformMeta.id,
     platformName: platformMeta.name,
     genre,
     genres,
-    totalEpisodes,
+    totalEpisodes: safeTotalEpisodes,
+    hasKnownEpisodeCount,
     year: Number(raw.year) || 2026,
-    rating: Number(raw.rating) > 0 ? Math.min(9.9, Number(raw.rating)) : 9.3,
-    viewsLabel: String(raw.viewsLabel || formatCompactViews(raw.views_total || 1850000)),
-    hasIndonesianDub: Boolean(raw.hasIndonesianDub),
-    originalAudio: String(raw.originalAudio || (raw.hasIndonesianDub ? 'Mandarin / Dub ID' : 'Mandarin (ZH)')),
-    poster: String(raw.poster || raw.thumbnail_720_url || raw.cover || '').trim() || fallbackPoster,
+    rating: Number(raw.rating) > 0 ? Math.min(9.9, Number(raw.rating)) : 9.4,
+    viewsLabel: String(raw.viewsLabel || formatCompactViews(raw.views_total || raw.favoriteCount || 1850000)),
+    hasIndonesianDub:
+      Boolean(raw.hasIndonesianDub) ||
+      /dub\s*indo|dubbing|sulih\s*suara/i.test(`${title} ${raw.description || ''}`),
+    originalAudio: String(
+      raw.originalAudio ||
+        (raw.hasIndonesianDub || /dub\s*indo|dubbing|sulih\s*suara/i.test(title)
+          ? 'Sulih Suara Indonesia'
+          : 'Mandarin / Original')
+    ),
+    poster: hasRealPoster ? rawPoster : fallbackPoster,
+    hasRealPoster,
     fallbackPoster,
     accent,
     accent2,
-    sourceApi: String(raw.sourceApi || 'unified-vault'),
+    sourceApi: String(raw.sourceApi || raw.apiProvider || 'unified-vault'),
     dailymotionId: String(raw.dailymotionId || raw.dmId || '').trim(),
     youtubeId: String(raw.youtubeId || raw.ytId || '').trim(),
     directVideoUrl: String(raw.directVideoUrl || raw.streamUrl || '').trim(),
     searchQuery: String(raw.searchQuery || `${title} drama china sub indo`).trim(),
-    keywords: Array.isArray(raw.keywords) ? raw.keywords : extractTokens(title),
-    cast: Array.isArray(raw.cast) && raw.cast.length ? raw.cast : ['Pemeran Utama Drama China'],
+    keywords: Array.isArray(raw.keywords) && raw.keywords.length ? raw.keywords : extractTokens(title),
+    cast: Array.isArray(raw.cast) && raw.cast.length ? raw.cast : [],
     synopsis:
       String(raw.synopsis || raw.description || '').trim() ||
-      `Drama pendek pilihan dari ${platformMeta.name} (${totalEpisodes} episode penuh tanpa iklan, bebas lompat episode, lengkap dengan subtitle Bahasa Indonesia otomatis).`,
+      `Drama pendek resmi dari ${platformMeta.name} — streaming HD gratis tanpa iklan.`,
   };
+}
+
+/**
+ * Resolves relative media/HLS proxy URLs returned by Anichin unified endpoints
+ * (e.g. /api/shortmax/hls?..., /api/goodshort/hls?..., /api/flickreels/hls?...)
+ * to their live CORS-enabled absolute URLs.
+ */
+export function resolveAnichinMediaUrl(rawUrl = '') {
+  const clean = String(rawUrl || '').trim();
+  if (!clean) return '';
+  if (/^https?:\/\//i.test(clean) || /^blob:/i.test(clean)) return clean;
+  if (clean.startsWith('//')) return `https:${clean}`;
+  if (clean.startsWith('/api/')) return `https://miniapp.anichin.bio${clean}`;
+  if (clean.startsWith('/')) return `https://api.anichin.bio${clean}`;
+  return clean;
+}
+
+/**
+ * Normalizes a live drama item returned by https://api.anichin.bio/{platformId}/...
+ * preserving the real platform ID, real CDN poster cover, real episode count, and real synopsis.
+ */
+export function normalizeAnichinDramaItem(raw = {}, platformId = 'dramabox') {
+  const safePlatform = ANICHIN_UNIFIED_SOURCES.has(platformId) ? platformId : 'dramabox';
+  const sourceId = String(raw.id || raw.dramaId || '').trim();
+  const title = String(raw.title || raw.bookName || raw.name || '').trim();
+  const cover = String(raw.cover || raw.posterImg || raw.poster || '').trim();
+  const categories = Array.isArray(raw.categoryNames)
+    ? raw.categoryNames
+    : Array.isArray(raw.tags)
+    ? raw.tags
+    : [];
+  const epCount = Number(raw.episodes || raw.episodeCount || raw.chapterCount || 0) || 0;
+  const desc = String(raw.description || raw.synopsis || '').trim();
+  const inferredGenre = inferGenreFromText(`${title} ${categories.join(' ')}`, desc);
+
+  return normalizeDracinItem(
+    {
+      id: sourceId ? `${safePlatform}::${sourceId}` : undefined,
+      sourceId,
+      apiProvider: 'anichin-unified',
+      sourceApi: `live-${safePlatform}`,
+      title: title || 'Drama China HD',
+      altTitle: categories.slice(0, 3).join(' · '),
+      platformId: safePlatform,
+      genre: inferredGenre,
+      genres: Array.from(new Set([inferredGenre, 'trending'])),
+      totalEpisodes: epCount,
+      episodes: epCount,
+      poster: cover,
+      description: desc,
+      synopsis: desc,
+      views_total: Number(raw.playCount || raw.likeCount || raw.favoriteCount || 0) || 1250000,
+      hasIndonesianDub: /dub\s*indo|dubbing|sulih\s*suara/i.test(`${title} ${categories.join(' ')}`),
+      keywords: [...extractTokens(title), ...categories.map((c) => String(c).toLowerCase()), safePlatform],
+    },
+    safePlatform
+  );
+}
+
+/**
+ * Parses a WebVTT or SRT timestamp (e.g. "00:01:23.450" or "00:01:23,450" or "01:23.450") into seconds.
+ */
+export function parseSubtitleTimestamp(ts = '') {
+  const clean = String(ts || '').trim().replace(',', '.');
+  const parts = clean.split(':').map((p) => Number(p));
+  if (parts.some((n) => !Number.isFinite(n))) return NaN;
+  if (parts.length === 3) return parts[0] * 3600 + parts[1] * 60 + parts[2];
+  if (parts.length === 2) return parts[0] * 60 + parts[1];
+  return NaN;
+}
+
+/**
+ * Parses real WebVTT (.vtt) or SubRip (.srt) subtitle files into sorted timed cue objects.
+ */
+export function parseSubtitleText(rawText = '') {
+  const normalized = String(rawText || '')
+    .replace(/^\uFEFF/, '')
+    .replace(/\r\n/g, '\n')
+    .replace(/\r/g, '\n')
+    .trim();
+  if (!normalized) return [];
+
+  const blocks = normalized.split(/\n{2,}/);
+  const cues = [];
+
+  for (const block of blocks) {
+    const lines = block
+      .split('\n')
+      .map((l) => l.trim())
+      .filter(Boolean);
+    if (!lines.length) continue;
+    if (/^(WEBVTT|STYLE|NOTE|REGION)/i.test(lines[0])) continue;
+
+    const timeIdx = lines.findIndex((l) => l.includes('-->'));
+    if (timeIdx === -1) continue;
+
+    const timeParts = lines[timeIdx].split('-->');
+    if (timeParts.length < 2) continue;
+
+    const start = parseSubtitleTimestamp(timeParts[0].trim().split(/\s+/)[0]);
+    const end = parseSubtitleTimestamp(timeParts[1].trim().split(/\s+/)[0]);
+    if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start) continue;
+
+    const text = lines
+      .slice(timeIdx + 1)
+      .join('\n')
+      .replace(/<[^>]+>/g, '')
+      .replace(/\{\\[^}]+\}/g, '')
+      .trim();
+
+    if (text) {
+      cues.push({ start, end, text });
+    }
+  }
+
+  return cues.sort((a, b) => a.start - b.start);
+}
+
+/**
+ * Selects the best real playable server (MP4 / HLS / CENC-MP4 / Dailymotion Embed),
+ * ensuring real video+audio playback is ALWAYS chosen over any non-video fallback.
+ */
+export function pickBestPlaybackServer(servers = [], preferredId = null) {
+  const list = Array.isArray(servers) ? servers.filter(Boolean) : [];
+  if (!list.length) return null;
+  const realKinds = new Set(['video', 'mp4', 'hls', 'cenc-mp4', 'dailymotion']);
+  if (preferredId) {
+    const preferred = list.find((s) => s.id === preferredId && realKinds.has(s.kind));
+    if (preferred) return preferred;
+  }
+  const priorityOrder = ['video', 'mp4', 'hls', 'cenc-mp4', 'dailymotion'];
+  for (const kind of priorityOrder) {
+    const found = list.find((s) => s.kind === kind);
+    if (found) return found;
+  }
+  return list[0];
+}
+
+/**
+ * Pure state resolver for Fullscreen Clean Screen ("Layar Bersih") mode:
+ * only active while fullscreen is on, and always resets cleanly when exiting fullscreen.
+ */
+export function resolveCleanScreenState(currentCleanScreen = false, isFullscreen = false, requestedValue = null) {
+  if (!isFullscreen) return false;
+  if (typeof requestedValue === 'boolean') return requestedValue;
+  return !Boolean(currentCleanScreen);
 }
 
 export function inferPlatformFromText(text = '', fallback = 'dramabox') {
@@ -926,14 +1109,15 @@ export function buildWebVttFromCues(cues = []) {
   return lines.join('\n');
 }
 
-export function getActiveSubtitleCue(cues = [], elapsedSeconds = 0) {
+export function getActiveSubtitleCue(cues = [], elapsedSeconds = 0, { loop = true } = {}) {
   if (!Array.isArray(cues) || cues.length === 0) return null;
+  const t = Math.max(0, Number(elapsedSeconds) || 0);
+  if (!loop) {
+    return cues.find((c) => t >= c.start && t <= c.end) || null;
+  }
   const maxEnd = cues[cues.length - 1]?.end || 42;
-  const loopTime = maxEnd > 0 ? ((Number(elapsedSeconds) || 0) % maxEnd + maxEnd) % maxEnd : 0;
-  return (
-    cues.find((c) => loopTime >= c.start && loopTime < c.end) ||
-    cues[0]
-  );
+  const loopTime = maxEnd > 0 ? ((t % maxEnd) + maxEnd) % maxEnd : 0;
+  return cues.find((c) => loopTime >= c.start && loopTime < c.end) || cues[0];
 }
 
 /**

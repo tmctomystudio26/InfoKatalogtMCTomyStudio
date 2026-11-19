@@ -9579,6 +9579,90 @@ body.dracin-fs-lock {
   border: 0;
 }
 
+.dracin-stage-video {
+  object-fit: contain;
+  background: #000000;
+  z-index: 1;
+}
+
+.dracin-stage-tap-layer {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  cursor: pointer;
+}
+
+.dracin-media-loader,
+.dracin-media-error {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.7rem;
+  padding: 1.5rem;
+  text-align: center;
+  background: rgba(2, 6, 23, 0.72);
+  color: #f8fafc;
+  font-size: 0.84rem;
+  font-weight: 600;
+  backdrop-filter: blur(4px);
+}
+
+.dracin-media-loader[hidden],
+.dracin-media-error[hidden],
+.dracin-unmute-banner[hidden],
+.dracin-restore-hud-btn[hidden],
+.dracin-swipe-toast[hidden],
+.dracin-live-subtitle[hidden],
+.dracin-stage-pill-btn[hidden],
+.dracin-rail-btn[hidden] {
+  display: none !important;
+}
+
+.dracin-media-error p {
+  margin: 0;
+  max-width: 280px;
+  line-height: 1.45;
+  color: #fecdd3;
+}
+
+.dracin-spinner {
+  width: 36px;
+  height: 36px;
+  border-radius: 999px;
+  border: 3px solid rgba(255, 255, 255, 0.2);
+  border-top-color: #e11d48;
+  animation: dracin-spin 0.8s linear infinite;
+}
+
+@keyframes dracin-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.dracin-unmute-banner {
+  position: absolute;
+  top: 66px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 9;
+  min-height: 36px;
+  padding: 0.38rem 0.9rem;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  background: rgba(225, 29, 72, 0.92);
+  color: #ffffff;
+  font-size: 0.78rem;
+  font-weight: 700;
+  white-space: nowrap;
+  cursor: pointer;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.35);
+}
+
 .dracin-cinema-img {
   width: 100%;
   height: 100%;
@@ -9637,9 +9721,17 @@ body.dracin-fs-lock {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 0.5rem;
-  padding: 0.75rem 0.75rem 1.25rem;
-  background: linear-gradient(180deg, rgba(2, 6, 23, 0.85) 0%, rgba(2, 6, 23, 0) 100%);
+  gap: 0.45rem;
+  padding: max(0.7rem, env(safe-area-inset-top)) 0.7rem 1.25rem;
+  background: linear-gradient(180deg, rgba(2, 6, 23, 0.86) 0%, rgba(2, 6, 23, 0) 100%);
+  transition: opacity 180ms ease, visibility 180ms ease;
+}
+
+.dracin-stage-top-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  flex-shrink: 0;
 }
 
 .dracin-stage-title-wrap {
@@ -9657,7 +9749,7 @@ body.dracin-fs-lock {
 }
 
 .dracin-stage-title {
-  font-size: 0.84rem;
+  font-size: 0.82rem;
   font-weight: 700;
   color: #ffffff;
   white-space: nowrap;
@@ -9667,17 +9759,22 @@ body.dracin-fs-lock {
 
 .dracin-stage-pill-btn {
   flex: 0 0 auto;
-  min-height: 36px;
-  padding: 0.35rem 0.7rem;
+  min-height: 34px;
+  padding: 0.32rem 0.62rem;
   border-radius: 10px;
   border: 1px solid rgba(255, 255, 255, 0.25);
-  background: rgba(15, 23, 42, 0.72);
+  background: rgba(15, 23, 42, 0.74);
   color: #ffffff;
-  font-size: 0.75rem;
+  font-size: 0.73rem;
   font-weight: 600;
   white-space: nowrap;
   cursor: pointer;
   backdrop-filter: blur(8px);
+}
+
+.dracin-clean-btn {
+  border-color: rgba(251, 113, 133, 0.55);
+  background: rgba(225, 29, 72, 0.82);
 }
 
 .dracin-swipe-toast {
@@ -9685,30 +9782,61 @@ body.dracin-fs-lock {
   top: 64px;
   left: 50%;
   transform: translateX(-50%);
-  z-index: 8;
+  z-index: 10;
+  max-width: calc(100% - 28px);
   padding: 0.4rem 0.85rem;
   border-radius: 10px;
   background: rgba(225, 29, 72, 0.92);
   color: #ffffff;
-  font-size: 0.78rem;
+  font-size: 0.76rem;
   font-weight: 700;
-  white-space: nowrap;
+  text-align: center;
+  pointer-events: none;
+}
+
+.dracin-restore-hud-btn {
+  position: absolute;
+  right: 14px;
+  bottom: max(18px, env(safe-area-inset-bottom));
+  z-index: 15;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  min-height: 36px;
+  padding: 0.36rem 0.78rem;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.28);
+  background: rgba(2, 6, 23, 0.58);
+  color: rgba(255, 255, 255, 0.92);
+  font-size: 0.75rem;
+  font-weight: 600;
+  cursor: pointer;
+  backdrop-filter: blur(8px);
+  opacity: 0.72;
+  transition: opacity 150ms ease, background 150ms ease;
+}
+
+.dracin-restore-hud-btn:hover,
+.dracin-restore-hud-btn:focus-visible {
+  opacity: 1;
+  background: rgba(15, 23, 42, 0.88);
 }
 
 .dracin-action-rail {
   position: absolute;
   right: 10px;
-  bottom: 136px;
+  bottom: 126px;
   z-index: 7;
   display: flex;
   flex-direction: column;
-  gap: 0.55rem;
+  gap: 0.45rem;
+  transition: opacity 180ms ease, visibility 180ms ease;
 }
 
 .dracin-rail-btn {
-  width: 52px;
-  min-height: 50px;
-  padding: 0.32rem 0.2rem;
+  width: 50px;
+  min-height: 46px;
+  padding: 0.28rem 0.18rem;
   border-radius: 12px;
   border: 1px solid rgba(255, 255, 255, 0.22);
   background: rgba(2, 6, 23, 0.68);
@@ -9717,19 +9845,19 @@ body.dracin-fs-lock {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 0.16rem;
+  gap: 0.14rem;
   cursor: pointer;
   backdrop-filter: blur(8px);
 }
 
 .dracin-rail-btn span {
-  font-size: 0.65rem;
+  font-size: 0.64rem;
   font-weight: 600;
   line-height: 1.1;
 }
 
 .dracin-rail-speed-val {
-  font-size: 0.82rem !important;
+  font-size: 0.8rem !important;
   font-weight: 800 !important;
 }
 
@@ -9747,13 +9875,18 @@ body.dracin-fs-lock {
   display: flex;
   flex-direction: column;
   gap: 0.5rem;
-  padding: 0.85rem 0.85rem 0.85rem;
+  padding: 0.85rem 0.85rem max(0.85rem, env(safe-area-inset-bottom));
   background: linear-gradient(0deg, rgba(2, 6, 23, 0.95) 0%, rgba(2, 6, 23, 0.62) 68%, rgba(2, 6, 23, 0) 100%);
+  transition: opacity 180ms ease, visibility 180ms ease;
 }
 
 .dracin-live-subtitle {
-  align-self: center;
-  max-width: calc(100% - 62px);
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  bottom: 122px;
+  z-index: 8;
+  max-width: calc(100% - 88px);
   padding: 0.42rem 0.78rem;
   border-radius: 8px;
   background: rgba(2, 6, 23, 0.84);
@@ -9763,6 +9896,23 @@ body.dracin-fs-lock {
   line-height: 1.4;
   text-align: center;
   text-shadow: 0 1px 2px rgba(0, 0, 0, 0.9);
+  pointer-events: none;
+  transition: bottom 180ms ease;
+}
+
+/* Fullscreen Clean Screen ("Layar Bersih") hides ALL floating HUD icons & bars */
+.dracin-stage.is-clean-screen .dracin-stage-topbar,
+.dracin-stage.is-clean-screen .dracin-action-rail,
+.dracin-stage.is-clean-screen .dracin-stage-bottom,
+.dracin-stage.is-clean-screen .dracin-fs-drawer {
+  opacity: 0 !important;
+  visibility: hidden !important;
+  pointer-events: none !important;
+}
+
+.dracin-stage.is-clean-screen .dracin-live-subtitle {
+  bottom: 66px;
+  max-width: calc(100% - 32px);
 }
 
 .dracin-stage-meta-line {
@@ -9776,35 +9926,55 @@ body.dracin-fs-lock {
 
 .dracin-progress-track {
   width: 100%;
-  height: 5px;
+  height: 6px;
   border-radius: 999px;
-  background: rgba(255, 255, 255, 0.22);
+  background: rgba(255, 255, 255, 0.24);
   overflow: hidden;
+}
+
+.dracin-progress-track.is-seekable {
+  height: 8px;
+  cursor: pointer;
 }
 
 .dracin-progress-fill {
   height: 100%;
   background: #e11d48;
   border-radius: 999px;
-  transition: width 260ms linear;
+  transition: width 220ms linear;
 }
 
 .dracin-stage-controls-row {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 0.5rem;
+  gap: 0.45rem;
+}
+
+.dracin-inline-play-btn {
+  width: 38px;
+  height: 38px;
+  flex-shrink: 0;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.28);
+  background: #e11d48;
+  color: #ffffff;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
 }
 
 .dracin-ep-step-btn {
   min-height: 36px;
-  padding: 0.32rem 0.72rem;
+  padding: 0.32rem 0.65rem;
   border-radius: 9px;
   border: 1px solid rgba(255, 255, 255, 0.25);
   background: rgba(15, 23, 42, 0.72);
   color: #ffffff;
-  font-size: 0.76rem;
+  font-size: 0.74rem;
   font-weight: 600;
+  white-space: nowrap;
   cursor: pointer;
 }
 
@@ -9817,6 +9987,47 @@ body.dracin-fs-lock {
   font-size: 0.74rem;
   color: #e2e8f0;
   font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* Loading Skeletons & Load More Pagination */
+.dracin-skeleton-card {
+  pointer-events: none;
+}
+
+.dracin-skeleton-poster {
+  width: 100%;
+  aspect-ratio: 2 / 3;
+  background: linear-gradient(90deg, rgba(148, 163, 184, 0.14) 25%, rgba(148, 163, 184, 0.26) 50%, rgba(148, 163, 184, 0.14) 75%);
+  background-size: 200% 100%;
+  animation: dracin-shimmer 1.3s ease-in-out infinite;
+}
+
+.dracin-skeleton-line {
+  height: 12px;
+  border-radius: 6px;
+  background: linear-gradient(90deg, rgba(148, 163, 184, 0.14) 25%, rgba(148, 163, 184, 0.26) 50%, rgba(148, 163, 184, 0.14) 75%);
+  background-size: 200% 100%;
+  animation: dracin-shimmer 1.3s ease-in-out infinite;
+}
+
+.dracin-skeleton-line.is-short {
+  width: 62%;
+}
+
+@keyframes dracin-shimmer {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
+}
+
+.dracin-load-more-wrap {
+  display: flex;
+  justify-content: center;
+  padding-top: 0.35rem;
 }
 
 /* Fullscreen Episode Picker Drawer */
@@ -10359,6 +10570,15 @@ body.dracin-fs-lock {
 }
 
 @media (max-width: 560px) {
+  .dracin-topbar-tabs {
+    gap: 0.3rem;
+    padding: 0.25rem;
+  }
+  .dracin-nav-tab {
+    min-height: 36px;
+    padding: 0.38rem 0.68rem;
+    font-size: 0.78rem;
+  }
   .dracin-catalog-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 0.65rem;
@@ -10366,6 +10586,23 @@ body.dracin-fs-lock {
   .dracin-stage:not(.is-fullscreen) {
     max-width: 100%;
     aspect-ratio: 9 / 15;
+  }
+  .dracin-action-rail {
+    right: 8px;
+    bottom: 118px;
+    gap: 0.38rem;
+  }
+  .dracin-rail-btn {
+    width: 44px;
+    min-height: 42px;
+    border-radius: 10px;
+  }
+  .dracin-rail-btn span {
+    font-size: 0.6rem;
+  }
+  .dracin-stage-pill-btn {
+    padding: 0.28rem 0.52rem;
+    font-size: 0.7rem;
   }
   .dracin-match-row,
   .dracin-history-item {

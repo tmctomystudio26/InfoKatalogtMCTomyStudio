@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { getDefaultCatalogSnapshot, PRODUCTS, VOUCHERS } from './data.js';
 import {
+  ANICHIN_UNIFIED_SOURCES,
   CURATED_DRACIN_CATALOG,
   DRACIN_PLATFORMS,
   DRACIN_SUBTITLE_LANGS,
@@ -13,12 +14,23 @@ import {
   getActiveSubtitleCue,
   getNextPrevEpisode,
   mergeParallelDracinFeeds,
+  normalizeAnichinDramaItem,
   parseAiDramaIdentification,
+  parseSubtitleText,
+  parseSubtitleTimestamp,
+  pickBestPlaybackServer,
   rankClipIdentifierCandidates,
+  resolveAnichinMediaUrl,
   resolveAutoSubtitleLang,
+  resolveCleanScreenState,
   toggleFavoriteDramaId,
   upsertWatchHistory,
 } from './dracin-logic.js';
+import {
+  bytesToBase64Url,
+  hexToBytes,
+  parseMp4Boxes,
+} from './dracin-cenc.js';
 import {
   DEFAULT_UTILITY_CONFIG,
   MAX_HISTORY_LOGS,
@@ -3300,6 +3312,88 @@ test('v51 Drama China (Dracin) unifies 15+ short-drama platforms, parallel APIs,
   assert.equal(ranked[0].drama.id, 'ns-cinta-tak-terduga-dokter-jenius');
   assert.ok(ranked[0].confidence >= 70);
 });
+
+test('v52 Drama China real-time API normalization, VTT/SRT parsing, real server priority, Clean Screen state, and Melolo CENC helpers work accurately', () => {
+  // 1. Live unified source registry covers Melolo, DramaBox, NetShort, ReelShort, ShortMax, GoodShort, etc.
+  assert.equal(ANICHIN_UNIFIED_SOURCES.has('melolo'), true);
+  assert.equal(ANICHIN_UNIFIED_SOURCES.has('dramabox'), true);
+  assert.equal(ANICHIN_UNIFIED_SOURCES.has('reelshort'), true);
+  assert.equal(ANICHIN_UNIFIED_SOURCES.has('shortmax'), true);
+  assert.equal(ANICHIN_UNIFIED_SOURCES.has('goodshort'), true);
+
+  // 2. Relative HLS proxy paths resolve against miniapp.anichin.bio (NOT api.anichin.bio)
+  assert.equal(
+    resolveAnichinMediaUrl('/api/shortmax/hls?url=abc'),
+    'https://miniapp.anichin.bio/api/shortmax/hls?url=abc'
+  );
+  assert.equal(
+    resolveAnichinMediaUrl('https://cdn.example.com/stream.mp4'),
+    'https://cdn.example.com/stream.mp4'
+  );
+  assert.equal(resolveAnichinMediaUrl('//cdn.example.com/poster.jpg'), 'https://cdn.example.com/poster.jpg');
+
+  // 3. Real-time platform drama normalization keeps real CDN poster & platform sourceId
+  const meloloNorm = normalizeAnichinDramaItem(
+    {
+      id: '7491234567890',
+      title: 'Cinta Tersembunyi Sang Pewaris',
+      cover: 'https://p16-melolo.byteimg.com/cover.jpg',
+      episodes: 72,
+      tags: ['Romantis', 'CEO'],
+      synopsis: 'Kisah nyata pewaris rahasia.',
+    },
+    'melolo'
+  );
+  assert.equal(meloloNorm.id, 'melolo::7491234567890');
+  assert.equal(meloloNorm.sourceId, '7491234567890');
+  assert.equal(meloloNorm.platformId, 'melolo');
+  assert.equal(meloloNorm.apiProvider, 'anichin-unified');
+  assert.equal(meloloNorm.poster, 'https://p16-melolo.byteimg.com/cover.jpg');
+  assert.equal(meloloNorm.hasRealPoster, true);
+  assert.equal(meloloNorm.totalEpisodes, 72);
+
+  // 4. WebVTT & SRT subtitle parser extracts accurate timed cues
+  assert.equal(parseSubtitleTimestamp('00:01:02,500'), 62.5);
+  assert.equal(parseSubtitleTimestamp('01:15.250'), 75.25);
+
+  const srtSample = `1\n00:00:01,000 --> 00:00:04,500\nHalo, ini subtitle SRT asli.\n\n2\n00:00:05,000 --> 00:00:08,000\n<i>Baris kedua</i>`;
+  const srtCues = parseSubtitleText(srtSample);
+  assert.equal(srtCues.length, 2);
+  assert.equal(srtCues[0].text, 'Halo, ini subtitle SRT asli.');
+  assert.equal(srtCues[1].text, 'Baris kedua');
+  assert.equal(getActiveSubtitleCue(srtCues, 2.5, { loop: false })?.text, 'Halo, ini subtitle SRT asli.');
+  assert.equal(getActiveSubtitleCue(srtCues, 20, { loop: false }), null);
+
+  const vttSample = `WEBVTT\n\n00:00:02.000 --> 00:00:05.000\nSubtitle WebVTT real-time`;
+  const vttCues = parseSubtitleText(vttSample);
+  assert.equal(vttCues.length, 1);
+  assert.equal(vttCues[0].start, 2);
+
+  // 5. Playback server picker prioritizes real MP4/HLS/CENC over embeds (zero fake cinema-sub)
+  const picked = pickBestPlaybackServer([
+    { id: 'dm-1', kind: 'dailymotion', embedUrl: 'https://geo.dailymotion.com/player.html?video=x1' },
+    { id: 'hls-540', kind: 'hls', quality: 540, url: 'https://cdn/540.m3u8' },
+    { id: 'mp4-720', kind: 'mp4', quality: 720, url: 'https://cdn/720.mp4' },
+  ]);
+  assert.equal(picked?.id, 'mp4-720');
+
+  // 6. Fullscreen Clean Screen ("Layar Bersih") state transitions
+  assert.equal(resolveCleanScreenState(false, false, true), false); // disabled outside fullscreen
+  assert.equal(resolveCleanScreenState(false, true, null), true); // toggles ON in fullscreen
+  assert.equal(resolveCleanScreenState(true, true, null), false); // toggles OFF in fullscreen
+  assert.equal(resolveCleanScreenState(true, false, null), false); // resets when exiting fullscreen
+
+  // 7. Melolo CENC-AES-CTR key hex/base64url & MP4 box parser
+  const keyBytes = hexToBytes('00112233445566778899aabbccddeeff');
+  assert.equal(keyBytes.length, 16);
+  assert.equal(bytesToBase64Url(keyBytes), 'ABEiM0RVZneImaq7zN3u_w');
+  const fakeBox = new Uint8Array([0, 0, 0, 8, 0x66, 0x74, 0x79, 0x70]); // 8-byte 'ftyp' box
+  const parsedBoxes = parseMp4Boxes(fakeBox, 0, fakeBox.length);
+  assert.equal(parsedBoxes.length, 1);
+  assert.equal(parsedBoxes[0].type, 'ftyp');
+  assert.equal(parsedBoxes[0].size, 8);
+});
+
 
 
 

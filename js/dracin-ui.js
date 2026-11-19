@@ -1,13 +1,17 @@
 /**
- * Drama China (Dracin) Gratis Tanpa Iklan — Full Short-Drama App UI Controller.
- * Supports 18+ platforms, parallel multi-API aggregation & failover, vertical 9:16 cinema
- * player, true fullscreen with touch-swipe / mouse-wheel / arrow-key episode switching,
- * free unlimited episode jumping & range picker, auto multi-language subtitles (auto-ID),
- * watch history & favorites persistence, title search, and AI clip/screenshot identifier.
+ * Drama China (Dracin) Gratis Tanpa Iklan — Real-Time Multi-Platform Short-Drama UI Controller.
+ * Features:
+ * - Real-time catalogs & real poster thumbnails from 16+ short-drama platforms
+ *   (DramaBox, Melolo, ReelShort, ShortMax, NetShort, GoodShort, DramaWave,
+ *   FlickReels, FreeReels, iDrama, DramaBite, MoboReels, StardustTV, etc.)
+ * - Real HTML5 <video> + self-hosted HLS.js + WebCrypto CENC-AES-CTR decryptor (Melolo)
+ *   + Dailymotion HD failover with real audio, real seekable timeline, speed control,
+ *   and real WebVTT/SRT subtitle sync
+ * - Fullscreen vertical swipe/wheel/keyboard episode navigation + Fullscreen Clean Screen
+ *   ("Layar Bersih") mode that hides all floating icons without interrupting video playback
  */
 
 import {
-  CURATED_DRACIN_CATALOG,
   DRACIN_GENRES,
   DRACIN_PLATFORMS,
   DRACIN_PLAYBACK_SPEEDS,
@@ -19,21 +23,48 @@ import {
   getActiveSubtitleCue,
   getGenreLabel,
   getNextPrevEpisode,
-  mergeParallelDracinFeeds,
+  pickBestPlaybackServer,
   resolveAutoSubtitleLang,
+  resolveCleanScreenState,
   toggleFavoriteDramaId,
   upsertWatchHistory,
-} from './dracin-logic.js?v=51';
+} from './dracin-logic.js?v=52';
 import {
   fetchAiDramaInsights,
+  fetchDramaDetail,
   fetchUnifiedDracinCatalog,
   getEpisodeSubtitles,
   identifyDracinFromMedia,
   resolveEpisodePlayback,
-} from './dracin.js?v=51';
+} from './dracin.js?v=52';
+import {
+  attachClearKeyEme,
+  fetchAndDecryptCencMp4,
+} from './dracin-cenc.js?v=52';
 
 const HISTORY_STORAGE_KEY = 'manifestudio_dracin_history_v1';
 const FAVORITES_STORAGE_KEY = 'manifestudio_dracin_favorites_v1';
+
+let hlsScriptPromise = null;
+
+function ensureHlsLibrary() {
+  if (typeof window !== 'undefined' && window.Hls) {
+    return Promise.resolve(window.Hls);
+  }
+  if (hlsScriptPromise) return hlsScriptPromise;
+  hlsScriptPromise = new Promise((resolve, reject) => {
+    const script = document.createElement('script');
+    script.src = './js/vendor/hls.min.js?v=52';
+    script.async = true;
+    script.onload = () => resolve(window.Hls || null);
+    script.onerror = () => {
+      hlsScriptPromise = null;
+      reject(new Error('Gagal memuat mesin HLS'));
+    };
+    document.head.appendChild(script);
+  });
+  return hlsScriptPromise;
+}
 
 function escapeHtml(str) {
   return String(str ?? '')
@@ -73,38 +104,48 @@ function formatClockTime(sec = 0) {
 export function createDracinController({ onToast = () => {} } = {}) {
   const state = {
     view: 'discover', // 'discover' | 'player' | 'clip' | 'history' | 'favorites'
-    catalog: mergeParallelDracinFeeds([], CURATED_DRACIN_CATALOG),
-    activeSources: ['Katalog 18-Platform'],
-    loadingFeed: false,
+    catalog: [],
+    platformCatalogs: {}, // platformId -> { items, page, hasMore }
+    activeSources: [],
+    loadingFeed: true,
+    loadingMore: false,
+    feedError: '',
     platformId: 'all',
     genreId: 'all',
     searchQuery: '',
 
     // Active player state
+    activeDrama: null,
     activeDramaId: null,
     currentEpisode: 1,
     epRangeStart: 1,
-    isPlaying: true,
+    isPlaying: false,
     elapsedSec: 0,
-    durationSec: 120,
+    durationSec: 0,
     playbackSpeed: 1,
     autoNext: true,
     isMuted: false,
+    autoplayMutedNotice: false,
     isFullscreen: false,
+    cleanScreen: false,
     fullscreenDrawerOpen: false,
     swipeHintText: '',
 
-    // Playback servers & auto-failover
+    // Playback servers & real media state
     servers: [],
-    activeServerId: 'cinema-sub',
+    activeServerId: '',
+    apiSubtitles: [],
     resolvingStream: false,
+    streamStatusText: '',
+    streamError: '',
+    triedServerIds: new Set(),
 
     // Multi-language subtitles
     userSubtitleOverride: null,
     subtitleLang: 'id',
     subtitleReason: '',
     subtitleCues: [],
-    subtitleLoading: false,
+    subtitleIsReal: false,
 
     // AI Drama insights
     aiInsightsMap: {},
@@ -113,7 +154,6 @@ export function createDracinController({ onToast = () => {} } = {}) {
     // Clip / Screenshot AI Identifier state
     clipFile: null,
     clipFileName: '',
-    clipFileKind: '',
     clipPreviewUrl: '',
     clipClue: '',
     clipLoading: false,
@@ -128,22 +168,87 @@ export function createDracinController({ onToast = () => {} } = {}) {
   };
 
   let hostEl = null;
-  let playbackTimer = null;
   let swipeHintTimer = null;
   let wheelLockUntil = 0;
   let touchStartY = null;
   let hasInitialFetched = false;
   let globalListenersBound = false;
+  let activeHls = null;
+  let activeBlobUrl = '';
+  let activeEmeCleanup = null;
+  let activeMediaAbort = null;
+  let streamSessionToken = 0;
+
+  function destroyActiveMediaEngine() {
+    if (activeMediaAbort) {
+      try {
+        activeMediaAbort.abort();
+      } catch {
+        // Ignore
+      }
+      activeMediaAbort = null;
+    }
+    if (activeHls) {
+      try {
+        activeHls.destroy();
+      } catch {
+        // Ignore
+      }
+      activeHls = null;
+    }
+    if (activeEmeCleanup) {
+      try {
+        activeEmeCleanup();
+      } catch {
+        // Ignore
+      }
+      activeEmeCleanup = null;
+    }
+    if (activeBlobUrl) {
+      try {
+        URL.revokeObjectURL(activeBlobUrl);
+      } catch {
+        // Ignore
+      }
+      activeBlobUrl = '';
+    }
+    const vid = hostEl?.querySelector('#dracin-html5-video');
+    if (vid) {
+      try {
+        vid.pause();
+        vid.removeAttribute('src');
+        vid.load();
+      } catch {
+        // Ignore
+      }
+    }
+  }
 
   function getActiveDrama() {
+    if (state.activeDrama) return state.activeDrama;
     if (!state.activeDramaId) return state.catalog[0] || null;
     return state.catalog.find((d) => d.id === state.activeDramaId) || state.catalog[0] || null;
   }
 
-  function persistHistory(drama, episodeNumber, progressPercent = 18) {
+  function upsertDramaInCatalog(drama) {
+    if (!drama || !drama.id) return;
+    const idx = state.catalog.findIndex((d) => d.id === drama.id);
+    if (idx >= 0) {
+      state.catalog[idx] = { ...state.catalog[idx], ...drama };
+    } else {
+      state.catalog.unshift(drama);
+    }
+    if (state.activeDrama && state.activeDrama.id === drama.id) {
+      state.activeDrama = { ...state.activeDrama, ...drama };
+    }
+  }
+
+  function persistHistory(drama, episodeNumber, progressPercent = 10) {
     if (!drama) return;
     state.history = upsertWatchHistory(state.history, {
       dramaId: drama.id,
+      sourceId: drama.sourceId || '',
+      apiProvider: drama.apiProvider || '',
       title: drama.title,
       platformId: drama.platformId,
       platformName: drama.platformName,
@@ -169,14 +274,7 @@ export function createDracinController({ onToast = () => {} } = {}) {
       state.swipeHintText = '';
       const p = hostEl?.querySelector('#dracin-swipe-toast');
       if (p) p.hidden = true;
-    }, 1700);
-  }
-
-  function stopPlaybackTimer() {
-    if (playbackTimer) {
-      clearInterval(playbackTimer);
-      playbackTimer = null;
-    }
+    }, 1800);
   }
 
   function syncPlayerLiveDom() {
@@ -184,51 +282,383 @@ export function createDracinController({ onToast = () => {} } = {}) {
     const subEl = hostEl.querySelector('#dracin-live-subtitle');
     const progFill = hostEl.querySelector('#dracin-progress-fill');
     const timeLabel = hostEl.querySelector('#dracin-time-label');
+    const playBtn = hostEl.querySelector('#dracin-toggle-play-btn');
 
     if (subEl) {
-      if (state.subtitleLang === 'off') {
+      if (state.subtitleLang === 'off' || !state.subtitleIsReal || state.subtitleCues.length === 0) {
         subEl.hidden = true;
       } else {
-        const cue = getActiveSubtitleCue(state.subtitleCues, state.elapsedSec);
+        const cue = getActiveSubtitleCue(state.subtitleCues, state.elapsedSec, { loop: false });
         subEl.hidden = !cue?.text;
         if (cue?.text) subEl.textContent = cue.text;
       }
     }
 
-    const pct = Math.min(100, Math.round((state.elapsedSec / Math.max(1, state.durationSec)) * 100));
-    if (progFill) progFill.style.width = `${pct}%`;
+    const dur = Math.max(1, state.durationSec || 0);
+    const pct = state.durationSec > 0 ? Math.min(100, (state.elapsedSec / dur) * 100) : 0;
+    if (progFill) progFill.style.width = `${pct.toFixed(2)}%`;
     if (timeLabel) {
-      timeLabel.textContent = `${formatClockTime(state.elapsedSec)} / ${formatClockTime(state.durationSec)}`;
+      timeLabel.textContent =
+        state.durationSec > 0
+          ? `${formatClockTime(state.elapsedSec)} / ${formatClockTime(state.durationSec)}`
+          : `${formatClockTime(state.elapsedSec)} / --:--`;
+    }
+    if (playBtn) {
+      playBtn.setAttribute('aria-label', state.isPlaying ? 'Jeda video' : 'Putar video');
+      playBtn.classList.toggle('is-playing', state.isPlaying);
+      playBtn.innerHTML = state.isPlaying
+        ? `<svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="6" y="4" width="4" height="16" rx="1"/><rect x="14" y="4" width="4" height="16" rx="1"/></svg>`
+        : `<svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><polygon points="6 4 20 12 6 20 6 4"/></svg>`;
     }
   }
 
-  function startPlaybackTimer() {
-    stopPlaybackTimer();
-    if (state.view !== 'player' || !state.isPlaying) return;
-    playbackTimer = setInterval(() => {
-      if (!hostEl || state.view !== 'player' || !state.isPlaying) return;
-      state.elapsedSec += 0.5 * state.playbackSpeed;
-      if (state.elapsedSec >= state.durationSec) {
-        const drama = getActiveDrama();
-        const nav = getNextPrevEpisode(state.currentEpisode, drama?.totalEpisodes || 60);
-        if (state.autoNext && nav.hasNext) {
-          selectEpisode(nav.next, { announce: `Auto-lanjut ke Episode ${nav.next}` });
-          return;
-        }
-        state.elapsedSec = 0;
-      }
-      syncPlayerLiveDom();
-    }, 500);
+  function syncMuteUiInPlace() {
+    const muteBtn = hostEl?.querySelector('#dracin-rail-mute-btn');
+    const unmuteBanner = hostEl?.querySelector('#dracin-unmute-banner');
+    if (muteBtn) {
+      muteBtn.classList.toggle('is-active', !state.isMuted);
+      muteBtn.setAttribute('aria-label', state.isMuted ? 'Nyalakan suara' : 'Bisukan suara');
+      muteBtn.innerHTML = state.isMuted
+        ? `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><line x1="23" y1="9" x2="17" y2="15"/><line x1="17" y1="9" x2="23" y2="15"/></svg><span>Bisu</span>`
+        : `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/></svg><span>Suara</span>`;
+    }
+    if (unmuteBanner) {
+      unmuteBanner.hidden = !state.autoplayMutedNotice || !state.isMuted;
+    }
   }
 
-  async function loadSubtitlesForActiveEpisode(drama, ep, langOverride = null) {
+  function syncStageChromeInPlace() {
+    const stageEl = hostEl?.querySelector('#dracin-player-stage');
+    if (!stageEl) return;
+    stageEl.classList.toggle('is-fullscreen', state.isFullscreen);
+    stageEl.classList.toggle('is-clean-screen', state.isFullscreen && state.cleanScreen);
+    stageEl.setAttribute('data-fullscreen', state.isFullscreen ? 'true' : 'false');
+    stageEl.setAttribute('data-clean-screen', state.isFullscreen && state.cleanScreen ? 'true' : 'false');
+
+    const fsBtn = hostEl?.querySelector('#dracin-fs-toggle-top');
+    if (fsBtn) {
+      fsBtn.textContent = state.isFullscreen ? 'Keluar Full' : 'Layar Penuh';
+    }
+    const cleanTopBtn = hostEl?.querySelector('#dracin-clean-fs-btn');
+    if (cleanTopBtn) {
+      cleanTopBtn.hidden = !state.isFullscreen;
+    }
+    const railCleanBtn = hostEl?.querySelector('#dracin-rail-clean-btn');
+    if (railCleanBtn) {
+      railCleanBtn.hidden = !state.isFullscreen;
+      railCleanBtn.classList.toggle('is-active', state.cleanScreen);
+    }
+    const restoreBtn = hostEl?.querySelector('#dracin-restore-hud-btn');
+    if (restoreBtn) {
+      restoreBtn.hidden = !(state.isFullscreen && state.cleanScreen);
+    }
+    const railFsBtn = hostEl?.querySelector('#dracin-rail-fs-btn');
+    if (railFsBtn) {
+      const span = railFsBtn.querySelector('span');
+      if (span) span.textContent = state.isFullscreen ? 'Kecilkan' : 'Full';
+    }
+    const metaSwipe = hostEl?.querySelector('#dracin-fs-swipe-hint');
+    if (metaSwipe) {
+      metaSwipe.hidden = !state.isFullscreen;
+    }
+  }
+
+  function setStatusOverlay(loading, message = '', isError = false) {
+    state.resolvingStream = loading;
+    state.streamStatusText = loading ? message : '';
+    state.streamError = isError ? message : '';
+    const loader = hostEl?.querySelector('#dracin-media-loader');
+    const errBox = hostEl?.querySelector('#dracin-media-error');
+    if (loader) {
+      loader.hidden = !loading;
+      const txt = loader.querySelector('span');
+      if (txt && message) txt.textContent = message;
+    }
+    if (errBox) {
+      errBox.hidden = !isError;
+      const txt = errBox.querySelector('p');
+      if (txt && isError) txt.textContent = message;
+    }
+  }
+
+  function setCleanScreenMode(forceVal = null) {
+    state.cleanScreen = resolveCleanScreenState(state.cleanScreen, state.isFullscreen, forceVal);
+    if (state.cleanScreen) {
+      state.fullscreenDrawerOpen = false;
+      const drawer = hostEl?.querySelector('.dracin-fs-drawer');
+      if (drawer) drawer.remove();
+    }
+    syncStageChromeInPlace();
+    if (state.cleanScreen) {
+      showSwipeHint('Mode Layar Bersih aktif · Ketuk layar untuk kembalikan menu');
+    }
+  }
+
+  async function attemptPlayVideo(videoEl) {
+    if (!videoEl) return;
+    videoEl.playbackRate = state.playbackSpeed;
+    videoEl.muted = state.isMuted;
+    videoEl.volume = 1;
+    try {
+      await videoEl.play();
+      state.isPlaying = true;
+      state.autoplayMutedNotice = false;
+      syncPlayerLiveDom();
+      syncMuteUiInPlace();
+    } catch (err) {
+      // If browser blocked unmuted autoplay (e.g. deep-link before user gesture), start muted + show unmute pill
+      if (!videoEl.muted) {
+        videoEl.muted = true;
+        state.isMuted = true;
+        state.autoplayMutedNotice = true;
+        try {
+          await videoEl.play();
+          state.isPlaying = true;
+        } catch {
+          state.isPlaying = false;
+        }
+        syncPlayerLiveDom();
+        syncMuteUiInPlace();
+      } else {
+        state.isPlaying = false;
+        syncPlayerLiveDom();
+      }
+    }
+  }
+
+  function tryFailoverToNextServer(failedServerId, reasonMsg = '') {
+    state.triedServerIds.add(failedServerId);
+    const nextServer = state.servers.find((s) => !state.triedServerIds.has(s.id));
+    if (nextServer) {
+      state.activeServerId = nextServer.id;
+      onToast(`Beralih otomatis ke ${nextServer.label}`);
+      render();
+      attachMediaToActiveStage();
+      return true;
+    }
+    setStatusOverlay(
+      false,
+      reasonMsg || 'Video gagal diputar di browser ini. Coba pilih kualitas/server lain atau episode berikutnya.',
+      true
+    );
+    return false;
+  }
+
+  /**
+   * Attaches the REAL media stream (Direct MP4, HLS.js, Melolo CENC WebCrypto MP4,
+   * or Dailymotion embed) to the mounted stage element.
+   */
+  async function attachMediaToActiveStage() {
+    if (!hostEl || state.view !== 'player') return;
+    const token = ++streamSessionToken;
+    destroyActiveMediaEngine();
+
+    const activeServer =
+      state.servers.find((s) => s.id === state.activeServerId) || pickBestPlaybackServer(state.servers);
+
+    if (!activeServer) {
+      if (!state.resolvingStream) {
+        setStatusOverlay(
+          false,
+          state.streamError || 'Sumber video untuk episode ini sedang tidak tersedia dari server platform.',
+          true
+        );
+      }
+      return;
+    }
+
+    if (activeServer.kind === 'dailymotion') {
+      setStatusOverlay(false);
+      state.isPlaying = true;
+      return;
+    }
+
+    const videoEl = hostEl.querySelector('#dracin-html5-video');
+    if (!videoEl) return;
+
+    const abortCtrl = new AbortController();
+    activeMediaAbort = abortCtrl;
+
+    // Bind native HTML5 <video> lifecycle events strictly to real media playback
+    const onLoadedMeta = () => {
+      if (token !== streamSessionToken) return;
+      if (Number.isFinite(videoEl.duration) && videoEl.duration > 0) {
+        state.durationSec = videoEl.duration;
+      }
+      videoEl.playbackRate = state.playbackSpeed;
+      setStatusOverlay(false);
+      syncPlayerLiveDom();
+    };
+    const onCanPlay = () => {
+      if (token !== streamSessionToken) return;
+      setStatusOverlay(false);
+      if (videoEl.paused && state.isPlaying) {
+        attemptPlayVideo(videoEl);
+      }
+    };
+    const onTimeUpdate = () => {
+      if (token !== streamSessionToken) return;
+      state.elapsedSec = videoEl.currentTime || 0;
+      if (Number.isFinite(videoEl.duration) && videoEl.duration > 0) {
+        state.durationSec = videoEl.duration;
+      }
+      syncPlayerLiveDom();
+    };
+    const onPlay = () => {
+      if (token !== streamSessionToken) return;
+      state.isPlaying = true;
+      setStatusOverlay(false);
+      syncPlayerLiveDom();
+    };
+    const onPause = () => {
+      if (token !== streamSessionToken) return;
+      state.isPlaying = false;
+      syncPlayerLiveDom();
+    };
+    const onEnded = () => {
+      if (token !== streamSessionToken) return;
+      state.isPlaying = false;
+      syncPlayerLiveDom();
+      const drama = getActiveDrama();
+      const nav = getNextPrevEpisode(state.currentEpisode, drama?.totalEpisodes || 40);
+      if (state.autoNext && nav.hasNext) {
+        selectEpisode(nav.next, { announce: `Auto-lanjut ke Episode ${nav.next}` });
+      }
+    };
+    const onWaiting = () => {
+      if (token !== streamSessionToken) return;
+      setStatusOverlay(true, 'Buffering video HD...');
+    };
+    const onPlaying = () => {
+      if (token !== streamSessionToken) return;
+      setStatusOverlay(false);
+      state.isPlaying = true;
+      syncPlayerLiveDom();
+    };
+    const onError = () => {
+      if (token !== streamSessionToken) return;
+      const errCode = videoEl.error?.code;
+      const msg =
+        errCode === 4
+          ? 'Format video tidak didukung oleh browser ini (mencoba kualitas/server lain)...'
+          : 'Koneksi stream terputus, mencoba server lain...';
+      tryFailoverToNextServer(activeServer.id, msg);
+    };
+
+    videoEl.addEventListener('loadedmetadata', onLoadedMeta);
+    videoEl.addEventListener('canplay', onCanPlay);
+    videoEl.addEventListener('timeupdate', onTimeUpdate);
+    videoEl.addEventListener('play', onPlay);
+    videoEl.addEventListener('pause', onPause);
+    videoEl.addEventListener('ended', onEnded);
+    videoEl.addEventListener('waiting', onWaiting);
+    videoEl.addEventListener('playing', onPlaying);
+    videoEl.addEventListener('error', onError);
+
+    try {
+      if (activeServer.kind === 'cenc-mp4') {
+        // Melolo encrypted CENC-AES-CTR MP4 -> client-side WebCrypto decrypt into native Blob MP4
+        setStatusOverlay(true, `Menyiapkan & mendekripsi video ${activeServer.label}...`);
+        try {
+          const blobUrl = await fetchAndDecryptCencMp4(
+            activeServer.url,
+            activeServer.contentKey,
+            abortCtrl.signal
+          );
+          if (token !== streamSessionToken) {
+            URL.revokeObjectURL(blobUrl);
+            return;
+          }
+          activeBlobUrl = blobUrl;
+          videoEl.src = blobUrl;
+          videoEl.load();
+          await attemptPlayVideo(videoEl);
+        } catch (decErr) {
+          if (token !== streamSessionToken || abortCtrl.signal.aborted) return;
+          // Fallback to native W3C ClearKey EME directly on the CDN URL
+          if (activeServer.kid && activeServer.contentKey) {
+            activeEmeCleanup = attachClearKeyEme(videoEl, activeServer.kid, activeServer.contentKey);
+            videoEl.src = activeServer.url;
+            videoEl.load();
+            await attemptPlayVideo(videoEl);
+          } else {
+            tryFailoverToNextServer(activeServer.id, decErr?.message || 'Gagal mendekripsi stream Melolo.');
+          }
+        }
+        return;
+      }
+
+      if (activeServer.kind === 'hls') {
+        setStatusOverlay(true, `Memuat stream HLS ${activeServer.label}...`);
+        if (videoEl.canPlayType('application/vnd.apple.mpegurl')) {
+          videoEl.src = activeServer.url;
+          videoEl.load();
+          await attemptPlayVideo(videoEl);
+          return;
+        }
+        const HlsLib = await ensureHlsLibrary();
+        if (token !== streamSessionToken) return;
+        if (HlsLib && HlsLib.isSupported()) {
+          const hls = new HlsLib({
+            enableWorker: true,
+            lowLatencyMode: false,
+            backBufferLength: 30,
+          });
+          activeHls = hls;
+          hls.on(HlsLib.Events.MANIFEST_PARSED, () => {
+            if (token !== streamSessionToken) return;
+            setStatusOverlay(false);
+            attemptPlayVideo(videoEl);
+          });
+          hls.on(HlsLib.Events.ERROR, (_evt, data) => {
+            if (token !== streamSessionToken) return;
+            if (data?.fatal) {
+              if (data.type === HlsLib.ErrorTypes.MEDIA_ERROR) {
+                hls.recoverMediaError();
+              } else {
+                try {
+                  hls.destroy();
+                } catch {
+                  // Ignore
+                }
+                activeHls = null;
+                tryFailoverToNextServer(
+                  activeServer.id,
+                  'Stream HLS diblokir oleh CDN asal — coba server/kualitas lain.'
+                );
+              }
+            }
+          });
+          hls.loadSource(activeServer.url);
+          hls.attachMedia(videoEl);
+        } else {
+          videoEl.src = activeServer.url;
+          videoEl.load();
+          await attemptPlayVideo(videoEl);
+        }
+        return;
+      }
+
+      // Direct standard MP4 video stream (DramaBox, NetShort, etc.)
+      setStatusOverlay(true, `Memuat video ${activeServer.label}...`);
+      videoEl.src = activeServer.url;
+      videoEl.load();
+      await attemptPlayVideo(videoEl);
+    } catch (err) {
+      if (token !== streamSessionToken || abortCtrl.signal.aborted) return;
+      tryFailoverToNextServer(activeServer.id, err?.message || 'Gagal memulai pemutaran video.');
+    }
+  }
+
+  async function loadSubtitlesForActiveEpisode(drama, ep, langOverride = null, apiSubtitles = null) {
     if (!drama) return;
     const resolved = resolveAutoSubtitleLang(drama, langOverride ?? state.userSubtitleOverride);
     state.subtitleLang = resolved.lang;
-    state.subtitleReason = resolved.reason;
-    state.subtitleLoading = true;
-    state.subtitleCues = await getEpisodeSubtitles(drama, ep, resolved.lang);
-    state.subtitleLoading = false;
+    const tracks = apiSubtitles ?? state.apiSubtitles;
+    const subRes = await getEpisodeSubtitles(drama, ep, resolved.lang, tracks);
+    state.subtitleCues = subRes.cues || [];
+    state.subtitleIsReal = Boolean(subRes.isRealTrack);
+    state.subtitleReason = subRes.reason || resolved.reason;
     syncPlayerLiveDom();
     const subMeta = hostEl?.querySelector('#dracin-sub-status');
     if (subMeta) subMeta.textContent = state.subtitleReason;
@@ -241,68 +671,156 @@ export function createDracinController({ onToast = () => {} } = {}) {
     state.currentEpisode = safeEp;
     state.epRangeStart = Math.floor((safeEp - 1) / 20) * 20 + 1;
     state.elapsedSec = 0;
+    state.durationSec = 0;
     state.isPlaying = true;
-    const episodes = buildEpisodeList(drama);
-    state.durationSec = episodes[safeEp - 1]?.durationSec || 120;
     state.fullscreenDrawerOpen = false;
     state.resolvingStream = true;
+    state.streamStatusText = `Memuat stream Episode ${safeEp} dari ${drama.platformName}...`;
+    state.streamError = '';
+    state.servers = [];
+    state.activeServerId = '';
+    state.apiSubtitles = [];
+    state.subtitleCues = [];
+    state.subtitleIsReal = false;
+    state.triedServerIds = new Set();
 
+    destroyActiveMediaEngine();
     persistHistory(drama, safeEp, 15);
     render();
     if (announce) showSwipeHint(announce);
 
-    // Parallel stream + subtitle load so switching episodes feels instant
-    const [streamRes] = await Promise.allSettled([
-      resolveEpisodePlayback(drama, safeEp),
-      loadSubtitlesForActiveEpisode(drama, safeEp),
-    ]);
+    const mySession = streamSessionToken;
+    const streamRes = await resolveEpisodePlayback(drama, safeEp);
+    if (mySession !== streamSessionToken || state.view !== 'player') return;
 
-    if (streamRes.status === 'fulfilled' && streamRes.value) {
-      state.servers = streamRes.value.servers;
-      // Default to ad-free Cinema Mode when user is inside local preview or if chosen,
-      // while offering 1-tap switch to live Multi-API Dailymotion HD Stream
-      state.activeServerId =
-        state.servers.find((s) => s.id === state.activeServerId)?.id ||
-        streamRes.value.defaultServerId;
-    } else {
-      state.servers = [
-        {
-          id: 'cinema-sub',
-          label: 'Server 1 · Mode Bioskop Tanpa Iklan',
-          kind: 'cinema',
-          poster: drama.poster || drama.fallbackPoster,
-        },
-      ];
-      state.activeServerId = 'cinema-sub';
-    }
-    state.resolvingStream = false;
+    state.servers = streamRes.servers || [];
+    state.apiSubtitles = streamRes.subtitles || [];
+    const best = pickBestPlaybackServer(state.servers);
+    state.activeServerId = best?.id || '';
+    state.streamError = streamRes.error || '';
+    state.resolvingStream = Boolean(best);
+
     render();
-    startPlaybackTimer();
+
+    // Load real subtitles in parallel with real video attachment!
+    loadSubtitlesForActiveEpisode(drama, safeEp, null, state.apiSubtitles);
+    attachMediaToActiveStage();
   }
 
   async function openDrama(dramaId, episodeNumber = null) {
-    const found = state.catalog.find((d) => d.id === dramaId) || state.catalog[0];
+    let found = state.catalog.find((d) => d.id === dramaId);
+    if (!found) {
+      // Allow resuming directly from saved history even if platform tab hasn't loaded yet
+      const histItem = state.history.find((h) => h.dramaId === dramaId);
+      if (histItem) {
+        found = {
+          id: histItem.dramaId,
+          sourceId: histItem.sourceId || (histItem.dramaId.includes('::') ? histItem.dramaId.split('::')[1] : ''),
+          apiProvider: histItem.apiProvider || (histItem.dramaId.includes('::') ? 'anichin-unified' : 'dailymotion'),
+          title: histItem.title,
+          platformId: histItem.platformId,
+          platformName: histItem.platformName,
+          poster: histItem.poster,
+          fallbackPoster: histItem.poster,
+          totalEpisodes: histItem.totalEpisodes || 40,
+          genre: 'trending',
+          genres: ['trending'],
+          year: 2026,
+          rating: 9.5,
+          viewsLabel: 'HD',
+          hasIndonesianDub: false,
+          synopsis: '',
+          cast: [],
+        };
+        upsertDramaInCatalog(found);
+      }
+    }
     if (!found) return;
+
+    state.activeDrama = { ...found };
     state.activeDramaId = found.id;
     state.view = 'player';
     const hist = state.history.find((h) => h.dramaId === found.id);
     const startEp = episodeNumber ?? hist?.episode ?? 1;
+
+    // Kick off real detail fetch concurrently with Episode playback so exact episode count & synopsis load live!
+    const detailPromise = fetchDramaDetail(found).then((detail) => {
+      if (!detail) return;
+      const updated = {
+        ...state.activeDrama,
+        title: detail.title || state.activeDrama.title,
+        poster: detail.poster || state.activeDrama.poster,
+        synopsis: detail.synopsis || state.activeDrama.synopsis,
+        totalEpisodes: detail.totalEpisodes || state.activeDrama.totalEpisodes,
+        hasKnownEpisodeCount: true,
+        altTitle: detail.tags?.length ? detail.tags.slice(0, 4).join(' · ') : state.activeDrama.altTitle,
+      };
+      upsertDramaInCatalog(updated);
+      // Update episode picker & drama info in-place WITHOUT tearing down the running <video>!
+      if (state.view === 'player' && state.activeDramaId === updated.id) {
+        const pickerWrap = hostEl?.querySelector('#dracin-side-ep-wrap');
+        if (pickerWrap) {
+          pickerWrap.innerHTML = renderEpisodePickerGrid(updated, false);
+          bindEpisodePickerEvents(pickerWrap);
+        }
+        const epHead = hostEl?.querySelector('.dracin-stage-ep-label');
+        if (epHead) epHead.textContent = `Ep ${state.currentEpisode} / ${updated.totalEpisodes}`;
+        const synEl = hostEl?.querySelector('.dracin-synopsis');
+        if (synEl && updated.synopsis) synEl.textContent = updated.synopsis;
+      }
+    });
+
     await selectEpisode(startEp);
+    detailPromise.catch(() => {});
   }
 
-  async function refreshParallelCatalog({ query = state.searchQuery, platformId = state.platformId } = {}) {
-    state.loadingFeed = true;
+  async function refreshLiveCatalog({
+    query = state.searchQuery,
+    platformId = state.platformId,
+    page = 1,
+    append = false,
+  } = {}) {
+    if (append) {
+      state.loadingMore = true;
+    } else {
+      state.loadingFeed = true;
+      state.feedError = '';
+    }
     render();
+
     try {
-      const res = await fetchUnifiedDracinCatalog({ query, platformId });
+      const res = await fetchUnifiedDracinCatalog({ query, platformId, page });
       if (res && Array.isArray(res.items) && res.items.length > 0) {
-        state.catalog = res.items;
-        state.activeSources = res.activeSources || state.activeSources;
+        if (append) {
+          const existingIds = new Set(state.catalog.map((d) => d.id));
+          const fresh = res.items.filter((d) => !existingIds.has(d.id));
+          state.catalog = [...state.catalog, ...fresh];
+        } else {
+          // Merge into global catalog while keeping previously loaded platforms accessible for favorites/history
+          const incomingIds = new Set(res.items.map((d) => d.id));
+          const kept = state.catalog.filter(
+            (d) => !incomingIds.has(d.id) && (platformId === 'all' ? false : d.platformId !== platformId)
+          );
+          state.catalog = [...res.items, ...kept];
+        }
+        state.platformCatalogs[platformId] = {
+          page,
+          hasMore: Boolean(res.hasMore),
+          count: res.items.length,
+        };
+        if (res.activeSources?.length) {
+          state.activeSources = Array.from(new Set([...res.activeSources, ...state.activeSources])).slice(0, 6);
+        }
+      } else if (!append) {
+        state.feedError = 'Server platform sedang padat. Coba tekan Muat Ulang atau pilih platform lain.';
       }
     } catch {
-      // Fail gracefully keeping baseline 18-platform catalog
+      if (!append) {
+        state.feedError = 'Gagal menghubungi API drama live. Periksa koneksi lalu coba lagi.';
+      }
     } finally {
       state.loadingFeed = false;
+      state.loadingMore = false;
       render();
     }
   }
@@ -311,12 +829,19 @@ export function createDracinController({ onToast = () => {} } = {}) {
     const next = typeof forceValue === 'boolean' ? forceValue : !state.isFullscreen;
     state.isFullscreen = next;
     state.fullscreenDrawerOpen = false;
+    if (!next) {
+      state.cleanScreen = false;
+    }
     document.body.classList.toggle('dracin-fs-lock', next);
-    render();
+    // Update fullscreen & clean screen classes IN-PLACE so video & audio NEVER stutter or reload!
+    syncStageChromeInPlace();
+    const drawer = hostEl?.querySelector('.dracin-fs-drawer');
+    if (drawer) drawer.remove();
 
     try {
-      if (next && hostEl && hostEl.requestFullscreen && !document.fullscreenElement) {
-        await hostEl.requestFullscreen();
+      const stageEl = hostEl?.querySelector('#dracin-player-stage');
+      if (next && stageEl?.requestFullscreen && !document.fullscreenElement) {
+        await stageEl.requestFullscreen();
       } else if (!next && document.fullscreenElement) {
         await document.exitFullscreen();
       }
@@ -344,6 +869,18 @@ export function createDracinController({ onToast = () => {} } = {}) {
     }
   }
 
+  function togglePlayPauseInPlace() {
+    const videoEl = hostEl?.querySelector('#dracin-html5-video');
+    if (!videoEl) return;
+    if (videoEl.paused) {
+      attemptPlayVideo(videoEl);
+    } else {
+      videoEl.pause();
+      state.isPlaying = false;
+      syncPlayerLiveDom();
+    }
+  }
+
   function onGlobalKeydown(e) {
     if (!hostEl || state.view !== 'player') return;
     const tag = String(e.target?.tagName || '').toLowerCase();
@@ -351,7 +888,14 @@ export function createDracinController({ onToast = () => {} } = {}) {
 
     if (e.key === 'Escape' && state.isFullscreen) {
       e.preventDefault();
-      toggleFullscreenMode(false);
+      if (state.cleanScreen) {
+        setCleanScreenMode(false);
+      } else {
+        toggleFullscreenMode(false);
+      }
+    } else if ((e.key === 'c' || e.key === 'C') && state.isFullscreen && !e.ctrlKey && !e.metaKey) {
+      e.preventDefault();
+      setCleanScreenMode();
     } else if (e.key === 'ArrowDown' && state.isFullscreen) {
       e.preventDefault();
       handleEpisodeStep(1);
@@ -363,20 +907,19 @@ export function createDracinController({ onToast = () => {} } = {}) {
       toggleFullscreenMode();
     } else if (e.key === ' ' && state.isFullscreen) {
       e.preventDefault();
-      state.isPlaying = !state.isPlaying;
-      if (state.isPlaying) startPlaybackTimer();
-      else stopPlaybackTimer();
-      render();
+      togglePlayPauseInPlace();
     }
   }
 
   function onNativeFullscreenChange() {
     if (!document.fullscreenElement && state.isFullscreen) {
-      // Keep cinema overlay exit synced when user presses Escape natively
       state.isFullscreen = false;
+      state.cleanScreen = false;
       state.fullscreenDrawerOpen = false;
       document.body.classList.remove('dracin-fs-lock');
-      render();
+      syncStageChromeInPlace();
+      const drawer = hostEl?.querySelector('.dracin-fs-drawer');
+      if (drawer) drawer.remove();
     }
   }
 
@@ -425,6 +968,10 @@ export function createDracinController({ onToast = () => {} } = {}) {
       if (result?.visualProfile?.previewDataUrl) {
         state.clipPreviewUrl = result.visualProfile.previewDataUrl;
       }
+      // Make sure matched live dramas are added to catalog so clicking them opens cleanly
+      for (const m of result.matches || []) {
+        if (m?.drama) upsertDramaInCatalog(m.drama);
+      }
       onToast(`Ditemukan ${result.matches.length} drama mirip via ${result.aiEngine}`);
     } catch (err) {
       state.clipError = err?.message || 'Gagal menganalisis file cuplikan.';
@@ -437,19 +984,28 @@ export function createDracinController({ onToast = () => {} } = {}) {
   async function handleLoadAiInsights(drama) {
     if (!drama || state.aiInsightsLoading) return;
     state.aiInsightsLoading = true;
-    render();
+    const btn = hostEl?.querySelector('#dracin-ai-insight-btn');
+    if (btn) {
+      btn.disabled = true;
+      btn.textContent = 'Menganalisis...';
+    }
     try {
       const res = await fetchAiDramaInsights(drama, state.catalog);
       state.aiInsightsMap[drama.id] = res;
+      const aiBox = hostEl?.querySelector('#dracin-ai-card-box');
+      if (aiBox) {
+        aiBox.innerHTML = renderAiInsightCardInner(drama);
+        bindAiInsightEvents(aiBox, drama);
+      }
     } finally {
       state.aiInsightsLoading = false;
-      render();
     }
   }
 
   function renderDramaCard(drama) {
     const isFav = state.favorites.includes(drama.id);
     const hist = state.history.find((h) => h.dramaId === drama.id);
+    const epBadge = drama.hasKnownEpisodeCount ? `${drama.totalEpisodes} Ep · HD` : 'Live HD';
     return `
       <article class="dracin-card" data-dracin-card="${escapeHtml(drama.id)}">
         <button type="button" class="dracin-card-poster-btn" data-dracin-open="${escapeHtml(drama.id)}" aria-label="Tonton ${escapeHtml(drama.title)}">
@@ -458,17 +1014,14 @@ export function createDracinController({ onToast = () => {} } = {}) {
             alt="Poster ${escapeHtml(drama.title)}"
             class="dracin-card-poster"
             loading="lazy"
+            decoding="async"
             referrerpolicy="no-referrer"
             onerror="this.onerror=null;this.src='${escapeHtml(drama.fallbackPoster)}'"
           />
           <div class="dracin-card-scrim" aria-hidden="true"></div>
           <span class="dracin-card-platform">${escapeHtml(drama.platformName)}</span>
-          <span class="dracin-card-epcount">${drama.totalEpisodes} Ep · HD</span>
-          ${
-            hist
-              ? `<span class="dracin-card-resume">Lanjut Ep ${hist.episode}</span>`
-              : ''
-          }
+          <span class="dracin-card-epcount">${epBadge}</span>
+          ${hist ? `<span class="dracin-card-resume">Lanjut Ep ${hist.episode}</span>` : ''}
         </button>
         <div class="dracin-card-body">
           <button type="button" class="dracin-card-title-btn" data-dracin-open="${escapeHtml(drama.id)}">
@@ -477,9 +1030,7 @@ export function createDracinController({ onToast = () => {} } = {}) {
           <div class="dracin-card-meta">
             <span>${escapeHtml(getGenreLabel(drama.genre))}</span>
             <span aria-hidden="true">·</span>
-            <span>★ ${drama.rating.toFixed(1)}</span>
-            <span aria-hidden="true">·</span>
-            <span>${drama.hasIndonesianDub ? 'Dub & Sub ID' : 'Sub Indo'}</span>
+            <span>${drama.hasIndonesianDub ? 'Dub Indo' : 'Sub Indo'}</span>
           </div>
           <div class="dracin-card-actions">
             <button type="button" class="btn btn-primary btn-xs dracin-watch-btn" data-dracin-open="${escapeHtml(drama.id)}">
@@ -499,6 +1050,26 @@ export function createDracinController({ onToast = () => {} } = {}) {
     `;
   }
 
+  function renderSkeletonGrid() {
+    return `
+      <div class="dracin-catalog-grid" aria-busy="true" aria-label="Memuat daftar drama live">
+        ${Array.from({ length: 8 })
+          .map(
+            () => `
+          <div class="dracin-card dracin-skeleton-card">
+            <div class="dracin-skeleton-poster"></div>
+            <div class="dracin-card-body">
+              <div class="dracin-skeleton-line"></div>
+              <div class="dracin-skeleton-line is-short"></div>
+            </div>
+          </div>
+        `
+          )
+          .join('')}
+      </div>
+    `;
+  }
+
   function renderDiscoverView() {
     const filtered = filterDracinCatalog(state.catalog, {
       platformId: state.platformId,
@@ -506,6 +1077,8 @@ export function createDracinController({ onToast = () => {} } = {}) {
       query: state.searchQuery,
     });
     const recentHistory = state.history.slice(0, 4);
+    const activePlatformMeta = DRACIN_PLATFORMS.find((p) => p.id === state.platformId);
+    const platPageInfo = state.platformCatalogs[state.platformId] || { page: 1, hasMore: false };
 
     return `
       <div class="dracin-discover">
@@ -517,7 +1090,7 @@ export function createDracinController({ onToast = () => {} } = {}) {
               id="dracin-search-input"
               class="dracin-search-input"
               value="${escapeHtml(state.searchQuery)}"
-              placeholder="Cari judul drama, pemeran, CEO, balas dendam, Anichin..."
+              placeholder="Cari judul drama asli di ${escapeHtml(activePlatformMeta?.name || 'Semua Platform')}..."
               aria-label="Cari judul drama China"
             />
             ${
@@ -526,17 +1099,21 @@ export function createDracinController({ onToast = () => {} } = {}) {
                 : ''
             }
           </div>
-          <button type="submit" class="btn btn-primary btn-sm dracin-search-submit">Cari</button>
+          <button type="submit" class="btn btn-primary btn-sm dracin-search-submit">Cari Live</button>
           <button type="button" class="btn btn-secondary btn-sm" data-dracin-view="clip">
-            Cari dari Klip / Screenshot
+            Cari dari Klip
           </button>
         </form>
 
         <div class="dracin-filter-section">
           <div class="dracin-filter-head">
-            <span class="dracin-filter-label">18 Platform Short Drama Terpadu</span>
-            <span class="dracin-filter-meta">
-              ${state.activeSources.length} sumber API paralel aktif · ${filtered.length} judul
+            <span class="dracin-filter-label">Platform Short Drama Real-Time</span>
+            <span class="dracin-filter-meta" data-testid="dracin-catalog-count">
+              ${
+                state.loadingFeed
+                  ? `Menghubungkan ${escapeHtml(activePlatformMeta?.name || 'platform live')}...`
+                  : `${escapeHtml(activePlatformMeta?.name || 'Semua')} · ${filtered.length} drama asli`
+              }
             </span>
           </div>
           <div class="dracin-platform-strip" role="group" aria-label="Filter platform short drama">
@@ -596,19 +1173,18 @@ export function createDracinController({ onToast = () => {} } = {}) {
         }
 
         ${
-          state.loadingFeed
-            ? `<div class="dracin-inline-notice">Menghubungkan & menggabungkan API paralel (Dailymotion, Dracin, Anichin)...</div>`
-            : ''
-        }
-
-        ${
-          filtered.length === 0
+          state.loadingFeed && filtered.length === 0
+            ? renderSkeletonGrid()
+            : filtered.length === 0
             ? `
           <div class="dracin-empty-state">
-            <p>Belum ada drama yang cocok untuk filter atau kata kunci "${escapeHtml(state.searchQuery)}".</p>
+            <p>${escapeHtml(
+              state.feedError ||
+                `Belum ditemukan drama di ${activePlatformMeta?.name || 'platform ini'} untuk filter atau kata kunci "${state.searchQuery}".`
+            )}</p>
             <div class="dracin-empty-actions">
-              <button type="button" class="btn btn-primary btn-sm" id="dracin-reset-filters">Tampilkan Semua Platform</button>
-              <button type="button" class="btn btn-secondary btn-sm" data-dracin-view="clip">Cari Pakai Screenshot / Klip</button>
+              <button type="button" class="btn btn-primary btn-sm" id="dracin-retry-feed">Muat Ulang Live</button>
+              <button type="button" class="btn btn-secondary btn-sm" id="dracin-reset-filters">Tampilkan Semua Platform</button>
             </div>
           </div>
         `
@@ -616,6 +1192,21 @@ export function createDracinController({ onToast = () => {} } = {}) {
           <div class="dracin-catalog-grid" data-testid="dracin-catalog-grid">
             ${filtered.map(renderDramaCard).join('')}
           </div>
+          ${
+            platPageInfo.hasMore && state.genreId === 'all'
+              ? `
+            <div class="dracin-load-more-wrap">
+              <button type="button" class="btn btn-secondary btn-sm" id="dracin-load-more-btn" ${state.loadingMore ? 'disabled' : ''}>
+                ${
+                  state.loadingMore
+                    ? 'Memuat halaman berikutnya...'
+                    : `Muat Lebih Banyak Drama ${escapeHtml(activePlatformMeta?.short || '')}`
+                }
+              </button>
+            </div>
+          `
+              : ''
+          }
         `
         }
       </div>
@@ -633,8 +1224,8 @@ export function createDracinController({ onToast = () => {} } = {}) {
       <div class="dracin-ep-picker ${compact ? 'is-compact' : ''}">
         <div class="dracin-ep-picker-head">
           <div>
-            <strong>Pilih Episode (Semua Gratis & Terbuka)</strong>
-            <span class="dracin-ep-picker-sub">Ep 1–${drama.totalEpisodes} · Bebas lompat tanpa VIP & tanpa iklan</span>
+            <strong>Pilih Episode (Gratis & Terbuka)</strong>
+            <span class="dracin-ep-picker-sub">Ep 1–${drama.totalEpisodes} · Bebas lompat episode</span>
           </div>
           <form class="dracin-jump-form" data-dracin-jump-form>
             <input
@@ -686,20 +1277,59 @@ export function createDracinController({ onToast = () => {} } = {}) {
     `;
   }
 
+  function renderAiInsightCardInner(drama) {
+    const aiInsight = state.aiInsightsMap[drama.id];
+    return `
+      <div class="dracin-ai-card-head">
+        <strong>Asisten AI Dracin</strong>
+        <button type="button" class="btn btn-secondary btn-xs" id="dracin-ai-insight-btn" ${state.aiInsightsLoading ? 'disabled' : ''}>
+          ${state.aiInsightsLoading ? 'Menganalisis...' : aiInsight ? 'Perbarui Analisis AI' : 'Ringkasan & Rekomendasi AI'}
+        </button>
+      </div>
+      ${
+        aiInsight
+          ? `
+        <p class="dracin-ai-text">${escapeHtml(aiInsight.insight)}</p>
+        <span class="dracin-ai-engine">Sumber: ${escapeHtml(aiInsight.engine)}</span>
+        ${
+          aiInsight.similar?.length
+            ? `
+          <div class="dracin-similar-row">
+            ${aiInsight.similar
+              .map(
+                (sim) => `
+              <button type="button" class="dracin-similar-btn" data-dracin-open="${escapeHtml(sim.id)}">
+                <span>${escapeHtml(sim.title)}</span>
+                <small>${escapeHtml(sim.platformName)} · ${sim.totalEpisodes} Ep</small>
+              </button>
+            `
+              )
+              .join('')}
+          </div>
+        `
+            : ''
+        }
+      `
+          : `<p class="dracin-ai-hint">Klik tombol di atas untuk ringkasan tanpa spoiler & rekomendasi drama mirip.</p>`
+      }
+    `;
+  }
+
   function renderPlayerView() {
     const drama = getActiveDrama();
     if (!drama) return renderDiscoverView();
     const nav = getNextPrevEpisode(state.currentEpisode, drama.totalEpisodes);
     const isFav = state.favorites.includes(drama.id);
     const activeServer =
-      state.servers.find((s) => s.id === state.activeServerId) ||
-      state.servers[0] || { id: 'cinema-sub', label: 'Mode Bioskop Tanpa Iklan', kind: 'cinema' };
-    const activeCue = getActiveSubtitleCue(state.subtitleCues, state.elapsedSec);
-    const aiInsight = state.aiInsightsMap[drama.id];
-    const pct = Math.min(100, Math.round((state.elapsedSec / Math.max(1, state.durationSec)) * 100));
+      state.servers.find((s) => s.id === state.activeServerId) || pickBestPlaybackServer(state.servers);
+    const activeCue = state.subtitleIsReal
+      ? getActiveSubtitleCue(state.subtitleCues, state.elapsedSec, { loop: false })
+      : null;
+    const pct = state.durationSec > 0 ? Math.min(100, (state.elapsedSec / state.durationSec) * 100) : 0;
+    const isDailymotion = activeServer?.kind === 'dailymotion';
 
     let mediaSurfaceHtml = '';
-    if (activeServer.kind === 'dailymotion' && activeServer.embedUrl) {
+    if (isDailymotion && activeServer.embedUrl) {
       mediaSurfaceHtml = `
         <iframe
           class="dracin-stage-iframe"
@@ -710,39 +1340,18 @@ export function createDracinController({ onToast = () => {} } = {}) {
           referrerpolicy="no-referrer"
         ></iframe>
       `;
-    } else if (activeServer.kind === 'video' && activeServer.url) {
+    } else {
       mediaSurfaceHtml = `
         <video
           id="dracin-html5-video"
           class="dracin-stage-video"
-          src="${escapeHtml(activeServer.url)}"
           poster="${escapeHtml(drama.poster || drama.fallbackPoster)}"
           playsinline
-          autoplay
-          controls
+          webkit-playsinline
+          preload="auto"
+          data-testid="dracin-html5-video"
         ></video>
-      `;
-    } else {
-      mediaSurfaceHtml = `
-        <div class="dracin-cinema-backdrop">
-          <img
-            src="${escapeHtml(drama.poster || drama.fallbackPoster)}"
-            alt="${escapeHtml(drama.title)}"
-            class="dracin-cinema-img ${state.isPlaying ? 'is-playing' : ''}"
-            referrerpolicy="no-referrer"
-            onerror="this.onerror=null;this.src='${escapeHtml(drama.fallbackPoster)}'"
-          />
-          <div class="dracin-cinema-scrim" aria-hidden="true"></div>
-          <div class="dracin-cinema-center-badge">
-            <button type="button" class="dracin-center-play-btn" id="dracin-toggle-play-btn" aria-label="${state.isPlaying ? 'Jeda episode' : 'Putar episode'}">
-              ${
-                state.isPlaying
-                  ? `<svg width="26" height="26" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="6" y="4" width="4" height="16" rx="1"/><rect x="14" y="4" width="4" height="16" rx="1"/></svg>`
-                  : `<svg width="26" height="26" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><polygon points="6 4 20 12 6 20 6 4"/></svg>`
-              }
-            </button>
-          </div>
-        </div>
+        <div id="dracin-stage-tap-layer" class="dracin-stage-tap-layer" aria-hidden="true"></div>
       `;
     }
 
@@ -751,27 +1360,59 @@ export function createDracinController({ onToast = () => {} } = {}) {
         <div class="dracin-player-col">
           <div
             id="dracin-player-stage"
-            class="dracin-stage ${state.isFullscreen ? 'is-fullscreen' : ''}"
+            class="dracin-stage ${state.isFullscreen ? 'is-fullscreen' : ''} ${state.isFullscreen && state.cleanScreen ? 'is-clean-screen' : ''}"
             data-testid="dracin-player-stage"
             data-episode="${state.currentEpisode}"
             data-fullscreen="${state.isFullscreen ? 'true' : 'false'}"
+            data-clean-screen="${state.isFullscreen && state.cleanScreen ? 'true' : 'false'}"
           >
             ${mediaSurfaceHtml}
+
+            <!-- Real Buffering / Decrypting Loader -->
+            <div id="dracin-media-loader" class="dracin-media-loader" ${state.resolvingStream ? '' : 'hidden'}>
+              <div class="dracin-spinner" aria-hidden="true"></div>
+              <span>${escapeHtml(state.streamStatusText || 'Memuat video HD...')}</span>
+            </div>
+
+            <!-- Real Stream Error Overlay with Instant Retry -->
+            <div id="dracin-media-error" class="dracin-media-error" ${state.streamError ? '' : 'hidden'}>
+              <p>${escapeHtml(state.streamError || 'Gagal memuat video.')}</p>
+              <button type="button" class="btn btn-primary btn-xs" id="dracin-retry-stream-btn">Coba Muat Ulang Stream</button>
+            </div>
+
+            <!-- Autoplay Muted Unmute Pill (only if browser policy forced muted start) -->
+            <button
+              type="button"
+              id="dracin-unmute-banner"
+              class="dracin-unmute-banner"
+              ${state.autoplayMutedNotice && state.isMuted ? '' : 'hidden'}
+            >
+              🔊 Ketuk untuk Aktifkan Suara
+            </button>
 
             <!-- Top Overlay Bar -->
             <div class="dracin-stage-topbar">
               <button type="button" class="dracin-stage-pill-btn" id="dracin-back-discover">
-                ← Daftar Drama
+                ← Daftar
               </button>
               <div class="dracin-stage-title-wrap">
                 <span class="dracin-stage-ep-label">Ep ${state.currentEpisode} / ${drama.totalEpisodes}</span>
                 <strong class="dracin-stage-title">${escapeHtml(drama.title)}</strong>
               </div>
-              ${
-                state.isFullscreen
-                  ? `<button type="button" class="dracin-stage-pill-btn" id="dracin-exit-fs-btn">Keluar Fullscreen</button>`
-                  : `<button type="button" class="dracin-stage-pill-btn" id="dracin-enter-fs-btn">Layar Penuh</button>`
-              }
+              <div class="dracin-stage-top-actions">
+                <button
+                  type="button"
+                  class="dracin-stage-pill-btn dracin-clean-btn"
+                  id="dracin-clean-fs-btn"
+                  data-testid="dracin-clean-fs-btn"
+                  ${state.isFullscreen ? '' : 'hidden'}
+                >
+                  Layar Bersih
+                </button>
+                <button type="button" class="dracin-stage-pill-btn" id="dracin-fs-toggle-top">
+                  ${state.isFullscreen ? 'Keluar Full' : 'Layar Penuh'}
+                </button>
+              </div>
             </div>
 
             <!-- Swipe / Episode Switch Toast -->
@@ -779,12 +1420,39 @@ export function createDracinController({ onToast = () => {} } = {}) {
               ${escapeHtml(state.swipeHintText)}
             </div>
 
-            <!-- Right Vertical Short-Drama Action Rail (TikTok/DramaBox Style) -->
+            <!-- Clean Screen Minimal Restore Button (Visible ONLY in Fullscreen Clean Screen) -->
+            <button
+              type="button"
+              id="dracin-restore-hud-btn"
+              class="dracin-restore-hud-btn"
+              data-testid="dracin-restore-hud-btn"
+              aria-label="Tampilkan kembali menu pemutar"
+              ${state.isFullscreen && state.cleanScreen ? '' : 'hidden'}
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>
+              <span>Tampilkan Menu</span>
+            </button>
+
+            <!-- Right Vertical Short-Drama Action Rail -->
             <div class="dracin-action-rail" aria-label="Kontrol cepat pemutar">
               <button type="button" class="dracin-rail-btn ${isFav ? 'is-active' : ''}" data-dracin-fav="${escapeHtml(drama.id)}" aria-label="Favoritkan drama">
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="${isFav ? 'currentColor' : 'none'}" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"/></svg>
                 <span>${isFav ? 'Disimpan' : 'Favorit'}</span>
               </button>
+
+              ${
+                !isDailymotion
+                  ? `
+                <button type="button" class="dracin-rail-btn ${!state.isMuted ? 'is-active' : ''}" id="dracin-rail-mute-btn" aria-label="${state.isMuted ? 'Nyalakan suara' : 'Bisukan suara'}">
+                  ${
+                    state.isMuted
+                      ? `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><line x1="23" y1="9" x2="17" y2="15"/><line x1="17" y1="9" x2="23" y2="15"/></svg><span>Bisu</span>`
+                      : `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/></svg><span>Suara</span>`
+                  }
+                </button>
+              `
+                  : ''
+              }
 
               <button type="button" class="dracin-rail-btn" id="dracin-rail-episodes-btn" aria-label="Pilih episode">
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
@@ -796,9 +1464,26 @@ export function createDracinController({ onToast = () => {} } = {}) {
                 <span>Sub ${escapeHtml(state.subtitleLang.toUpperCase())}</span>
               </button>
 
-              <button type="button" class="dracin-rail-btn" id="dracin-rail-speed-btn" aria-label="Kecepatan putar">
-                <span class="dracin-rail-speed-val">${state.playbackSpeed}x</span>
-                <span>Cepat</span>
+              ${
+                !isDailymotion
+                  ? `
+                <button type="button" class="dracin-rail-btn" id="dracin-rail-speed-btn" aria-label="Kecepatan putar">
+                  <span class="dracin-rail-speed-val">${state.playbackSpeed}x</span>
+                  <span>Cepat</span>
+                </button>
+              `
+                  : ''
+              }
+
+              <button
+                type="button"
+                class="dracin-rail-btn ${state.cleanScreen ? 'is-active' : ''}"
+                id="dracin-rail-clean-btn"
+                aria-label="Aktifkan mode layar bersih tanpa ikon"
+                ${state.isFullscreen ? '' : 'hidden'}
+              >
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M9.88 9.88a3 3 0 1 0 4.24 4.24"/><path d="M10.73 5.08A10.43 10.43 0 0 1 12 5c7 0 10 7 10 7a13.16 13.16 0 0 1-1.67 2.68"/><path d="M6.61 6.61A13.526 13.526 0 0 0 2 12s3 7 10 7a9.74 9.74 0 0 0 5.39-1.61"/><line x1="2" y1="2" x2="22" y2="22"/></svg>
+                <span>Bersih</span>
               </button>
 
               <button type="button" class="dracin-rail-btn" id="dracin-rail-fs-btn" aria-label="${state.isFullscreen ? 'Keluar layar penuh' : 'Layar penuh'}">
@@ -812,58 +1497,69 @@ export function createDracinController({ onToast = () => {} } = {}) {
               </button>
             </div>
 
-            <!-- Live Auto-Subtitle Bar -->
-            <div class="dracin-stage-bottom">
-              <div
-                id="dracin-live-subtitle"
-                class="dracin-live-subtitle"
-                data-testid="dracin-live-subtitle"
-                ${state.subtitleLang === 'off' || !activeCue?.text ? 'hidden' : ''}
-              >
-                ${escapeHtml(activeCue?.text || '')}
-              </div>
-
-              <div class="dracin-stage-meta-line">
-                <span>${escapeHtml(drama.platformName)}</span>
-                <span aria-hidden="true">·</span>
-                <span>${drama.hasIndonesianDub ? 'Dub & Sub ID' : 'Audio Mandarin · Sub Indo Otomatis'}</span>
-                ${state.isFullscreen ? `<span aria-hidden="true">·</span><span>Geser / Scroll ↑↓ pindah episode</span>` : ''}
-              </div>
-
-              <div class="dracin-progress-track" aria-hidden="true">
-                <div id="dracin-progress-fill" class="dracin-progress-fill" style="width:${pct}%"></div>
-              </div>
-
-              <div class="dracin-stage-controls-row">
-                <button type="button" class="dracin-ep-step-btn" id="dracin-prev-ep-btn" ${nav.hasPrev ? '' : 'disabled'}>
-                  ↑ Ep Sebelumnya
-                </button>
-                <span id="dracin-time-label" class="dracin-time-label">${formatClockTime(state.elapsedSec)} / ${formatClockTime(state.durationSec)}</span>
-                <button type="button" class="dracin-ep-step-btn" id="dracin-next-ep-btn" ${nav.hasNext ? '' : 'disabled'}>
-                  ↓ Ep Berikutnya
-                </button>
-              </div>
+            <!-- Real Synced Subtitle Overlay (Always visible even in Clean Screen if real external subtitles exist) -->
+            <div
+              id="dracin-live-subtitle"
+              class="dracin-live-subtitle"
+              data-testid="dracin-live-subtitle"
+              ${state.subtitleLang === 'off' || !state.subtitleIsReal || !activeCue?.text ? 'hidden' : ''}
+            >
+              ${escapeHtml(activeCue?.text || '')}
             </div>
 
+            <!-- Bottom Controls Bar -->
             ${
-              state.isFullscreen && state.fullscreenDrawerOpen
+              !isDailymotion
                 ? `
-              <div class="dracin-fs-drawer" role="dialog" aria-label="Pilih episode layar penuh">
-                <div class="dracin-fs-drawer-head">
-                  <strong>Pilih Episode (${drama.title})</strong>
-                  <button type="button" class="dracin-stage-pill-btn" id="dracin-close-fs-drawer">Tutup</button>
+              <div class="dracin-stage-bottom">
+                <div class="dracin-stage-meta-line">
+                  <span>${escapeHtml(drama.platformName)}</span>
+                  <span aria-hidden="true">·</span>
+                  <span>${escapeHtml(activeServer?.label || 'Streaming HD')}</span>
+                  <span id="dracin-fs-swipe-hint" ${state.isFullscreen ? '' : 'hidden'}>· Geser / Scroll ↑↓ pindah ep</span>
                 </div>
-                ${renderEpisodePickerGrid(drama, true)}
+
+                <div
+                  id="dracin-progress-track"
+                  class="dracin-progress-track is-seekable"
+                  role="slider"
+                  aria-label="Progres video"
+                  aria-valuemin="0"
+                  aria-valuemax="100"
+                  aria-valuenow="${Math.round(pct)}"
+                  tabindex="0"
+                >
+                  <div id="dracin-progress-fill" class="dracin-progress-fill" style="width:${pct}%"></div>
+                </div>
+
+                <div class="dracin-stage-controls-row">
+                  <button type="button" class="dracin-ep-step-btn" id="dracin-prev-ep-btn" ${nav.hasPrev ? '' : 'disabled'}>
+                    ↑ Ep Sblm
+                  </button>
+                  <button type="button" class="dracin-inline-play-btn ${state.isPlaying ? 'is-playing' : ''}" id="dracin-toggle-play-btn" aria-label="${state.isPlaying ? 'Jeda video' : 'Putar video'}">
+                    ${
+                      state.isPlaying
+                        ? `<svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="6" y="4" width="4" height="16" rx="1"/><rect x="14" y="4" width="4" height="16" rx="1"/></svg>`
+                        : `<svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><polygon points="6 4 20 12 6 20 6 4"/></svg>`
+                    }
+                  </button>
+                  <span id="dracin-time-label" class="dracin-time-label">
+                    ${state.durationSec > 0 ? `${formatClockTime(state.elapsedSec)} / ${formatClockTime(state.durationSec)}` : '0:00 / --:--'}
+                  </span>
+                  <button type="button" class="dracin-ep-step-btn" id="dracin-next-ep-btn" ${nav.hasNext ? '' : 'disabled'}>
+                    ↓ Ep Lanjut
+                  </button>
+                </div>
               </div>
             `
                 : ''
             }
           </div>
 
-          <!-- Server Auto-Failover & Subtitle Language Controls -->
+          <!-- Quality / Server Switcher & Subtitle Controls -->
           <div class="dracin-player-toolbar">
             <div class="dracin-toolbar-group">
-              <label for="dracin-sub-select" class="dracin-toolbar-label">Subtitle Otomatis</label>
+              <label for="dracin-sub-select" class="dracin-toolbar-label">Subtitle & Audio</label>
               <select id="dracin-sub-select" class="dracin-select" aria-label="Pilih bahasa subtitle">
                 ${DRACIN_SUBTITLE_LANGS.map(
                   (l) => `<option value="${l.code}" ${state.subtitleLang === l.code ? 'selected' : ''}>${escapeHtml(l.label)}</option>`
@@ -873,21 +1569,25 @@ export function createDracinController({ onToast = () => {} } = {}) {
             </div>
 
             <div class="dracin-toolbar-group">
-              <span class="dracin-toolbar-label">Server Paralel (Auto-Failover)</span>
+              <span class="dracin-toolbar-label">Kualitas Video & Server Live</span>
               <div class="dracin-server-row">
-                ${(state.servers.length ? state.servers : [{ id: 'cinema-sub', label: 'Server 1 · Mode Bioskop Tanpa Iklan' }])
-                  .map(
-                    (srv) => `
-                  <button
-                    type="button"
-                    class="dracin-server-btn ${activeServer.id === srv.id ? 'is-active' : ''}"
-                    data-dracin-server="${escapeHtml(srv.id)}"
-                  >
-                    ${escapeHtml(srv.label)}
-                  </button>
-                `
-                  )
-                  .join('')}
+                ${
+                  state.servers.length
+                    ? state.servers
+                        .map(
+                          (srv) => `
+                        <button
+                          type="button"
+                          class="dracin-server-btn ${activeServer?.id === srv.id ? 'is-active' : ''}"
+                          data-dracin-server="${escapeHtml(srv.id)}"
+                        >
+                          ${escapeHtml(srv.label)}
+                        </button>
+                      `
+                        )
+                        .join('')
+                    : `<span class="dracin-toolbar-note">${state.resolvingStream ? 'Mengambil link video HD...' : 'Belum ada server aktif'}</span>`
+                }
                 <label class="dracin-autonext-toggle">
                   <input type="checkbox" id="dracin-autonext-check" ${state.autoNext ? 'checked' : ''} />
                   <span>Auto-Lanjut Ep</span>
@@ -897,9 +1597,11 @@ export function createDracinController({ onToast = () => {} } = {}) {
           </div>
         </div>
 
-        <!-- Right Column: Episode Picker + Drama Info + Keyless Multi-AI Insights -->
+        <!-- Right Column: Episode Picker + Drama Info + AI Insights -->
         <aside class="dracin-side-col">
-          ${renderEpisodePickerGrid(drama, false)}
+          <div id="dracin-side-ep-wrap">
+            ${renderEpisodePickerGrid(drama, false)}
+          </div>
 
           <div class="dracin-info-box">
             <div class="dracin-info-head">
@@ -911,48 +1613,16 @@ export function createDracinController({ onToast = () => {} } = {}) {
               <span aria-hidden="true">·</span>
               <span>${escapeHtml(getGenreLabel(drama.genre))}</span>
               <span aria-hidden="true">·</span>
-              <span>${drama.year}</span>
-              <span aria-hidden="true">·</span>
-              <span>★ ${drama.rating.toFixed(1)}</span>
-              <span aria-hidden="true">·</span>
-              <span>${escapeHtml(drama.viewsLabel)} tayangan</span>
+              <span>${drama.totalEpisodes} Episode</span>
             </div>
             <p class="dracin-synopsis">${escapeHtml(drama.synopsis)}</p>
-            <p class="dracin-cast"><strong>Pemeran:</strong> ${escapeHtml((drama.cast || []).join(', '))}</p>
-
-            <div class="dracin-ai-card">
-              <div class="dracin-ai-card-head">
-                <strong>Asisten AI Dracin (Multi-AI Gratis Tanpa Key)</strong>
-                <button type="button" class="btn btn-secondary btn-xs" id="dracin-ai-insight-btn" ${state.aiInsightsLoading ? 'disabled' : ''}>
-                  ${state.aiInsightsLoading ? 'Menganalisis...' : aiInsight ? 'Perbarui Analisis AI' : 'Ringkasan & Rekomendasi AI'}
-                </button>
-              </div>
-              ${
-                aiInsight
-                  ? `
-                <p class="dracin-ai-text">${escapeHtml(aiInsight.insight)}</p>
-                <span class="dracin-ai-engine">Sumber: ${escapeHtml(aiInsight.engine)}</span>
-                ${
-                  aiInsight.similar?.length
-                    ? `
-                  <div class="dracin-similar-row">
-                    ${aiInsight.similar
-                      .map(
-                        (sim) => `
-                      <button type="button" class="dracin-similar-btn" data-dracin-open="${escapeHtml(sim.id)}">
-                        <span>${escapeHtml(sim.title)}</span>
-                        <small>${escapeHtml(sim.platformName)} · ${sim.totalEpisodes} Ep</small>
-                      </button>
-                    `
-                      )
-                      .join('')}
-                  </div>
-                `
-                    : ''
-                }
-              `
-                  : `<p class="dracin-ai-hint">Klik tombol di atas untuk ringkasan tanpa spoiler & rekomendasi drama mirip lintas 18 platform (Gemini / ChatGPT / Claude Open).</p>`
-              }
+            ${
+              drama.cast?.length
+                ? `<p class="dracin-cast"><strong>Pemeran:</strong> ${escapeHtml(drama.cast.join(', '))}</p>`
+                : ''
+            }
+            <div class="dracin-ai-card" id="dracin-ai-card-box">
+              ${renderAiInsightCardInner(drama)}
             </div>
           </div>
         </aside>
@@ -968,7 +1638,7 @@ export function createDracinController({ onToast = () => {} } = {}) {
           <h3>Cari Judul Drama dari Klip Video atau Screenshot</h3>
           <p class="dracin-clip-desc">
             Unggah potongan video pendek (MP4/MOV/WebM) atau gambar screenshot cuplikan (JPG/PNG/WebP).
-            Sistem membaca sidik visual & rasio frame lalu menggabungkan Multi-AI Tanpa Key (Gemini, ChatGPT, Claude/Mistral Open) dengan pencarian paralel 18 platform.
+            Sistem membaca sidik visual & rasio frame lalu menggabungkan Multi-AI dengan pencarian live platform short drama.
           </p>
 
           <div class="dracin-clip-upload-zone">
@@ -983,24 +1653,19 @@ export function createDracinController({ onToast = () => {} } = {}) {
                 <span>Mendukung JPG, PNG, WebP, MP4, MOV, WebM</span>
               </div>
             </label>
-            <input
-              type="file"
-              id="dracin-clip-file-input"
-              accept="image/*,video/*"
-              class="dracin-sr-file"
-            />
+            <input type="file" id="dracin-clip-file-input" accept="image/*,video/*" class="dracin-sr-file" />
           </div>
 
           <div class="dracin-clip-clue-group">
             <label for="dracin-clip-clue-input" class="dracin-toolbar-label">
-              Petunjuk Adegan / Dialog / Subtitle di Cuplikan (Opsional — Memperkuat Akurasi AI)
+              Petunjuk Adegan / Dialog / Subtitle di Cuplikan (Opsional)
             </label>
             <input
               type="text"
               id="dracin-clip-clue-input"
               class="dracin-text-input"
               value="${escapeHtml(state.clipClue)}"
-              placeholder="Contoh: CEO menantu dihina di pesta, dokter gunung giok, selir istana dingin..."
+              placeholder="Contoh: CEO menantu dihina di pesta, sistem cinta, dokter jenius..."
             />
           </div>
 
@@ -1068,16 +1733,11 @@ export function createDracinController({ onToast = () => {} } = {}) {
                       <span aria-hidden="true">·</span>
                       <span>Perkiraan sekitar Ep ${m.estimatedEpisode}</span>
                       <span aria-hidden="true">·</span>
-                      <span>${m.drama.totalEpisodes} Episode Penuh</span>
+                      <span>${m.drama.totalEpisodes} Episode</span>
                     </div>
                     <p class="dracin-match-reason">${escapeHtml(m.reasons.join(' · '))}</p>
                     <div class="dracin-match-actions">
-                      <button
-                        type="button"
-                        class="btn btn-primary btn-xs"
-                        data-dracin-resume="${escapeHtml(m.drama.id)}"
-                        data-dracin-resume-ep="${m.estimatedEpisode}"
-                      >
+                      <button type="button" class="btn btn-primary btn-xs" data-dracin-resume="${escapeHtml(m.drama.id)}" data-dracin-resume-ep="${m.estimatedEpisode}">
                         Tonton Ep ${m.estimatedEpisode}
                       </button>
                       <button type="button" class="btn btn-secondary btn-xs" data-dracin-open="${escapeHtml(m.drama.id)}">
@@ -1117,7 +1777,7 @@ export function createDracinController({ onToast = () => {} } = {}) {
             ? `
           <div class="dracin-empty-state">
             <p>Belum ada riwayat menonton drama. Mulai tonton drama pendek gratis sekarang.</p>
-            <button type="button" class="btn btn-primary btn-sm" data-dracin-view="discover">Jelajahi 18 Platform</button>
+            <button type="button" class="btn btn-primary btn-sm" data-dracin-view="discover">Jelajahi Platform</button>
           </div>
         `
             : `
@@ -1129,14 +1789,9 @@ export function createDracinController({ onToast = () => {} } = {}) {
                 <img src="${escapeHtml(h.poster)}" alt="" class="dracin-history-poster" referrerpolicy="no-referrer" />
                 <div class="dracin-history-copy">
                   <strong>${escapeHtml(h.title)}</strong>
-                  <span>${escapeHtml(h.platformName)} · Terakhir di Episode ${h.episode} dari ${h.totalEpisodes} · Sub ${escapeHtml((h.subtitleLang || 'id').toUpperCase())}</span>
+                  <span>${escapeHtml(h.platformName)} · Terakhir di Episode ${h.episode} dari ${h.totalEpisodes}</span>
                 </div>
-                <button
-                  type="button"
-                  class="btn btn-primary btn-xs"
-                  data-dracin-resume="${escapeHtml(h.dramaId)}"
-                  data-dracin-resume-ep="${h.episode}"
-                >
+                <button type="button" class="btn btn-primary btn-xs" data-dracin-resume="${escapeHtml(h.dramaId)}" data-dracin-resume-ep="${h.episode}">
                   Lanjut Ep ${h.episode}
                 </button>
               </article>
@@ -1178,6 +1833,79 @@ export function createDracinController({ onToast = () => {} } = {}) {
     `;
   }
 
+  function bindEpisodePickerEvents(container) {
+    if (!container) return;
+    const drama = getActiveDrama();
+    container.querySelectorAll('[data-dracin-range]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        state.epRangeStart = Math.max(1, Number(btn.getAttribute('data-dracin-range')) || 1);
+        if (drama) {
+          container.innerHTML = renderEpisodePickerGrid(drama, container.classList.contains('dracin-fs-drawer-body'));
+          bindEpisodePickerEvents(container);
+        }
+      });
+    });
+    container.querySelectorAll('[data-dracin-ep]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const ep = Number(btn.getAttribute('data-dracin-ep')) || 1;
+        selectEpisode(ep, { announce: `Episode ${ep}` });
+      });
+    });
+    container.querySelectorAll('[data-dracin-jump-form]').forEach((form) => {
+      form.addEventListener('submit', (e) => {
+        e.preventDefault();
+        const input = form.querySelector('[data-dracin-jump-input]');
+        const ep = Number(input?.value) || 1;
+        selectEpisode(ep, { announce: `Episode ${ep}` });
+      });
+    });
+  }
+
+  function bindAiInsightEvents(container, drama) {
+    if (!container) return;
+    container.querySelector('#dracin-ai-insight-btn')?.addEventListener('click', () => {
+      handleLoadAiInsights(drama);
+    });
+    container.querySelectorAll('[data-dracin-open]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const id = btn.getAttribute('data-dracin-open');
+        if (id) openDrama(id);
+      });
+    });
+  }
+
+  function toggleFullscreenEpisodeDrawer() {
+    const stageEl = hostEl?.querySelector('#dracin-player-stage');
+    const drama = getActiveDrama();
+    if (!stageEl || !drama) return;
+    const existing = stageEl.querySelector('.dracin-fs-drawer');
+    if (existing) {
+      existing.remove();
+      state.fullscreenDrawerOpen = false;
+      return;
+    }
+    state.fullscreenDrawerOpen = true;
+    const drawer = document.createElement('div');
+    drawer.className = 'dracin-fs-drawer';
+    drawer.setAttribute('role', 'dialog');
+    drawer.setAttribute('aria-label', 'Pilih episode layar penuh');
+    drawer.innerHTML = `
+      <div class="dracin-fs-drawer-head">
+        <strong>Pilih Episode (${escapeHtml(drama.title)})</strong>
+        <button type="button" class="dracin-stage-pill-btn" id="dracin-close-fs-drawer">Tutup</button>
+      </div>
+      <div class="dracin-fs-drawer-body">
+        ${renderEpisodePickerGrid(drama, true)}
+      </div>
+    `;
+    stageEl.appendChild(drawer);
+    drawer.querySelector('#dracin-close-fs-drawer')?.addEventListener('click', () => {
+      drawer.remove();
+      state.fullscreenDrawerOpen = false;
+    });
+    bindEpisodePickerEvents(drawer.querySelector('.dracin-fs-drawer-body'));
+  }
+
   function bindEvents() {
     if (!hostEl) return;
 
@@ -1187,13 +1915,17 @@ export function createDracinController({ onToast = () => {} } = {}) {
         const nextView = btn.getAttribute('data-dracin-view');
         if (!nextView) return;
         if (nextView === 'player' && !state.activeDramaId) {
-          openDrama(state.catalog[0]?.id, 1);
+          if (state.catalog[0]) openDrama(state.catalog[0].id, 1);
+          else onToast('Tunggu daftar drama selesai dimuat');
           return;
         }
+        if (nextView !== 'player') {
+          if (state.isFullscreen) toggleFullscreenMode(false);
+          destroyActiveMediaEngine();
+        }
         state.view = nextView;
-        if (nextView !== 'player') stopPlaybackTimer();
-        else startPlaybackTimer();
         render();
+        if (nextView === 'player') attachMediaToActiveStage();
       });
     });
 
@@ -1202,24 +1934,33 @@ export function createDracinController({ onToast = () => {} } = {}) {
       e.preventDefault();
       const input = hostEl.querySelector('#dracin-search-input');
       state.searchQuery = String(input?.value || '').trim();
-      refreshParallelCatalog({ query: state.searchQuery, platformId: state.platformId });
+      refreshLiveCatalog({ query: state.searchQuery, platformId: state.platformId, page: 1 });
     });
 
     hostEl.querySelector('#dracin-search-input')?.addEventListener('input', (e) => {
       state.searchQuery = String(e.target.value || '');
-      if (!state.searchQuery) render();
+      if (!state.searchQuery) {
+        refreshLiveCatalog({ query: '', platformId: state.platformId, page: 1 });
+      }
     });
 
     hostEl.querySelector('#dracin-search-clear')?.addEventListener('click', () => {
       state.searchQuery = '';
-      render();
+      refreshLiveCatalog({ query: '', platformId: state.platformId, page: 1 });
     });
 
-    // Platform filter chips
+    // Platform filter chips -> FETCH REAL-TIME CATALOG FOR SELECTED PLATFORM!
     hostEl.querySelectorAll('[data-dracin-platform]').forEach((btn) => {
       btn.addEventListener('click', () => {
-        state.platformId = btn.getAttribute('data-dracin-platform') || 'all';
-        render();
+        const nextPlat = btn.getAttribute('data-dracin-platform') || 'all';
+        state.platformId = nextPlat;
+        state.genreId = 'all';
+        const alreadyLoaded = state.platformCatalogs[nextPlat];
+        if (!alreadyLoaded || state.searchQuery) {
+          refreshLiveCatalog({ query: state.searchQuery, platformId: nextPlat, page: 1 });
+        } else {
+          render();
+        }
       });
     });
 
@@ -1231,11 +1972,25 @@ export function createDracinController({ onToast = () => {} } = {}) {
       });
     });
 
+    hostEl.querySelector('#dracin-retry-feed')?.addEventListener('click', () => {
+      refreshLiveCatalog({ query: state.searchQuery, platformId: state.platformId, page: 1 });
+    });
+
     hostEl.querySelector('#dracin-reset-filters')?.addEventListener('click', () => {
       state.platformId = 'all';
       state.genreId = 'all';
       state.searchQuery = '';
-      render();
+      refreshLiveCatalog({ query: '', platformId: 'all', page: 1 });
+    });
+
+    hostEl.querySelector('#dracin-load-more-btn')?.addEventListener('click', () => {
+      const info = state.platformCatalogs[state.platformId] || { page: 1 };
+      refreshLiveCatalog({
+        query: state.searchQuery,
+        platformId: state.platformId,
+        page: (info.page || 1) + 1,
+        append: true,
+      });
     });
 
     // Open drama cards
@@ -1255,7 +2010,7 @@ export function createDracinController({ onToast = () => {} } = {}) {
       });
     });
 
-    // Favorite toggles
+    // Favorite toggles (in-place on player so video doesn't restart!)
     hostEl.querySelectorAll('[data-dracin-fav]').forEach((btn) => {
       btn.addEventListener('click', (e) => {
         e.stopPropagation();
@@ -1265,44 +2020,94 @@ export function createDracinController({ onToast = () => {} } = {}) {
         state.favorites = toggleFavoriteDramaId(state.favorites, id);
         writeStorageJson(FAVORITES_STORAGE_KEY, state.favorites);
         onToast(wasFav ? 'Dihapus dari daftar favorit' : 'Disimpan ke daftar favorit');
-        render();
+        if (state.view === 'player') {
+          btn.classList.toggle('is-active', !wasFav);
+          const span = btn.querySelector('span');
+          if (span) span.textContent = !wasFav ? 'Disimpan' : 'Favorit';
+          const svg = btn.querySelector('svg');
+          if (svg) svg.setAttribute('fill', !wasFav ? 'currentColor' : 'none');
+        } else {
+          render();
+        }
       });
     });
 
     // Player controls
     hostEl.querySelector('#dracin-back-discover')?.addEventListener('click', () => {
       if (state.isFullscreen) toggleFullscreenMode(false);
+      destroyActiveMediaEngine();
       state.view = 'discover';
-      stopPlaybackTimer();
       render();
     });
 
-    hostEl.querySelector('#dracin-toggle-play-btn')?.addEventListener('click', () => {
-      state.isPlaying = !state.isPlaying;
-      if (state.isPlaying) startPlaybackTimer();
-      else stopPlaybackTimer();
-      render();
+    hostEl.querySelector('#dracin-retry-stream-btn')?.addEventListener('click', () => {
+      selectEpisode(state.currentEpisode, { announce: `Memuat ulang Episode ${state.currentEpisode}` });
     });
+
+    hostEl.querySelector('#dracin-toggle-play-btn')?.addEventListener('click', togglePlayPauseInPlace);
+
+    hostEl.querySelector('#dracin-stage-tap-layer')?.addEventListener('click', () => {
+      if (state.isFullscreen && state.cleanScreen) {
+        setCleanScreenMode(false);
+        return;
+      }
+      togglePlayPauseInPlace();
+    });
+
+    hostEl.querySelector('#dracin-unmute-banner')?.addEventListener('click', () => {
+      const videoEl = hostEl?.querySelector('#dracin-html5-video');
+      state.isMuted = false;
+      state.autoplayMutedNotice = false;
+      if (videoEl) {
+        videoEl.muted = false;
+        videoEl.volume = 1;
+      }
+      syncMuteUiInPlace();
+      onToast('Suara video aktif');
+    });
+
+    hostEl.querySelector('#dracin-rail-mute-btn')?.addEventListener('click', () => {
+      const videoEl = hostEl?.querySelector('#dracin-html5-video');
+      state.isMuted = !state.isMuted;
+      state.autoplayMutedNotice = false;
+      if (videoEl) {
+        videoEl.muted = state.isMuted;
+        if (!state.isMuted) videoEl.volume = 1;
+      }
+      syncMuteUiInPlace();
+      onToast(state.isMuted ? 'Suara dibisukan' : 'Suara video aktif');
+    });
+
+    // Seekable progress track
+    const progressTrack = hostEl.querySelector('#dracin-progress-track');
+    if (progressTrack) {
+      progressTrack.addEventListener('click', (e) => {
+        const videoEl = hostEl?.querySelector('#dracin-html5-video');
+        if (!videoEl || !Number.isFinite(videoEl.duration) || videoEl.duration <= 0) return;
+        const rect = progressTrack.getBoundingClientRect();
+        const ratio = Math.max(0, Math.min(1, (e.clientX - rect.left) / Math.max(1, rect.width)));
+        videoEl.currentTime = ratio * videoEl.duration;
+        state.elapsedSec = videoEl.currentTime;
+        syncPlayerLiveDom();
+      });
+    }
 
     hostEl.querySelector('#dracin-prev-ep-btn')?.addEventListener('click', () => handleEpisodeStep(-1));
     hostEl.querySelector('#dracin-next-ep-btn')?.addEventListener('click', () => handleEpisodeStep(1));
 
-    hostEl.querySelector('#dracin-enter-fs-btn')?.addEventListener('click', () => toggleFullscreenMode(true));
-    hostEl.querySelector('#dracin-exit-fs-btn')?.addEventListener('click', () => toggleFullscreenMode(false));
+    // Fullscreen & Clean Screen ("Layar Bersih") controls — all IN-PLACE (zero video reload!)
+    hostEl.querySelector('#dracin-fs-toggle-top')?.addEventListener('click', () => toggleFullscreenMode());
     hostEl.querySelector('#dracin-rail-fs-btn')?.addEventListener('click', () => toggleFullscreenMode());
+    hostEl.querySelector('#dracin-clean-fs-btn')?.addEventListener('click', () => setCleanScreenMode(true));
+    hostEl.querySelector('#dracin-rail-clean-btn')?.addEventListener('click', () => setCleanScreenMode());
+    hostEl.querySelector('#dracin-restore-hud-btn')?.addEventListener('click', () => setCleanScreenMode(false));
 
     hostEl.querySelector('#dracin-rail-episodes-btn')?.addEventListener('click', () => {
       if (state.isFullscreen) {
-        state.fullscreenDrawerOpen = !state.fullscreenDrawerOpen;
-        render();
+        toggleFullscreenEpisodeDrawer();
       } else {
         hostEl.querySelector('.dracin-ep-picker')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
       }
-    });
-
-    hostEl.querySelector('#dracin-close-fs-drawer')?.addEventListener('click', () => {
-      state.fullscreenDrawerOpen = false;
-      render();
     });
 
     hostEl.querySelector('#dracin-rail-sub-btn')?.addEventListener('click', async () => {
@@ -1310,15 +2115,19 @@ export function createDracinController({ onToast = () => {} } = {}) {
       const next = DRACIN_SUBTITLE_LANGS[(idx + 1) % DRACIN_SUBTITLE_LANGS.length];
       state.userSubtitleOverride = next.code;
       await loadSubtitlesForActiveEpisode(getActiveDrama(), state.currentEpisode, next.code);
+      const railSpan = hostEl?.querySelector('#dracin-rail-sub-btn span');
+      if (railSpan) railSpan.textContent = `Sub ${next.code.toUpperCase()}`;
+      const sel = hostEl?.querySelector('#dracin-sub-select');
+      if (sel) sel.value = next.code;
       onToast(`Subtitle: ${next.label}`);
-      render();
     });
 
     hostEl.querySelector('#dracin-sub-select')?.addEventListener('change', async (e) => {
       const code = String(e.target.value || 'id');
       state.userSubtitleOverride = code;
       await loadSubtitlesForActiveEpisode(getActiveDrama(), state.currentEpisode, code);
-      render();
+      const railSpan = hostEl?.querySelector('#dracin-rail-sub-btn span');
+      if (railSpan) railSpan.textContent = `Sub ${code.toUpperCase()}`;
     });
 
     hostEl.querySelector('#dracin-rail-speed-btn')?.addEventListener('click', () => {
@@ -1326,8 +2135,9 @@ export function createDracinController({ onToast = () => {} } = {}) {
       state.playbackSpeed = DRACIN_PLAYBACK_SPEEDS[(idx + 1) % DRACIN_PLAYBACK_SPEEDS.length];
       const videoEl = hostEl.querySelector('#dracin-html5-video');
       if (videoEl) videoEl.playbackRate = state.playbackSpeed;
+      const valEl = hostEl.querySelector('.dracin-rail-speed-val');
+      if (valEl) valEl.textContent = `${state.playbackSpeed}x`;
       onToast(`Kecepatan putar ${state.playbackSpeed}x`);
-      render();
     });
 
     hostEl.querySelector('#dracin-rail-share-btn')?.addEventListener('click', async () => {
@@ -1346,44 +2156,24 @@ export function createDracinController({ onToast = () => {} } = {}) {
       state.autoNext = Boolean(e.target.checked);
     });
 
-    // Server switcher
+    // Server / quality switcher
     hostEl.querySelectorAll('[data-dracin-server]').forEach((btn) => {
       btn.addEventListener('click', () => {
         const srvId = btn.getAttribute('data-dracin-server');
-        if (!srvId) return;
+        if (!srvId || srvId === state.activeServerId) return;
         state.activeServerId = srvId;
-        onToast('Beralih server pemutar');
+        state.triedServerIds = new Set();
+        onToast(`Beralih ke ${btn.textContent?.trim() || 'server lain'}`);
         render();
+        attachMediaToActiveStage();
       });
     });
 
-    // Episode range tabs
-    hostEl.querySelectorAll('[data-dracin-range]').forEach((btn) => {
-      btn.addEventListener('click', () => {
-        state.epRangeStart = Math.max(1, Number(btn.getAttribute('data-dracin-range')) || 1);
-        render();
-      });
-    });
+    // Episode picker & AI card in side column
+    bindEpisodePickerEvents(hostEl.querySelector('#dracin-side-ep-wrap'));
+    bindAiInsightEvents(hostEl.querySelector('#dracin-ai-card-box'), getActiveDrama());
 
-    // Individual episode buttons
-    hostEl.querySelectorAll('[data-dracin-ep]').forEach((btn) => {
-      btn.addEventListener('click', () => {
-        const ep = Number(btn.getAttribute('data-dracin-ep')) || 1;
-        selectEpisode(ep, { announce: `Melompat ke Episode ${ep}` });
-      });
-    });
-
-    // Direct jump-to-episode form
-    hostEl.querySelectorAll('[data-dracin-jump-form]').forEach((form) => {
-      form.addEventListener('submit', (e) => {
-        e.preventDefault();
-        const input = form.querySelector('[data-dracin-jump-input]');
-        const ep = Number(input?.value) || 1;
-        selectEpisode(ep, { announce: `Melompat ke Episode ${ep}` });
-      });
-    });
-
-    // Fullscreen wheel & vertical touch swipe episode switching (Rule #4)
+    // Fullscreen wheel & vertical touch swipe episode switching
     const stageEl = hostEl.querySelector('#dracin-player-stage');
     if (stageEl) {
       stageEl.addEventListener(
@@ -1424,11 +2214,6 @@ export function createDracinController({ onToast = () => {} } = {}) {
       );
     }
 
-    // AI insights button
-    hostEl.querySelector('#dracin-ai-insight-btn')?.addEventListener('click', () => {
-      handleLoadAiInsights(getActiveDrama());
-    });
-
     // Clip / Screenshot identifier controls
     hostEl.querySelector('#dracin-clip-file-input')?.addEventListener('change', (e) => {
       const file = e.target.files?.[0];
@@ -1436,11 +2221,7 @@ export function createDracinController({ onToast = () => {} } = {}) {
       state.clipFile = file;
       state.clipFileName = file.name;
       state.clipError = '';
-      if (/^image\//i.test(file.type)) {
-        state.clipPreviewUrl = URL.createObjectURL(file);
-      } else {
-        state.clipPreviewUrl = '';
-      }
+      state.clipPreviewUrl = /^image\//i.test(file.type) ? URL.createObjectURL(file) : '';
       render();
     });
 
@@ -1487,13 +2268,13 @@ export function createDracinController({ onToast = () => {} } = {}) {
       <div class="dracin-app" data-dracin-view-active="${escapeHtml(state.view)}">
         <div class="dracin-topbar-tabs" role="tablist" aria-label="Menu Drama China">
           <button type="button" role="tab" class="dracin-nav-tab ${state.view === 'discover' ? 'is-active' : ''}" data-dracin-view="discover" aria-selected="${state.view === 'discover'}">
-            Jelajah 18 Platform
+            Jelajah
           </button>
           <button type="button" role="tab" class="dracin-nav-tab ${state.view === 'player' ? 'is-active' : ''}" data-dracin-view="player" aria-selected="${state.view === 'player'}">
-            ${activeDrama && state.activeDramaId ? `Pemutar · Ep ${state.currentEpisode}` : 'Pemutar Drama'}
+            ${activeDrama && state.activeDramaId ? `Pemutar · Ep ${state.currentEpisode}` : 'Pemutar'}
           </button>
           <button type="button" role="tab" class="dracin-nav-tab ${state.view === 'clip' ? 'is-active' : ''}" data-dracin-view="clip" aria-selected="${state.view === 'clip'}">
-            Cari Klip / Screenshot + AI
+            Cari Klip AI
           </button>
           <button type="button" role="tab" class="dracin-nav-tab ${state.view === 'history' ? 'is-active' : ''}" data-dracin-view="history" aria-selected="${state.view === 'history'}">
             Riwayat (${state.history.length})
@@ -1516,31 +2297,29 @@ export function createDracinController({ onToast = () => {} } = {}) {
     mount(targetEl) {
       hostEl = targetEl;
       bindGlobalListeners();
-
-      // Support deep-linking ?tab=dracin&id=...&ep=...
-      try {
-        const params = new URLSearchParams(window.location.search);
-        const deepId = params.get('id');
-        const deepEp = Number(params.get('ep')) || 1;
-        if (deepId && state.catalog.some((d) => d.id === deepId) && !state.activeDramaId) {
-          openDrama(deepId, deepEp);
-        } else {
-          render();
-        }
-      } catch {
-        render();
-      }
+      render();
 
       if (!hasInitialFetched) {
         hasInitialFetched = true;
-        refreshParallelCatalog();
-      }
-      if (state.view === 'player') {
-        startPlaybackTimer();
+        refreshLiveCatalog({ platformId: state.platformId, page: 1 }).then(() => {
+          // Support deep-linking ?tab=dracin&id=...&ep=...
+          try {
+            const params = new URLSearchParams(window.location.search);
+            const deepId = params.get('id');
+            const deepEp = Number(params.get('ep')) || 1;
+            if (deepId && !state.activeDramaId) {
+              openDrama(deepId, deepEp);
+            }
+          } catch {
+            // Ignore malformed URL params
+          }
+        });
+      } else if (state.view === 'player') {
+        attachMediaToActiveStage();
       }
     },
     unmount() {
-      stopPlaybackTimer();
+      destroyActiveMediaEngine();
       unbindGlobalListeners();
       hostEl = null;
     },

@@ -1,4 +1,4 @@
-const CACHE_NAME = 'manifestudio-cache-v51';
+const CACHE_NAME = 'manifestudio-cache-v52';
 
 const PRECACHE_ASSETS = [
   './',
@@ -23,6 +23,7 @@ const PRECACHE_ASSETS = [
   './js/song-finder.js',
   './js/media-engine.js',
   './js/vendor/lame.min.js',
+  './js/vendor/hls.min.js',
   './js/vendor/ffmpeg/index.js',
   './js/vendor/ffmpeg/classes.js',
   './js/vendor/ffmpeg/const.js',
@@ -35,6 +36,7 @@ const PRECACHE_ASSETS = [
   './js/music-logic.js',
   './js/music.js',
   './js/dracin-logic.js',
+  './js/dracin-cenc.js',
   './js/dracin.js',
   './js/dracin-ui.js',
   './js/receipt.js',

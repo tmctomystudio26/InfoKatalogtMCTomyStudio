@@ -15,11 +15,11 @@ import {
   formatBytes,
   parseAndSanitizeAiCompressionRecipe,
   planMediaCompression,
-} from './tools-logic.js?v=51';
+} from './tools-logic.js?v=52';
 import {
   compressVideoWithRealEngine,
   verifyPlayableMediaBlob,
-} from './media-engine.js?v=51';
+} from './media-engine.js?v=52';
 
 /**
  * Builds an open-source GitHub `weserv/images` (wsrv.nl) libvips compression API URL
