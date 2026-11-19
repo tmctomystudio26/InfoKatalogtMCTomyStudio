@@ -11,6 +11,7 @@ import {
   buildEpisodeSubtitleCues,
   buildWebVttFromCues,
   filterDracinCatalog,
+  filterDracinPlatforms,
   getActiveSubtitleCue,
   getNextPrevEpisode,
   mergeParallelDracinFeeds,
@@ -23,7 +24,10 @@ import {
   resolveAnichinMediaUrl,
   resolveAutoSubtitleLang,
   resolveCleanScreenState,
+  resolveNextMuteState,
+  shouldPreserveFullscreenOnEpisodeChange,
   toggleFavoriteDramaId,
+  unwrapHlsJsonPayload,
   upsertWatchHistory,
 } from './dracin-logic.js';
 import {
@@ -3393,6 +3397,56 @@ test('v52 Drama China real-time API normalization, VTT/SRT parsing, real server 
   assert.equal(parsedBoxes[0].type, 'ftyp');
   assert.equal(parsedBoxes[0].size, 8);
 });
+
+test('v53 Drama China searchable platform dropdown, FlickReels JSON-HLS unwrapper, non-sticky mute state, and persistent fullscreen transitions work accurately', () => {
+  // 1. Searchable platform dropdown filtering
+  assert.equal(filterDracinPlatforms('').length, DRACIN_PLATFORMS.length);
+  const meloMatches = filterDracinPlatforms('melo');
+  assert.equal(meloMatches.length, 1);
+  assert.equal(meloMatches[0].id, 'melolo');
+  const shortMatches = filterDracinPlatforms('short');
+  assert.ok(shortMatches.some((p) => p.id === 'shortmax'));
+  assert.ok(shortMatches.some((p) => p.id === 'goodshort'));
+  assert.ok(shortMatches.some((p) => p.id === 'reelshort'));
+  assert.equal(filterDracinPlatforms('tidak-ada-platform-xyz').length, 0);
+
+  // 2. JSON-wrapped HLS proxy unwrapping (FlickReels /api/flickreels/hls)
+  const flickJson = JSON.stringify({
+    url: 'https://zshipricf.farsunpteltd.net/playlet-hls/hls_demo.m3u8?verify=123',
+  });
+  assert.equal(
+    unwrapHlsJsonPayload(flickJson, 'https://miniapp.anichin.bio/api/flickreels/hls?id=1'),
+    'https://zshipricf.farsunpteltd.net/playlet-hls/hls_demo.m3u8?verify=123'
+  );
+  // Real #EXTM3U playlists remain untouched
+  assert.equal(
+    unwrapHlsJsonPayload('#EXTM3U\n#EXT-X-VERSION:3\n', 'https://miniapp.anichin.bio/api/shortmax/hls?id=1'),
+    'https://miniapp.anichin.bio/api/shortmax/hls?id=1'
+  );
+
+  // 3. Non-sticky autoplay mute resolution (never overwrites userMuted!)
+  const blockedState = resolveNextMuteState({ userMuted: false, autoplayBlocked: true });
+  assert.equal(blockedState.effectiveMuted, true);
+  assert.equal(blockedState.userMuted, false);
+  assert.equal(blockedState.showUnmuteNotice, true);
+
+  // Next episode starts UNMUTED because userMuted stayed false!
+  const nextEpState = resolveNextMuteState({ userMuted: blockedState.userMuted, autoplayBlocked: false });
+  assert.equal(nextEpState.effectiveMuted, false);
+  assert.equal(nextEpState.showUnmuteNotice, false);
+
+  // Explicit user mute is respected without showing autoplay banner
+  const explicitMuted = resolveNextMuteState({ userMuted: true, autoplayBlocked: false });
+  assert.equal(explicitMuted.effectiveMuted, true);
+  assert.equal(explicitMuted.userMuted, true);
+  assert.equal(explicitMuted.showUnmuteNotice, false);
+
+  // 4. Persistent fullscreen guard across episode transitions
+  assert.equal(shouldPreserveFullscreenOnEpisodeChange({ isFullscreen: true, stageMounted: true }), true);
+  assert.equal(shouldPreserveFullscreenOnEpisodeChange({ isFullscreen: true, stageMounted: false }), false);
+  assert.equal(shouldPreserveFullscreenOnEpisodeChange({ isFullscreen: false, stageMounted: true }), false);
+});
+
 
 
 

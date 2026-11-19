@@ -23,7 +23,8 @@ import {
   pickBestPlaybackServer,
   rankClipIdentifierCandidates,
   resolveAnichinMediaUrl,
-} from './dracin-logic.js?v=52';
+  unwrapHlsJsonPayload,
+} from './dracin-logic.js?v=53';
 
 const ANICHIN_API_BASE = 'https://api.anichin.bio';
 const API_TIMEOUT_MS = 9500;
@@ -58,7 +59,7 @@ const translationCache = new Map();
 
 function readSessionCache(key, ttlMs = 8 * 60_000) {
   try {
-    const raw = sessionStorage.getItem(`dracin_cache_v52_${key}`);
+    const raw = sessionStorage.getItem(`dracin_cache_v53_${key}`);
     if (!raw) return null;
     const parsed = JSON.parse(raw);
     if (!parsed || Date.now() - parsed.ts > ttlMs) return null;
@@ -70,7 +71,7 @@ function readSessionCache(key, ttlMs = 8 * 60_000) {
 
 function writeSessionCache(key, data) {
   try {
-    sessionStorage.setItem(`dracin_cache_v52_${key}`, JSON.stringify({ ts: Date.now(), data }));
+    sessionStorage.setItem(`dracin_cache_v53_${key}`, JSON.stringify({ ts: Date.now(), data }));
   } catch {
     // Ignore storage quota
   }
@@ -382,8 +383,29 @@ function classifyStreamKind(url = '', qualityObj = null) {
 }
 
 /**
+ * Unwraps proxy HLS URLs on miniapp.anichin.bio/api/.../hls that return JSON {"url":"...m3u8"}
+ * (notably FlickReels) into their real direct .m3u8 playlist URL so both HLS.js and native
+ * mobile <video> can play them immediately without MEDIA_ERR_SRC_NOT_SUPPORTED.
+ */
+async function unwrapProxyStreamUrlIfNeeded(url = '') {
+  const clean = String(url || '').trim();
+  if (!clean) return '';
+  const needsInspect =
+    /miniapp\.anichin\.bio\/api\/[^/]+\/hls/i.test(clean) ||
+    /\/api\/flickreels\/hls/i.test(clean);
+  if (!needsInspect) return clean;
+  try {
+    const body = await fetchTextWithTimeout(clean, 5500);
+    return unwrapHlsJsonPayload(body, clean);
+  } catch {
+    return clean;
+  }
+}
+
+/**
  * Resolves REAL video + audio playback servers & real subtitle tracks for ANY drama & episode.
- * Never returns fake silent timer playback!
+ * Never returns fake silent timer playback and never replaces a failed platform stream with
+ * an unrelated black Dailymotion iframe.
  */
 export async function resolveEpisodePlayback(drama, episodeNumber = 1) {
   const ep = Math.max(1, Math.round(Number(episodeNumber) || 1));
@@ -397,17 +419,31 @@ export async function resolveEpisodePlayback(drama, episodeNumber = 1) {
     let epData = episodeCache.get(epKey) || null;
 
     if (!epData) {
-      try {
-        const url = `${ANICHIN_API_BASE}/${encodeURIComponent(drama.platformId)}/episode?id=${encodeURIComponent(
-          drama.sourceId
-        )}&ep=${ep}&lang=in`;
-        const json = await fetchJsonWithTimeout(url, {}, EPISODE_TIMEOUT_MS);
-        epData = json?.data && !json?.videoUrl ? json.data : json;
-        if (epData && (epData.videoUrl || (Array.isArray(epData.qualityList) && epData.qualityList.length))) {
-          episodeCache.set(epKey, epData);
+      const url = `${ANICHIN_API_BASE}/${encodeURIComponent(drama.platformId)}/episode?id=${encodeURIComponent(
+        drama.sourceId
+      )}&ep=${ep}&lang=in`;
+
+      // Retry once on transient upstream 502/HTML rate-limit hiccup before reporting error
+      for (let attempt = 0; attempt < 2; attempt += 1) {
+        try {
+          const json = await fetchJsonWithTimeout(url, {}, EPISODE_TIMEOUT_MS);
+          const candidate = json?.data && !json?.videoUrl ? json.data : json;
+          if (
+            candidate &&
+            (candidate.videoUrl || (Array.isArray(candidate.qualityList) && candidate.qualityList.length))
+          ) {
+            epData = candidate;
+            episodeCache.set(epKey, epData);
+            rawError = '';
+            break;
+          }
+          rawError = 'Server belum mengembalikan link video untuk episode ini.';
+        } catch (err) {
+          rawError = err?.message || 'Timeout memuat stream episode';
         }
-      } catch (err) {
-        rawError = err?.message || 'Timeout memuat stream episode';
+        if (attempt === 0) {
+          await new Promise((r) => setTimeout(r, 650));
+        }
       }
     }
 
@@ -415,39 +451,62 @@ export async function resolveEpisodePlayback(drama, episodeNumber = 1) {
       const qList = Array.isArray(epData.qualityList) ? epData.qualityList : [];
       const seenUrls = new Set();
 
-      // Sort qualities preferring 720p -> 540p -> 1080p -> 480p -> 360p (fast start + crisp HD, especially for Melolo decrypt!)
-      const qualityRank = (label = '') => {
+      // Sort qualities preferring 720p -> 540p -> 480p -> 1080p -> 360p (fast start + crisp HD)
+      const qualityRank = (label = '', codec = '') => {
         const l = String(label).toLowerCase();
-        if (l.includes('720')) return 1;
-        if (l.includes('540')) return 2;
-        if (l.includes('480')) return 3;
-        if (l.includes('1080')) return 4;
-        if (l.includes('auto')) return 0;
-        if (l.includes('360')) return 5;
-        return 6;
+        const c = String(codec).toLowerCase();
+        const codecBonus = c.includes('h264') || c.includes('avc') ? -10 : 0;
+        if (l.includes('auto')) return codecBonus + 0;
+        if (l.includes('720')) return codecBonus + 1;
+        if (l.includes('540')) return codecBonus + 2;
+        if (l.includes('480')) return codecBonus + 3;
+        if (l.includes('1080')) return codecBonus + 4;
+        if (l.includes('360')) return codecBonus + 5;
+        return codecBonus + 6;
       };
 
       const sortedQualities = [...qList]
         .filter((q) => q && q.url)
-        .sort((a, b) => qualityRank(a.label) - qualityRank(b.label));
+        .sort((a, b) => qualityRank(a.label, a.codec) - qualityRank(b.label, b.codec));
 
-      // For Melolo CENC decryption, prefer 480p/540p first so download+WebCrypto decrypt takes <1.5s on mobile!
+      // For Melolo CENC decryption, prefer H.264 if present, else 480p/360p/540p first so download+decrypt is fast on mobile
       if (drama.platformId === 'melolo') {
         sortedQualities.sort((a, b) => {
-          const meloloRank = (lbl = '') =>
-            lbl.includes('480') ? 0 : lbl.includes('540') ? 1 : lbl.includes('360') ? 2 : lbl.includes('720') ? 3 : 4;
-          return meloloRank(a.label) - meloloRank(b.label);
+          const meloloRank = (q) => {
+            const lbl = String(q.label || '').toLowerCase();
+            const c = String(q.codec || '').toLowerCase();
+            const avcBonus = c.includes('h264') || c.includes('avc') ? -20 : 0;
+            const sizeRank = lbl.includes('480')
+              ? 0
+              : lbl.includes('360')
+              ? 1
+              : lbl.includes('540')
+              ? 2
+              : lbl.includes('720')
+              ? 3
+              : 4;
+            return avcBonus + sizeRank;
+          };
+          return meloloRank(a) - meloloRank(b);
         });
       }
 
-      for (const q of sortedQualities) {
-        const resolvedUrl = resolveAnichinMediaUrl(q.url);
+      // Unwrap proxy HLS wrappers (like FlickReels JSON {"url":"...m3u8"}) in parallel
+      const unwrappedEntries = await Promise.all(
+        sortedQualities.map(async (q) => {
+          const initialUrl = resolveAnichinMediaUrl(q.url);
+          const finalUrl = await unwrapProxyStreamUrlIfNeeded(initialUrl);
+          return { q, url: finalUrl || initialUrl };
+        })
+      );
+
+      for (const { q, url: resolvedUrl } of unwrappedEntries) {
         if (!resolvedUrl || seenUrls.has(resolvedUrl)) continue;
         seenUrls.add(resolvedUrl);
         const kind = classifyStreamKind(resolvedUrl, q);
         const labelText = q.label ? String(q.label).toUpperCase() : 'HD';
         servers.push({
-          id: `live-${drama.platformId}-${labelText.toLowerCase().replace(/[^a-z0-9]/g, '')}`,
+          id: `live-${drama.platformId}-${labelText.toLowerCase().replace(/[^a-z0-9]/g, '')}-${servers.length}`,
           label: `${drama.platformName} ${labelText}${kind === 'hls' ? ' (HLS)' : kind === 'cenc-mp4' ? ' (HD)' : ' (MP4)'}`,
           kind,
           url: resolvedUrl,
@@ -460,14 +519,15 @@ export async function resolveEpisodePlayback(drama, episodeNumber = 1) {
       }
 
       // Also include top-level videoUrl if not already in qualityList
-      const topUrl = resolveAnichinMediaUrl(epData.videoUrl || '');
+      const rawTopUrl = resolveAnichinMediaUrl(epData.videoUrl || '');
+      const topUrl = rawTopUrl ? await unwrapProxyStreamUrlIfNeeded(rawTopUrl) : '';
       if (topUrl && !seenUrls.has(topUrl)) {
         seenUrls.add(topUrl);
         const defaultDrm = qList.find((q) => q?.drm && q?.contentKey) || null;
         const kind = classifyStreamKind(topUrl, defaultDrm);
         servers.unshift({
           id: `live-${drama.platformId}-hd`,
-          label: `${drama.platformName} HD${kind === 'hls' ? ' (HLS)' : ' (MP4)'}`,
+          label: `${drama.platformName} HD${kind === 'hls' ? ' (HLS)' : kind === 'cenc-mp4' ? ' (HD)' : ' (MP4)'}`,
           kind,
           url: topUrl,
           qualityLabel: 'HD',
@@ -501,24 +561,9 @@ export async function resolveEpisodePlayback(drama, episodeNumber = 1) {
     });
   }
 
-  // 3. Dailymotion Real Video + Audio Embed (Primary for Dailymotion-sourced dramas, Backup for others when needed)
-  let dmId = drama?.dailymotionId || '';
-  if (!dmId && servers.length === 0) {
-    try {
-      const q = encodeURIComponent(`${drama?.title || 'drama china'} episode ${ep} sub indo`);
-      const data = await fetchJsonWithTimeout(
-        `https://api.dailymotion.com/videos?search=${q}&fields=id,title,duration&limit=3`,
-        {},
-        4500
-      );
-      if (Array.isArray(data?.list) && data.list[0]?.id) {
-        dmId = data.list[0].id;
-      }
-    } catch {
-      // No Dailymotion fallback
-    }
-  }
-
+  // 3. Dailymotion Embed ONLY for dramas that actually have a verified dailymotionId
+  // (Never silently swap a failed Melolo/ShortMax/DramaBox episode with a random black Dailymotion iframe!)
+  const dmId = drama?.dailymotionId || '';
   if (dmId) {
     servers.push({
       id: 'dm-hd',
@@ -536,7 +581,10 @@ export async function resolveEpisodePlayback(drama, episodeNumber = 1) {
     servers,
     subtitles,
     defaultServerId: best?.id || '',
-    error: servers.length === 0 ? rawError || 'Stream episode tidak tersedia dari server saat ini.' : '',
+    error:
+      servers.length === 0
+        ? rawError || 'Stream episode sedang sibuk di server platform. Tekan Coba Muat Ulang atau pindah episode.'
+        : '',
   };
 }
 

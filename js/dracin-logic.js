@@ -794,6 +794,74 @@ export function resolveCleanScreenState(currentCleanScreen = false, isFullscreen
   return !Boolean(currentCleanScreen);
 }
 
+/**
+ * Filters the 18+ Dracin platform list for the searchable platform dropdown.
+ */
+export function filterDracinPlatforms(query = '', platforms = DRACIN_PLATFORMS) {
+  const list = Array.isArray(platforms) ? platforms : DRACIN_PLATFORMS;
+  const q = String(query || '').trim().toLowerCase();
+  if (!q) return list;
+  return list.filter((p) => {
+    const hay = `${p.name || ''} ${p.short || ''} ${p.id || ''} ${p.region || ''}`.toLowerCase();
+    return hay.includes(q);
+  });
+}
+
+/**
+ * Unwraps proxy endpoints (e.g. FlickReels /api/flickreels/hls) that return HTTP 200
+ * with an HLS MIME header but a JSON body like {"url":"https://...m3u8"}.
+ * Returns the real playable stream URL, or fallbackUrl if rawText is already #EXTM3U.
+ */
+export function unwrapHlsJsonPayload(rawText = '', fallbackUrl = '') {
+  const trimmed = String(rawText || '').trim();
+  if (!trimmed) return String(fallbackUrl || '').trim();
+  if (trimmed.startsWith('#EXTM3U')) return String(fallbackUrl || '').trim();
+  if (trimmed.startsWith('{')) {
+    try {
+      const parsed = JSON.parse(trimmed);
+      const extracted =
+        parsed?.url ||
+        parsed?.data?.url ||
+        parsed?.streamUrl ||
+        parsed?.hlsUrl ||
+        parsed?.videoUrl ||
+        '';
+      if (typeof extracted === 'string' && extracted.trim()) {
+        return resolveAnichinMediaUrl(extracted.trim());
+      }
+    } catch {
+      // Fall back to original URL if JSON is malformed
+    }
+  }
+  return String(fallbackUrl || '').trim();
+}
+
+/**
+ * Resolves effective player mute state without letting browser autoplay policy
+ * permanently overwrite the user's explicit sound preference across episodes.
+ */
+export function resolveNextMuteState({ userMuted = false, autoplayBlocked = false } = {}) {
+  const explicitMute = Boolean(userMuted);
+  if (explicitMute) {
+    return { effectiveMuted: true, userMuted: true, showUnmuteNotice: false };
+  }
+  if (autoplayBlocked) {
+    return { effectiveMuted: true, userMuted: false, showUnmuteNotice: true };
+  }
+  return { effectiveMuted: false, userMuted: false, showUnmuteNotice: false };
+}
+
+/**
+ * Returns true when episode transitions MUST update in-place without replacing
+ * host DOM so active fullscreen mode and unlocked <video> audio persist seamlessly.
+ */
+export function shouldPreserveFullscreenOnEpisodeChange({
+  isFullscreen = false,
+  stageMounted = false,
+} = {}) {
+  return Boolean(stageMounted && isFullscreen);
+}
+
 export function inferPlatformFromText(text = '', fallback = 'dramabox') {
   const lower = String(text || '').toLowerCase();
   for (const p of DRACIN_PLATFORMS) {
