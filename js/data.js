@@ -1,4 +1,4 @@
-import { DEFAULT_UTILITY_CONFIG, normalizeUtilityConfig } from './store.js?v=54';
+import { DEFAULT_UTILITY_CONFIG, normalizeUtilityConfig } from './store.js?v=55';
 
 export const BRAND = {
   name: 'Manifestudio',

@@ -7,12 +7,17 @@ import {
   DEFAULT_DRACIN_ENDPOINT_CONFIG,
   DRACIN_PLATFORMS,
   DRACIN_SUBTITLE_LANGS,
+  buildDailymotionEmbedUrl,
+  buildDailymotionWatchUrl,
   buildEpisodeList,
   buildEpisodeRanges,
   buildEpisodeSubtitleCues,
   buildWebVttFromCues,
   computePreloadEpisodeTargets,
+  computeTokenJaccardSimilarity,
+  computeVisualProfileSimilarity,
   extractAdaptiveEpisodePayload,
+  extractSynopsisKeywords,
   filterDracinCatalog,
   filterDracinPlatforms,
   formatDracinUserError,
@@ -20,17 +25,20 @@ import {
   getNextPrevEpisode,
   mergeParallelDracinFeeds,
   normalizeAnichinDramaItem,
+  normalizeDramaMatchText,
   parseAiDramaIdentification,
   parseSubtitleText,
   parseSubtitleTimestamp,
   pickBestPlaybackServer,
   rankClipIdentifierCandidates,
+  rankCrossPlatformDramaMatches,
   rankHealthyApiMirrors,
   recordMirrorHealth,
   resolveAnichinMediaUrl,
   resolveAutoSubtitleLang,
   resolveCleanScreenState,
   resolveNextMuteState,
+  scoreCrossPlatformDramaMatch,
   shouldPreserveFullscreenOnEpisodeChange,
   toggleFavoriteDramaId,
   unwrapHlsJsonPayload,
@@ -3530,6 +3538,111 @@ test('v54 self-healing mirror circuit-breaker, adaptive JSON schema extractor, f
   assert.deepEqual(computePreloadEpisodeTargets(29, 30, 2), [30]);
   assert.deepEqual(computePreloadEpisodeTargets(30, 30, 2), []);
 });
+
+test('v55 Dailymotion canonical embed URLs and multi-signal cross-platform drama matcher (title + synopsis + visual + metadata)', () => {
+  // 1. Canonical Dailymotion embed & watch URLs (includes required playerId path to avoid HTTP 403)
+  assert.equal(
+    buildDailymotionEmbedUrl('xbxu08u'),
+    'https://geo.dailymotion.com/player/x8lr5.html?video=xbxu08u'
+  );
+  assert.equal(
+    buildDailymotionEmbedUrl('xbxu08u', 'x9abc'),
+    'https://geo.dailymotion.com/player/x9abc.html?video=xbxu08u'
+  );
+  assert.equal(buildDailymotionWatchUrl('xbxu08u'), 'https://www.dailymotion.com/video/xbxu08u');
+  assert.equal(buildDailymotionEmbedUrl(''), '');
+
+  // 2. Stopword & platform tag stripping
+  const norm = normalizeDramaMatchText('[Dubbing] Hidup Demi Balas Dendam (Sub Indo)');
+  assert.deepEqual(norm, ['hidup', 'balas', 'dendam']);
+  assert.ok(computeTokenJaccardSimilarity('Hidup Demi Balas Dendam', '【Indo Sub】 Balas Dendam Hidup') > 0.5);
+
+  // 3. Visual poster similarity comparison
+  const warmRedA = { r: 190, g: 52, b: 48, brightness: 0.38, warmth: 0.78, aspectRatio: 0.67 };
+  const warmRedB = { r: 182, g: 58, b: 54, brightness: 0.4, warmth: 0.75, aspectRatio: 0.66 };
+  const coolBlue = { r: 22, g: 140, b: 230, brightness: 0.45, warmth: 0.1, aspectRatio: 1.78 };
+  assert.ok(computeVisualProfileSimilarity(warmRedA, warmRedB) > 0.9);
+  assert.ok(computeVisualProfileSimilarity(warmRedA, coolBlue) < 0.55);
+  assert.equal(computeVisualProfileSimilarity(warmRedA, null), null);
+
+  // 4. Cross-platform matching catches SAME drama even when renamed on another platform via synopsis + ep count + visual!
+  const sourceMelolo = {
+    id: 'melolo::1001',
+    sourceId: '1001',
+    platformId: 'melolo',
+    platformName: 'Melolo',
+    title: 'Hidup Demi Balas Dendam',
+    altTitle: 'Pembalasan',
+    genre: 'revenge',
+    genres: ['revenge', 'trending'],
+    totalEpisodes: 30,
+    hasKnownEpisodeCount: true,
+    synopsis:
+      'Lin Fan dikhianati tunangannya dan keluarga konglomerat tepat di malam pernikahan, lalu bangkit sebagai pewaris rahasia untuk membalas dendam.',
+    cast: ['Lin Fan', 'Su Yan'],
+  };
+
+  const renamedSameOnDramabox = {
+    id: 'dramabox::8899',
+    sourceId: '8899',
+    platformId: 'dramabox',
+    platformName: 'DramaBox',
+    title: 'Kebangkitan Pewaris Rahasia Malam Pernikahan',
+    altTitle: 'Secret Heir',
+    genre: 'revenge',
+    genres: ['revenge'],
+    totalEpisodes: 30,
+    hasKnownEpisodeCount: true,
+    synopsis:
+      'Setelah dikhianati tunangannya serta keluarga konglomerat pada malam pernikahan, Lin Fan bangkit menjadi pewaris rahasia untuk membalas dendam.',
+    cast: ['Lin Fan'],
+  };
+
+  const unrelatedComedy = {
+    id: 'reelshort::5555',
+    sourceId: '5555',
+    platformId: 'reelshort',
+    platformName: 'ReelShort',
+    title: 'Koki Lucu di Istana Kucing',
+    altTitle: 'Cat Chef',
+    genre: 'family',
+    genres: ['family'],
+    totalEpisodes: 85,
+    hasKnownEpisodeCount: true,
+    synopsis: 'Kisah ceria seorang koki muda yang memasak hidangan lezat untuk kucing kerajaan.',
+    cast: ['Mei'],
+  };
+
+  const keywords = extractSynopsisKeywords(sourceMelolo, 4);
+  assert.ok(keywords.length >= 3);
+
+  const directEval = scoreCrossPlatformDramaMatch(sourceMelolo, renamedSameOnDramabox, {
+    sourceVisual: warmRedA,
+    candidateVisual: warmRedB,
+  });
+  assert.ok(directEval.score >= 55, `Expected renamed same drama score >= 55, got ${directEval.score}`);
+  assert.ok(directEval.signals.synopsisPct >= 40);
+  assert.ok(directEval.reasons.some((r) => r.includes('Sinopsis')));
+  assert.ok(directEval.reasons.some((r) => r.includes('Jumlah episode identik')));
+
+  const ranked = rankCrossPlatformDramaMatches(
+    sourceMelolo,
+    [sourceMelolo, unrelatedComedy, renamedSameOnDramabox],
+    {
+      sourceVisual: warmRedA,
+      visualMap: {
+        'dramabox::8899': warmRedB,
+        'reelshort::5555': coolBlue,
+      },
+      minScore: 22,
+      limit: 5,
+    }
+  );
+  assert.equal(ranked.length, 1);
+  assert.equal(ranked[0].drama.id, 'dramabox::8899');
+  assert.equal(ranked[0].isDifferentPlatform, true);
+});
+
 
 
 

@@ -1,6 +1,7 @@
 {
-  "version": "54.0.0",
+  "version": "55.0.0",
   "updatedAt": "2026-11-20T00:00:00Z",
+  "dailymotionPlayerId": "x8lr5",
   "notes": "Self-updating Drama China multi-mirror API registry. Updating this JSON immediately heals endpoint changes across all users without rewriting app code.",
   "mirrors": [
     {

@@ -14,22 +14,27 @@ import {
   CURATED_DRACIN_CATALOG,
   DEFAULT_DRACIN_ENDPOINT_CONFIG,
   DRACIN_PLATFORMS,
+  buildDailymotionEmbedUrl,
+  buildDailymotionWatchUrl,
   extractAdaptiveEpisodePayload,
+  extractSynopsisKeywords,
   extractTokens,
   formatDracinUserError,
   inferPlatformFromText,
   mergeParallelDracinFeeds,
   normalizeAnichinDramaItem,
+  normalizeDramaMatchText,
   normalizeDracinItem,
   parseAiDramaIdentification,
   parseSubtitleText,
   pickBestPlaybackServer,
   rankClipIdentifierCandidates,
+  rankCrossPlatformDramaMatches,
   rankHealthyApiMirrors,
   recordMirrorHealth,
   resolveAnichinMediaUrl,
   unwrapHlsJsonPayload,
-} from './dracin-logic.js?v=54';
+} from './dracin-logic.js?v=55';
 
 const API_TIMEOUT_MS = 8500;
 const EPISODE_TIMEOUT_MS = 9000;
@@ -74,6 +79,9 @@ function mergeEndpointConfig(remote = null) {
   const mirrors = remoteMirrors.length > 0 ? remoteMirrors : DEFAULT_DRACIN_ENDPOINT_CONFIG.mirrors;
   return {
     version: String(remote.version || DEFAULT_DRACIN_ENDPOINT_CONFIG.version),
+    dailymotionPlayerId: String(
+      remote.dailymotionPlayerId || DEFAULT_DRACIN_ENDPOINT_CONFIG.dailymotionPlayerId || 'x8lr5'
+    ).trim(),
     mirrors,
     routeTemplates: {
       ...DEFAULT_DRACIN_ENDPOINT_CONFIG.routeTemplates,
@@ -162,7 +170,7 @@ async function fetchFromAdaptiveMirrors(
 
 function readSessionCache(key, ttlMs = 8 * 60_000) {
   try {
-    const raw = sessionStorage.getItem(`dracin_cache_v54_${key}`);
+    const raw = sessionStorage.getItem(`dracin_cache_v55_${key}`);
     if (!raw) return null;
     const parsed = JSON.parse(raw);
     if (!parsed || Date.now() - parsed.ts > ttlMs) return null;
@@ -174,7 +182,7 @@ function readSessionCache(key, ttlMs = 8 * 60_000) {
 
 function writeSessionCache(key, data) {
   try {
-    sessionStorage.setItem(`dracin_cache_v54_${key}`, JSON.stringify({ ts: Date.now(), data }));
+    sessionStorage.setItem(`dracin_cache_v55_${key}`, JSON.stringify({ ts: Date.now(), data }));
   } catch {
     // Ignore storage quota
   }
@@ -321,11 +329,20 @@ export async function fetchDailymotionDracin(
   forcedPlatformId = null
 ) {
   const q = encodeURIComponent(query);
-  const url = `https://api.dailymotion.com/videos?search=${q}&fields=id,title,thumbnail_720_url,duration,views_total,description&limit=${limit}`;
+  const url = `https://api.dailymotion.com/videos?search=${q}&fields=id,title,allow_embed,private,status,thumbnail_720_url,duration,views_total,description&limit=${limit}`;
   const data = await fetchJsonWithTimeout(url, {}, 7500);
   const list = Array.isArray(data?.list) ? data.list : [];
   const items = list
-    .filter((v) => v && v.id && v.title && (v.duration || 0) >= 35)
+    .filter(
+      (v) =>
+        v &&
+        v.id &&
+        v.title &&
+        v.allow_embed !== false &&
+        v.private !== true &&
+        (!v.status || v.status === 'published') &&
+        (v.duration || 0) >= 35
+    )
     .map((v) => {
       const platformId =
         forcedPlatformId && forcedPlatformId !== 'all'
@@ -725,7 +742,8 @@ export async function resolveEpisodePlayback(drama, episodeNumber = 1, { forceRe
         label: servers.length ? 'Server Cadangan · Dailymotion HD' : 'Dailymotion HD Stream',
         kind: 'dailymotion',
         videoId: dmId,
-        embedUrl: `https://geo.dailymotion.com/player.html?video=${encodeURIComponent(dmId)}&mute=false&autoplay=true`,
+        embedUrl: buildDailymotionEmbedUrl(dmId, endpointConfigCache?.dailymotionPlayerId),
+        watchUrl: buildDailymotionWatchUrl(dmId),
       });
     }
 
@@ -780,29 +798,50 @@ export async function prefetchEpisodePlayback(drama, episodeNumber) {
 export async function searchDailymotionEpisodeBackup(drama, episodeNumber = 1) {
   if (!drama?.title) return null;
   const ep = Math.max(1, Math.round(Number(episodeNumber) || 1));
-  const queries = [
-    `${drama.title} episode ${ep} sub indo`,
-    `${drama.title} drama china sub indo`,
-  ];
-  const titleTokens = extractTokens(drama.title);
+  const cleanTitle = String(drama.title)
+    .replace(/\[[^\]]*\]/g, ' ')
+    .replace(/【[^】]*】/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  const synopsisKeywords = extractSynopsisKeywords(drama, 3).join(' ');
+  const queries = Array.from(
+    new Set(
+      [
+        `${cleanTitle} episode ${ep} sub indo`,
+        `${cleanTitle} drama china sub indo`,
+        synopsisKeywords ? `${synopsisKeywords} drama china sub indo` : '',
+      ].filter(Boolean)
+    )
+  );
+  const titleTokens = normalizeDramaMatchText(`${cleanTitle} ${drama.altTitle || ''}`);
 
   for (const q of queries) {
     try {
-      const res = await fetchDailymotionDracin(q, 6, drama.platformId);
-      const best = (res?.items || []).find((item) => {
-        if (!item?.dailymotionId) return false;
-        const hay = `${item.title} ${item.synopsis || ''}`.toLowerCase();
-        return titleTokens.length === 0 || titleTokens.some((tok) => tok.length >= 3 && hay.includes(tok));
-      });
+      const res = await fetchDailymotionDracin(q, 10, drama.platformId);
+      const candidates = (res?.items || []).filter((item) => Boolean(item?.dailymotionId));
+      if (!candidates.length) continue;
+
+      const scored = candidates
+        .map((item) => {
+          const hay = `${item.title} ${item.synopsis || ''}`.toLowerCase();
+          let hits = 0;
+          for (const tok of titleTokens) {
+            if (hay.includes(tok)) hits += 1;
+          }
+          const epMatch = new RegExp(`\\b(ep|episode)\\s*0?${ep}\\b`, 'i').test(hay) ? 2 : 0;
+          return { item, rank: hits * 3 + epMatch };
+        })
+        .sort((a, b) => b.rank - a.rank);
+
+      const best = scored[0]?.rank > 0 ? scored[0].item : null;
       if (best?.dailymotionId) {
         return {
           id: `dm-backup-ep${ep}-${best.dailymotionId}`,
           label: `Mirror Dailymotion · ${best.title.slice(0, 22)}`,
           kind: 'dailymotion',
           videoId: best.dailymotionId,
-          embedUrl: `https://geo.dailymotion.com/player.html?video=${encodeURIComponent(
-            best.dailymotionId
-          )}&mute=false&autoplay=true`,
+          embedUrl: buildDailymotionEmbedUrl(best.dailymotionId, endpointConfigCache?.dailymotionPlayerId),
+          watchUrl: buildDailymotionWatchUrl(best.dailymotionId),
         };
       }
     } catch {
@@ -810,6 +849,183 @@ export async function searchDailymotionEpisodeBackup(drama, episodeNumber = 1) {
     }
   }
   return null;
+}
+
+const posterVisualProfileCache = new Map();
+
+/**
+ * Samples a poster image's average RGB color, brightness, warmth, and aspect ratio
+ * using an offscreen canvas (CORS-safe, bounded timeout, returns null cleanly if blocked).
+ */
+export async function extractVisualProfileFromImageUrl(url = '', timeoutMs = 1800) {
+  const cleanUrl = String(url || '').trim();
+  if (!cleanUrl || typeof Image === 'undefined' || typeof document === 'undefined') return null;
+  if (posterVisualProfileCache.has(cleanUrl)) {
+    return posterVisualProfileCache.get(cleanUrl);
+  }
+
+  const profile = await new Promise((resolve) => {
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.referrerPolicy = 'no-referrer';
+    let settled = false;
+    const finish = (val) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      resolve(val);
+    };
+    const timer = setTimeout(() => finish(null), timeoutMs);
+    img.onload = () => {
+      try {
+        const w = img.naturalWidth || 100;
+        const h = img.naturalHeight || 150;
+        const canvas = document.createElement('canvas');
+        const sw = 28;
+        const sh = Math.max(20, Math.min(56, Math.round((h / Math.max(1, w)) * sw)));
+        canvas.width = sw;
+        canvas.height = sh;
+        const ctx = canvas.getContext('2d', { willReadFrequently: true });
+        if (!ctx) return finish(null);
+        ctx.drawImage(img, 0, 0, sw, sh);
+        const { data } = ctx.getImageData(0, 0, sw, sh);
+        let rSum = 0;
+        let gSum = 0;
+        let bSum = 0;
+        const px = data.length / 4 || 1;
+        for (let i = 0; i < data.length; i += 4) {
+          rSum += data[i];
+          gSum += data[i + 1];
+          bSum += data[i + 2];
+        }
+        const r = Math.round(rSum / px);
+        const g = Math.round(gSum / px);
+        const b = Math.round(bSum / px);
+        const brightness = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+        const warmth = Math.max(0, Math.min(1, (r - b + 255) / 510));
+        finish({
+          r,
+          g,
+          b,
+          brightness,
+          warmth,
+          aspectRatio: Number((w / Math.max(1, h)).toFixed(2)),
+        });
+      } catch {
+        // Canvas tainted by CORS header absence — gracefully skip visual signal
+        finish(null);
+      }
+    };
+    img.onerror = () => finish(null);
+    img.src = cleanUrl;
+  });
+
+  if (posterVisualProfileCache.size > 120) {
+    posterVisualProfileCache.clear();
+  }
+  posterVisualProfileCache.set(cleanUrl, profile);
+  return profile;
+}
+
+const CROSS_PLATFORM_PRIORITY = [
+  'dramabox',
+  'melolo',
+  'netshort',
+  'reelshort',
+  'shortmax',
+  'goodshort',
+  'flickreels',
+  'dramawave',
+];
+
+/**
+ * Multi-signal cross-platform drama finder:
+ * Searches other live platforms using BOTH title tokens AND synopsis keywords
+ * (to catch the same drama published under a different title on another platform),
+ * combines with poster visual fingerprint + episode count + genre metadata.
+ */
+export async function findCrossPlatformDramaMatches(drama, currentCatalog = [], { limit = 5 } = {}) {
+  if (!drama) {
+    return { matches: [], searchedPlatforms: [], queriesUsed: [], visualComparedCount: 0 };
+  }
+
+  const cleanTitle = String(drama.title || '')
+    .replace(/\[[^\]]*\]/g, ' ')
+    .replace(/【[^】]*】/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  const titleQuery = normalizeDramaMatchText(cleanTitle).slice(0, 4).join(' ') || cleanTitle;
+  const synopsisKeywords = extractSynopsisKeywords(drama, 3);
+  const synopsisQuery = synopsisKeywords.join(' ');
+  const queriesUsed = Array.from(new Set([titleQuery, synopsisQuery].filter((q) => q && q.length >= 3)));
+
+  const targetPlatforms = CROSS_PLATFORM_PRIORITY.filter((pid) => pid !== drama.platformId).slice(0, 5);
+
+  const jobs = [];
+  for (const pid of targetPlatforms) {
+    if (titleQuery) {
+      jobs.push(fetchAnichinPlatformFeed(pid, { page: 1, query: titleQuery }));
+    }
+    if (synopsisQuery && synopsisQuery !== titleQuery) {
+      jobs.push(fetchAnichinPlatformFeed(pid, { page: 1, query: synopsisQuery }));
+    }
+  }
+  if (titleQuery) {
+    jobs.push(fetchDailymotionDracin(`${titleQuery} drama china sub indo`, 8));
+  }
+
+  const settled = await Promise.allSettled(jobs);
+  const candidatePool = [...(Array.isArray(currentCatalog) ? currentCatalog : [])];
+  for (const res of settled) {
+    if (res.status === 'fulfilled' && Array.isArray(res.value?.items)) {
+      candidatePool.push(...res.value.items);
+    }
+  }
+
+  // Stage 1: fast text + metadata pre-ranking
+  const preRanked = rankCrossPlatformDramaMatches(drama, candidatePool, {
+    minScore: 14,
+    limit: 10,
+  });
+
+  // Stage 2: enrich top pre-ranked candidates with poster visual profile similarity
+  const visualMap = {};
+  let sourceVisual = null;
+  let visualComparedCount = 0;
+
+  if (preRanked.length > 0 && drama.poster) {
+    const [srcProf, ...candProfs] = await Promise.all([
+      extractVisualProfileFromImageUrl(drama.poster, 1600),
+      ...preRanked.slice(0, 6).map((m) => extractVisualProfileFromImageUrl(m.drama.poster, 1600)),
+    ]);
+    sourceVisual = srcProf;
+    if (sourceVisual) {
+      preRanked.slice(0, 6).forEach((m, i) => {
+        if (candProfs[i]) {
+          visualMap[m.drama.id] = candProfs[i];
+          visualComparedCount += 1;
+        }
+      });
+    }
+  }
+
+  const finalMatches = rankCrossPlatformDramaMatches(
+    drama,
+    preRanked.map((m) => m.drama),
+    {
+      sourceVisual,
+      visualMap,
+      minScore: 22,
+      limit,
+    }
+  );
+
+  return {
+    matches: finalMatches,
+    searchedPlatforms: targetPlatforms,
+    queriesUsed,
+    visualComparedCount,
+  };
 }
 
 /**

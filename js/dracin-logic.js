@@ -867,7 +867,8 @@ export function shouldPreserveFullscreenOnEpisodeChange({
  * and merged cleanly with ./data/dracin-endpoints.json so endpoint updates never break the app).
  */
 export const DEFAULT_DRACIN_ENDPOINT_CONFIG = {
-  version: '54.0.0',
+  version: '55.0.0',
+  dailymotionPlayerId: 'x8lr5',
   mirrors: [
     {
       id: 'anichin-primary',
@@ -1594,3 +1595,378 @@ export function parseAiDramaIdentification(rawText = '') {
     suggestedGenre: inferGenreFromText(clean),
   };
 }
+
+/**
+ * Builds the canonical Dailymotion player embed URL (geo.dailymotion.com/player/{playerId}.html)
+ * required by Dailymotion's traffic control policy (omitting playerId returns HTTP 403 blank screen).
+ */
+export function buildDailymotionEmbedUrl(
+  videoId = '',
+  playerId = DEFAULT_DRACIN_ENDPOINT_CONFIG.dailymotionPlayerId
+) {
+  const id = String(videoId || '').trim();
+  if (!id) return '';
+  const pid = String(playerId || DEFAULT_DRACIN_ENDPOINT_CONFIG.dailymotionPlayerId || 'x8lr5')
+    .trim()
+    .replace(/[^a-z0-9_-]/gi, '');
+  const safePid = pid || 'x8lr5';
+  return `https://geo.dailymotion.com/player/${encodeURIComponent(safePid)}.html?video=${encodeURIComponent(id)}`;
+}
+
+export function buildDailymotionWatchUrl(videoId = '') {
+  const id = String(videoId || '').trim();
+  if (!id) return '';
+  return `https://www.dailymotion.com/video/${encodeURIComponent(id)}`;
+}
+
+const DRAMA_MATCH_STOPWORDS = new Set([
+  'yang', 'dan', 'di', 'ke', 'dari', 'untuk', 'dengan', 'pada', 'adalah', 'ini', 'itu',
+  'atau', 'oleh', 'akan', 'juga', 'sudah', 'telah', 'tidak', 'tak', 'bukan', 'dalam',
+  'saat', 'ketika', 'karena', 'agar', 'setelah', 'sebelum', 'lebih', 'sangat', 'harus',
+  'bisa', 'dapat', 'hanya', 'semua', 'mereka', 'kami', 'kita', 'kamu', 'anda', 'dia',
+  'sang', 'para', 'seorang', 'sebuah', 'tentang', 'tanpa', 'secara', 'demi', 'hingga',
+  'the', 'and', 'for', 'with', 'from', 'that', 'this', 'into', 'over', 'after', 'before',
+  'sub', 'indo', 'indonesia', 'dub', 'dubbing', 'sulih', 'suara', 'full', 'episode', 'eps',
+  'drama', 'china', 'dracin', 'pendek', 'short', 'resmi', 'gratis', 'iklan', 'streaming',
+  'hd', 'live', 'platform', 'video', 'terbaru', 'viral',
+]);
+
+/**
+ * Normalizes drama titles/synopses into stopword-filtered matching tokens,
+ * removing platform prefixes like [Dubbing], (Sub Indo), 【Indo Sub】, etc.
+ */
+export function normalizeDramaMatchText(text = '') {
+  const cleaned = String(text || '')
+    .replace(/\[[^\]]*\]/g, ' ')
+    .replace(/【[^】]*】/g, ' ')
+    .replace(/\((?:dub|dubbing|sulih\s*suara|sub\s*indo|indo\s*sub|full\s*ep[^)]*)\)/gi, ' ')
+    .toLowerCase()
+    .replace(/[^a-z0-9\u4e00-\u9fff\s]+/gi, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  if (!cleaned) return [];
+  return cleaned
+    .split(' ')
+    .filter((tok) => {
+      if (!tok) return false;
+      if (/[\u4e00-\u9fff]/.test(tok)) return true;
+      return tok.length >= 3 && !DRAMA_MATCH_STOPWORDS.has(tok);
+    });
+}
+
+function buildBigrams(tokens = []) {
+  const set = new Set();
+  for (let i = 0; i < tokens.length - 1; i += 1) {
+    set.add(`${tokens[i]}_${tokens[i + 1]}`);
+  }
+  return set;
+}
+
+/**
+ * Computes combined unigram + bigram token similarity (0..1) resilient to word reordering
+ * and partial translations across platforms.
+ */
+export function computeTokenJaccardSimilarity(textA = '', textB = '') {
+  const toksA = normalizeDramaMatchText(textA);
+  const toksB = normalizeDramaMatchText(textB);
+  if (!toksA.length || !toksB.length) return 0;
+
+  const setA = new Set(toksA);
+  const setB = new Set(toksB);
+  let exactInter = 0;
+  let partialInter = 0;
+
+  for (const a of setA) {
+    if (setB.has(a)) {
+      exactInter += 1;
+    } else if (a.length >= 5) {
+      for (const b of setB) {
+        if (b.length >= 5 && (a.startsWith(b.slice(0, 5)) || b.startsWith(a.slice(0, 5)))) {
+          partialInter += 0.6;
+          break;
+        }
+      }
+    }
+  }
+
+  const unionSize = setA.size + setB.size - exactInter;
+  const uniJaccard = unionSize > 0 ? Math.min(1, (exactInter + partialInter) / unionSize) : 0;
+
+  // Overlap coefficient rewards when a short title matches inside a longer translated title
+  const minSize = Math.min(setA.size, setB.size);
+  const overlapCoeff = minSize > 0 ? Math.min(1, (exactInter + partialInter * 0.7) / minSize) : 0;
+
+  const biA = buildBigrams(toksA);
+  const biB = buildBigrams(toksB);
+  let biInter = 0;
+  for (const bg of biA) {
+    if (biB.has(bg)) biInter += 1;
+  }
+  const biUnion = biA.size + biB.size - biInter;
+  const biJaccard = biUnion > 0 ? biInter / biUnion : 0;
+
+  return Math.max(0, Math.min(1, uniJaccard * 0.5 + overlapCoeff * 0.25 + biJaccard * 0.25));
+}
+
+/**
+ * Compares two poster visual color/tone/aspect profiles (0..1), returning null if unavailable.
+ */
+export function computeVisualProfileSimilarity(profileA = null, profileB = null) {
+  if (!profileA || !profileB) return null;
+  const rA = Number(profileA.r);
+  const gA = Number(profileA.g);
+  const bA = Number(profileA.b);
+  const rB = Number(profileB.r);
+  const gB = Number(profileB.g);
+  const bB = Number(profileB.b);
+
+  let rgbSim = 0.5;
+  if ([rA, gA, bA, rB, gB, bB].every((n) => Number.isFinite(n))) {
+    const dist = Math.sqrt((rA - rB) ** 2 + (gA - gB) ** 2 + (bA - bB) ** 2);
+    rgbSim = Math.max(0, 1 - dist / 441.67);
+  }
+
+  const brightSim =
+    Number.isFinite(Number(profileA.brightness)) && Number.isFinite(Number(profileB.brightness))
+      ? Math.max(0, 1 - Math.abs(Number(profileA.brightness) - Number(profileB.brightness)) * 1.4)
+      : 0.5;
+
+  const warmSim =
+    Number.isFinite(Number(profileA.warmth)) && Number.isFinite(Number(profileB.warmth))
+      ? Math.max(0, 1 - Math.abs(Number(profileA.warmth) - Number(profileB.warmth)) * 1.4)
+      : 0.5;
+
+  const aspectSim =
+    Number.isFinite(Number(profileA.aspectRatio)) && Number.isFinite(Number(profileB.aspectRatio))
+      ? Math.max(0, 1 - Math.abs(Number(profileA.aspectRatio) - Number(profileB.aspectRatio)) * 1.2)
+      : 0.85;
+
+  return Math.max(0, Math.min(1, rgbSim * 0.45 + brightSim * 0.2 + warmSim * 0.2 + aspectSim * 0.15));
+}
+
+function isGenericSynopsis(text = '') {
+  const s = String(text || '').trim().toLowerCase();
+  return !s || s.startsWith('drama pendek resmi dari') || s.length < 18;
+}
+
+/**
+ * Extracts top distinctive keywords from a drama's synopsis and title for cross-platform lookup
+ * even when another platform publishes the same drama under a different title.
+ */
+export function extractSynopsisKeywords(drama = {}, maxKeywords = 5) {
+  const synopsis = isGenericSynopsis(drama?.synopsis) ? '' : String(drama?.synopsis || '');
+  const tokens = normalizeDramaMatchText(synopsis);
+  if (!tokens.length) {
+    return normalizeDramaMatchText(`${drama?.title || ''} ${drama?.altTitle || ''}`).slice(0, maxKeywords);
+  }
+  const freq = new Map();
+  for (const tok of tokens) {
+    freq.set(tok, (freq.get(tok) || 0) + (tok.length >= 6 ? 1.3 : 1));
+  }
+  return Array.from(freq.entries())
+    .sort((a, b) => b[1] - a[1])
+    .map(([tok]) => tok)
+    .slice(0, Math.max(1, maxKeywords));
+}
+
+/**
+ * Multi-signal cross-platform drama similarity scorer combining:
+ * 1. Title & alternate title token/bigram match
+ * 2. Synopsis / plot summary semantic token overlap (catches renamed dramas)
+ * 3. Visual poster color/brightness/aspect fingerprint (when available)
+ * 4. Structural metadata (episode count proximity, genre, cast, dub tags)
+ */
+export function scoreCrossPlatformDramaMatch(
+  sourceDrama,
+  candidateDrama,
+  { sourceVisual = null, candidateVisual = null } = {}
+) {
+  if (!sourceDrama || !candidateDrama) {
+    return { score: 0, confidence: 0, signals: { titlePct: 0, synopsisPct: 0, visualPct: null, metadataPct: 0 }, reasons: [] };
+  }
+
+  const srcTitleCorpus = `${sourceDrama.title || ''} ${sourceDrama.altTitle || ''}`;
+  const candTitleCorpus = `${candidateDrama.title || ''} ${candidateDrama.altTitle || ''}`;
+  const titleSim = computeTokenJaccardSimilarity(srcTitleCorpus, candTitleCorpus);
+
+  const srcSyn = isGenericSynopsis(sourceDrama.synopsis) ? '' : sourceDrama.synopsis;
+  const candSyn = isGenericSynopsis(candidateDrama.synopsis) ? '' : candidateDrama.synopsis;
+  const synopsisSim = srcSyn && candSyn ? computeTokenJaccardSimilarity(srcSyn, candSyn) : 0;
+
+  // Cross-field check: source title tokens appearing in candidate synopsis or vice versa
+  const crossFieldSim = Math.max(
+    candSyn ? computeTokenJaccardSimilarity(srcTitleCorpus, candSyn) : 0,
+    srcSyn ? computeTokenJaccardSimilarity(candTitleCorpus, srcSyn) : 0
+  );
+  const effectiveSynopsisSim = Math.max(synopsisSim, crossFieldSim * 0.78);
+
+  const visualSim = computeVisualProfileSimilarity(sourceVisual, candidateVisual);
+
+  // Structural & metadata similarity (episode count proximity + genre + cast + dub)
+  let metaPoints = 0;
+  let metaMax = 14;
+  const reasons = [];
+
+  const srcEp = Number(sourceDrama.totalEpisodes) || 0;
+  const candEp = Number(candidateDrama.totalEpisodes) || 0;
+  const bothRealEp =
+    Boolean(sourceDrama.hasKnownEpisodeCount) &&
+    Boolean(candidateDrama.hasKnownEpisodeCount) &&
+    srcEp > 0 &&
+    candEp > 0;
+
+  if (bothRealEp) {
+    const diff = Math.abs(srcEp - candEp);
+    if (diff === 0) {
+      metaPoints += 7;
+      reasons.push(`Jumlah episode identik (${candEp} Ep)`);
+    } else if (diff <= 3) {
+      metaPoints += 5.5;
+      reasons.push(`Jumlah episode hampir sama (${candEp} Ep)`);
+    } else if (diff <= 10) {
+      metaPoints += 3;
+    }
+  }
+
+  const srcGenres = new Set([sourceDrama.genre, ...(sourceDrama.genres || [])].filter((g) => g && g !== 'trending' && g !== 'all'));
+  const candGenres = new Set([candidateDrama.genre, ...(candidateDrama.genres || [])].filter((g) => g && g !== 'trending' && g !== 'all'));
+  let genreOverlap = false;
+  for (const g of srcGenres) {
+    if (candGenres.has(g)) {
+      genreOverlap = true;
+      break;
+    }
+  }
+  if (genreOverlap) {
+    metaPoints += 4;
+  }
+
+  const castSim = computeTokenJaccardSimilarity(
+    [...(sourceDrama.cast || []), ...(sourceDrama.keywords || [])].join(' '),
+    [...(candidateDrama.cast || []), ...(candidateDrama.keywords || [])].join(' ')
+  );
+  metaPoints += castSim * 3;
+  const metadataSim = Math.min(1, metaPoints / metaMax);
+
+  // Adaptive weights: if visual poster comparison is available use 34/36/16/14;
+  // if CORS blocks poster pixels, redistribute visual weight into synopsis + title + metadata
+  const hasVisual = visualSim !== null;
+  const wTitle = hasVisual ? 34 : 40;
+  const wSynopsis = hasVisual ? 36 : 44;
+  const wVisual = hasVisual ? 16 : 0;
+  const wMeta = hasVisual ? 14 : 16;
+
+  let rawScore =
+    titleSim * wTitle +
+    effectiveSynopsisSim * wSynopsis +
+    (hasVisual ? visualSim * wVisual : 0) +
+    metadataSim * wMeta;
+
+  // High-confidence boost when synopsis + metadata strongly agree despite different titles
+  if (effectiveSynopsisSim >= 0.35 && (bothRealEp && Math.abs(srcEp - candEp) <= 5)) {
+    rawScore += 14;
+  } else if (titleSim >= 0.5 && effectiveSynopsisSim >= 0.25) {
+    rawScore += 12;
+  } else if (titleSim >= 0.65) {
+    rawScore += 10;
+  }
+
+  const score = Math.max(0, Math.min(99, Math.round(rawScore)));
+  const titlePct = Math.round(titleSim * 100);
+  const synopsisPct = Math.round(effectiveSynopsisSim * 100);
+  const visualPct = hasVisual ? Math.round(visualSim * 100) : null;
+  const metadataPct = Math.round(metadataSim * 100);
+
+  if (synopsisPct >= 22) {
+    reasons.unshift(`Sinopsis & alur cocok (${synopsisPct}%)`);
+  }
+  if (titlePct >= 25) {
+    reasons.unshift(`Judul mirip (${titlePct}%)`);
+  }
+  if (visualPct !== null && visualPct >= 65) {
+    reasons.push(`Visual poster mirip (${visualPct}%)`);
+  }
+  if (genreOverlap && reasons.length < 3) {
+    reasons.push('Genre & tema sama');
+  }
+  if (reasons.length === 0 && score >= 20) {
+    reasons.push('Kemiripan kata kunci & katalog lintas platform');
+  }
+
+  return {
+    score,
+    confidence: score,
+    signals: {
+      titlePct,
+      synopsisPct,
+      visualPct,
+      metadataPct,
+    },
+    reasons: reasons.slice(0, 4),
+  };
+}
+
+/**
+ * Ranks cross-platform candidate dramas against a source drama using combined
+ * title, synopsis, visual poster, and metadata signals.
+ */
+export function rankCrossPlatformDramaMatches(
+  sourceDrama,
+  candidates = [],
+  { sourceVisual = null, visualMap = {}, minScore = 22, limit = 5 } = {}
+) {
+  if (!sourceDrama || !Array.isArray(candidates)) return [];
+  const seenIds = new Set();
+  const ranked = [];
+
+  for (const cand of candidates) {
+    if (!cand || !cand.id) continue;
+    if (cand.id === sourceDrama.id) continue;
+    if (
+      sourceDrama.sourceId &&
+      cand.sourceId &&
+      cand.sourceId === sourceDrama.sourceId &&
+      cand.platformId === sourceDrama.platformId
+    ) {
+      continue;
+    }
+    if (seenIds.has(cand.id)) continue;
+    seenIds.add(cand.id);
+
+    const candVisual = visualMap?.[cand.id] || null;
+    const evaluation = scoreCrossPlatformDramaMatch(sourceDrama, cand, {
+      sourceVisual,
+      candidateVisual: candVisual,
+    });
+
+    // Small bonus for candidates hosted on a different platform than the source
+    const crossPlatformBonus = cand.platformId !== sourceDrama.platformId ? 4 : 0;
+    const finalScore = Math.min(99, evaluation.score + crossPlatformBonus);
+
+    // Require at least some textual or strong combined signal so unrelated items are rejected
+    const hasMeaningfulSignal =
+      evaluation.signals.titlePct >= 18 ||
+      evaluation.signals.synopsisPct >= 18 ||
+      (evaluation.signals.visualPct !== null && evaluation.signals.visualPct >= 75 && evaluation.signals.metadataPct >= 45);
+
+    if (finalScore >= minScore && hasMeaningfulSignal) {
+      ranked.push({
+        drama: cand,
+        score: finalScore,
+        confidence: finalScore,
+        signals: evaluation.signals,
+        reasons: evaluation.reasons,
+        isDifferentPlatform: cand.platformId !== sourceDrama.platformId,
+      });
+    }
+  }
+
+  return ranked
+    .sort((a, b) => {
+      if (b.score !== a.score) return b.score - a.score;
+      return Number(b.isDifferentPlatform) - Number(a.isDifferentPlatform);
+    })
+    .slice(0, Math.max(1, limit));
+}
+

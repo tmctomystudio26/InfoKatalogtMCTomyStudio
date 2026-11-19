@@ -22,41 +22,41 @@ import {
   matchIndonesianCityQuery,
   planMediaCompression,
   resolveAccurateWeatherCondition,
-} from './tools-logic.js?v=54';
+} from './tools-logic.js?v=55';
 import {
   describeLocationSource,
   resolveUserLocation,
   searchCitiesOnline,
   setManualLocation,
-} from './location.js?v=54';
-import { createInteractiveGlobe } from './globe.js?v=54';
+} from './location.js?v=55';
+import { createInteractiveGlobe } from './globe.js?v=55';
 import {
   createSpeedometerGauge,
   fetchSpeedtestEnvironment,
   readClientDeviceTelemetry,
   runInternetSpeedtest,
-} from './speedtest.js?v=54';
+} from './speedtest.js?v=55';
 import {
   extractAudioFromVideoUrl,
   fetchMediaDownload,
   triggerBatchPhotoDownload,
   triggerDirectMediaSave,
-} from './downloader.js?v=54';
-import { compressMediaFile, inspectMediaFile } from './compressor.js?v=54';
+} from './downloader.js?v=55';
+import { compressMediaFile, inspectMediaFile } from './compressor.js?v=55';
 import {
   ALL_TARGET_FORMATS,
   convertAnyFile,
   detectSourceFormat,
   getAvailableTargetFormats,
-} from './converter.js?v=54';
+} from './converter.js?v=55';
 import {
   detectMediaFileKind,
   identifyMediaSongAndVideo,
-} from './song-finder.js?v=54';
-import { formatAudioTime, getLoadingProgressMeta, isTrackInWatchLater } from './music-logic.js?v=54';
-import { MUSIC_PRESET_CATEGORIES, getMusicController, initMusicPlayer } from './music.js?v=54';
-import { createDracinController } from './dracin-ui.js?v=54';
-import { normalizeUtilityConfig } from './store.js?v=54';
+} from './song-finder.js?v=55';
+import { formatAudioTime, getLoadingProgressMeta, isTrackInWatchLater } from './music-logic.js?v=55';
+import { MUSIC_PRESET_CATEGORIES, getMusicController, initMusicPlayer } from './music.js?v=55';
+import { createDracinController } from './dracin-ui.js?v=55';
+import { normalizeUtilityConfig } from './store.js?v=55';
 
 const PRAYER_CACHE_KEY = 'manifestudio_prayer_cache_v1';
 const MYQURAN_CITIES_KEY = 'manifestudio_myquran_cities_v1';

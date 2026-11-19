@@ -4,7 +4,7 @@ import {
   PAY_LATER_SURCHARGE_RATE,
   getDefaultCatalogSnapshot,
   loadCatalogData,
-} from './data.js?v=54';
+} from './data.js?v=55';
 import {
   PENDING_ORDER_STORAGE_KEY,
   addToCart,
@@ -22,9 +22,9 @@ import {
   syncPaymentOptionsWithBrand,
   updateCartQty,
   validateOrderForm,
-} from './store.js?v=54';
-import { initPwaManager } from './pwa.js?v=54';
-import { initMusicPlayer } from './music.js?v=54';
+} from './store.js?v=55';
+import { initPwaManager } from './pwa.js?v=55';
+import { initMusicPlayer } from './music.js?v=55';
 
 const THEME_STORAGE_KEY = 'manifestudio_theme_v1';
 const CART_STORAGE_KEY = 'manifestudio_cart_v1';

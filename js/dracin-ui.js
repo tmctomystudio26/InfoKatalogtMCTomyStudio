@@ -33,21 +33,22 @@ import {
   shouldPreserveFullscreenOnEpisodeChange,
   toggleFavoriteDramaId,
   upsertWatchHistory,
-} from './dracin-logic.js?v=54';
+} from './dracin-logic.js?v=55';
 import {
   fetchAiDramaInsights,
   fetchDramaDetail,
   fetchUnifiedDracinCatalog,
+  findCrossPlatformDramaMatches,
   getEpisodeSubtitles,
   identifyDracinFromMedia,
   prefetchEpisodePlayback,
   resolveEpisodePlayback,
   searchDailymotionEpisodeBackup,
-} from './dracin.js?v=54';
+} from './dracin.js?v=55';
 import {
   attachClearKeyEme,
   fetchAndDecryptCencMp4,
-} from './dracin-cenc.js?v=54';
+} from './dracin-cenc.js?v=55';
 
 const HISTORY_STORAGE_KEY = 'manifestudio_dracin_history_v1';
 const FAVORITES_STORAGE_KEY = 'manifestudio_dracin_favorites_v1';
@@ -61,7 +62,7 @@ function ensureHlsLibrary() {
   if (hlsScriptPromise) return hlsScriptPromise;
   hlsScriptPromise = new Promise((resolve, reject) => {
     const script = document.createElement('script');
-    script.src = './js/vendor/hls.min.js?v=54';
+    script.src = './js/vendor/hls.min.js?v=55';
     script.async = true;
     script.onload = () => resolve(window.Hls || null);
     script.onerror = () => {
@@ -160,9 +161,13 @@ export function createDracinController({ onToast = () => {} } = {}) {
     subtitleCues: [],
     subtitleIsReal: false,
 
-    // AI Drama insights
+    // AI Drama insights & Multi-Signal Cross-Platform Matcher
     aiInsightsMap: {},
     aiInsightsLoading: false,
+    crossMatchesLoading: false,
+    crossMatchesDramaId: '',
+    crossMatchesResult: null,
+    crossMatchesError: '',
 
     // Clip / Screenshot AI Identifier state
     clipFile: null,
@@ -494,6 +499,13 @@ export function createDracinController({ onToast = () => {} } = {}) {
       if (dmBtn) {
         dmBtn.disabled = state.searchingBackupMirror;
         dmBtn.textContent = state.searchingBackupMirror ? 'Mencari Mirror...' : 'Cari Mirror Dailymotion';
+      }
+      const crossBtn = errBox.querySelector('#dracin-find-cross-platform-btn');
+      if (crossBtn) {
+        crossBtn.disabled = state.crossMatchesLoading;
+        crossBtn.textContent = state.crossMatchesLoading
+          ? 'Mencocokkan Platform...'
+          : 'Cari di Platform Lain';
       }
     }
   }
@@ -1683,6 +1695,160 @@ export function createDracinController({ onToast = () => {} } = {}) {
     }
   }
 
+  function renderCrossPlatformMatchesInner(drama) {
+    if (!drama) return '';
+    const hasResult =
+      state.crossMatchesDramaId === drama.id && state.crossMatchesResult !== null;
+    const result = hasResult ? state.crossMatchesResult : null;
+    const matches = result?.matches || [];
+
+    return `
+      <div class="dracin-cross-head">
+        <div class="dracin-cross-head-copy">
+          <strong>Pencocokan Multi-Sinyal Lintas Platform</strong>
+          <span class="dracin-toolbar-note">
+            Cocokkan judul, sinopsis/alur, visual poster, & jumlah episode di platform lain.
+          </span>
+        </div>
+        <button
+          type="button"
+          class="btn btn-secondary btn-xs"
+          id="dracin-cross-toolbar-btn"
+          ${state.crossMatchesLoading ? 'disabled' : ''}
+        >
+          ${state.crossMatchesLoading ? 'Mencocokkan...' : hasResult ? 'Scan Ulang' : 'Cari di Platform Lain'}
+        </button>
+      </div>
+      ${
+        state.crossMatchesLoading
+          ? `<div class="dracin-cross-status">Memindai katalog live lintas platform (judul, sinopsis, visual poster & metadata)...</div>`
+          : state.crossMatchesError && state.crossMatchesDramaId === drama.id
+          ? `<div class="dracin-cross-status is-error">${escapeHtml(state.crossMatchesError)}</div>`
+          : hasResult
+          ? matches.length === 0
+            ? `<div class="dracin-cross-status">Belum ditemukan drama identik di platform lain untuk "${escapeHtml(drama.title)}". Coba gunakan tab Cari Klip AI atau Mirror Dailymotion.</div>`
+            : `
+          <div class="dracin-cross-summary">
+            Ditemukan ${matches.length} kandidat teratas lintas platform${
+              result.visualComparedCount > 0
+                ? ` · ${result.visualComparedCount} poster dibandingkan secara visual`
+                : ''
+            }
+          </div>
+          <div class="dracin-cross-list" data-testid="dracin-cross-match-list">
+            ${matches
+              .map(
+                (m) => `
+              <article class="dracin-cross-item">
+                <img
+                  src="${escapeHtml(m.drama.poster || m.drama.fallbackPoster)}"
+                  alt="${escapeHtml(m.drama.title)}"
+                  class="dracin-cross-poster"
+                  loading="lazy"
+                  referrerpolicy="no-referrer"
+                  onerror="this.onerror=null;this.src='${escapeHtml(m.drama.fallbackPoster)}'"
+                />
+                <div class="dracin-cross-info">
+                  <div class="dracin-cross-title-row">
+                    <strong>${escapeHtml(m.drama.title)}</strong>
+                    <span class="dracin-cross-score">${m.confidence}% Cocok</span>
+                  </div>
+                  <div class="dracin-cross-meta">
+                    <span class="dracin-cross-platform">${escapeHtml(m.drama.platformName)}</span>
+                    <span aria-hidden="true">·</span>
+                    <span>${m.drama.totalEpisodes} Ep</span>
+                  </div>
+                  <p class="dracin-cross-reasons">${escapeHtml(m.reasons.join(' · '))}</p>
+                  <div class="dracin-cross-actions">
+                    <button
+                      type="button"
+                      class="btn btn-primary btn-xs"
+                      data-dracin-cross-open="${escapeHtml(m.drama.id)}"
+                      data-dracin-cross-ep="${Math.min(state.currentEpisode, m.drama.totalEpisodes || state.currentEpisode)}"
+                    >
+                      Buka Ep ${Math.min(state.currentEpisode, m.drama.totalEpisodes || state.currentEpisode)} di ${escapeHtml(m.drama.platformName)}
+                    </button>
+                    <button
+                      type="button"
+                      class="btn btn-secondary btn-xs"
+                      data-dracin-cross-open="${escapeHtml(m.drama.id)}"
+                      data-dracin-cross-ep="1"
+                    >
+                      Ep 1
+                    </button>
+                  </div>
+                </div>
+              </article>
+            `
+              )
+              .join('')}
+          </div>
+        `
+          : ''
+      }
+    `;
+  }
+
+  function bindCrossPlatformEvents(container, drama) {
+    if (!container || !drama) return;
+    container.querySelector('#dracin-cross-toolbar-btn')?.addEventListener('click', () => {
+      handleSearchCrossPlatformMatches(drama, { scrollToPanel: false });
+    });
+    container.querySelectorAll('[data-dracin-cross-open]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        primeVideoAudioGesture();
+        const id = btn.getAttribute('data-dracin-cross-open');
+        const ep = Number(btn.getAttribute('data-dracin-cross-ep')) || 1;
+        if (id) openDrama(id, ep);
+      });
+    });
+  }
+
+  async function handleSearchCrossPlatformMatches(drama, { scrollToPanel = false } = {}) {
+    if (!drama || state.crossMatchesLoading) return;
+    if (scrollToPanel && state.isFullscreen) {
+      toggleFullscreenMode(false);
+    }
+    state.crossMatchesLoading = true;
+    state.crossMatchesDramaId = drama.id;
+    state.crossMatchesError = '';
+    setStatusOverlay(state.resolvingStream, state.streamError || state.streamStatusText, Boolean(state.streamError));
+
+    const box = hostEl?.querySelector('#dracin-cross-platform-box');
+    if (box) {
+      box.innerHTML = renderCrossPlatformMatchesInner(drama);
+      if (scrollToPanel) {
+        box.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      }
+    }
+
+    try {
+      const res = await findCrossPlatformDramaMatches(drama, state.catalog, { limit: 5 });
+      state.crossMatchesResult = res;
+      for (const m of res.matches || []) {
+        if (m?.drama) upsertDramaInCatalog(m.drama);
+      }
+      if (res.matches.length > 0) {
+        onToast(`Ditemukan ${res.matches.length} drama cocok di platform lain`);
+      } else {
+        onToast('Belum ditemukan kecocokan kuat di platform lain');
+      }
+    } catch {
+      state.crossMatchesError = 'Gagal memindai platform lain saat ini. Silakan coba lagi.';
+    } finally {
+      state.crossMatchesLoading = false;
+      setStatusOverlay(state.resolvingStream, state.streamError || state.streamStatusText, Boolean(state.streamError));
+      const updatedBox = hostEl?.querySelector('#dracin-cross-platform-box');
+      if (updatedBox) {
+        updatedBox.innerHTML = renderCrossPlatformMatchesInner(drama);
+        bindCrossPlatformEvents(updatedBox, drama);
+        if (scrollToPanel) {
+          updatedBox.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        }
+      }
+    }
+  }
+
   function renderDramaCard(drama) {
     const isFav = state.favorites.includes(drama.id);
     const hist = state.history.find((h) => h.dramaId === drama.id);
@@ -2096,9 +2262,9 @@ export function createDracinController({ onToast = () => {} } = {}) {
           class="dracin-stage-iframe"
           src="${escapeHtml(activeServer.embedUrl)}"
           title="${escapeHtml(drama.title)} Episode ${state.currentEpisode}"
-          allow="autoplay; fullscreen; picture-in-picture"
-          allowfullscreen
-          referrerpolicy="no-referrer"
+          allow="autoplay; fullscreen; picture-in-picture; encrypted-media"
+          loading="eager"
+          referrerpolicy="strict-origin-when-cross-origin"
         ></iframe>
       `;
     } else {
@@ -2144,11 +2310,14 @@ export function createDracinController({ onToast = () => {} } = {}) {
               <span>${escapeHtml(state.streamStatusText || 'Memuat video HD...')}</span>
             </div>
 
-            <!-- Real Stream Error / VIP Lock Overlay with Instant Retry & Mirror Lookup -->
+            <!-- Real Stream Error / VIP Lock Overlay with Instant Retry, Cross-Platform Match & Mirror Lookup -->
             <div id="dracin-media-error" class="dracin-media-error" ${state.streamError ? '' : 'hidden'}>
               <p>${escapeHtml(state.streamError || 'Gagal memuat video.')}</p>
               <div class="dracin-error-actions">
                 <button type="button" class="btn btn-primary btn-xs" id="dracin-retry-stream-btn">Coba Muat Ulang</button>
+                <button type="button" class="btn btn-secondary btn-xs" id="dracin-find-cross-platform-btn" ${state.crossMatchesLoading ? 'disabled' : ''}>
+                  ${state.crossMatchesLoading ? 'Mencocokkan Platform...' : 'Cari di Platform Lain'}
+                </button>
                 <button type="button" class="btn btn-secondary btn-xs" id="dracin-search-dm-mirror-btn" ${state.searchingBackupMirror ? 'disabled' : ''}>
                   ${state.searchingBackupMirror ? 'Mencari Mirror...' : 'Cari Mirror Dailymotion'}
                 </button>
@@ -2352,12 +2521,21 @@ export function createDracinController({ onToast = () => {} } = {}) {
                 <div id="dracin-server-row-inner" class="dracin-server-row-inner">
                   ${renderServerButtonsHtml(activeServer)}
                 </div>
+                ${
+                  isDailymotion && activeServer?.watchUrl
+                    ? `<a href="${escapeHtml(activeServer.watchUrl)}" target="_blank" rel="noopener noreferrer" class="btn btn-secondary btn-xs dracin-dm-ext-link">Buka di Dailymotion ↗</a>`
+                    : ''
+                }
                 <label class="dracin-autonext-toggle">
                   <input type="checkbox" id="dracin-autonext-check" ${state.autoNext ? 'checked' : ''} />
                   <span>Auto-Lanjut Ep</span>
                 </label>
               </div>
             </div>
+          </div>
+
+          <div id="dracin-cross-platform-box" class="dracin-cross-box">
+            ${renderCrossPlatformMatchesInner(drama)}
           </div>
         </div>
 
@@ -2877,6 +3055,10 @@ export function createDracinController({ onToast = () => {} } = {}) {
       handleEpisodeStep(-1);
     });
 
+    hostEl.querySelector('#dracin-find-cross-platform-btn')?.addEventListener('click', () => {
+      handleSearchCrossPlatformMatches(getActiveDrama(), { scrollToPanel: true });
+    });
+
     hostEl.querySelector('#dracin-search-dm-mirror-btn')?.addEventListener('click', async () => {
       const drama = getActiveDrama();
       if (!drama || state.searchingBackupMirror) return;
@@ -3028,9 +3210,10 @@ export function createDracinController({ onToast = () => {} } = {}) {
     // Server / quality switcher (in-place when staying on HTML5 video!)
     bindServerSwitchButtons(hostEl.querySelector('#dracin-server-row-inner'));
 
-    // Episode picker & AI card in side column
+    // Episode picker, AI card & Multi-Signal Cross-Platform Matcher
     bindEpisodePickerEvents(hostEl.querySelector('#dracin-side-ep-wrap'));
     bindAiInsightEvents(hostEl.querySelector('#dracin-ai-card-box'), getActiveDrama());
+    bindCrossPlatformEvents(hostEl.querySelector('#dracin-cross-platform-box'), getActiveDrama());
 
     // Fullscreen wheel & vertical touch swipe episode switching
     const stageEl = hostEl.querySelector('#dracin-player-stage');
