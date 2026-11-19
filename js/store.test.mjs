@@ -7,16 +7,21 @@ import {
   DEFAULT_DRACIN_ENDPOINT_CONFIG,
   DRACIN_PLATFORMS,
   DRACIN_SUBTITLE_LANGS,
+  SANSEKAI_SUPPORTED_PLATFORMS,
   buildDailymotionEmbedUrl,
   buildDailymotionWatchUrl,
   buildEpisodeList,
   buildEpisodeRanges,
   buildEpisodeSubtitleCues,
+  buildSansekaiWebUrl,
   buildWebVttFromCues,
   computePreloadEpisodeTargets,
   computeTokenJaccardSimilarity,
   computeVisualProfileSimilarity,
   extractAdaptiveEpisodePayload,
+  extractSansekaiEpisodeStreams,
+  extractSansekaiFeedItems,
+  extractSansekaiMeloloVideoId,
   extractSynopsisKeywords,
   filterDracinCatalog,
   filterDracinPlatforms,
@@ -26,6 +31,7 @@ import {
   mergeParallelDracinFeeds,
   normalizeAnichinDramaItem,
   normalizeDramaMatchText,
+  normalizeSansekaiUrl,
   parseAiDramaIdentification,
   parseSubtitleText,
   parseSubtitleTimestamp,
@@ -3642,6 +3648,225 @@ test('v55 Dailymotion canonical embed URLs and multi-signal cross-platform drama
   assert.equal(ranked[0].drama.id, 'dramabox::8899');
   assert.equal(ranked[0].isDifferentPlatform, true);
 });
+
+test('v56 Sansekai/SekaiDrama platforms, URL normalizer, feed extractors, Melolo vid resolver, and multi-platform stream parsers', () => {
+  // 1. Platform registry & dropdown search include SekaiDrama (Sansekai), PineDrama, MyDrama
+  assert.ok(DRACIN_PLATFORMS.some((p) => p.id === 'sansekai' && p.name.includes('Sansekai')));
+  assert.ok(DRACIN_PLATFORMS.some((p) => p.id === 'pinedrama'));
+  assert.ok(DRACIN_PLATFORMS.some((p) => p.id === 'mydrama'));
+  assert.equal(SANSEKAI_SUPPORTED_PLATFORMS.has('melolo'), true);
+  assert.equal(SANSEKAI_SUPPORTED_PLATFORMS.has('pinedrama'), true);
+  assert.equal(SANSEKAI_SUPPORTED_PLATFORMS.has('mydrama'), true);
+  assert.ok(filterDracinPlatforms('sansekai').some((p) => p.id === 'sansekai'));
+  assert.ok(filterDracinPlatforms('pine').some((p) => p.id === 'pinedrama'));
+  assert.equal(buildSansekaiWebUrl(), 'https://drama.sansekai.my.id');
+
+  // 2. HTTPS upgrade prevents Mixed Content blocking
+  assert.equal(
+    normalizeSansekaiUrl('http://api.sansekai.my.id/api/melolo/proxy?id=1'),
+    'https://api.sansekai.my.id/api/melolo/proxy?id=1'
+  );
+  assert.equal(normalizeSansekaiUrl('//cdn.example.com/v.mp4'), 'https://cdn.example.com/v.mp4');
+  assert.equal(normalizeSansekaiUrl(''), '');
+
+  // 3. Feed extractors across Melolo nested cells, DramaBox flat array, PineDrama collections, ReelShort lists, GoodShort records
+  const meloloItems = extractSansekaiFeedItems(
+    {
+      data: {
+        cells: [
+          {
+            cell_data: [
+              {
+                books: [
+                  {
+                    book_id: '7697132515567422469',
+                    book_name: 'Hidup Demi Balas Dendam',
+                    thumb_url: 'https://cdn.melolo.example/poster.jpg',
+                    abstract: 'Balas dendam epik',
+                    serial_count: 30,
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+      },
+    },
+    'melolo'
+  );
+  assert.equal(meloloItems.length, 1);
+  assert.equal(meloloItems[0].apiProvider, 'sansekai');
+  assert.equal(meloloItems[0].sansekaiId, '7697132515567422469');
+  assert.equal(meloloItems[0].platformId, 'melolo');
+  assert.equal(meloloItems[0].totalEpisodes, 30);
+
+  const dramaboxItems = extractSansekaiFeedItems(
+    [
+      {
+        bookId: '410001122',
+        bookName: 'Pewaris Rahasia CEO',
+        coverWap: 'https://cdn.dbx.example/c.jpg',
+        chapterCount: 82,
+        introduction: 'Kisah pewaris rahasia',
+      },
+    ],
+    'dramabox'
+  );
+  assert.equal(dramaboxItems.length, 1);
+  assert.equal(dramaboxItems[0].sansekaiId, '410001122');
+
+  const pineItems = extractSansekaiFeedItems(
+    {
+      has_more: true,
+      collections: [
+        {
+          collection_id: 'pine-99',
+          title: 'Secret Billionaire Bride',
+          cover: 'https://cdn.pine.example/p.jpg',
+          total_episodes: 65,
+          description: 'Romantis',
+        },
+      ],
+    },
+    'pinedrama'
+  );
+  assert.equal(pineItems.length, 1);
+  assert.equal(pineItems[0].platformId, 'pinedrama');
+  assert.equal(pineItems[0].totalEpisodes, 65);
+
+  const reelItems = extractSansekaiFeedItems(
+    { data: { lists: [{ books: [{ book_id: 'rs-7', book_title: 'Nikah Kilat', book_pic: 'https://cdn.rs/1.jpg', chapter_count: 50 }] }] } },
+    'reelshort'
+  );
+  assert.equal(reelItems.length, 1);
+  assert.equal(reelItems[0].sansekaiId, 'rs-7');
+
+  const goodItems = extractSansekaiFeedItems(
+    { data: { records: [{ items: [{ bookId: 'gs-8', bookName: 'Ratu Bisnis', cover: 'https://cdn.gs/1.jpg', chapterCount: 70 }] }] } },
+    'goodshort'
+  );
+  assert.equal(goodItems.length, 1);
+  assert.equal(goodItems[0].sansekaiId, 'gs-8');
+
+  // Filter catalog with platformId='sansekai' keeps all apiProvider==='sansekai' items across sub-platforms
+  const sansekaiFiltered = filterDracinCatalog([...meloloItems, ...pineItems, { id: 'other', title: 'Other', platformId: 'dramabox', apiProvider: 'anichin-unified' }], {
+    platformId: 'sansekai',
+  });
+  assert.equal(sansekaiFiltered.length, 2);
+
+  // 4. Melolo detail video_list -> videoId extractor
+  const meloloVid = extractSansekaiMeloloVideoId(
+    {
+      data: {
+        video_data: {
+          series_id_str: '7697132515567422469',
+          video_list: [
+            { vid: 'vid-ep-1', vid_index: 1 },
+            { vid: 'vid-ep-6', vid_index: 6 },
+          ],
+        },
+      },
+    },
+    6
+  );
+  assert.equal(meloloVid, 'vid-ep-6');
+
+  // 5. Episode stream extractors across Melolo, DramaBox, ShortMax, NetShort, FlickReels
+  const meloloStream = extractSansekaiEpisodeStreams(
+    {
+      streamUrl: 'http://api.sansekai.my.id/api/melolo/stream/720.mp4',
+      qualities: [
+        { label: '720p', streamUrl: 'http://api.sansekai.my.id/api/melolo/stream/720.mp4' },
+        { label: '480p', streamUrl: 'https://cdn.melolo.example/480.mp4' },
+      ],
+      subtitles: [{ language: 'id', url: 'https://cdn.melolo.example/ep6.vtt' }],
+    },
+    { platformId: 'melolo', episodeNumber: 6 }
+  );
+  assert.equal(meloloStream.servers.length, 2);
+  assert.equal(meloloStream.servers[0].provider, 'sansekai');
+  assert.equal(meloloStream.servers[0].url, 'https://api.sansekai.my.id/api/melolo/stream/720.mp4');
+  assert.equal(meloloStream.subtitles.length, 1);
+
+  const dbxStream = extractSansekaiEpisodeStreams(
+    [
+      {
+        chapterIndex: 5,
+        chapterName: 'EP 6',
+        cdnList: [
+          {
+            isDefault: 1,
+            videoPathList: [
+              { quality: 540, videoPath: 'https://cdn.dbx.example/ep6_540.mp4' },
+              { quality: 720, videoPath: 'https://cdn.dbx.example/ep6_720.mp4' },
+            ],
+          },
+        ],
+      },
+    ],
+    { platformId: 'dramabox', episodeNumber: 6 }
+  );
+  assert.equal(dbxStream.servers.length, 2);
+  assert.equal(dbxStream.servers[0].qualityLabel, '720P');
+
+  const shortmaxStream = extractSansekaiEpisodeStreams(
+    {
+      episode: {
+        episodeNum: 6,
+        locked: false,
+        videoUrl: {
+          video_1080: 'https://cdn.sm.example/1080.mp4',
+          video_720: 'https://cdn.sm.example/720.mp4',
+        },
+      },
+    },
+    { platformId: 'shortmax', episodeNumber: 6 }
+  );
+  assert.equal(shortmaxStream.servers.length, 2);
+  assert.equal(shortmaxStream.servers[0].qualityLabel, '720P');
+
+  const netshortStream = extractSansekaiEpisodeStreams(
+    {
+      videoUrl: 'https://cdn.ns.example/ep6.mp4',
+      quality: '720p',
+      subtitleUrl: 'https://cdn.ns.example/ep6.srt',
+      subtitleLanguage: 'id_ID',
+    },
+    { platformId: 'netshort', episodeNumber: 6 }
+  );
+  assert.equal(netshortStream.servers.length, 1);
+  assert.equal(netshortStream.subtitles.length, 1);
+
+  const flickStream = extractSansekaiEpisodeStreams(
+    { hlsUrl: 'https://cdn.fr.example/ep6/master.m3u8' },
+    { platformId: 'flickreels', episodeNumber: 6 }
+  );
+  assert.equal(flickStream.servers.length, 1);
+  assert.equal(flickStream.servers[0].kind, 'hls');
+
+  // Melolo real Sansekai payload with base64 video_model + main_url
+  const meloloVmStream = extractSansekaiEpisodeStreams(
+    {
+      data: {
+        main_url: 'https://cdn.melolo.example/ep6-main.mp4',
+        video_model: JSON.stringify({
+          video_list: {
+            video_1: {
+              definition: '720p',
+              main_url: Buffer.from('https://cdn.melolo.example/ep6-720.mp4').toString('base64'),
+            },
+          },
+        }),
+      },
+    },
+    { platformId: 'melolo', episodeNumber: 6 }
+  );
+  assert.equal(meloloVmStream.servers.length, 2);
+  assert.equal(meloloVmStream.servers[0].url, 'https://cdn.melolo.example/ep6-720.mp4');
+  assert.equal(meloloVmStream.servers[0].qualityLabel, '720P');
+  assert.equal(meloloVmStream.servers[1].url, 'https://cdn.melolo.example/ep6-main.mp4');
+});
+
 
 
 

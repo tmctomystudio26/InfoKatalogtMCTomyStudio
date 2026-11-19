@@ -9931,6 +9931,27 @@ body.dracin-fs-lock {
   text-align: center;
 }
 
+.dracin-sansekai-btn {
+  background: #059669 !important;
+  border-color: #10b981 !important;
+  color: #ffffff !important;
+}
+
+.dracin-sansekai-btn:hover:not(:disabled) {
+  background: #047857 !important;
+}
+
+.dracin-sansekai-note {
+  margin: 0.2rem 0 0;
+  padding: 0.45rem 0.72rem;
+  border-radius: 10px;
+  border: 1px solid rgba(16, 185, 129, 0.28);
+  background: rgba(16, 185, 129, 0.08);
+  color: var(--ink-secondary);
+  font-size: 0.77rem;
+  line-height: 1.4;
+}
+
 .dracin-dm-ext-link {
   text-decoration: none;
   display: inline-flex;
@@ -10563,6 +10584,29 @@ body.dracin-fs-lock {
   background: #e11d48;
   color: #ffffff;
   border-color: #e11d48;
+}
+
+.dracin-server-btn.is-sansekai {
+  border-color: rgba(16, 185, 129, 0.55);
+  color: #059669;
+}
+
+.dracin-server-btn.is-sansekai.is-active {
+  background: #059669;
+  border-color: #059669;
+  color: #ffffff;
+}
+
+.dracin-sansekai-switch-btn {
+  border-color: rgba(16, 185, 129, 0.55);
+  background: rgba(16, 185, 129, 0.09);
+  color: #059669;
+}
+
+.dracin-sansekai-switch-btn:hover:not(:disabled) {
+  background: #059669;
+  border-color: #059669;
+  color: #ffffff;
 }
 
 .dracin-autonext-toggle {

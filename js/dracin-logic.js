@@ -7,11 +7,15 @@
 
 export const DRACIN_PLATFORMS = [
   { id: 'all', name: 'Semua Platform', short: 'Semua', accent: '#e11d48', region: 'Global' },
+  { id: 'sansekai', name: 'SekaiDrama (Sansekai)', short: 'SekaiDrama', accent: '#10b981', region: 'Sansekai VIP-Free' },
   { id: 'dramabox', name: 'DramaBox', short: 'DramaBox', accent: '#f43f5e', region: 'CN / Global' },
+  { id: 'melolo', name: 'Melolo', short: 'Melolo', accent: '#14b8a6', region: 'ID / SEA' },
   { id: 'reelshort', name: 'ReelShort', short: 'ReelShort', accent: '#fb7185', region: 'Global' },
   { id: 'shortmax', name: 'ShortMax', short: 'ShortMax', accent: '#f97316', region: 'CN / Asia' },
   { id: 'netshort', name: 'NetShort', short: 'NetShort', accent: '#ef4444', region: 'CN / ID' },
   { id: 'goodshort', name: 'GoodShort', short: 'GoodShort', accent: '#ec4899', region: 'Global' },
+  { id: 'pinedrama', name: 'PineDrama', short: 'PineDrama', accent: '#22c55e', region: 'Sansekai API' },
+  { id: 'mydrama', name: 'MyDrama', short: 'MyDrama', accent: '#e11d48', region: 'Sansekai API' },
   { id: 'dramawave', name: 'DramaWave', short: 'DramaWave', accent: '#6366f1', region: 'CN / SEA' },
   { id: 'flickreels', name: 'FlickReels', short: 'FlickReels', accent: '#8b5cf6', region: 'Global' },
   { id: 'freereels', name: 'FreeReels', short: 'FreeReels', accent: '#10b981', region: 'Gratis HD' },
@@ -20,7 +24,6 @@ export const DRACIN_PLATFORMS = [
   { id: 'dramanova', name: 'DramaNova', short: 'DramaNova', accent: '#d946ef', region: 'CN / Asia' },
   { id: 'starshort', name: 'StarShort', short: 'StarShort', accent: '#f59e0b', region: 'Global' },
   { id: 'dramabite', name: 'DramaBite', short: 'DramaBite', accent: '#ea580c', region: 'SEA' },
-  { id: 'melolo', name: 'Melolo', short: 'Melolo', accent: '#14b8a6', region: 'ID / SEA' },
   { id: 'moboreels', name: 'MoboReels', short: 'MoboReels', accent: '#3b82f6', region: 'Global' },
   { id: 'flextv', name: 'FlexTV', short: 'FlexTV', accent: '#e11d48', region: 'Global' },
   { id: 'kalostv', name: 'KalosTV', short: 'KalosTV', accent: '#a855f7', region: 'CN / Global' },
@@ -71,9 +74,24 @@ export const ANICHIN_UNIFIED_SOURCES = new Set([
   'flareflow',
 ]);
 
+export const SANSEKAI_SUPPORTED_PLATFORMS = new Set([
+  'dramabox',
+  'melolo',
+  'reelshort',
+  'shortmax',
+  'netshort',
+  'goodshort',
+  'flickreels',
+  'freereels',
+  'dramanova',
+  'pinedrama',
+  'mydrama',
+]);
+
 export const DRACIN_API_SOURCES = [
   { id: 'anichin-unified', label: 'Live Platform API (16 Platform)', kind: 'catalog', priority: 1 },
-  { id: 'dailymotion', label: 'Dailymotion HD Stream API', kind: 'video', priority: 2 },
+  { id: 'sansekai', label: 'SekaiDrama / Sansekai VIP-Free API', kind: 'catalog', priority: 2 },
+  { id: 'dailymotion', label: 'Dailymotion HD Stream API', kind: 'video', priority: 3 },
 ];
 
 /**
@@ -609,6 +627,9 @@ export function normalizeDracinItem(raw = {}, fallbackPlatformId = 'dramabox') {
   return {
     id,
     sourceId: String(raw.sourceId || raw.dramaId || '').trim(),
+    sansekaiId: String(raw.sansekaiId || '').trim(),
+    sansekaiPlatform: String(raw.sansekaiPlatform || '').trim(),
+    sansekaiFallback: Boolean(raw.sansekaiFallback),
     apiProvider: String(raw.apiProvider || raw.sourceApi || 'unified-vault'),
     title,
     altTitle: String(raw.altTitle || raw.originalTitle || '').trim(),
@@ -867,8 +888,13 @@ export function shouldPreserveFullscreenOnEpisodeChange({
  * and merged cleanly with ./data/dracin-endpoints.json so endpoint updates never break the app).
  */
 export const DEFAULT_DRACIN_ENDPOINT_CONFIG = {
-  version: '55.0.0',
+  version: '56.0.0',
   dailymotionPlayerId: 'x8lr5',
+  sansekai: {
+    baseUrl: 'https://api.sansekai.my.id/api',
+    webBaseUrl: 'https://drama.sansekai.my.id',
+    supportedPlatforms: Array.from(SANSEKAI_SUPPORTED_PLATFORMS),
+  },
   mirrors: [
     {
       id: 'anichin-primary',
@@ -1210,8 +1236,14 @@ export function filterDracinCatalog(
   const tokens = q ? q.split(/\s+/).filter(Boolean) : [];
 
   return (catalog || []).filter((item) => {
-    if (platformId && platformId !== 'all' && item.platformId !== platformId) {
-      return false;
+    if (platformId && platformId !== 'all') {
+      if (platformId === 'sansekai') {
+        if (item.apiProvider !== 'sansekai' && item.platformId !== 'sansekai' && !item.sansekaiFallback) {
+          return false;
+        }
+      } else if (item.platformId !== platformId) {
+        return false;
+      }
     }
     if (genreId && genreId !== 'all') {
       const inGenre =
@@ -1969,4 +2001,525 @@ export function rankCrossPlatformDramaMatches(
     })
     .slice(0, Math.max(1, limit));
 }
+
+/**
+ * Normalizes Sansekai/SekaiDrama stream & poster URLs:
+ * upgrades http://api.sansekai.my.id -> https://api.sansekai.my.id (prevents HTTPS Mixed Content blocking),
+ * resolves protocol-relative URLs, and handles relative /api/... paths cleanly.
+ */
+export function normalizeSansekaiUrl(rawUrl = '') {
+  const clean = String(rawUrl || '').trim();
+  if (!clean) return '';
+  if (/^http:\/\/api\.sansekai\.my\.id\b/i.test(clean)) {
+    return clean.replace(/^http:\/\//i, 'https://');
+  }
+  if (/^http:\/\/drama\.sansekai\.my\.id\b/i.test(clean)) {
+    return clean.replace(/^http:\/\//i, 'https://');
+  }
+  if (clean.startsWith('//')) return `https:${clean}`;
+  if (clean.startsWith('/api/')) return `https://api.sansekai.my.id${clean}`;
+  if (clean.startsWith('/')) return `https://api.sansekai.my.id/api${clean}`;
+  return clean;
+}
+
+export function buildSansekaiWebUrl() {
+  return DEFAULT_DRACIN_ENDPOINT_CONFIG.sansekai?.webBaseUrl || 'https://drama.sansekai.my.id';
+}
+
+function classifySansekaiStreamKind(url = '') {
+  const lower = String(url || '').toLowerCase();
+  if (lower.includes('.m3u8') || lower.includes('/hls?') || lower.includes('/hls/') || lower.includes('m3u8')) {
+    return 'hls';
+  }
+  return 'video';
+}
+
+/**
+ * Extracts & normalizes raw feed / search items returned by any of the 11 Sansekai / SekaiDrama
+ * platform endpoints (Melolo, DramaBox, PineDrama, MyDrama, ReelShort, ShortMax, NetShort,
+ * GoodShort, FlickReels, FreeReels, DramaNova) into unified Dracin catalog objects.
+ */
+export function extractSansekaiFeedItems(rawJson, platformId = 'dramabox') {
+  if (!rawJson || typeof rawJson !== 'object') return [];
+  const safePlat = SANSEKAI_SUPPORTED_PLATFORMS.has(String(platformId || '').toLowerCase())
+    ? String(platformId).toLowerCase()
+    : 'dramabox';
+
+  const rawList = [];
+  const pushArr = (arr) => {
+    if (!Array.isArray(arr)) return;
+    for (const item of arr) {
+      if (item && typeof item === 'object') rawList.push(item);
+    }
+  };
+
+  if (Array.isArray(rawJson)) {
+    pushArr(rawJson);
+  } else {
+    const d = rawJson.data ?? rawJson;
+    if (Array.isArray(d)) {
+      for (const entry of d) {
+        if (entry && Array.isArray(entry.dramas)) pushArr(entry.dramas);
+        else if (entry && Array.isArray(entry.books)) pushArr(entry.books);
+        else if (entry && Array.isArray(entry.items)) pushArr(entry.items);
+        else if (entry && typeof entry === 'object') rawList.push(entry);
+      }
+    } else if (d && typeof d === 'object') {
+      // Melolo: data.cells[].cell_data[].books[] | data.cell.cell_data[].books[] | data.search_data[].books[] | data.books[]
+      if (Array.isArray(d.cells)) {
+        for (const cell of d.cells) {
+          if (Array.isArray(cell?.cell_data)) {
+            for (const cd of cell.cell_data) pushArr(cd?.books);
+          }
+          pushArr(cell?.books);
+        }
+      }
+      if (d.cell && Array.isArray(d.cell.cell_data)) {
+        for (const cd of d.cell.cell_data) pushArr(cd?.books);
+      }
+      if (Array.isArray(d.search_data)) {
+        for (const sd of d.search_data) pushArr(sd?.books);
+      }
+      pushArr(d.books);
+      // PineDrama: collections[] / results[]
+      pushArr(d.collections);
+      pushArr(d.results);
+      // ReelShort: data.lists[].books[]
+      if (Array.isArray(d.lists)) {
+        for (const lst of d.lists) {
+          pushArr(lst?.books);
+          pushArr(lst?.items);
+        }
+      }
+      // GoodShort: data.records[].items[] | data.records[]
+      if (Array.isArray(d.records)) {
+        for (const rec of d.records) {
+          if (Array.isArray(rec?.items)) pushArr(rec.items);
+          else if (rec && typeof rec === 'object') rawList.push(rec);
+        }
+      }
+      // FreeReels / ShortMax / NetShort / MyDrama / DramaNova common shapes
+      pushArr(d.items);
+      pushArr(d.list);
+      pushArr(d.dramas);
+      pushArr(d.contentInfos);
+      pushArr(d.shortPlayList);
+    }
+    // Top-level PineDrama/search shapes when not nested in data
+    if (rawList.length === 0) {
+      pushArr(rawJson.collections);
+      pushArr(rawJson.results);
+      pushArr(rawJson.items);
+      pushArr(rawJson.books);
+      pushArr(rawJson.dramas);
+      pushArr(rawJson.list);
+    }
+  }
+
+  const seen = new Set();
+  const normalized = [];
+
+  for (const item of rawList) {
+    const sourceId = String(
+      item.book_id ??
+        item.bookId ??
+        item.collection_id ??
+        item.shortPlayId ??
+        item.playletId ??
+        item.playlet_id ??
+        item.dramaId ??
+        item.key ??
+        item.series_id_str ??
+        item.id ??
+        ''
+    ).trim();
+
+    const title = String(
+      item.book_name ??
+        item.bookName ??
+        item.book_title ??
+        item.shortPlayName ??
+        item.series_title ??
+        item.title ??
+        item.name ??
+        ''
+    ).trim();
+
+    if (!title || !sourceId) continue;
+    const dedupKey = `${safePlat}::${sourceId}`;
+    if (seen.has(dedupKey)) continue;
+    seen.add(dedupKey);
+
+    const rawCover = String(
+      item.thumb_url ??
+        item.coverWap ??
+        item.cover ??
+        item.book_pic ??
+        item.shortPlayCover ??
+        item.series_cover ??
+        item.poster ??
+        item.posterImg ??
+        item.image ??
+        ''
+    ).trim();
+    const cover = normalizeSansekaiUrl(rawCover);
+
+    const desc = String(
+      item.abstract ??
+        item.introduction ??
+        item.description ??
+        item.summary ??
+        item.desc ??
+        item.series_intro ??
+        item.intro ??
+        ''
+    ).trim();
+
+    const epCount =
+      Number(
+        item.serial_count ??
+          item.chapterCount ??
+          item.chapter_count ??
+          item.total_episodes ??
+          item.totalEpisodes ??
+          item.episode_count ??
+          item.episodeCount ??
+          item.episode_cnt ??
+          item.episodes ??
+          0
+      ) || 0;
+
+    const rawTags = [
+      ...(Array.isArray(item.tags) ? item.tags : []),
+      ...(Array.isArray(item.tagNames) ? item.tagNames : []),
+      ...(Array.isArray(item.categories) ? item.categories : []),
+      ...(Array.isArray(item.stat_infos) ? item.stat_infos : []),
+      ...(Array.isArray(item.labelArray) ? item.labelArray : []),
+    ]
+      .map((t) => (typeof t === 'string' ? t : t?.name || t?.tagName || ''))
+      .filter(Boolean);
+
+    const inferredGenre = inferGenreFromText(`${title} ${rawTags.join(' ')}`, desc);
+
+    normalized.push(
+      normalizeDracinItem(
+        {
+          id: `sansekai::${safePlat}::${sourceId}`,
+          sourceId,
+          sansekaiId: sourceId,
+          sansekaiPlatform: safePlat,
+          apiProvider: 'sansekai',
+          sourceApi: `sansekai-${safePlat}`,
+          title,
+          altTitle: rawTags.slice(0, 3).join(' · ') || `SekaiDrama · ${getPlatformMeta(safePlat).name}`,
+          platformId: safePlat,
+          genre: inferredGenre,
+          genres: Array.from(new Set([inferredGenre, 'trending'])),
+          totalEpisodes: epCount,
+          episodes: epCount,
+          poster: cover,
+          description: desc,
+          synopsis: desc,
+          views_total: Number(item.views || item.playCount || item.heatScore || 0) || 1450000,
+          hasIndonesianDub: /dub\s*indo|dubbing|sulih\s*suara/i.test(`${title} ${rawTags.join(' ')}`),
+          keywords: [...extractTokens(title), ...rawTags.map((t) => t.toLowerCase()), safePlat, 'sansekai'],
+        },
+        safePlat
+      )
+    );
+  }
+
+  return normalized;
+}
+
+/**
+ * Extracts the Melolo videoId (`vid`) for a target 1-based episode number from Sansekai's
+ * `/melolo/detail?book_id=...` JSON payload.
+ */
+export function extractSansekaiMeloloVideoId(detailJson, episodeNumber = 1) {
+  const ep = Math.max(1, Math.round(Number(episodeNumber) || 1));
+  const vData = detailJson?.data?.video_data || detailJson?.video_data || detailJson?.data || detailJson;
+  const list = Array.isArray(vData?.video_list)
+    ? vData.video_list
+    : Array.isArray(vData?.episodes)
+    ? vData.episodes
+    : [];
+  if (!list.length) return '';
+
+  const exact = list.find((item) => {
+    const idx = Number(item?.vid_index ?? item?.episodeNumber ?? item?.episode ?? item?.index);
+    return Number.isFinite(idx) && idx === ep;
+  });
+  const picked = exact || list[ep - 1] || null;
+  if (!picked) return '';
+  return String(picked.vid || picked.videoId || picked.video_id || picked.id || '').trim();
+}
+
+/**
+ * Parses episode stream responses across ALL 11 Sansekai / SekaiDrama platform schemas
+ * (Melolo, DramaBox, ShortMax, NetShort, FlickReels, ReelShort, GoodShort, FreeReels,
+ * PineDrama, MyDrama, DramaNova) into unified playable server entries + subtitles.
+ */
+export function extractSansekaiEpisodeStreams(
+  rawJson,
+  { platformId = 'dramabox', episodeNumber = 1 } = {}
+) {
+  const safePlat = SANSEKAI_SUPPORTED_PLATFORMS.has(String(platformId || '').toLowerCase())
+    ? String(platformId).toLowerCase()
+    : 'dramabox';
+  const platName = getPlatformMeta(safePlat).name;
+  const ep = Math.max(1, Math.round(Number(episodeNumber) || 1));
+
+  if (!rawJson || typeof rawJson !== 'object') {
+    return { servers: [], subtitles: [], locked: false };
+  }
+
+  const servers = [];
+  const subtitles = [];
+  const seenUrls = new Set();
+  const seenSubUrls = new Set();
+  let locked = false;
+
+  const addServer = (rawUrl, qualityLabel = 'HD', extra = {}) => {
+    const url = normalizeSansekaiUrl(rawUrl);
+    if (!url || !/^https?:\/\//i.test(url) || seenUrls.has(url)) return;
+    seenUrls.add(url);
+    const kind = classifySansekaiStreamKind(url);
+    const q = String(qualityLabel || 'HD').toUpperCase();
+    servers.push({
+      id: `sansekai-${safePlat}-${q.toLowerCase().replace(/[^a-z0-9]/g, '')}-${servers.length}`,
+      label: `Sansekai · ${platName} ${q}${kind === 'hls' ? ' (HLS)' : ' (MP4)'}`,
+      provider: 'sansekai',
+      sansekaiPlatform: safePlat,
+      kind,
+      url,
+      qualityLabel: q,
+      ...extra,
+    });
+  };
+
+  const addSubtitle = (sub) => {
+    if (!sub) return;
+    const rawU = typeof sub === 'string' ? sub : sub.url || sub.src || sub.subtitleUrl || sub.vttUrl || sub.srtUrl || '';
+    const url = normalizeSansekaiUrl(rawU);
+    if (!url || !/^https?:\/\//i.test(url) || seenSubUrls.has(url)) return;
+    seenSubUrls.add(url);
+    const lang = String(
+      (typeof sub === 'object' ? sub.language || sub.lang || sub.subtitleLanguage || sub.code : '') || 'id'
+    ).toLowerCase();
+    const label = String(
+      (typeof sub === 'object' ? sub.label || sub.langName || sub.language || sub.subtitleLanguage : '') ||
+        (lang.includes('id') || lang.includes('in') ? 'Indonesia' : lang.toUpperCase())
+    );
+    subtitles.push({ label, language: lang, url });
+  };
+
+  // Helper to inspect an individual episode node across schemas
+  const inspectEpisodeNode = (node) => {
+    if (!node || typeof node !== 'object') return;
+    if (node.locked === true || node.isLocked === true || node.isVip === true) {
+      locked = true;
+    }
+
+    // 1. Melolo / PineDrama / MyDrama / generic `qualities` / `videoList` / `streams` arrays
+    const qualityArrays = [
+      node.qualities,
+      node.videoList,
+      node.videoPathList,
+      node.streams,
+      node.sources,
+      node.qualityList,
+    ].filter(Array.isArray);
+
+    for (const qArr of qualityArrays) {
+      for (const q of qArr) {
+        if (!q || typeof q !== 'object') continue;
+        const u = q.streamUrl || q.videoPath || q.url || q.playUrl || q.videoUrl || q.hlsUrl || q.mp4 || '';
+        const lbl = q.label || q.definition || q.quality || q.resolution || 'HD';
+        if (u) addServer(u, typeof lbl === 'number' ? `${lbl}P` : String(lbl));
+      }
+    }
+
+    // 2. DramaBox `cdnList[].videoPathList[]`
+    if (Array.isArray(node.cdnList)) {
+      const sortedCdns = [...node.cdnList].sort((a, b) => Number(Boolean(b?.isDefault)) - Number(Boolean(a?.isDefault)));
+      for (const cdn of sortedCdns) {
+        if (!Array.isArray(cdn?.videoPathList)) continue;
+        const sortedPaths = [...cdn.videoPathList].sort((a, b) => {
+          const qa = Number(a?.quality) || 0;
+          const qb = Number(b?.quality) || 0;
+          // Prefer 720p -> 540p -> 1080p -> others
+          const rank = (v) => (v === 720 ? 0 : v === 540 ? 1 : v === 1080 ? 2 : v === 480 ? 3 : 4);
+          return rank(qa) - rank(qb);
+        });
+        for (const vp of sortedPaths) {
+          if (vp?.videoPath) {
+            addServer(vp.videoPath, vp.quality ? `${vp.quality}P` : 'HD');
+          }
+        }
+      }
+    }
+
+    // 3. ShortMax `videoUrl` as object `{ video_1080, video_720, video_480 }`
+    if (node.videoUrl && typeof node.videoUrl === 'object' && !Array.isArray(node.videoUrl)) {
+      const vo = node.videoUrl;
+      if (vo.video_720) addServer(vo.video_720, '720P');
+      if (vo.video_1080) addServer(vo.video_1080, '1080P');
+      if (vo.video_540) addServer(vo.video_540, '540P');
+      if (vo.video_480) addServer(vo.video_480, '480P');
+      if (vo.video_360) addServer(vo.video_360, '360P');
+      for (const [k, v] of Object.entries(vo)) {
+        if (typeof v === 'string' && /^https?:\/\//i.test(v)) {
+          addServer(v, k.replace(/^video_/i, '') + 'P');
+        }
+      }
+    }
+
+    // 3b. Melolo `video_model` JSON string/object with base64-encoded `video_list.video_N.main_url`
+    if (node.video_model) {
+      let vm = node.video_model;
+      if (typeof vm === 'string') {
+        try {
+          vm = JSON.parse(vm);
+        } catch {
+          vm = null;
+        }
+      }
+      const vListObj = vm && typeof vm === 'object' ? vm.video_list || vm.videoList : null;
+      if (vListObj && typeof vListObj === 'object') {
+        const entries = Array.isArray(vListObj) ? vListObj : Object.values(vListObj);
+        for (const entry of entries) {
+          if (!entry || typeof entry !== 'object') continue;
+          const defLabel = String(entry.definition || entry.quality || entry.vtype || 'HD').toUpperCase();
+          const rawUrls = [entry.main_url, entry.backup_url_1, entry.backup_url, entry.url].filter(
+            (u) => typeof u === 'string' && u.trim()
+          );
+          for (const rawU of rawUrls) {
+            let decoded = rawU.trim();
+            if (!/^https?:\/\//i.test(decoded) && !decoded.startsWith('//')) {
+              try {
+                const candidate =
+                  typeof atob === 'function'
+                    ? atob(decoded)
+                    : Buffer.from(decoded, 'base64').toString('utf8');
+                if (/^https?:\/\//i.test(candidate.trim())) {
+                  decoded = candidate.trim();
+                }
+              } catch {
+                // Not valid base64
+              }
+            }
+            if (/^https?:\/\//i.test(decoded) || decoded.startsWith('//')) {
+              addServer(decoded, defLabel);
+            }
+          }
+        }
+      }
+    }
+
+    // 4. Direct top-level URLs (Melolo main_url/backup_url/streamUrl, FlickReels hlsUrl, NetShort videoUrl, ReelShort/GoodShort/FreeReels)
+    const directCandidates = [
+      { key: 'streamUrl', label: node.quality || 'HD' },
+      { key: 'main_url', label: node.definition || node.quality || 'HD' },
+      { key: 'backup_url', label: node.definition || node.quality || 'Backup' },
+      { key: 'hlsUrl', label: node.quality || 'HD' },
+      { key: 'm3u8Url', label: node.quality || 'HD' },
+      { key: 'videoUrl', label: node.quality || 'HD' },
+      { key: 'playUrl', label: node.quality || 'HD' },
+      { key: 'mp4', label: node.quality || 'HD' },
+      { key: 'mp4Url', label: node.quality || 'HD' },
+      { key: 'external_audio_h264_m3u8', label: 'H264' },
+      { key: 'm3u8_url', label: 'HD' },
+      { key: 'video_url', label: 'HD' },
+      { key: 'url', label: node.quality || 'HD' },
+    ];
+    for (const { key, label } of directCandidates) {
+      if (typeof node[key] === 'string' && node[key].trim()) {
+        let candidateUrl = node[key].trim();
+        if (!/^https?:\/\//i.test(candidateUrl) && !candidateUrl.startsWith('//') && (key === 'main_url' || key === 'backup_url')) {
+          try {
+            const dec =
+              typeof atob === 'function'
+                ? atob(candidateUrl)
+                : Buffer.from(candidateUrl, 'base64').toString('utf8');
+            if (/^https?:\/\//i.test(dec.trim())) candidateUrl = dec.trim();
+          } catch {
+            // ignore
+          }
+        }
+        addServer(candidateUrl, label);
+      }
+    }
+
+    // 5. Subtitles (NetShort subtitleUrl, Melolo/FreeReels subtitles[] / subtitle_list[])
+    if (node.subtitleUrl) {
+      addSubtitle({
+        url: node.subtitleUrl,
+        language: node.subtitleLanguage || 'id',
+        label: node.subtitleLanguage || 'Indonesia',
+      });
+    }
+    const subArrays = [node.subtitles, node.subtitle_list, node.captions, node.tracks].filter(Array.isArray);
+    for (const sArr of subArrays) {
+      for (const s of sArr) addSubtitle(s);
+    }
+  };
+
+  // Detect all-episode array responses (DramaBox /get-allepisode, GoodShort /get-allepisode, FreeReels /detailAndAllEpisode)
+  const episodeList = Array.isArray(rawJson)
+    ? rawJson
+    : Array.isArray(rawJson?.data?.chapterList)
+    ? rawJson.data.chapterList
+    : Array.isArray(rawJson?.data?.episodes)
+    ? rawJson.data.episodes
+    : Array.isArray(rawJson?.data?.episode_list)
+    ? rawJson.data.episode_list
+    : Array.isArray(rawJson?.episodes)
+    ? rawJson.episodes
+    : Array.isArray(rawJson?.chapterList)
+    ? rawJson.chapterList
+    : Array.isArray(rawJson?.data)
+    ? rawJson.data
+    : null;
+
+  if (episodeList && episodeList.length > 0) {
+    // Match 1-based episodeNumber OR 0-based chapterIndex === ep - 1
+    const matched =
+      episodeList.find((item) => {
+        const oneBased = Number(
+          item?.episodeNumber ?? item?.episodeNum ?? item?.episode_num ?? item?.serial_number ?? item?.index
+        );
+        if (Number.isFinite(oneBased) && oneBased === ep && item?.chapterIndex === undefined) {
+          return true;
+        }
+        if (item?.chapterIndex !== undefined && Number(item.chapterIndex) === ep - 1) {
+          return true;
+        }
+        return false;
+      }) || episodeList[ep - 1];
+
+    if (matched) {
+      inspectEpisodeNode(matched);
+    }
+  } else {
+    // Single-episode object (may be nested under data / episode / data.episode)
+    const nodes = [
+      rawJson,
+      rawJson?.data,
+      rawJson?.episode,
+      rawJson?.data?.episode,
+      rawJson?.result,
+    ].filter((n) => n && typeof n === 'object' && !Array.isArray(n));
+    for (const node of nodes) {
+      inspectEpisodeNode(node);
+    }
+  }
+
+  return {
+    servers,
+    subtitles,
+    locked: Boolean(locked && servers.length === 0),
+  };
+}
+
 

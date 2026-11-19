@@ -1,8 +1,25 @@
 {
-  "version": "55.0.0",
-  "updatedAt": "2026-11-20T00:00:00Z",
+  "version": "56.0.0",
+  "updatedAt": "2026-11-20T06:00:00Z",
   "dailymotionPlayerId": "x8lr5",
-  "notes": "Self-updating Drama China multi-mirror API registry. Updating this JSON immediately heals endpoint changes across all users without rewriting app code.",
+  "notes": "Self-updating Drama China multi-mirror API registry with Sansekai/SekaiDrama automatic VIP failover. Updating this JSON immediately heals endpoint changes across all users without rewriting app code.",
+  "sansekai": {
+    "baseUrl": "https://api.sansekai.my.id/api",
+    "webBaseUrl": "https://drama.sansekai.my.id",
+    "supportedPlatforms": [
+      "dramabox",
+      "melolo",
+      "reelshort",
+      "shortmax",
+      "netshort",
+      "goodshort",
+      "flickreels",
+      "freereels",
+      "dramanova",
+      "pinedrama",
+      "mydrama"
+    ]
+  },
   "mirrors": [
     {
       "id": "anichin-primary",

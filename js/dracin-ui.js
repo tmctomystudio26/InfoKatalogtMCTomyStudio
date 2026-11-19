@@ -33,7 +33,7 @@ import {
   shouldPreserveFullscreenOnEpisodeChange,
   toggleFavoriteDramaId,
   upsertWatchHistory,
-} from './dracin-logic.js?v=55';
+} from './dracin-logic.js?v=56';
 import {
   fetchAiDramaInsights,
   fetchDramaDetail,
@@ -43,12 +43,13 @@ import {
   identifyDracinFromMedia,
   prefetchEpisodePlayback,
   resolveEpisodePlayback,
+  resolveSansekaiEpisodePlayback,
   searchDailymotionEpisodeBackup,
-} from './dracin.js?v=55';
+} from './dracin.js?v=56';
 import {
   attachClearKeyEme,
   fetchAndDecryptCencMp4,
-} from './dracin-cenc.js?v=55';
+} from './dracin-cenc.js?v=56';
 
 const HISTORY_STORAGE_KEY = 'manifestudio_dracin_history_v1';
 const FAVORITES_STORAGE_KEY = 'manifestudio_dracin_favorites_v1';
@@ -62,7 +63,7 @@ function ensureHlsLibrary() {
   if (hlsScriptPromise) return hlsScriptPromise;
   hlsScriptPromise = new Promise((resolve, reject) => {
     const script = document.createElement('script');
-    script.src = './js/vendor/hls.min.js?v=55';
+    script.src = './js/vendor/hls.min.js?v=56';
     script.async = true;
     script.onload = () => resolve(window.Hls || null);
     script.onerror = () => {
@@ -152,6 +153,8 @@ export function createDracinController({ onToast = () => {} } = {}) {
     streamError: '',
     streamLocked: false,
     searchingBackupMirror: false,
+    searchingSansekai: false,
+    sansekaiFallbackNote: '',
     triedServerIds: new Set(),
 
     // Multi-language subtitles
@@ -495,6 +498,11 @@ export function createDracinController({ onToast = () => {} } = {}) {
       if (txt && isError) txt.textContent = message;
       const prevErrBtn = errBox.querySelector('#dracin-error-prev-ep-btn');
       if (prevErrBtn) prevErrBtn.hidden = state.currentEpisode <= 1;
+      const skBtn = errBox.querySelector('#dracin-sansekai-fallback-btn');
+      if (skBtn) {
+        skBtn.disabled = state.searchingSansekai;
+        skBtn.textContent = state.searchingSansekai ? 'Menghubungkan Sansekai...' : 'Buka via Sansekai API';
+      }
       const dmBtn = errBox.querySelector('#dracin-search-dm-mirror-btn');
       if (dmBtn) {
         dmBtn.disabled = state.searchingBackupMirror;
@@ -609,22 +617,101 @@ export function createDracinController({ onToast = () => {} } = {}) {
   }
 
   function renderServerButtonsHtml(activeServer) {
-    if (!state.servers.length) {
-      return `<span class="dracin-toolbar-note">${state.resolvingStream ? 'Mengambil link video HD...' : 'Belum ada server aktif'}</span>`;
-    }
-    return state.servers
-      .map(
-        (srv) => `
+    const hasSansekaiServer = state.servers.some((s) => s.provider === 'sansekai');
+    const serverBtns = state.servers.length
+      ? state.servers
+          .map(
+            (srv) => `
       <button
         type="button"
-        class="dracin-server-btn ${activeServer?.id === srv.id ? 'is-active' : ''}"
+        class="dracin-server-btn ${srv.provider === 'sansekai' ? 'is-sansekai' : ''} ${activeServer?.id === srv.id ? 'is-active' : ''}"
         data-dracin-server="${escapeHtml(srv.id)}"
       >
         ${escapeHtml(srv.label)}
       </button>
     `
-      )
-      .join('');
+          )
+          .join('')
+      : `<span class="dracin-toolbar-note">${state.resolvingStream ? 'Mengambil link video HD...' : 'Belum ada server aktif'}</span>`;
+
+    const switchBtn = !hasSansekaiServer
+      ? `<button type="button" class="dracin-server-btn dracin-sansekai-switch-btn" id="dracin-switch-sansekai-btn" ${
+          state.searchingSansekai ? 'disabled' : ''
+        }>${state.searchingSansekai ? 'Memuat Sansekai...' : '⚡ Server Sansekai (VIP-Free)'}</button>`
+      : '';
+
+    return `${serverBtns}${switchBtn}`;
+  }
+
+  async function handleSwitchToSansekaiServer({ forceRefresh = true } = {}) {
+    const drama = getActiveDrama();
+    if (!drama || state.searchingSansekai) return;
+    primeVideoAudioGesture();
+    state.searchingSansekai = true;
+
+    const toolbarSwitchBtn = hostEl?.querySelector('#dracin-switch-sansekai-btn');
+    if (toolbarSwitchBtn) {
+      toolbarSwitchBtn.disabled = true;
+      toolbarSwitchBtn.textContent = 'Memuat Sansekai...';
+    }
+    if (state.streamError) {
+      setStatusOverlay(false, state.streamError, true);
+    } else {
+      setStatusOverlay(true, `Menghubungkan Episode ${state.currentEpisode} via Sansekai API...`, false);
+    }
+
+    try {
+      const skRes = await resolveSansekaiEpisodePlayback(drama, state.currentEpisode, { forceRefresh });
+      state.searchingSansekai = false;
+      if (skRes.servers && skRes.servers.length > 0) {
+        const merged = [
+          ...skRes.servers,
+          ...state.servers.filter((s) => !skRes.servers.some((n) => n.id === s.id)),
+        ];
+        const prevSrv = state.servers.find((s) => s.id === state.activeServerId);
+        state.servers = merged;
+        state.activeServerId = skRes.servers[0].id;
+        if (skRes.subtitles?.length) {
+          state.apiSubtitles = skRes.subtitles;
+        }
+        state.triedServerIds = new Set();
+        state.streamError = '';
+        state.streamLocked = false;
+        onToast(`Episode ${state.currentEpisode} dibuka via Server Sansekai (${skRes.platformName || 'HD'})`);
+        showSwipeHint(`Server Sansekai · ${skRes.platformName || 'HD'} aktif`);
+
+        const switchingSurface = prevSrv?.kind === 'dailymotion';
+        if (switchingSurface || !hostEl?.querySelector('#dracin-html5-video')) {
+          render();
+        } else {
+          syncPlayerEpisodeUiInPlace(drama);
+          setStatusOverlay(true, `Menyiapkan ${skRes.servers[0].label}...`, false);
+        }
+        loadSubtitlesForActiveEpisode(drama, state.currentEpisode, null, state.apiSubtitles);
+        attachMediaToActiveStage();
+        return;
+      }
+
+      const fallbackMsg = skRes.error?.includes('403') || skRes.error?.includes('429')
+        ? 'API Sansekai sedang membatasi akses sementara (rate limit). Coba lagi sebentar atau pilih platform/mirror lain.'
+        : `Episode ${state.currentEpisode} belum ditemukan di server Sansekai. Coba Cari di Platform Lain atau Mirror Dailymotion.`;
+      if (state.servers.length === 0) {
+        setStatusOverlay(false, fallbackMsg, true);
+      } else {
+        setStatusOverlay(false);
+        syncPlayerEpisodeUiInPlace(drama);
+      }
+      onToast(fallbackMsg);
+    } catch {
+      state.searchingSansekai = false;
+      if (state.servers.length === 0) {
+        setStatusOverlay(false, state.streamError || 'Gagal menghubungi Server Sansekai saat ini.', true);
+      } else {
+        setStatusOverlay(false);
+        syncPlayerEpisodeUiInPlace(drama);
+      }
+      onToast('Gagal menghubungi Server Sansekai saat ini');
+    }
   }
 
   function bindServerSwitchButtons(container) {
@@ -648,6 +735,9 @@ export function createDracinController({ onToast = () => {} } = {}) {
         }
         attachMediaToActiveStage();
       });
+    });
+    container.querySelector('#dracin-switch-sansekai-btn')?.addEventListener('click', () => {
+      handleSwitchToSansekaiServer({ forceRefresh: true });
     });
   }
 
@@ -1361,6 +1451,11 @@ export function createDracinController({ onToast = () => {} } = {}) {
     state.streamError = streamRes.error || '';
     state.resolvingStream = Boolean(best);
 
+    if (streamRes.switchedViaSansekai && best) {
+      onToast(`Episode ${safeEp} dibuka otomatis via Server Sansekai (${streamRes.sansekaiPlatformName || 'VIP-Free'})`);
+      showSwipeHint(`Auto-buka via Sansekai API · Ep ${safeEp}`);
+    }
+
     const needsIframe = best?.kind === 'dailymotion';
     const hasVideoNow = Boolean(hostEl?.querySelector('#dracin-html5-video'));
     const hasStageNow = Boolean(hostEl?.querySelector('#dracin-player-stage'));
@@ -1387,10 +1482,16 @@ export function createDracinController({ onToast = () => {} } = {}) {
       // Allow resuming directly from saved history even if platform tab hasn't loaded yet
       const histItem = state.history.find((h) => h.dramaId === dramaId);
       if (histItem) {
+        const isSansekaiHist = histItem.apiProvider === 'sansekai' || histItem.dramaId.startsWith('sansekai::');
+        const idParts = histItem.dramaId.split('::');
         found = {
           id: histItem.dramaId,
-          sourceId: histItem.sourceId || (histItem.dramaId.includes('::') ? histItem.dramaId.split('::')[1] : ''),
-          apiProvider: histItem.apiProvider || (histItem.dramaId.includes('::') ? 'anichin-unified' : 'dailymotion'),
+          sourceId: histItem.sourceId || (idParts.length >= 2 ? idParts[idParts.length - 1] : ''),
+          sansekaiId: isSansekaiHist ? (histItem.sourceId || idParts[idParts.length - 1] || '') : '',
+          sansekaiPlatform: isSansekaiHist ? (idParts[1] || histItem.platformId) : '',
+          apiProvider:
+            histItem.apiProvider ||
+            (isSansekaiHist ? 'sansekai' : histItem.dramaId.includes('::') ? 'anichin-unified' : 'dailymotion'),
           title: histItem.title,
           platformId: histItem.platformId,
           platformName: histItem.platformName,
@@ -1468,6 +1569,9 @@ export function createDracinController({ onToast = () => {} } = {}) {
 
     try {
       const res = await fetchUnifiedDracinCatalog({ query, platformId, page });
+      if (!append) {
+        state.sansekaiFallbackNote = res?.sansekaiFallbackNote || '';
+      }
       if (res && Array.isArray(res.items) && res.items.length > 0) {
         if (append) {
           const existingIds = new Set(state.catalog.map((d) => d.id));
@@ -1477,7 +1581,7 @@ export function createDracinController({ onToast = () => {} } = {}) {
           // Merge into global catalog while keeping previously loaded platforms accessible for favorites/history
           const incomingIds = new Set(res.items.map((d) => d.id));
           const kept = state.catalog.filter(
-            (d) => !incomingIds.has(d.id) && (platformId === 'all' ? false : d.platformId !== platformId)
+            (d) => !incomingIds.has(d.id) && (platformId === 'all' || platformId === 'sansekai' ? false : d.platformId !== platformId)
           );
           state.catalog = [...res.items, ...kept];
         }
@@ -2019,7 +2123,7 @@ export function createDracinController({ onToast = () => {} } = {}) {
                   id="dracin-platform-search-input"
                   class="dracin-dropdown-search"
                   value="${escapeHtml(state.platformSearchQuery)}"
-                  placeholder="Cari platform (Melolo, DramaBox, ReelShort...)"
+                  placeholder="Cari platform (SekaiDrama, Melolo, PineDrama, DramaBox...)"
                   aria-label="Cari platform drama"
                   autocomplete="off"
                 />
@@ -2034,6 +2138,12 @@ export function createDracinController({ onToast = () => {} } = {}) {
               </div>
             </div>
           </div>
+
+          ${
+            state.platformId === 'sansekai' && state.sansekaiFallbackNote
+              ? `<p class="dracin-sansekai-note" role="status">${escapeHtml(state.sansekaiFallbackNote)}</p>`
+              : ''
+          }
 
           <div class="dracin-genre-strip" role="group" aria-label="Filter genre drama">
             ${DRACIN_GENRES.map(
@@ -2310,11 +2420,14 @@ export function createDracinController({ onToast = () => {} } = {}) {
               <span>${escapeHtml(state.streamStatusText || 'Memuat video HD...')}</span>
             </div>
 
-            <!-- Real Stream Error / VIP Lock Overlay with Instant Retry, Cross-Platform Match & Mirror Lookup -->
+            <!-- Real Stream Error / VIP Lock Overlay with Sansekai API Failover, Cross-Platform Match & Mirror Lookup -->
             <div id="dracin-media-error" class="dracin-media-error" ${state.streamError ? '' : 'hidden'}>
               <p>${escapeHtml(state.streamError || 'Gagal memuat video.')}</p>
               <div class="dracin-error-actions">
-                <button type="button" class="btn btn-primary btn-xs" id="dracin-retry-stream-btn">Coba Muat Ulang</button>
+                <button type="button" class="btn btn-primary btn-xs dracin-sansekai-btn" id="dracin-sansekai-fallback-btn" ${state.searchingSansekai ? 'disabled' : ''}>
+                  ${state.searchingSansekai ? 'Menghubungkan Sansekai...' : 'Buka via Sansekai API'}
+                </button>
+                <button type="button" class="btn btn-secondary btn-xs" id="dracin-retry-stream-btn">Coba Muat Ulang</button>
                 <button type="button" class="btn btn-secondary btn-xs" id="dracin-find-cross-platform-btn" ${state.crossMatchesLoading ? 'disabled' : ''}>
                   ${state.crossMatchesLoading ? 'Mencocokkan Platform...' : 'Cari di Platform Lain'}
                 </button>
@@ -3042,6 +3155,10 @@ export function createDracinController({ onToast = () => {} } = {}) {
       destroyActiveMediaEngine();
       state.view = 'discover';
       render();
+    });
+
+    hostEl.querySelector('#dracin-sansekai-fallback-btn')?.addEventListener('click', () => {
+      handleSwitchToSansekaiServer({ forceRefresh: true });
     });
 
     hostEl.querySelector('#dracin-retry-stream-btn')?.addEventListener('click', () => {
