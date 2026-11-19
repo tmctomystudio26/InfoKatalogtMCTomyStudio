@@ -626,6 +626,10 @@ export const DEFAULT_UTILITY_CONFIG = {
       pageTitle: 'Jadwal Sholat & Imsakiyah',
       pageSubtitle:
         'Waktu sholat resmi Kemenag RI (WIB/WITA/WIT) lengkap dengan hitung mundur waktu sholat berikutnya.',
+      heroKicker: 'Kemenag RI · Waktu Sholat Resmi',
+      heroTitle: 'Jadwal Sholat & Imsakiyah Harian',
+      heroDescription:
+        'Deteksi lokasi otomatis atau pilih Kelurahan, Kecamatan, dan Kab/Kota se-Indonesia lengkap dengan hitung mundur adzan.',
     },
     {
       id: 'weather',
@@ -634,6 +638,10 @@ export const DEFAULT_UTILITY_CONFIG = {
       pageTitle: 'Prakiraan Cuaca Real-Time',
       pageSubtitle:
         'Kondisi cuaca saat ini, curah hujan presisi per jam, kelembapan, UV, angin, & prakiraan 7 hari ke depan.',
+      heroKicker: 'Multi-Sensor Radar Curah Hujan',
+      heroTitle: 'Prakiraan Cuaca Presisi Real-Time',
+      heroDescription:
+        'Pantau suhu, kelembapan, indeks UV, kecepatan angin, hujan per jam, serta prakiraan 7 hari ke depan.',
     },
     {
       id: 'worldclock',
@@ -642,6 +650,10 @@ export const DEFAULT_UTILITY_CONFIG = {
       pageTitle: 'Jam Dunia UTC & Bola Dunia',
       pageSubtitle:
         'Standar waktu internasional UTC/GMT, WIB, WITA, WIT, serta konversi waktu lintas negara.',
+      heroKicker: 'Standar Internasional UTC/GMT · WIB · WITA · WIT',
+      heroTitle: 'Bola Dunia Interaktif & Konverter Waktu',
+      heroDescription:
+        'Putar bola dunia interaktif untuk memilih negara dan konversi waktu lintas zona secara instan.',
     },
     {
       id: 'speedtest',
@@ -650,6 +662,10 @@ export const DEFAULT_UTILITY_CONFIG = {
       pageTitle: 'Speedtest Internet Real-Time',
       pageSubtitle:
         'Uji kecepatan rata-rata download, upload, ping, jitter, lokasi server, ISP, dan perangkat Anda.',
+      heroKicker: 'Cloudflare Speed Edge',
+      heroTitle: 'Tes Kecepatan Internet',
+      heroDescription:
+        'Uji kecepatan download, upload, ping, jitter, dan latensi beban koneksi internet Anda secara langsung.',
     },
     {
       id: 'downloader',
@@ -658,6 +674,10 @@ export const DEFAULT_UTILITY_CONFIG = {
       pageTitle: 'Downloader Video, Foto, Carousel & Story',
       pageSubtitle:
         'Unduh video HD, postingan foto, slide carousel, story, & salin caption dari TikTok, IG, YT, dan FB.',
+      heroKicker: 'Video · Foto · Multi-Slide · Story · Salin Caption',
+      heroTitle: 'Downloader Media Sosial All-in-One',
+      heroDescription:
+        'Unduh Video HD, Postingan Foto, Slide Carousel (Banyak Foto), Story Sosmed, & Salin Caption dari TikTok, Instagram, YouTube, dan Facebook.',
     },
     {
       id: 'compressor',
@@ -666,6 +686,10 @@ export const DEFAULT_UTILITY_CONFIG = {
       pageTitle: 'Kompresor Foto & Video HD (Open-Source Engine)',
       pageSubtitle:
         'Kompresi ukuran foto & video nyata berbasis algoritma open-source (FFmpeg WASM/Squoosh/UPNG) agar hemat kuota & lolos kompresi sosmed.',
+      heroKicker: 'Open-Source Compression Engine · FFmpeg WebAssembly / Squoosh / UPNG',
+      heroTitle: 'Kompres Foto & Video HD Nyata Tanpa Pecah di Sosmed',
+      heroDescription:
+        'Menggunakan algoritma pencarian biner kualitas adaptif & kuantisasi palet open-source untuk memangkas ukuran byte foto & video secara nyata (30%–80% lebih ringan) agar lolos kompresi paksa TikTok, Instagram, dan WhatsApp.',
     },
     {
       id: 'converter',
@@ -674,6 +698,10 @@ export const DEFAULT_UTILITY_CONFIG = {
       pageTitle: 'Konversi Semua Format File (All-in-One Converter)',
       pageSubtitle:
         'Konversi DOCX ke PDF, Excel ke PDF/CSV, PDF ke JPG/PNG, JPG ke PNG/JPEG/WebP/ZIP, serta MP4 ke M4A/WAV/MP3 secara instan.',
+      heroKicker: 'All-in-One File Converter · 85+ Konversi Multi-Format & OpenXML',
+      heroTitle: 'Konversi Semua Format File (DOCX, Excel, PDF, Foto, Video, Audio & ZIP)',
+      heroDescription:
+        'Masukkan file apa saja di bawah ini — sistem otomatis mendeteksi format berkas asal Anda dan menampilkan pilihan format konversi tujuan dalam daftar dropdown ringkas.',
     },
     {
       id: 'songfinder',
@@ -682,6 +710,10 @@ export const DEFAULT_UTILITY_CONFIG = {
       pageTitle: 'Cari Judul Lagu, Musik & Sumber Video (Multi-API & AI Identifier)',
       pageSubtitle:
         'Unggah file audio atau video untuk mendeteksi judul lagu dengan kemiripan hingga ~100%, lengkap dengan link YouTube, Spotify, Apple Music, TikTok, IG Reels & sumber video mirip.',
+      heroKicker: 'AudD Shazam-Grade · Whisper Lirik AI · Multi-AI & Video Similarity (9 Engine)',
+      heroTitle: 'Cari Judul Lagu, Lirik, Kemiripan Musik & Sumber Video (Otomatis Audio/Video)',
+      heroDescription:
+        'Masukkan file Audio (MP3, WAV, M4A, AAC, OGG, FLAC) maupun Video (MP4, MOV, WebM, MKV). Sistem membaca gelombang suara asli via AudD Fingerprinting, mentranskrip vokal via Whisper Large v3 Turbo, mencocokkan lirik di LRCLIB & Lyrics.ovh, menghitung Shazam Landmark Hash + Cosine Acoustic Similarity, dan menggabungkan Multi-AI Publik Gratis + Apple Music, Spotify, Shazam, YouTube & TikTok.',
     },
     {
       id: 'music',
@@ -690,6 +722,10 @@ export const DEFAULT_UTILITY_CONFIG = {
       pageTitle: 'YT Music Player — Viral Indonesia',
       pageSubtitle:
         'Pemutar YT Music API bebas iklan dengan daftar putar acak otomatis lagu Indonesia viral, pencarian lengkap, & sinkron dengan ikon mengambang.',
+      heroKicker: 'YT Music API · Bebas Iklan',
+      heroTitle: 'Pemutar YT Music & Daftar Putar Viral',
+      heroDescription:
+        'Putar lagu Indonesia viral tanpa iklan, cari musik favorit, kelola daftar putar, & sinkron dengan tombol putar mengambang.',
     },
   ],
 };
@@ -713,6 +749,10 @@ export function normalizeUtilityConfig(utilities = {}) {
       icon: String(custom.icon || defItem.icon).trim() || defItem.icon,
       pageTitle: String(custom.pageTitle || defItem.pageTitle).trim() || defItem.pageTitle,
       pageSubtitle: String(custom.pageSubtitle || defItem.pageSubtitle).trim() || defItem.pageSubtitle,
+      heroKicker: String(custom.heroKicker || defItem.heroKicker || '').trim() || defItem.heroKicker || '',
+      heroTitle: String(custom.heroTitle || defItem.heroTitle || '').trim() || defItem.heroTitle || '',
+      heroDescription:
+        String(custom.heroDescription || defItem.heroDescription || '').trim() || defItem.heroDescription || '',
     };
   });
 
@@ -764,6 +804,14 @@ export function upsertUtilityItemInCatalog(catalog, itemInput = {}) {
         itemInput.pageSubtitle !== undefined
           ? String(itemInput.pageSubtitle).trim() || it.pageSubtitle
           : it.pageSubtitle,
+      heroKicker:
+        itemInput.heroKicker !== undefined ? String(itemInput.heroKicker).trim() || it.heroKicker : it.heroKicker,
+      heroTitle:
+        itemInput.heroTitle !== undefined ? String(itemInput.heroTitle).trim() || it.heroTitle : it.heroTitle,
+      heroDescription:
+        itemInput.heroDescription !== undefined
+          ? String(itemInput.heroDescription).trim() || it.heroDescription
+          : it.heroDescription,
     };
   });
   return {
@@ -1839,6 +1887,15 @@ export function describeCatalogChanges(prevCatalog, nextCatalog) {
       }
       if (pIt.pageSubtitle !== nIt.pageSubtitle) {
         details.push(`Memperbarui subjudul halaman utilitas "${nIt.label}"`);
+      }
+      if (pIt.heroKicker !== nIt.heroKicker) {
+        details.push(`Memperbarui caption kartu utilitas "${nIt.label}"`);
+      }
+      if (pIt.heroTitle !== nIt.heroTitle) {
+        details.push(`Mengubah judul kartu fitur "${nIt.label}" menjadi "${nIt.heroTitle}"`);
+      }
+      if (pIt.heroDescription !== nIt.heroDescription) {
+        details.push(`Memperbarui deskripsi kartu fitur "${nIt.label}"`);
       }
     }
   }

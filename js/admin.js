@@ -2,7 +2,7 @@ import {
   CATALOG_PREVIEW_STORAGE_KEY,
   getDefaultCatalogSnapshot,
   loadCatalogData,
-} from './data.js?v=46';
+} from './data.js?v=47';
 import {
   DEFAULT_UTILITY_CONFIG,
   MAX_HISTORY_LOGS,
@@ -37,12 +37,12 @@ import {
   upsertProductInCatalog,
   upsertSocialInCatalog,
   upsertUtilityItemInCatalog,
-} from './store.js?v=46';
+} from './store.js?v=47';
 import {
   decryptVault,
   encryptVault,
   verifyGitHubTokenAccess,
-} from './vault.js?v=46';
+} from './vault.js?v=47';
 
 const THEME_STORAGE_KEY = 'manifestudio_theme_v1';
 const ADMIN_VAULT_STORAGE_KEY = 'manifestudio_admin_vault_v1';
@@ -98,6 +98,7 @@ const UTILITY_ICON_PRESETS = [
   { value: './assets/icons/tool-downloader.svg', label: 'Ikon Downloader' },
   { value: './assets/icons/tool-compressor.svg', label: 'Ikon Kompresor HD' },
   { value: './assets/icons/tool-converter.svg', label: 'Ikon Konversi File' },
+  { value: './assets/icons/tool-songfinder.svg', label: 'Ikon Cari Judul Lagu' },
   { value: './assets/icons/tool-music.svg', label: 'Ikon Musik YT' },
 ];
 
@@ -4003,7 +4004,7 @@ function renderUtilitiesSettings() {
         </div>
       </article>
 
-      <!-- 2. Daftar 7 Tombol Sub-Menu & Judul Halaman Utilitas -->
+      <!-- 2. Daftar 9 Tombol Sub-Menu, Judul Halaman & Konten Kartu Utilitas -->
       <div class="admin-utilities-items-list">
         ${util.items
           .map((item, idx) => {
@@ -4082,6 +4083,36 @@ function renderUtilitiesSettings() {
                       data-util-item-field="pageSubtitle"
                       value="${escapeHtml(item.pageSubtitle || '')}"
                     />
+                  </div>
+                  <div class="form-field admin-sum-field">
+                    <label for="util-herokicker-${escapeHtml(item.id)}">Caption / Kicker Kecil Di Dalam Kartu Fitur</label>
+                    <input
+                      type="text"
+                      id="util-herokicker-${escapeHtml(item.id)}"
+                      data-util-item-id="${escapeHtml(item.id)}"
+                      data-util-item-field="heroKicker"
+                      value="${escapeHtml(item.heroKicker || '')}"
+                    />
+                  </div>
+                  <div class="form-field admin-sum-field">
+                    <label for="util-herotitle-${escapeHtml(item.id)}">Judul Utama Di Dalam Kartu Fitur</label>
+                    <input
+                      type="text"
+                      id="util-herotitle-${escapeHtml(item.id)}"
+                      data-util-item-id="${escapeHtml(item.id)}"
+                      data-util-item-field="heroTitle"
+                      value="${escapeHtml(item.heroTitle || '')}"
+                    />
+                  </div>
+                  <div class="form-field admin-sum-field">
+                    <label for="util-herodesc-${escapeHtml(item.id)}">Deskripsi / Sub-Deskripsi Di Dalam Kartu Fitur</label>
+                    <textarea
+                      id="util-herodesc-${escapeHtml(item.id)}"
+                      class="admin-textarea"
+                      rows="2"
+                      data-util-item-id="${escapeHtml(item.id)}"
+                      data-util-item-field="heroDescription"
+                    >${escapeHtml(item.heroDescription || '')}</textarea>
                   </div>
                 </div>
 

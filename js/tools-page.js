@@ -1,7 +1,7 @@
-import { createToolsHubController } from './tools-ui.js?v=46';
-import { initMusicPlayer } from './music.js?v=46';
-import { loadCatalogData } from './data.js?v=46';
-import { normalizeBrandConfig, normalizeUtilityConfig } from './store.js?v=46';
+import { createToolsHubController } from './tools-ui.js?v=47';
+import { initMusicPlayer } from './music.js?v=47';
+import { loadCatalogData } from './data.js?v=47';
+import { normalizeBrandConfig, normalizeUtilityConfig } from './store.js?v=47';
 
 const THEME_STORAGE_KEY = 'manifestudio_theme_v1';
 const VALID_TABS = new Set(['prayer', 'weather', 'worldclock', 'speedtest', 'downloader', 'compressor', 'converter', 'songfinder', 'music']);
@@ -102,8 +102,8 @@ function syncHeaderNavLabels() {
     const target = btn.getAttribute('data-tools-nav');
     const item = (activeUtilities.items || []).find((it) => it.id === target);
     const customLabel = String(item?.label || '').trim();
-    if (customLabel && customLabel.length <= 14) {
-      btn.textContent = customLabel;
+    if (customLabel) {
+      btn.textContent = customLabel.length <= 24 ? customLabel : CONCISE_HEADER_NAV_LABELS[target] || customLabel;
     } else if (CONCISE_HEADER_NAV_LABELS[target]) {
       btn.textContent = CONCISE_HEADER_NAV_LABELS[target];
     }

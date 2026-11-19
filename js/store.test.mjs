@@ -1709,6 +1709,9 @@ test('normalizeUtilityConfig, upsertUtilityItemInCatalog, and describeCatalogCha
     icon: './assets/logos/uploads/util-downloader-custom.png',
     pageTitle: 'Downloader All-in-One Pro',
     pageSubtitle: 'Unduh video TikTok, IG, YT & FB lebih cepat.',
+    heroKicker: 'Caption Baru Downloader',
+    heroTitle: 'Judul Kartu Downloader Baru',
+    heroDescription: 'Deskripsi kartu downloader tersinkron dari Panel Admin.',
   });
   next.utilities.musicHero.title = 'YouTube Music Pro — Lagu Viral Indonesia';
   next.utilities.musicHero.icon = './assets/logos/uploads/util-music-hero.png';
@@ -1716,6 +1719,9 @@ test('normalizeUtilityConfig, upsertUtilityItemInCatalog, and describeCatalogCha
   const dlItem = next.utilities.items.find((i) => i.id === 'downloader');
   assert.equal(dlItem.label, 'Unduh Sosmed');
   assert.equal(dlItem.pageTitle, 'Downloader All-in-One Pro');
+  assert.equal(dlItem.heroKicker, 'Caption Baru Downloader');
+  assert.equal(dlItem.heroTitle, 'Judul Kartu Downloader Baru');
+  assert.equal(dlItem.heroDescription, 'Deskripsi kartu downloader tersinkron dari Panel Admin.');
 
   const diff = describeCatalogChanges(base, next);
   assert.equal(
@@ -1728,6 +1734,18 @@ test('normalizeUtilityConfig, upsertUtilityItemInCatalog, and describeCatalogCha
   );
   assert.equal(
     diff.some((d) => d.includes('Mengubah judul halaman utilitas "Unduh Sosmed" menjadi "Downloader All-in-One Pro"')),
+    true
+  );
+  assert.equal(
+    diff.some((d) => d.includes('Memperbarui caption kartu utilitas "Unduh Sosmed"')),
+    true
+  );
+  assert.equal(
+    diff.some((d) => d.includes('Mengubah judul kartu fitur "Unduh Sosmed" menjadi "Judul Kartu Downloader Baru"')),
+    true
+  );
+  assert.equal(
+    diff.some((d) => d.includes('Memperbarui deskripsi kartu fitur "Unduh Sosmed"')),
     true
   );
   assert.equal(

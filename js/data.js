@@ -1,3 +1,5 @@
+import { DEFAULT_UTILITY_CONFIG, normalizeUtilityConfig } from './store.js?v=47';
+
 export const BRAND = {
   name: 'Manifestudio',
   tagline: 'by Tomy',
@@ -131,87 +133,7 @@ export const CATEGORIES = [
   { id: 'custom', label: 'Request & Custom' },
 ];
 
-export const UTILITIES = {
-  callout: {
-    icon: './assets/icons/menu-utilitas.svg',
-    title: 'Menu Utilitas',
-    badge: '7 Fitur Gratis',
-    description:
-      'Jadwal Sholat · Cuaca · Jam Dunia & Globe · Speedtest · Downloader (Video/Foto/Story/Caption) · Kompres HD · YT Music',
-  },
-  musicHero: {
-    icon: './assets/icons/tool-music.svg',
-    title: 'YT Music Hub — Viral Indonesia & Pencarian Lengkap',
-    subtitle:
-      'Sumber resmi YT Music API komunitas open-source. Pemutaran acak otomatis memprioritaskan lagu Indonesia viral setiap kali tombol apa saja ditekan, tanpa bergantung pada riwayat pencarian.',
-  },
-  items: [
-    {
-      id: 'prayer',
-      label: 'Jadwal Sholat',
-      icon: './assets/icons/tool-prayer.svg',
-      pageTitle: 'Jadwal Sholat & Imsakiyah',
-      pageSubtitle:
-        'Waktu sholat resmi Kemenag RI (WIB/WITA/WIT) lengkap dengan hitung mundur waktu sholat berikutnya.',
-    },
-    {
-      id: 'weather',
-      label: 'Prakiraan Cuaca',
-      icon: './assets/icons/tool-weather.svg',
-      pageTitle: 'Prakiraan Cuaca Real-Time',
-      pageSubtitle:
-        'Kondisi cuaca saat ini, curah hujan presisi per jam, kelembapan, UV, angin, & prakiraan 7 hari ke depan.',
-    },
-    {
-      id: 'worldclock',
-      label: 'Jam Dunia & Globe',
-      icon: './assets/icons/tool-world.svg',
-      pageTitle: 'Jam Dunia UTC & Bola Dunia',
-      pageSubtitle:
-        'Standar waktu internasional UTC/GMT, WIB, WITA, WIT, serta konversi waktu lintas negara.',
-    },
-    {
-      id: 'speedtest',
-      label: 'Speedtest',
-      icon: './assets/icons/tool-speed.svg',
-      pageTitle: 'Speedtest Internet Real-Time',
-      pageSubtitle:
-        'Uji kecepatan rata-rata download, upload, ping, jitter, lokasi server, ISP, dan perangkat Anda.',
-    },
-    {
-      id: 'downloader',
-      label: 'Downloader',
-      icon: './assets/icons/tool-downloader.svg',
-      pageTitle: 'Downloader Video, Foto, Carousel & Story',
-      pageSubtitle:
-        'Unduh video HD, postingan foto, slide carousel, story, & salin caption dari TikTok, IG, YT, dan FB.',
-    },
-    {
-      id: 'compressor',
-      label: 'Kompresor HD',
-      icon: './assets/icons/tool-compressor.svg',
-      pageTitle: 'Kompresor Foto & Video HD (Open-Source Engine)',
-      pageSubtitle:
-        'Kompresi ukuran foto & video nyata berbasis algoritma open-source (Squoosh/Libvips/UPNG) agar hemat kuota & lolos kompresi sosmed.',
-    },
-    {
-      id: 'converter',
-      label: 'Konversi File',
-      icon: './assets/icons/tool-converter.svg',
-      pageTitle: 'Konversi Semua Format File (All-in-One Converter)',
-      pageSubtitle:
-        'Konversi DOCX ke PDF, Excel ke PDF/CSV, PDF ke JPG/PNG, JPG ke PNG/JPEG/WebP/ZIP, serta MP4 ke M4A/WAV/MP3 secara instan.',
-    },
-    {
-      id: 'music',
-      label: 'Musik YT',
-      icon: './assets/icons/tool-music.svg',
-      pageTitle: 'YT Music Player — Viral Indonesia',
-      pageSubtitle:
-        'Pemutar YT Music API bebas iklan dengan daftar putar acak otomatis lagu Indonesia viral, pencarian lengkap, & sinkron dengan ikon mengambang.',
-    },
-  ],
-};
+export const UTILITIES = DEFAULT_UTILITY_CONFIG;
 
 export const PAY_LATER_SURCHARGE_RATE = 0.1;
 
@@ -505,27 +427,7 @@ function normalizeLoadedCatalog(fallback, rawCatalog = {}) {
     mergedBrand.socials = (fallback.brand.socials || []).map((s) => ({ ...s }));
   }
 
-  const rawUtil = rawCatalog.utilities && typeof rawCatalog.utilities === 'object' ? rawCatalog.utilities : {};
-  const rawItemMap = new Map(
-    (Array.isArray(rawUtil.items) ? rawUtil.items : [])
-      .filter((it) => it && it.id)
-      .map((it) => [it.id, it])
-  );
-  const mergedUtilities = {
-    callout: {
-      ...(fallback.utilities?.callout || UTILITIES.callout),
-      ...(rawUtil.callout || {}),
-    },
-    musicHero: {
-      ...(fallback.utilities?.musicHero || UTILITIES.musicHero),
-      ...(rawUtil.musicHero || {}),
-    },
-    items: (fallback.utilities?.items || UTILITIES.items).map((defItem) => ({
-      ...defItem,
-      ...(rawItemMap.get(defItem.id) || {}),
-      id: defItem.id,
-    })),
-  };
+  const mergedUtilities = normalizeUtilityConfig(rawCatalog.utilities || fallback.utilities || {});
 
   return {
     ...fallback,

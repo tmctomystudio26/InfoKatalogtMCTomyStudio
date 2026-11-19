@@ -19,11 +19,11 @@
       rel="stylesheet"
     />
 
-    <link rel="stylesheet" href="./css/tokens.css?v=46" />
-    <link rel="stylesheet" href="./css/styles.css?v=46" />
+    <link rel="stylesheet" href="./css/tokens.css?v=47" />
+    <link rel="stylesheet" href="./css/styles.css?v=47" />
     <script>
       (function () {
-        var CURRENT_CACHE = 'manifestudio-cache-v46';
+        var CURRENT_CACHE = 'manifestudio-cache-v47';
         if ('caches' in window) {
           caches.keys().then(function (keys) {
             keys.forEach(function (k) {
@@ -32,7 +32,7 @@
           });
         }
         if ('serviceWorker' in navigator) {
-          navigator.serviceWorker.register('./sw.js?v=46').then(function (reg) {
+          navigator.serviceWorker.register('./sw.js?v=47').then(function (reg) {
             reg.update();
           }).catch(function () {});
         }
@@ -1049,7 +1049,7 @@
               <div>
                 <h2 class="admin-section-title">Kelola Menu Utilitas, Judul Halaman &amp; Kartu YT Music Hub</h2>
                 <p class="admin-subtitle">
-                  Ubah ikon/gambar, nama tombol sub-menu, judul &amp; deskripsi atas pada setiap halaman utilitas (Jadwal Sholat, Prakiraan Cuaca, Jam Dunia &amp; Globe, Speedtest, Downloader, Kompresor HD, Musik YT), serta kartu hero YT Music Hub dan kartu pintasan di beranda toko.
+                  Ubah ikon/gambar, nama tombol sub-menu, judul, sub-judul, caption, serta deskripsi kartu pada seluruh 9 halaman utilitas (Jadwal Sholat, Prakiraan Cuaca, Jam Dunia &amp; Globe, Speedtest, Downloader, Kompresor HD, Konversi File, Cari Judul Lagu, Musik YT), beserta kartu hero YT Music Hub dan kartu pintasan di beranda toko.
                 </p>
               </div>
               <button type="button" id="utilities-reset-default-btn" class="btn btn-ghost btn-sm">
@@ -1179,6 +1179,6 @@
 
     <div id="toast-notification" class="toast-notification" role="status" aria-live="polite" hidden></div>
 
-    <script type="module" src="./js/admin.js?v=46"></script>
+    <script type="module" src="./js/admin.js?v=47"></script>
   </body>
 </html>

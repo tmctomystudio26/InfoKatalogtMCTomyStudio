@@ -4,7 +4,7 @@ import {
   PAY_LATER_SURCHARGE_RATE,
   getDefaultCatalogSnapshot,
   loadCatalogData,
-} from './data.js?v=46';
+} from './data.js?v=47';
 import {
   PENDING_ORDER_STORAGE_KEY,
   addToCart,
@@ -22,9 +22,9 @@ import {
   syncPaymentOptionsWithBrand,
   updateCartQty,
   validateOrderForm,
-} from './store.js?v=46';
-import { initPwaManager } from './pwa.js?v=46';
-import { initMusicPlayer } from './music.js?v=46';
+} from './store.js?v=47';
+import { initPwaManager } from './pwa.js?v=47';
+import { initMusicPlayer } from './music.js?v=47';
 
 const THEME_STORAGE_KEY = 'manifestudio_theme_v1';
 const CART_STORAGE_KEY = 'manifestudio_cart_v1';
@@ -1530,22 +1530,28 @@ function renderBrandAndFooter() {
   const utilitiesCfg = normalizeUtilityConfig(state.catalog?.utilities);
   const calloutCard = document.getElementById('utilities-callout-card');
   if (calloutCard && utilitiesCfg.callout) {
-    const iconImg = calloutCard.querySelector('.utilities-callout-icon img');
+    const iconImg = calloutCard.querySelector('img.utilities-callout-icon, .utilities-callout-icon img');
     if (iconImg && utilitiesCfg.callout.icon) {
       iconImg.src = utilitiesCfg.callout.icon;
     }
-    const titleStrong = calloutCard.querySelector('.utilities-callout-title-row strong');
+    const titleStrong = calloutCard.querySelector('.utilities-callout-title, .utilities-callout-title-row strong');
     if (titleStrong && utilitiesCfg.callout.title) {
       titleStrong.textContent = utilitiesCfg.callout.title;
     }
-    const badgeSpan = calloutCard.querySelector('.utilities-callout-badge');
+    const badgeSpan = calloutCard.querySelector('.utilities-callout-sub-tag, .utilities-callout-badge');
     if (badgeSpan && utilitiesCfg.callout.badge) {
       badgeSpan.textContent = utilitiesCfg.callout.badge;
     }
-    const subP = calloutCard.querySelector('.utilities-callout-copy p');
+    const subP = calloutCard.querySelector('.utilities-callout-desc, .utilities-callout-copy p');
     const calloutDesc = utilitiesCfg.callout.description || utilitiesCfg.callout.subtitle;
     if (subP && calloutDesc) {
       subP.textContent = calloutDesc;
+    }
+    if (utilitiesCfg.callout.title || calloutDesc) {
+      calloutCard.setAttribute(
+        'aria-label',
+        `Buka ${utilitiesCfg.callout.title || 'Menu Utilitas'}: ${calloutDesc || ''}`.trim()
+      );
     }
   }
 }

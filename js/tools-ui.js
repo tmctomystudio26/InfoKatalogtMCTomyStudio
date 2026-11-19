@@ -22,40 +22,40 @@ import {
   matchIndonesianCityQuery,
   planMediaCompression,
   resolveAccurateWeatherCondition,
-} from './tools-logic.js?v=46';
+} from './tools-logic.js?v=47';
 import {
   describeLocationSource,
   resolveUserLocation,
   searchCitiesOnline,
   setManualLocation,
-} from './location.js?v=46';
-import { createInteractiveGlobe } from './globe.js?v=46';
+} from './location.js?v=47';
+import { createInteractiveGlobe } from './globe.js?v=47';
 import {
   createSpeedometerGauge,
   fetchSpeedtestEnvironment,
   readClientDeviceTelemetry,
   runInternetSpeedtest,
-} from './speedtest.js?v=46';
+} from './speedtest.js?v=47';
 import {
   extractAudioFromVideoUrl,
   fetchMediaDownload,
   triggerBatchPhotoDownload,
   triggerDirectMediaSave,
-} from './downloader.js?v=46';
-import { compressMediaFile, inspectMediaFile } from './compressor.js?v=46';
+} from './downloader.js?v=47';
+import { compressMediaFile, inspectMediaFile } from './compressor.js?v=47';
 import {
   ALL_TARGET_FORMATS,
   convertAnyFile,
   detectSourceFormat,
   getAvailableTargetFormats,
-} from './converter.js?v=46';
+} from './converter.js?v=47';
 import {
   detectMediaFileKind,
   identifyMediaSongAndVideo,
-} from './song-finder.js?v=46';
-import { formatAudioTime, getLoadingProgressMeta, isTrackInWatchLater } from './music-logic.js?v=46';
-import { MUSIC_PRESET_CATEGORIES, getMusicController, initMusicPlayer } from './music.js?v=46';
-import { normalizeUtilityConfig } from './store.js?v=46';
+} from './song-finder.js?v=47';
+import { formatAudioTime, getLoadingProgressMeta, isTrackInWatchLater } from './music-logic.js?v=47';
+import { MUSIC_PRESET_CATEGORIES, getMusicController, initMusicPlayer } from './music.js?v=47';
+import { normalizeUtilityConfig } from './store.js?v=47';
 
 const PRAYER_CACHE_KEY = 'manifestudio_prayer_cache_v1';
 const MYQURAN_CITIES_KEY = 'manifestudio_myquran_cities_v1';
@@ -470,6 +470,25 @@ export function createToolsHubController({
   let musicUnsub = null;
   let isHubSeeking = false;
 
+  function getUtilityItemConfig(id) {
+    const items = toolState.utilities?.items || [];
+    return items.find((it) => it.id === id) || {};
+  }
+
+  function renderSubPanelIntro(id) {
+    const item = getUtilityItemConfig(id);
+    if (!item.heroKicker && !item.heroTitle && !item.heroDescription) return '';
+    return `
+      <div class="compressor-head" style="margin-bottom:0.25rem;">
+        <div>
+          ${item.heroKicker ? `<span class="tool-kicker">${escapeHtml(item.heroKicker)}</span>` : ''}
+          ${item.heroTitle ? `<h3 class="tool-subhead">${escapeHtml(item.heroTitle)}</h3>` : ''}
+          ${item.heroDescription ? `<p class="tool-hint">${escapeHtml(item.heroDescription)}</p>` : ''}
+        </div>
+      </div>
+    `;
+  }
+
   function stopLiveTimers() {
     if (clockTimer) {
       clearInterval(clockTimer);
@@ -681,6 +700,7 @@ export function createToolsHubController({
 
     return `
       <div class="tool-panel" data-testid="prayer-panel">
+        ${renderSubPanelIntro('prayer')}
         ${renderLocationBar('prayer')}
 
         <div class="tool-city-search-row">
@@ -813,6 +833,7 @@ export function createToolsHubController({
 
     return `
       <div class="tool-panel" data-testid="weather-panel">
+        ${renderSubPanelIntro('weather')}
         ${renderLocationBar('weather')}
 
         <div class="tool-city-search-row">
@@ -1004,6 +1025,7 @@ export function createToolsHubController({
 
     return `
       <div class="tool-panel" data-testid="worldclock-panel">
+        ${renderSubPanelIntro('worldclock')}
         <div class="world-master-grid">
           <div class="world-clock-card is-utc">
             <span class="tool-kicker">Standar Internasional</span>
@@ -1240,6 +1262,8 @@ export function createToolsHubController({
 
     const quality = res?.quality || null;
 
+    const speedMeta = getUtilityItemConfig('speedtest');
+
     return `
       <div class="tool-panel" data-testid="speedtest-panel">
         ${renderLocationBar('speedtest')}
@@ -1248,8 +1272,9 @@ export function createToolsHubController({
           <div class="speed-gauge-card">
             <div class="speed-gauge-head">
               <div>
-                <span class="tool-kicker">Cloudflare Speed Edge</span>
-                <h3 class="tool-subhead">Tes Kecepatan Internet</h3>
+                <span class="tool-kicker">${escapeHtml(speedMeta.heroKicker || 'Cloudflare Speed Edge')}</span>
+                <h3 class="tool-subhead">${escapeHtml(speedMeta.heroTitle || 'Tes Kecepatan Internet')}</h3>
+                ${speedMeta.heroDescription ? `<p class="tool-hint">${escapeHtml(speedMeta.heroDescription)}</p>` : ''}
               </div>
               <span id="speed-phase-badge" class="speed-phase-text ${toolState.speedRunning ? 'is-running' : ''}">
                 ${escapeHtml(toolState.speedPhaseLabel)}
@@ -1405,15 +1430,17 @@ export function createToolsHubController({
         : 'Video HD No Watermark'
       : '';
 
+    const dlMeta = getUtilityItemConfig('downloader');
+
     return `
       <div class="tool-panel" data-testid="downloader-panel">
         <div class="dl-hero-card">
           <div class="dl-head">
             <div>
-              <span class="tool-kicker">Video · Foto · Multi-Slide · Story · Salin Caption</span>
-              <h3 class="tool-subhead">Downloader Media Sosial All-in-One</h3>
+              <span class="tool-kicker">${escapeHtml(dlMeta.heroKicker || 'Video · Foto · Multi-Slide · Story · Salin Caption')}</span>
+              <h3 class="tool-subhead">${escapeHtml(dlMeta.heroTitle || 'Downloader Media Sosial All-in-One')}</h3>
               <p class="tool-hint">
-                Unduh Video HD, Postingan Foto, Slide Carousel (Banyak Foto), Story Sosmed, &amp; Salin Caption dari TikTok, Instagram, YouTube, dan Facebook.
+                ${escapeHtml(dlMeta.heroDescription || 'Unduh Video HD, Postingan Foto, Slide Carousel (Banyak Foto), Story Sosmed, & Salin Caption dari TikTok, Instagram, YouTube, dan Facebook.')}
               </p>
             </div>
             <div class="dl-platform-pills" aria-label="Platform didukung">
@@ -1668,15 +1695,17 @@ export function createToolsHubController({
       ? `File siap dikompres (${formatBytes(inspect.sizeBytes)}) — Tekan "Kompres Sekarang"`
       : 'Masukkan file foto atau video untuk memulai kompresi';
 
+    const compMeta = getUtilityItemConfig('compressor');
+
     return `
       <div class="tool-panel" data-testid="compressor-panel">
         <div class="compressor-hero-card">
           <div class="compressor-head">
             <div>
-              <span class="tool-kicker">Open-Source Compression Engine · FFmpeg WebAssembly / Squoosh / UPNG</span>
-              <h3 class="tool-subhead">Kompres Foto &amp; Video HD Nyata Tanpa Pecah di Sosmed</h3>
+              <span class="tool-kicker">${escapeHtml(compMeta.heroKicker || 'Open-Source Compression Engine · FFmpeg WebAssembly / Squoosh / UPNG')}</span>
+              <h3 class="tool-subhead">${escapeHtml(compMeta.heroTitle || 'Kompres Foto & Video HD Nyata Tanpa Pecah di Sosmed')}</h3>
               <p class="tool-hint">
-                Menggunakan algoritma pencarian biner kualitas adaptif &amp; kuantisasi palet open-source untuk <strong>memangkas ukuran byte foto &amp; video secara nyata (30%–80% lebih ringan)</strong> agar lolos kompresi paksa TikTok, Instagram, dan WhatsApp.
+                ${escapeHtml(compMeta.heroDescription || 'Menggunakan algoritma pencarian biner kualitas adaptif & kuantisasi palet open-source untuk memangkas ukuran byte foto & video secara nyata (30%–80% lebih ringan) agar lolos kompresi paksa TikTok, Instagram, dan WhatsApp.')}
               </p>
             </div>
           </div>
@@ -1694,7 +1723,7 @@ export function createToolsHubController({
               />
               <div class="comp-dropzone-inner">
                 <div class="comp-dropzone-icon">
-                  <img src="./assets/icons/tool-compressor.svg" alt="" width="44" height="44" />
+                  <img src="${escapeHtml(compMeta.icon || './assets/icons/tool-compressor.svg')}" alt="" width="44" height="44" />
                 </div>
                 <div class="comp-dropzone-copy">
                   <strong>${inspect ? escapeHtml(inspect.name) : 'Pilih atau Tarik File Foto / Video ke Sini'}</strong>
@@ -1922,15 +1951,17 @@ export function createToolsHubController({
       ? `Terdeteksi ${sourceInfo.label} — Pilih format tujuan di dropdown lalu klik "Konversi Sekarang"`
       : 'Masukkan file apa saja untuk mendeteksi format otomatis';
 
+    const convMeta = getUtilityItemConfig('converter');
+
     return `
       <div class="tool-panel" data-testid="converter-panel">
         <div class="compressor-hero-card">
           <div class="compressor-head">
             <div>
-              <span class="tool-kicker">All-in-One File Converter · 85+ Konversi Multi-Format &amp; OpenXML</span>
-              <h3 class="tool-subhead">Konversi Semua Format File (DOCX, Excel, PDF, Foto, Video, Audio &amp; ZIP)</h3>
+              <span class="tool-kicker">${escapeHtml(convMeta.heroKicker || 'All-in-One File Converter · 85+ Konversi Multi-Format & OpenXML')}</span>
+              <h3 class="tool-subhead">${escapeHtml(convMeta.heroTitle || 'Konversi Semua Format File (DOCX, Excel, PDF, Foto, Video, Audio & ZIP)')}</h3>
               <p class="tool-hint">
-                Masukkan file apa saja di bawah ini — sistem otomatis mendeteksi format berkas asal Anda dan menampilkan pilihan format konversi tujuan dalam daftar dropdown ringkas.
+                ${escapeHtml(convMeta.heroDescription || 'Masukkan file apa saja di bawah ini — sistem otomatis mendeteksi format berkas asal Anda dan menampilkan pilihan format konversi tujuan dalam daftar dropdown ringkas.')}
               </p>
             </div>
           </div>
@@ -1948,7 +1979,7 @@ export function createToolsHubController({
               />
               <div class="comp-dropzone-inner">
                 <div class="comp-dropzone-icon">
-                  <img src="./assets/icons/tool-converter.svg" alt="" width="44" height="44" />
+                  <img src="${escapeHtml(convMeta.icon || './assets/icons/tool-converter.svg')}" alt="" width="44" height="44" />
                 </div>
                 <div class="comp-dropzone-copy">
                   <strong>${toolState.convFile ? escapeHtml(toolState.convFile.name) : 'Pilih atau Tarik File Apa Saja ke Sini'}</strong>
@@ -2148,15 +2179,17 @@ export function createToolsHubController({
       ? `Terdeteksi ${kindInfo.formatLabel} — Klik "Cari Judul Lagu & Sumber Sekarang"`
       : 'Masukkan file audio atau video untuk membaca jenis media & mencari judul lagu otomatis';
 
+    const sfMeta = getUtilityItemConfig('songfinder');
+
     return `
       <div class="tool-panel" data-testid="songfinder-panel">
         <div class="compressor-hero-card">
           <div class="compressor-head">
             <div>
-              <span class="tool-kicker">AudD Shazam-Grade · Whisper Lirik AI · Multi-AI &amp; Video Similarity (9 Engine)</span>
-              <h3 class="tool-subhead">Cari Judul Lagu, Lirik, Kemiripan Musik &amp; Sumber Video (Otomatis Audio/Video)</h3>
+              <span class="tool-kicker">${escapeHtml(sfMeta.heroKicker || 'AudD Shazam-Grade · Whisper Lirik AI · Multi-AI & Video Similarity (9 Engine)')}</span>
+              <h3 class="tool-subhead">${escapeHtml(sfMeta.heroTitle || 'Cari Judul Lagu, Lirik, Kemiripan Musik & Sumber Video (Otomatis Audio/Video)')}</h3>
               <p class="tool-hint">
-                Masukkan file <strong>Audio</strong> (MP3, WAV, M4A, AAC, OGG, FLAC) maupun <strong>Video</strong> (MP4, MOV, WebM, MKV). Sistem membaca gelombang suara asli via <strong>AudD Fingerprinting</strong>, mentranskrip vokal ke teks via <strong>Whisper Large v3 Turbo</strong>, mencocokkan lirik di <strong>LRCLIB &amp; Lyrics.ovh</strong>, menghitung <strong>Shazam Landmark Hash + Cosine Acoustic Similarity</strong>, dan menggabungkan <strong>Multi-AI Publik Gratis (GPT-OSS, Gemma-4/Gemini, GLM-5.3) + Apple Music, Spotify, Shazam, YouTube &amp; TikTok</strong>.
+                ${escapeHtml(sfMeta.heroDescription || 'Masukkan file Audio (MP3, WAV, M4A, AAC, OGG, FLAC) maupun Video (MP4, MOV, WebM, MKV). Sistem membaca gelombang suara asli via AudD Fingerprinting, mentranskrip vokal via Whisper Large v3 Turbo, mencocokkan lirik di LRCLIB & Lyrics.ovh, menghitung Shazam Landmark Hash + Cosine Acoustic Similarity, dan menggabungkan Multi-AI Publik Gratis + Apple Music, Spotify, Shazam, YouTube & TikTok.')}
               </p>
             </div>
           </div>
@@ -2174,7 +2207,7 @@ export function createToolsHubController({
               />
               <div class="comp-dropzone-inner">
                 <div class="comp-dropzone-icon">
-                  <img src="./assets/icons/tool-songfinder.svg" alt="" width="44" height="44" />
+                  <img src="${escapeHtml(sfMeta.icon || './assets/icons/tool-songfinder.svg')}" alt="" width="44" height="44" />
                 </div>
                 <div class="comp-dropzone-copy">
                   <strong>${file ? escapeHtml(file.name) : 'Pilih atau Tarik File Audio / Video ke Sini'}</strong>
@@ -4238,6 +4271,7 @@ export function createToolsHubController({
       duration: 180,
     };
 
+    const musicMeta = getUtilityItemConfig('music');
     const musicHero = toolState.utilities?.musicHero || {
       icon: './assets/icons/tool-music.svg',
       title: 'YT Music Hub — Viral Indonesia & Pencarian Lengkap',
@@ -4251,6 +4285,7 @@ export function createToolsHubController({
           <div class="music-hub-hero-head">
             <img src="${escapeHtml(musicHero.icon || './assets/icons/tool-music.svg')}" alt="" width="44" height="44" class="music-hub-hero-icon" id="music-hub-hero-icon" />
             <div>
+              ${musicMeta.heroKicker ? `<span class="tool-kicker">${escapeHtml(musicMeta.heroKicker)}</span>` : ''}
               <h2 class="music-hub-hero-title" id="music-hub-hero-title">${escapeHtml(musicHero.title)}</h2>
               <p class="music-hub-hero-sub" id="music-hub-hero-sub">${escapeHtml(musicHero.subtitle)}</p>
             </div>
