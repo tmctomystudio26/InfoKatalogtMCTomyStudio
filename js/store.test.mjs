@@ -4,14 +4,18 @@ import { getDefaultCatalogSnapshot, PRODUCTS, VOUCHERS } from './data.js';
 import {
   ANICHIN_UNIFIED_SOURCES,
   CURATED_DRACIN_CATALOG,
+  DEFAULT_DRACIN_ENDPOINT_CONFIG,
   DRACIN_PLATFORMS,
   DRACIN_SUBTITLE_LANGS,
   buildEpisodeList,
   buildEpisodeRanges,
   buildEpisodeSubtitleCues,
   buildWebVttFromCues,
+  computePreloadEpisodeTargets,
+  extractAdaptiveEpisodePayload,
   filterDracinCatalog,
   filterDracinPlatforms,
+  formatDracinUserError,
   getActiveSubtitleCue,
   getNextPrevEpisode,
   mergeParallelDracinFeeds,
@@ -21,6 +25,8 @@ import {
   parseSubtitleTimestamp,
   pickBestPlaybackServer,
   rankClipIdentifierCandidates,
+  rankHealthyApiMirrors,
+  recordMirrorHealth,
   resolveAnichinMediaUrl,
   resolveAutoSubtitleLang,
   resolveCleanScreenState,
@@ -3446,6 +3452,85 @@ test('v53 Drama China searchable platform dropdown, FlickReels JSON-HLS unwrappe
   assert.equal(shouldPreserveFullscreenOnEpisodeChange({ isFullscreen: true, stageMounted: false }), false);
   assert.equal(shouldPreserveFullscreenOnEpisodeChange({ isFullscreen: false, stageMounted: true }), false);
 });
+
+test('v54 self-healing mirror circuit-breaker, adaptive JSON schema extractor, friendly error formatter, and preload target planner work accurately', () => {
+  // 1. Multi-mirror circuit-breaker failover & recovery
+  const now = 1_700_000_000_000;
+  let health = {};
+  const initialRank = rankHealthyApiMirrors(DEFAULT_DRACIN_ENDPOINT_CONFIG.mirrors, health, now);
+  assert.equal(initialRank[0].id, 'anichin-primary');
+  assert.equal(initialRank[1].id, 'anichin-miniapp');
+
+  // Primary fails -> demoted during cooldown, miniapp becomes #1
+  health = recordMirrorHealth(health, 'anichin-primary', false, now);
+  const failoverRank = rankHealthyApiMirrors(DEFAULT_DRACIN_ENDPOINT_CONFIG.mirrors, health, now + 5000);
+  assert.equal(failoverRank[0].id, 'anichin-miniapp');
+  assert.equal(failoverRank[1].id, 'anichin-primary');
+
+  // Primary recovers -> restored to #1 priority
+  health = recordMirrorHealth(health, 'anichin-primary', true, now + 30_000);
+  const recoveredRank = rankHealthyApiMirrors(DEFAULT_DRACIN_ENDPOINT_CONFIG.mirrors, health, now + 30_000);
+  assert.equal(recoveredRank[0].id, 'anichin-primary');
+
+  // 2. Adaptive JSON schema extractor handles standard, renamed keys, deeply nested URLs, and VIP lock
+  const vipLocked = extractAdaptiveEpisodePayload({
+    code: 200,
+    episodeNumber: 6,
+    locked: true,
+    qualityList: [],
+    videoUrl: '',
+  });
+  assert.equal(vipLocked.locked, true);
+  assert.equal(vipLocked.videoUrl, '');
+  assert.equal(vipLocked.qualityList.length, 0);
+
+  const renamedSchema = extractAdaptiveEpisodePayload({
+    data: {
+      playUrl: 'https://cdn.future.example/ep2.mp4',
+      streams: [
+        { quality: '720p', stream_url: 'https://cdn.future.example/ep2_720.mp4' },
+      ],
+      captions: [
+        { langName: 'Indonesia', code: 'id', vttUrl: 'https://cdn.future.example/id.vtt' },
+      ],
+    },
+  });
+  assert.equal(renamedSchema.locked, false);
+  assert.equal(renamedSchema.videoUrl, 'https://cdn.future.example/ep2.mp4');
+  assert.equal(renamedSchema.qualityList.length, 1);
+  assert.equal(renamedSchema.qualityList[0].url, 'https://cdn.future.example/ep2_720.mp4');
+  assert.equal(renamedSchema.subtitles.length, 1);
+  assert.equal(renamedSchema.subtitles[0].url, 'https://cdn.future.example/id.vtt');
+
+  const deeplyNested = extractAdaptiveEpisodePayload({
+    payload: {
+      unknownWrapper: {
+        brandNewField: 'https://cdn.deep.example/hls/master.m3u8?token=abc',
+      },
+    },
+  });
+  assert.equal(deeplyNested.videoUrl, 'https://cdn.deep.example/hls/master.m3u8?token=abc');
+
+  // 3. Friendly error sanitizer removes Chrome raw "signal is aborted without reason"
+  const abortMsg = formatDracinUserError(new Error('signal is aborted without reason'), {
+    platformName: 'Melolo',
+    episode: 14,
+  });
+  assert.equal(abortMsg.toLowerCase().includes('signal is aborted'), false);
+  assert.ok(abortMsg.includes('Melolo') && abortMsg.includes('Ep 14'));
+
+  const netMsg = formatDracinUserError(new Error('Failed to fetch'), {
+    platformName: 'DramaBox',
+    episode: 3,
+  });
+  assert.ok(netMsg.includes('Jaringan') && netMsg.includes('DramaBox'));
+
+  // 4. Episode background preload target planner clamps safely at end of series
+  assert.deepEqual(computePreloadEpisodeTargets(1, 30, 2), [2, 3]);
+  assert.deepEqual(computePreloadEpisodeTargets(29, 30, 2), [30]);
+  assert.deepEqual(computePreloadEpisodeTargets(30, 30, 2), []);
+});
+
 
 
 

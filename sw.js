@@ -1,4 +1,4 @@
-const CACHE_NAME = 'manifestudio-cache-v53';
+const CACHE_NAME = 'manifestudio-cache-v54';
 
 const PRECACHE_ASSETS = [
   './',
@@ -7,6 +7,7 @@ const PRECACHE_ASSETS = [
   './order.html',
   './admin.html',
   './data/catalog.json',
+  './data/dracin-endpoints.json',
   './manifest.webmanifest',
   './css/tokens.css',
   './css/styles.css',

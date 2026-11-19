@@ -862,6 +862,258 @@ export function shouldPreserveFullscreenOnEpisodeChange({
   return Boolean(stageMounted && isFullscreen);
 }
 
+/**
+ * Default built-in mirror registry (used immediately before remote/JSON config resolves,
+ * and merged cleanly with ./data/dracin-endpoints.json so endpoint updates never break the app).
+ */
+export const DEFAULT_DRACIN_ENDPOINT_CONFIG = {
+  version: '54.0.0',
+  mirrors: [
+    {
+      id: 'anichin-primary',
+      label: 'Anichin Primary API',
+      baseUrl: 'https://api.anichin.bio',
+      priority: 1,
+      kind: 'anichin-unified',
+    },
+    {
+      id: 'anichin-miniapp',
+      label: 'Anichin MiniApp Mirror',
+      baseUrl: 'https://miniapp.anichin.bio/api',
+      priority: 2,
+      kind: 'anichin-unified',
+    },
+  ],
+  routeTemplates: {
+    episode: [
+      '/{platform}/episode?id={id}&ep={ep}&lang=in',
+      '/{platform}/watch?id={id}&ep={ep}&lang=in',
+      '/{platform}/stream?id={id}&ep={ep}&lang=in',
+    ],
+    detail: [
+      '/{platform}/detail?id={id}&lang=in',
+      '/{platform}/info?id={id}&lang=in',
+    ],
+    search: [
+      '/{platform}/search?query={query}&page={page}&lang=in',
+      '/{platform}/search?q={query}&page={page}&lang=in',
+    ],
+  },
+  schemaAliases: {
+    videoUrl: [
+      'videoUrl',
+      'playUrl',
+      'video_url',
+      'streamUrl',
+      'stream_url',
+      'mediaUrl',
+      'hlsUrl',
+      'mp4Url',
+      'url',
+    ],
+    qualityList: ['qualityList', 'qualities', 'streams', 'sources', 'videos', 'cdnList', 'playList'],
+    subtitles: ['subtitles', 'captions', 'tracks', 'subList'],
+  },
+};
+
+/**
+ * Records mirror success/failure with exponential circuit-breaker cooldown
+ * so unhealthy/changed upstream mirrors are automatically demoted in favor of healthy backups.
+ */
+export function recordMirrorHealth(healthMap = {}, mirrorId = '', ok = true, now = Date.now()) {
+  const next = { ...(healthMap || {}) };
+  if (!mirrorId) return next;
+  const prev = next[mirrorId] || { failures: 0, cooldownUntil: 0, lastOkAt: 0 };
+  if (ok) {
+    next[mirrorId] = { failures: 0, cooldownUntil: 0, lastOkAt: now };
+  } else {
+    const failures = (prev.failures || 0) + 1;
+    const cooldownMs = Math.min(180_000, 20_000 * Math.pow(2, failures - 1));
+    next[mirrorId] = {
+      failures,
+      cooldownUntil: now + cooldownMs,
+      lastOkAt: prev.lastOkAt || 0,
+    };
+  }
+  return next;
+}
+
+/**
+ * Ranks available API mirrors putting healthy/non-cooling-down mirrors first,
+ * while always retaining cooling-down mirrors at the end as last-resort fallback.
+ */
+export function rankHealthyApiMirrors(mirrors = [], healthMap = {}, now = Date.now()) {
+  const list = Array.isArray(mirrors) ? mirrors.filter((m) => m && m.baseUrl) : [];
+  return [...list].sort((a, b) => {
+    const ha = healthMap?.[a.id] || { failures: 0, cooldownUntil: 0 };
+    const hb = healthMap?.[b.id] || { failures: 0, cooldownUntil: 0 };
+    const aCooling = (ha.cooldownUntil || 0) > now ? 1 : 0;
+    const bCooling = (hb.cooldownUntil || 0) > now ? 1 : 0;
+    if (aCooling !== bCooling) return aCooling - bCooling;
+    if ((ha.failures || 0) !== (hb.failures || 0)) return (ha.failures || 0) - (hb.failures || 0);
+    return (a.priority || 99) - (b.priority || 99);
+  });
+}
+
+/**
+ * Adaptive schema auto-discoverer: extracts videoUrl, qualityList, subtitles, and VIP locked state
+ * even if an upstream platform renames JSON keys during an API update.
+ */
+export function extractAdaptiveEpisodePayload(rawJson, schemaAliases = DEFAULT_DRACIN_ENDPOINT_CONFIG.schemaAliases) {
+  const aliases = schemaAliases || DEFAULT_DRACIN_ENDPOINT_CONFIG.schemaAliases;
+  const videoKeys = aliases.videoUrl || DEFAULT_DRACIN_ENDPOINT_CONFIG.schemaAliases.videoUrl;
+  const qualityKeys = aliases.qualityList || DEFAULT_DRACIN_ENDPOINT_CONFIG.schemaAliases.qualityList;
+  const subKeys = aliases.subtitles || DEFAULT_DRACIN_ENDPOINT_CONFIG.schemaAliases.subtitles;
+
+  const isPlayableUrl = (val) =>
+    typeof val === 'string' &&
+    (/^(https?:\/\/|\/\/|\/api\/|\/)/i.test(val.trim()) &&
+      (/\.(mp4|m3u8|webm)(\?|$|#)/i.test(val) || /\/hls(\?|\/|$)/i.test(val) || /video|stream|play/i.test(val)));
+
+  const containers = [];
+  if (rawJson && typeof rawJson === 'object') {
+    containers.push(rawJson);
+    for (const k of ['data', 'result', 'episode', 'video', 'stream', 'payload']) {
+      if (rawJson[k] && typeof rawJson[k] === 'object' && !Array.isArray(rawJson[k])) {
+        containers.push(rawJson[k]);
+      }
+    }
+  }
+
+  let videoUrl = '';
+  let qualityList = [];
+  let subtitles = [];
+  let locked = false;
+
+  for (const obj of containers) {
+    if (obj.locked === true || obj.isLocked === true || obj.isVip === true || obj.vipOnly === true) {
+      locked = true;
+    }
+    if (!videoUrl) {
+      for (const key of videoKeys) {
+        if (typeof obj[key] === 'string' && obj[key].trim()) {
+          videoUrl = obj[key].trim();
+          break;
+        }
+      }
+    }
+    if (qualityList.length === 0) {
+      for (const key of qualityKeys) {
+        if (Array.isArray(obj[key]) && obj[key].length > 0) {
+          qualityList = obj[key]
+            .map((entry) => {
+              if (!entry || typeof entry !== 'object') return null;
+              let entryUrl = '';
+              for (const uk of videoKeys) {
+                if (typeof entry[uk] === 'string' && entry[uk].trim()) {
+                  entryUrl = entry[uk].trim();
+                  break;
+                }
+              }
+              if (!entryUrl) return null;
+              return {
+                ...entry,
+                url: entryUrl,
+                label: String(entry.label || entry.quality || entry.definition || entry.resolution || 'HD'),
+              };
+            })
+            .filter(Boolean);
+          if (qualityList.length > 0) break;
+        }
+      }
+    }
+    if (subtitles.length === 0) {
+      for (const key of subKeys) {
+        if (Array.isArray(obj[key]) && obj[key].length > 0) {
+          subtitles = obj[key]
+            .map((s) => {
+              if (!s || typeof s !== 'object') return null;
+              const u = s.url || s.src || s.file || s.vttUrl || s.srtUrl || '';
+              if (!u) return null;
+              return {
+                label: String(s.label || s.langName || s.language || s.lang || 'Subtitle'),
+                language: String(s.language || s.lang || s.code || s.label || 'id').toLowerCase(),
+                url: String(u).trim(),
+              };
+            })
+            .filter(Boolean);
+          if (subtitles.length > 0) break;
+        }
+      }
+    }
+  }
+
+  // Last-resort recursive URL scan if an API update deeply nested the stream URL under a brand-new key
+  if (!videoUrl && qualityList.length === 0 && rawJson && typeof rawJson === 'object') {
+    const queue = [rawJson];
+    const visited = new Set();
+    let steps = 0;
+    while (queue.length > 0 && steps < 60 && !videoUrl) {
+      const cur = queue.shift();
+      steps += 1;
+      if (!cur || typeof cur !== 'object' || visited.has(cur)) continue;
+      visited.add(cur);
+      for (const val of Object.values(cur)) {
+        if (isPlayableUrl(val)) {
+          videoUrl = val.trim();
+          break;
+        }
+        if (val && typeof val === 'object') {
+          queue.push(val);
+        }
+      }
+    }
+  }
+
+  return {
+    videoUrl,
+    qualityList,
+    subtitles,
+    locked: Boolean(locked && !videoUrl && qualityList.length === 0),
+  };
+}
+
+/**
+ * Formats raw browser/network errors (such as Chrome's "signal is aborted without reason")
+ * into clear, friendly Indonesian messages.
+ */
+export function formatDracinUserError(err, { platformName = 'platform', episode = 1 } = {}) {
+  const raw = typeof err === 'string' ? err : String(err?.message || err?.name || '');
+  const lower = raw.toLowerCase();
+  if (
+    err?.name === 'AbortError' ||
+    lower.includes('signal is aborted') ||
+    lower.includes('aborted') ||
+    lower.includes('timeout')
+  ) {
+    return `Koneksi ke server ${platformName} (Ep ${episode}) terlalu lambat. Tekan Coba Muat Ulang atau coba episode lain.`;
+  }
+  if (lower.includes('failed to fetch') || lower.includes('networkerror') || lower.includes('load failed')) {
+    return `Jaringan ke server ${platformName} sedang terganggu. Periksa koneksi lalu tekan Coba Muat Ulang.`;
+  }
+  if (lower.includes('invalid json') || lower.includes('http 5')) {
+    return `Server ${platformName} sedang sibuk sementara. Tekan Coba Muat Ulang untuk mencoba mirror lain.`;
+  }
+  return raw || `Stream Episode ${episode} sedang tidak tersedia dari server ${platformName}.`;
+}
+
+/**
+ * Computes the next unlocked episode numbers to preload in background
+ * so scrolling or auto-next transitions play immediately without waiting/buffering.
+ */
+export function computePreloadEpisodeTargets(currentEpisode = 1, totalEpisodes = 40, count = 2) {
+  const cur = clampEpisodeNumber(currentEpisode, totalEpisodes);
+  const total = Math.max(1, Math.round(Number(totalEpisodes) || 1));
+  const maxCount = Math.max(0, Math.min(3, Math.round(Number(count) || 2)));
+  const targets = [];
+  for (let step = 1; step <= maxCount; step += 1) {
+    if (cur + step <= total) {
+      targets.push(cur + step);
+    }
+  }
+  return targets;
+}
+
 export function inferPlatformFromText(text = '', fallback = 'dramabox') {
   const lower = String(text || '').toLowerCase();
   for (const p of DRACIN_PLATFORMS) {

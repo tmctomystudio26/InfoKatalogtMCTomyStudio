@@ -19,8 +19,10 @@ import {
   buildEpisodeList,
   buildEpisodeRanges,
   clampEpisodeNumber,
+  computePreloadEpisodeTargets,
   filterDracinCatalog,
   filterDracinPlatforms,
+  formatDracinUserError,
   getActiveSubtitleCue,
   getGenreLabel,
   getNextPrevEpisode,
@@ -31,19 +33,21 @@ import {
   shouldPreserveFullscreenOnEpisodeChange,
   toggleFavoriteDramaId,
   upsertWatchHistory,
-} from './dracin-logic.js?v=53';
+} from './dracin-logic.js?v=54';
 import {
   fetchAiDramaInsights,
   fetchDramaDetail,
   fetchUnifiedDracinCatalog,
   getEpisodeSubtitles,
   identifyDracinFromMedia,
+  prefetchEpisodePlayback,
   resolveEpisodePlayback,
-} from './dracin.js?v=53';
+  searchDailymotionEpisodeBackup,
+} from './dracin.js?v=54';
 import {
   attachClearKeyEme,
   fetchAndDecryptCencMp4,
-} from './dracin-cenc.js?v=53';
+} from './dracin-cenc.js?v=54';
 
 const HISTORY_STORAGE_KEY = 'manifestudio_dracin_history_v1';
 const FAVORITES_STORAGE_KEY = 'manifestudio_dracin_favorites_v1';
@@ -57,7 +61,7 @@ function ensureHlsLibrary() {
   if (hlsScriptPromise) return hlsScriptPromise;
   hlsScriptPromise = new Promise((resolve, reject) => {
     const script = document.createElement('script');
-    script.src = './js/vendor/hls.min.js?v=53';
+    script.src = './js/vendor/hls.min.js?v=54';
     script.async = true;
     script.onload = () => resolve(window.Hls || null);
     script.onerror = () => {
@@ -145,6 +149,8 @@ export function createDracinController({ onToast = () => {} } = {}) {
     resolvingStream: false,
     streamStatusText: '',
     streamError: '',
+    streamLocked: false,
+    searchingBackupMirror: false,
     triedServerIds: new Set(),
 
     // Multi-language subtitles
@@ -186,7 +192,99 @@ export function createDracinController({ onToast = () => {} } = {}) {
   let activeMediaAbort = null;
   let streamSessionToken = 0;
 
-  function destroyActiveMediaEngine() {
+  // Background dual-video preloader & Melolo CENC LRU decrypted blob cache
+  let preloadHls = null;
+  let preloadAbort = null;
+  let preloadSessionToken = 0;
+  let preloadSlot = null;
+  const decryptedBlobCache = new Map();
+
+  function getBlobCacheKey(dramaId, ep, url) {
+    return `${dramaId}::ep${ep}::${url}`;
+  }
+
+  function isBlobInUse(blobUrl) {
+    if (!blobUrl) return false;
+    const activeVid = hostEl?.querySelector('#dracin-html5-video');
+    const standbyVid = hostEl?.querySelector('#dracin-preload-video');
+    return (
+      activeBlobUrl === blobUrl ||
+      preloadSlot?.blobUrl === blobUrl ||
+      activeVid?.currentSrc === blobUrl ||
+      activeVid?.src === blobUrl ||
+      standbyVid?.currentSrc === blobUrl ||
+      standbyVid?.src === blobUrl
+    );
+  }
+
+  function storeDecryptedBlob(key, blobUrl) {
+    if (!key || !blobUrl) return;
+    if (decryptedBlobCache.has(key)) {
+      decryptedBlobCache.delete(key);
+    }
+    decryptedBlobCache.set(key, blobUrl);
+    while (decryptedBlobCache.size > 3) {
+      let evicted = false;
+      for (const [k, url] of decryptedBlobCache.entries()) {
+        if (!isBlobInUse(url)) {
+          decryptedBlobCache.delete(k);
+          try {
+            URL.revokeObjectURL(url);
+          } catch {
+            // Ignore
+          }
+          evicted = true;
+          break;
+        }
+      }
+      if (!evicted) break;
+    }
+  }
+
+  function clearDecryptedBlobCache() {
+    for (const url of decryptedBlobCache.values()) {
+      try {
+        URL.revokeObjectURL(url);
+      } catch {
+        // Ignore
+      }
+    }
+    decryptedBlobCache.clear();
+  }
+
+  function destroyPreloadEngine() {
+    preloadSessionToken += 1;
+    if (preloadAbort) {
+      try {
+        preloadAbort.abort();
+      } catch {
+        // Ignore
+      }
+      preloadAbort = null;
+    }
+    if (preloadHls) {
+      try {
+        preloadHls.destroy();
+      } catch {
+        // Ignore
+      }
+      preloadHls = null;
+    }
+    preloadSlot = null;
+    const standby = hostEl?.querySelector('#dracin-preload-video');
+    if (standby) {
+      try {
+        standby.pause();
+        standby.removeAttribute('src');
+        standby.removeAttribute('data-preload-episode');
+        standby.load();
+      } catch {
+        // Ignore
+      }
+    }
+  }
+
+  function destroyActiveMediaEngine({ resetVideoElement = true } = {}) {
     if (activeMediaAbort) {
       try {
         activeMediaAbort.abort();
@@ -212,21 +310,26 @@ export function createDracinController({ onToast = () => {} } = {}) {
       activeEmeCleanup = null;
     }
     if (activeBlobUrl) {
-      try {
-        URL.revokeObjectURL(activeBlobUrl);
-      } catch {
-        // Ignore
+      const stillCached = Array.from(decryptedBlobCache.values()).includes(activeBlobUrl);
+      if (!stillCached) {
+        try {
+          URL.revokeObjectURL(activeBlobUrl);
+        } catch {
+          // Ignore
+        }
       }
       activeBlobUrl = '';
     }
-    const vid = hostEl?.querySelector('#dracin-html5-video');
-    if (vid) {
-      try {
-        vid.pause();
-        vid.removeAttribute('src');
-        vid.load();
-      } catch {
-        // Ignore
+    if (resetVideoElement) {
+      const vid = hostEl?.querySelector('#dracin-html5-video');
+      if (vid) {
+        try {
+          vid.pause();
+          vid.removeAttribute('src');
+          vid.load();
+        } catch {
+          // Ignore
+        }
       }
     }
   }
@@ -385,6 +488,13 @@ export function createDracinController({ onToast = () => {} } = {}) {
       errBox.hidden = !isError;
       const txt = errBox.querySelector('p');
       if (txt && isError) txt.textContent = message;
+      const prevErrBtn = errBox.querySelector('#dracin-error-prev-ep-btn');
+      if (prevErrBtn) prevErrBtn.hidden = state.currentEpisode <= 1;
+      const dmBtn = errBox.querySelector('#dracin-search-dm-mirror-btn');
+      if (dmBtn) {
+        dmBtn.disabled = state.searchingBackupMirror;
+        dmBtn.textContent = state.searchingBackupMirror ? 'Mencari Mirror...' : 'Cari Mirror Dailymotion';
+      }
     }
   }
 
@@ -621,43 +731,167 @@ export function createDracinController({ onToast = () => {} } = {}) {
   }
 
   /**
-   * Attaches the REAL media stream (Direct MP4, HLS.js with native CORS fallback,
-   * Melolo CENC WebCrypto MP4, or Dailymotion embed) to the mounted stage element.
+   * Silently preloads upcoming episodes (Ep N+1 video buffer + Ep N+2 API metadata)
+   * into the standby #dracin-preload-video element so scroll/auto-next switches instantaneously!
    */
-  async function attachMediaToActiveStage() {
-    if (!hostEl || state.view !== 'player') return;
-    const token = ++streamSessionToken;
-    destroyActiveMediaEngine();
+  async function preloadUpcomingEpisodes(drama, currentEp) {
+    if (!hostEl || !drama || state.view !== 'player') return;
+    const targets = computePreloadEpisodeTargets(currentEp, drama.totalEpisodes, 2);
+    if (!targets.length) return;
+    const nextEp = targets[0];
 
-    const activeServer =
-      state.servers.find((s) => s.id === state.activeServerId) || pickBestPlaybackServer(state.servers);
+    // Skip if Ep N+1 is already preloading or ready for this exact drama
+    if (preloadSlot && preloadSlot.dramaId === drama.id && preloadSlot.episode === nextEp) {
+      return;
+    }
 
-    if (!activeServer) {
-      if (!state.resolvingStream) {
-        setStatusOverlay(
-          false,
-          state.streamError || 'Sumber video untuk episode ini sedang tidak tersedia dari server platform.',
-          true
-        );
+    destroyPreloadEngine();
+    const myPreloadToken = ++preloadSessionToken;
+    const abortCtrl = new AbortController();
+    preloadAbort = abortCtrl;
+
+    // Warm Ep N+2 metadata in background concurrently without blocking Ep N+1 buffer
+    if (targets[1]) {
+      prefetchEpisodePlayback(drama, targets[1]).catch(() => {});
+    }
+
+    const streamRes = await prefetchEpisodePlayback(drama, nextEp);
+    if (
+      myPreloadToken !== preloadSessionToken ||
+      abortCtrl.signal.aborted ||
+      state.view !== 'player' ||
+      state.activeDramaId !== drama.id
+    ) {
+      return;
+    }
+    if (!streamRes || !Array.isArray(streamRes.servers) || streamRes.servers.length === 0) {
+      return;
+    }
+
+    const best = pickBestPlaybackServer(streamRes.servers);
+    if (!best || best.kind === 'dailymotion') return;
+
+    const standbyEl = hostEl?.querySelector('#dracin-preload-video');
+    if (!standbyEl) return;
+
+    const slot = {
+      dramaId: drama.id,
+      episode: nextEp,
+      streamRes,
+      server: best,
+      ready: false,
+      blobUrl: '',
+    };
+    preloadSlot = slot;
+
+    standbyEl.muted = true;
+    standbyEl.defaultMuted = true;
+    standbyEl.playsInline = true;
+    standbyEl.preload = 'auto';
+    standbyEl.setAttribute('data-preload-episode', String(nextEp));
+    if (drama.poster || drama.fallbackPoster) {
+      standbyEl.poster = drama.poster || drama.fallbackPoster;
+    }
+
+    const markReady = () => {
+      if (preloadSlot === slot) slot.ready = true;
+    };
+    standbyEl.addEventListener('loadeddata', markReady, { once: true, signal: abortCtrl.signal });
+    standbyEl.addEventListener('canplay', markReady, { once: true, signal: abortCtrl.signal });
+
+    try {
+      if (best.kind === 'cenc-mp4') {
+        const cacheKey = getBlobCacheKey(drama.id, nextEp, best.url);
+        let blobUrl = decryptedBlobCache.get(cacheKey) || '';
+        if (!blobUrl) {
+          blobUrl = await fetchAndDecryptCencMp4(best.url, best.contentKey, abortCtrl.signal);
+          if (myPreloadToken !== preloadSessionToken || abortCtrl.signal.aborted) {
+            URL.revokeObjectURL(blobUrl);
+            return;
+          }
+          storeDecryptedBlob(cacheKey, blobUrl);
+        }
+        slot.blobUrl = blobUrl;
+        standbyEl.src = blobUrl;
+        standbyEl.load();
+        return;
       }
-      return;
+
+      if (best.kind === 'hls') {
+        let HlsLib = null;
+        try {
+          HlsLib = await ensureHlsLibrary();
+        } catch {
+          HlsLib = null;
+        }
+        if (myPreloadToken !== preloadSessionToken || abortCtrl.signal.aborted) return;
+
+        if (HlsLib && HlsLib.isSupported()) {
+          const hls = new HlsLib({
+            enableWorker: true,
+            lowLatencyMode: false,
+            maxBufferLength: 8,
+            maxMaxBufferLength: 14,
+            backBufferLength: 5,
+          });
+          preloadHls = hls;
+          hls.on(HlsLib.Events.MANIFEST_PARSED, () => {
+            if (myPreloadToken !== preloadSessionToken) return;
+            if (Array.isArray(hls.audioTracks) && hls.audioTracks.length > 0 && hls.audioTrack < 0) {
+              hls.audioTrack = 0;
+            }
+            slot.ready = true;
+          });
+          hls.on(HlsLib.Events.ERROR, (_evt, data) => {
+            if (data?.fatal && preloadHls === hls) {
+              try {
+                hls.destroy();
+              } catch {
+                // Ignore
+              }
+              preloadHls = null;
+              if (preloadSlot === slot) preloadSlot = null;
+            }
+          });
+          hls.loadSource(best.url);
+          hls.attachMedia(standbyEl);
+        } else if (
+          standbyEl.canPlayType('application/vnd.apple.mpegurl') ||
+          standbyEl.canPlayType('application/x-mpegURL')
+        ) {
+          standbyEl.removeAttribute('crossorigin');
+          standbyEl.src = best.url;
+          standbyEl.load();
+        }
+        return;
+      }
+
+      // Direct MP4 background buffer
+      standbyEl.src = best.url;
+      standbyEl.load();
+    } catch {
+      if (preloadSlot === slot) preloadSlot = null;
     }
+  }
 
-    if (activeServer.kind === 'dailymotion') {
-      setStatusOverlay(false);
-      state.isPlaying = true;
-      return;
-    }
-
-    const videoEl = hostEl.querySelector('#dracin-html5-video');
-    if (!videoEl) return;
-
+  /**
+   * Binds HTML5 <video> lifecycle listeners to the active video element using an AbortController
+   * so both fresh stream attachment and zero-wait instant dual-video swap share identical behavior.
+   */
+  function bindActiveVideoListeners(videoEl, activeServer, token) {
     const abortCtrl = new AbortController();
     activeMediaAbort = abortCtrl;
     const listenerOpts = { signal: abortCtrl.signal };
     let videoDimensionCheckTimer = null;
+    let triggeredPreload = false;
 
-    // Bind native HTML5 <video> lifecycle events with AbortSignal so reusing <video> never leaks listeners!
+    const triggerNextPreloadOnce = () => {
+      if (triggeredPreload || token !== streamSessionToken) return;
+      triggeredPreload = true;
+      const drama = getActiveDrama();
+      if (drama) preloadUpcomingEpisodes(drama, state.currentEpisode);
+    };
+
     const onLoadedMeta = () => {
       if (token !== streamSessionToken) return;
       if (Number.isFinite(videoEl.duration) && videoEl.duration > 0) {
@@ -674,6 +908,7 @@ export function createDracinController({ onToast = () => {} } = {}) {
     const onCanPlay = () => {
       if (token !== streamSessionToken) return;
       setStatusOverlay(false);
+      triggerNextPreloadOnce();
       if (videoEl.paused && state.isPlaying) {
         attemptPlayVideo(videoEl);
       }
@@ -721,6 +956,7 @@ export function createDracinController({ onToast = () => {} } = {}) {
       }
       syncPlayerLiveDom();
       syncMuteUiInPlace();
+      triggerNextPreloadOnce();
 
       // Guard against black-screen codec (e.g. HEVC audio-only decode on devices without HEVC video)
       clearTimeout(videoDimensionCheckTimer);
@@ -758,9 +994,56 @@ export function createDracinController({ onToast = () => {} } = {}) {
     videoEl.addEventListener('error', onError, listenerOpts);
 
     abortCtrl.signal.addEventListener('abort', () => clearTimeout(videoDimensionCheckTimer), { once: true });
+    return { abortCtrl, triggerNextPreloadOnce };
+  }
+
+  /**
+   * Attaches the REAL media stream (Direct MP4, HLS.js with native CORS fallback,
+   * Melolo CENC WebCrypto MP4 with LRU cache, or Dailymotion embed) to the mounted stage element.
+   */
+  async function attachMediaToActiveStage() {
+    if (!hostEl || state.view !== 'player') return;
+    const token = ++streamSessionToken;
+    destroyActiveMediaEngine();
+
+    const activeServer =
+      state.servers.find((s) => s.id === state.activeServerId) || pickBestPlaybackServer(state.servers);
+
+    if (!activeServer) {
+      if (!state.resolvingStream) {
+        setStatusOverlay(
+          false,
+          state.streamError || 'Sumber video untuk episode ini sedang tidak tersedia dari server platform.',
+          true
+        );
+      }
+      return;
+    }
+
+    if (activeServer.kind === 'dailymotion') {
+      setStatusOverlay(false);
+      state.isPlaying = true;
+      return;
+    }
+
+    const videoEl = hostEl.querySelector('#dracin-html5-video');
+    if (!videoEl) return;
+
+    const { abortCtrl } = bindActiveVideoListeners(videoEl, activeServer, token);
+    const drama = getActiveDrama();
 
     try {
       if (activeServer.kind === 'cenc-mp4') {
+        const cacheKey = getBlobCacheKey(drama?.id || '', state.currentEpisode, activeServer.url);
+        const cachedBlob = decryptedBlobCache.get(cacheKey);
+        if (cachedBlob) {
+          activeBlobUrl = cachedBlob;
+          videoEl.src = cachedBlob;
+          videoEl.load();
+          await attemptPlayVideo(videoEl);
+          return;
+        }
+
         // Melolo encrypted CENC-AES-CTR MP4 -> client-side WebCrypto decrypt into native Blob MP4
         setStatusOverlay(true, `Menyiapkan & mendekripsi video ${activeServer.label}...`);
         try {
@@ -773,6 +1056,7 @@ export function createDracinController({ onToast = () => {} } = {}) {
             URL.revokeObjectURL(blobUrl);
             return;
           }
+          storeDecryptedBlob(cacheKey, blobUrl);
           activeBlobUrl = blobUrl;
           videoEl.src = blobUrl;
           videoEl.load();
@@ -786,7 +1070,13 @@ export function createDracinController({ onToast = () => {} } = {}) {
             videoEl.load();
             await attemptPlayVideo(videoEl);
           } else {
-            tryFailoverToNextServer(activeServer.id, decErr?.message || 'Gagal mendekripsi stream Melolo.');
+            tryFailoverToNextServer(
+              activeServer.id,
+              formatDracinUserError(decErr, {
+                platformName: drama?.platformName || 'Melolo',
+                episode: state.currentEpisode,
+              })
+            );
           }
         }
         return;
@@ -882,7 +1172,13 @@ export function createDracinController({ onToast = () => {} } = {}) {
       await attemptPlayVideo(videoEl);
     } catch (err) {
       if (token !== streamSessionToken || abortCtrl.signal.aborted) return;
-      tryFailoverToNextServer(activeServer.id, err?.message || 'Gagal memulai pemutaran video.');
+      tryFailoverToNextServer(
+        activeServer.id,
+        formatDracinUserError(err, {
+          platformName: drama?.platformName || 'platform',
+          episode: state.currentEpisode,
+        })
+      );
     }
   }
 
@@ -900,10 +1196,106 @@ export function createDracinController({ onToast = () => {} } = {}) {
     if (subMeta) subMeta.textContent = state.subtitleReason;
   }
 
-  async function selectEpisode(epNumber, { announce = '' } = {}) {
+  async function selectEpisode(epNumber, { announce = '', forceRefresh = false } = {}) {
     const drama = getActiveDrama();
     if (!drama) return;
     const safeEp = clampEpisodeNumber(epNumber, drama.totalEpisodes);
+
+    // Prime audio gesture synchronously BEFORE async fetch or instant swap so browser keeps audio unlocked!
+    primeVideoAudioGesture();
+
+    // Remove fullscreen drawer if open without tearing down stage
+    const openDrawer = hostEl?.querySelector('.dracin-fs-drawer');
+    if (openDrawer) openDrawer.remove();
+
+    // Check ZERO-WAIT INSTANT DUAL-VIDEO SWAP (preloaded Ep N+1 ready in standby slot!)
+    const activeVidNow = hostEl?.querySelector('#dracin-html5-video');
+    const standbyVidNow = hostEl?.querySelector('#dracin-preload-video');
+    const canInstantSwap =
+      !forceRefresh &&
+      Boolean(
+        activeVidNow &&
+          standbyVidNow &&
+          preloadSlot &&
+          preloadSlot.dramaId === drama.id &&
+          preloadSlot.episode === safeEp &&
+          preloadSlot.server &&
+          preloadSlot.streamRes?.servers?.length > 0 &&
+          (standbyVidNow.readyState >= 1 || Boolean(preloadHls) || Boolean(preloadSlot.blobUrl))
+      );
+
+    if (canInstantSwap) {
+      const slot = preloadSlot;
+      const promotedHls = preloadHls;
+      const token = ++streamSessionToken;
+      preloadSessionToken += 1;
+      if (preloadAbort) {
+        try {
+          preloadAbort.abort();
+        } catch {
+          // Ignore
+        }
+        preloadAbort = null;
+      }
+      preloadHls = null;
+      preloadSlot = null;
+
+      // Clean up old active video engine without touching the promoted standby video
+      destroyActiveMediaEngine({ resetVideoElement: true });
+
+      // Swap video roles IN-PLACE (zero DOM detach -> Fullscreen & audio lock persist seamlessly!)
+      activeVidNow.id = 'dracin-preload-video';
+      activeVidNow.removeAttribute('data-testid');
+      activeVidNow.classList.add('is-preload-standby');
+      activeVidNow.muted = true;
+      activeVidNow.defaultMuted = true;
+
+      standbyVidNow.id = 'dracin-html5-video';
+      standbyVidNow.setAttribute('data-testid', 'dracin-html5-video');
+      standbyVidNow.classList.remove('is-preload-standby');
+      standbyVidNow.removeAttribute('data-preload-episode');
+
+      activeHls = promotedHls;
+      activeBlobUrl = slot.blobUrl || '';
+
+      state.currentEpisode = safeEp;
+      state.epRangeStart = Math.floor((safeEp - 1) / 20) * 20 + 1;
+      state.elapsedSec = 0;
+      state.durationSec = Number.isFinite(standbyVidNow.duration) ? standbyVidNow.duration : 0;
+      state.isPlaying = true;
+      state.fullscreenDrawerOpen = false;
+      state.servers = slot.streamRes.servers || [];
+      state.activeServerId = slot.server.id;
+      state.apiSubtitles = slot.streamRes.subtitles || [];
+      state.subtitleCues = [];
+      state.subtitleIsReal = false;
+      state.triedServerIds = new Set();
+      state.streamLocked = false;
+      state.searchingBackupMirror = false;
+      state.resolvingStream = false;
+      state.streamError = '';
+
+      persistHistory(drama, safeEp, 15);
+      syncPlayerEpisodeUiInPlace(drama);
+      setStatusOverlay(false);
+      if (announce) showSwipeHint(announce);
+
+      const { triggerNextPreloadOnce } = bindActiveVideoListeners(standbyVidNow, slot.server, token);
+      try {
+        if (standbyVidNow.readyState >= 1 && standbyVidNow.currentTime > 0.2) {
+          standbyVidNow.currentTime = 0;
+        }
+      } catch {
+        // Ignore seek before metadata
+      }
+      attemptPlayVideo(standbyVidNow);
+      loadSubtitlesForActiveEpisode(drama, safeEp, null, state.apiSubtitles);
+      triggerNextPreloadOnce();
+      return;
+    }
+
+    // Standard path (first load, manual jump to distant episode, or retry)
+    destroyPreloadEngine();
     state.currentEpisode = safeEp;
     state.epRangeStart = Math.floor((safeEp - 1) / 20) * 20 + 1;
     state.elapsedSec = 0;
@@ -913,19 +1305,14 @@ export function createDracinController({ onToast = () => {} } = {}) {
     state.resolvingStream = true;
     state.streamStatusText = `Memuat stream Episode ${safeEp} dari ${drama.platformName}...`;
     state.streamError = '';
+    state.streamLocked = false;
+    state.searchingBackupMirror = false;
     state.servers = [];
     state.activeServerId = '';
     state.apiSubtitles = [];
     state.subtitleCues = [];
     state.subtitleIsReal = false;
     state.triedServerIds = new Set();
-
-    // Prime audio gesture synchronously BEFORE async fetch so browser keeps audio unlocked!
-    primeVideoAudioGesture();
-
-    // Remove fullscreen drawer if open without tearing down stage
-    const openDrawer = hostEl?.querySelector('.dracin-fs-drawer');
-    if (openDrawer) openDrawer.remove();
 
     destroyActiveMediaEngine();
     persistHistory(drama, safeEp, 15);
@@ -951,11 +1338,12 @@ export function createDracinController({ onToast = () => {} } = {}) {
     if (announce) showSwipeHint(announce);
 
     const mySession = streamSessionToken;
-    const streamRes = await resolveEpisodePlayback(drama, safeEp);
+    const streamRes = await resolveEpisodePlayback(drama, safeEp, { forceRefresh });
     if (mySession !== streamSessionToken || state.view !== 'player') return;
 
     state.servers = streamRes.servers || [];
     state.apiSubtitles = streamRes.subtitles || [];
+    state.streamLocked = Boolean(streamRes.locked);
     const best = pickBestPlaybackServer(state.servers);
     state.activeServerId = best?.id || '';
     state.streamError = streamRes.error || '';
@@ -1011,6 +1399,10 @@ export function createDracinController({ onToast = () => {} } = {}) {
     }
     if (!found) return;
 
+    if (state.activeDramaId && state.activeDramaId !== found.id) {
+      destroyPreloadEngine();
+      clearDecryptedBlobCache();
+    }
     state.activeDrama = { ...found };
     state.activeDramaId = found.id;
     state.view = 'player';
@@ -1720,6 +2112,15 @@ export function createDracinController({ onToast = () => {} } = {}) {
           preload="auto"
           data-testid="dracin-html5-video"
         ></video>
+        <video
+          id="dracin-preload-video"
+          class="dracin-stage-video is-preload-standby"
+          muted
+          playsinline
+          webkit-playsinline
+          preload="auto"
+          aria-hidden="true"
+        ></video>
         <div id="dracin-stage-tap-layer" class="dracin-stage-tap-layer" aria-hidden="true"></div>
       `;
     }
@@ -1743,10 +2144,18 @@ export function createDracinController({ onToast = () => {} } = {}) {
               <span>${escapeHtml(state.streamStatusText || 'Memuat video HD...')}</span>
             </div>
 
-            <!-- Real Stream Error Overlay with Instant Retry -->
+            <!-- Real Stream Error / VIP Lock Overlay with Instant Retry & Mirror Lookup -->
             <div id="dracin-media-error" class="dracin-media-error" ${state.streamError ? '' : 'hidden'}>
               <p>${escapeHtml(state.streamError || 'Gagal memuat video.')}</p>
-              <button type="button" class="btn btn-primary btn-xs" id="dracin-retry-stream-btn">Coba Muat Ulang Stream</button>
+              <div class="dracin-error-actions">
+                <button type="button" class="btn btn-primary btn-xs" id="dracin-retry-stream-btn">Coba Muat Ulang</button>
+                <button type="button" class="btn btn-secondary btn-xs" id="dracin-search-dm-mirror-btn" ${state.searchingBackupMirror ? 'disabled' : ''}>
+                  ${state.searchingBackupMirror ? 'Mencari Mirror...' : 'Cari Mirror Dailymotion'}
+                </button>
+                <button type="button" class="btn btn-secondary btn-xs" id="dracin-error-prev-ep-btn" ${state.currentEpisode > 1 ? '' : 'hidden'}>
+                  ← Ep Sebelumnya
+                </button>
+              </div>
             </div>
 
             <!-- Autoplay Muted Unmute Pill (only if browser policy forced muted start) -->
@@ -2276,6 +2685,7 @@ export function createDracinController({ onToast = () => {} } = {}) {
         }
         if (nextView !== 'player') {
           if (state.isFullscreen) toggleFullscreenMode(false);
+          destroyPreloadEngine();
           destroyActiveMediaEngine();
         }
         state.view = nextView;
@@ -2450,13 +2860,48 @@ export function createDracinController({ onToast = () => {} } = {}) {
     // Player controls
     hostEl.querySelector('#dracin-back-discover')?.addEventListener('click', () => {
       if (state.isFullscreen) toggleFullscreenMode(false);
+      destroyPreloadEngine();
       destroyActiveMediaEngine();
       state.view = 'discover';
       render();
     });
 
     hostEl.querySelector('#dracin-retry-stream-btn')?.addEventListener('click', () => {
-      selectEpisode(state.currentEpisode, { announce: `Memuat ulang Episode ${state.currentEpisode}` });
+      selectEpisode(state.currentEpisode, {
+        announce: `Memuat ulang Episode ${state.currentEpisode}`,
+        forceRefresh: true,
+      });
+    });
+
+    hostEl.querySelector('#dracin-error-prev-ep-btn')?.addEventListener('click', () => {
+      handleEpisodeStep(-1);
+    });
+
+    hostEl.querySelector('#dracin-search-dm-mirror-btn')?.addEventListener('click', async () => {
+      const drama = getActiveDrama();
+      if (!drama || state.searchingBackupMirror) return;
+      state.searchingBackupMirror = true;
+      setStatusOverlay(false, state.streamError, true);
+      try {
+        const dmSrv = await searchDailymotionEpisodeBackup(drama, state.currentEpisode);
+        state.searchingBackupMirror = false;
+        if (dmSrv) {
+          state.servers = [dmSrv, ...state.servers.filter((s) => s.id !== dmSrv.id)];
+          state.activeServerId = dmSrv.id;
+          state.streamError = '';
+          state.streamLocked = false;
+          onToast(`Mirror ditemukan: ${dmSrv.label}`);
+          render();
+          attachMediaToActiveStage();
+        } else {
+          setStatusOverlay(false, state.streamError, true);
+          onToast('Belum ditemukan mirror Dailymotion untuk episode ini');
+        }
+      } catch {
+        state.searchingBackupMirror = false;
+        setStatusOverlay(false, state.streamError, true);
+        onToast('Gagal mencari mirror Dailymotion saat ini');
+      }
     });
 
     hostEl.querySelector('#dracin-toggle-play-btn')?.addEventListener('click', togglePlayPauseInPlace);
@@ -2733,7 +3178,9 @@ export function createDracinController({ onToast = () => {} } = {}) {
       }
     },
     unmount() {
+      destroyPreloadEngine();
       destroyActiveMediaEngine();
+      clearDecryptedBlobCache();
       unbindGlobalListeners();
       hostEl = null;
     },

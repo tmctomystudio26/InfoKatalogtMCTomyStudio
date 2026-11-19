@@ -9855,6 +9855,12 @@ body.dracin-fs-lock {
   z-index: 1;
 }
 
+.dracin-stage-video.is-preload-standby {
+  opacity: 0;
+  pointer-events: none;
+  z-index: 0;
+}
+
 .dracin-stage-tap-layer {
   position: absolute;
   inset: 0;
@@ -9888,15 +9894,25 @@ body.dracin-fs-lock {
 .dracin-swipe-toast[hidden],
 .dracin-live-subtitle[hidden],
 .dracin-stage-pill-btn[hidden],
-.dracin-rail-btn[hidden] {
+.dracin-rail-btn[hidden],
+.dracin-error-actions button[hidden] {
   display: none !important;
 }
 
 .dracin-media-error p {
   margin: 0;
-  max-width: 280px;
+  max-width: 300px;
   line-height: 1.45;
   color: #fecdd3;
+}
+
+.dracin-error-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  max-width: 320px;
 }
 
 .dracin-spinner {

@@ -1,0 +1,64 @@
+{
+  "version": "54.0.0",
+  "updatedAt": "2026-11-20T00:00:00Z",
+  "notes": "Self-updating Drama China multi-mirror API registry. Updating this JSON immediately heals endpoint changes across all users without rewriting app code.",
+  "mirrors": [
+    {
+      "id": "anichin-primary",
+      "label": "Anichin Primary API",
+      "baseUrl": "https://api.anichin.bio",
+      "priority": 1,
+      "kind": "anichin-unified"
+    },
+    {
+      "id": "anichin-miniapp",
+      "label": "Anichin MiniApp Mirror",
+      "baseUrl": "https://miniapp.anichin.bio/api",
+      "priority": 2,
+      "kind": "anichin-unified"
+    }
+  ],
+  "routeTemplates": {
+    "episode": [
+      "/{platform}/episode?id={id}&ep={ep}&lang=in",
+      "/{platform}/watch?id={id}&ep={ep}&lang=in",
+      "/{platform}/stream?id={id}&ep={ep}&lang=in"
+    ],
+    "detail": [
+      "/{platform}/detail?id={id}&lang=in",
+      "/{platform}/info?id={id}&lang=in"
+    ],
+    "search": [
+      "/{platform}/search?query={query}&page={page}&lang=in",
+      "/{platform}/search?q={query}&page={page}&lang=in"
+    ]
+  },
+  "schemaAliases": {
+    "videoUrl": [
+      "videoUrl",
+      "playUrl",
+      "video_url",
+      "streamUrl",
+      "stream_url",
+      "mediaUrl",
+      "hlsUrl",
+      "mp4Url",
+      "url"
+    ],
+    "qualityList": [
+      "qualityList",
+      "qualities",
+      "streams",
+      "sources",
+      "videos",
+      "cdnList",
+      "playList"
+    ],
+    "subtitles": [
+      "subtitles",
+      "captions",
+      "tracks",
+      "subList"
+    ]
+  }
+}
