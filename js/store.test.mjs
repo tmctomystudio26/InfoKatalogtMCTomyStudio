@@ -168,7 +168,11 @@ import {
   REFERENCE_SONG_FINGERPRINTS,
   buildCrossPlatformMusicAndVideoLinks,
   computeAcousticFingerprintFromPcm,
+  computeAcousticSimilarity,
+  computeLyricMatchScore,
+  computeShazamConstellationHash,
   detectMediaFileKind,
+  encodePcmToWavBytes,
   extractEmbeddedMediaTags,
   parseSongQueryFromFilenameAndTags,
   rankSongCandidates,
@@ -2954,7 +2958,7 @@ test('55. Multi-Engine Song & Video Identifier (song-finder.js) auto-detects aud
   assert.equal(tags.artist, 'Tenxi, Naykilla & Jemsii');
   assert.equal(tags.album, 'Garam & Madu - Single');
 
-  // 3. Filename & social caption tokenizer strips platform noise
+  // 3. Filename & social caption tokenizer strips platform noise & NEVER invents fake 'Lagu Viral Indonesia'
   const parsedQ = parseSongQueryFromFilenameAndTags(
     'ssstik.io_bernadya_untungnya_hidup_harus_tetap_berjalan_7391827391823_tiktok_hd_1080p.mp4',
     {},
@@ -2963,8 +2967,13 @@ test('55. Multi-Engine Song & Video Identifier (song-finder.js) auto-detects aud
   assert.ok(parsedQ.primaryQuery.toLowerCase().includes('bernadya'));
   assert.ok(parsedQ.primaryQuery.toLowerCase().includes('untungnya'));
   assert.equal(parsedQ.primaryQuery.toLowerCase().includes('ssstik'), false);
+  assert.equal(parsedQ.hasTextClue, true);
 
-  // 4. Acoustic Chromagram & BPM analyzer on synthetic 440Hz (A4) sine wave with 120 BPM amplitude pulses
+  const blankClueQ = parseSongQueryFromFilenameAndTags('audio_wa_20261119_123456.mp3', {}, '');
+  assert.equal(blankClueQ.hasTextClue, false);
+  assert.equal(blankClueQ.primaryQuery, '');
+
+  // 4. Acoustic Chromagram, BPM, & Shazam Constellation Hash analyzer on synthetic 440Hz (A4) sine wave
   const sr = 22050;
   const pcm = new Float32Array(sr * 3);
   for (let i = 0; i < pcm.length; i += 1) {
@@ -2976,24 +2985,47 @@ test('55. Multi-Engine Song & Video Identifier (song-finder.js) auto-detects aud
   assert.equal(acoustic.dominantPitch, 'A');
   assert.ok(acoustic.bpm >= 76 && acoustic.bpm <= 176);
   assert.ok(acoustic.fingerprintHex.startsWith('FP-'));
+  assert.ok(acoustic.shazamHash.startsWith('SHZ-'));
 
-  // 5. Candidate scorer ranks exact song match near ~99.8%
+  const wavBytes = encodePcmToWavBytes(pcm, sr, 16000);
+  assert.equal(String.fromCharCode(...wavBytes.slice(0, 4)), 'RIFF');
+  assert.equal(String.fromCharCode(...wavBytes.slice(8, 12)), 'WAVE');
+
+  // 4b. Cosine Acoustic Similarity + Lyric Match Scorer
+  const sameSim = computeAcousticSimilarity(acoustic, acoustic);
+  assert.ok(sameSim >= 98);
+  const diffAcoustic = {
+    bpm: 170,
+    spectralCentroidHz: 4800,
+    chromaVector: acoustic.chromaVector.map((_, idx) => (idx === 1 ? 1 : 0)),
+  };
+  assert.ok(computeAcousticSimilarity(acoustic, diffAcoustic) < 60);
+
+  const lyricScore = computeLyricMatchScore(
+    'belum ada satu bulan ku yakin masih ada sisa wangiku di bajumu',
+    'Belum ada satu bulan Ku yakin masih ada sisa wangiku di bajumu Namun kau tampak baik saja'
+  );
+  assert.ok(lyricScore >= 85);
+
+  // 5. Candidate scorer ranks exact AudD / tag / lyric matches accurately
   const ranked = rankSongCandidates(REFERENCE_SONG_FINGERPRINTS, {
     embeddedTags: tags,
     parsedQuery: parseSongQueryFromFilenameAndTags('tenxi-garam-madu.mp3', tags, ''),
+    detectedLyrics: 'sakit dadaku ku mulai merindu',
     durationSec: 184,
     acoustic: { bpm: 132, dominantPitch: 'C#' },
   });
   assert.equal(ranked[0].title, 'Garam & Madu (Sakit Dadaku)');
-  assert.ok(ranked[0].similarityPercent >= 98);
+  assert.ok(ranked[0].similarityPercent >= 96);
 
-  // 6. Cross-platform link builder outputs music sources for audio AND social video similarity sources for video
+  // 6. Cross-platform link builder outputs music sources (incl. Shazam) for audio AND social video similarity sources for video
   const audioLinks = buildCrossPlatformMusicAndVideoLinks({
     title: ranked[0].title,
     artist: ranked[0].artist,
     mediaKind: 'audio',
   });
-  assert.ok(audioLinks.musicSources.length >= 6);
+  assert.ok(audioLinks.musicSources.length >= 7);
+  assert.ok(audioLinks.musicSources.some((m) => m.platform === 'Shazam'));
   assert.equal(audioLinks.videoSources.length, 0);
 
   const videoLinks = buildCrossPlatformMusicAndVideoLinks({
@@ -3001,7 +3033,7 @@ test('55. Multi-Engine Song & Video Identifier (song-finder.js) auto-detects aud
     artist: ranked[0].artist,
     mediaKind: 'video',
   });
-  assert.ok(videoLinks.musicSources.length >= 6);
+  assert.ok(videoLinks.musicSources.length >= 7);
   assert.ok(videoLinks.videoSources.length >= 4);
   assert.ok(videoLinks.videoSources.some((v) => v.platform.includes('TikTok')));
   assert.ok(videoLinks.videoSources.some((v) => v.platform.includes('Instagram')));

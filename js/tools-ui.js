@@ -22,40 +22,40 @@ import {
   matchIndonesianCityQuery,
   planMediaCompression,
   resolveAccurateWeatherCondition,
-} from './tools-logic.js?v=45';
+} from './tools-logic.js?v=46';
 import {
   describeLocationSource,
   resolveUserLocation,
   searchCitiesOnline,
   setManualLocation,
-} from './location.js?v=45';
-import { createInteractiveGlobe } from './globe.js?v=45';
+} from './location.js?v=46';
+import { createInteractiveGlobe } from './globe.js?v=46';
 import {
   createSpeedometerGauge,
   fetchSpeedtestEnvironment,
   readClientDeviceTelemetry,
   runInternetSpeedtest,
-} from './speedtest.js?v=45';
+} from './speedtest.js?v=46';
 import {
   extractAudioFromVideoUrl,
   fetchMediaDownload,
   triggerBatchPhotoDownload,
   triggerDirectMediaSave,
-} from './downloader.js?v=45';
-import { compressMediaFile, inspectMediaFile } from './compressor.js?v=45';
+} from './downloader.js?v=46';
+import { compressMediaFile, inspectMediaFile } from './compressor.js?v=46';
 import {
   ALL_TARGET_FORMATS,
   convertAnyFile,
   detectSourceFormat,
   getAvailableTargetFormats,
-} from './converter.js?v=45';
+} from './converter.js?v=46';
 import {
   detectMediaFileKind,
   identifyMediaSongAndVideo,
-} from './song-finder.js?v=45';
-import { formatAudioTime, getLoadingProgressMeta, isTrackInWatchLater } from './music-logic.js?v=45';
-import { MUSIC_PRESET_CATEGORIES, getMusicController, initMusicPlayer } from './music.js?v=45';
-import { normalizeUtilityConfig } from './store.js?v=45';
+} from './song-finder.js?v=46';
+import { formatAudioTime, getLoadingProgressMeta, isTrackInWatchLater } from './music-logic.js?v=46';
+import { MUSIC_PRESET_CATEGORIES, getMusicController, initMusicPlayer } from './music.js?v=46';
+import { normalizeUtilityConfig } from './store.js?v=46';
 
 const PRAYER_CACHE_KEY = 'manifestudio_prayer_cache_v1';
 const MYQURAN_CITIES_KEY = 'manifestudio_myquran_cities_v1';
@@ -2153,10 +2153,10 @@ export function createToolsHubController({
         <div class="compressor-hero-card">
           <div class="compressor-head">
             <div>
-              <span class="tool-kicker">Multi-API &amp; Public AI Music + Social Video Identifier · 7 Engine Paralel</span>
-              <h3 class="tool-subhead">Cari Judul Lagu, Musik &amp; Sumber Video Mirip (Audio / Video Otomatis)</h3>
+              <span class="tool-kicker">AudD Shazam-Grade · Whisper Lirik AI · Multi-AI &amp; Video Similarity (9 Engine)</span>
+              <h3 class="tool-subhead">Cari Judul Lagu, Lirik, Kemiripan Musik &amp; Sumber Video (Otomatis Audio/Video)</h3>
               <p class="tool-hint">
-                Masukkan file <strong>Audio</strong> (MP3, WAV, M4A, AAC, OGG, FLAC) maupun <strong>Video</strong> (MP4, MOV, WebM, MKV). Sistem otomatis mendeteksi jenis file, menganalisis sidik jari akustik + metadata + AI publik + multi-API musik (iTunes, YouTube Music, Spotify, Audius, MusicBrainz), serta khusus untuk file <strong>Video</strong> juga menganalisis kemiripan frame visual lintas <strong>YouTube, TikTok, Instagram Reels, &amp; Sosmed</strong>.
+                Masukkan file <strong>Audio</strong> (MP3, WAV, M4A, AAC, OGG, FLAC) maupun <strong>Video</strong> (MP4, MOV, WebM, MKV). Sistem membaca gelombang suara asli via <strong>AudD Fingerprinting</strong>, mentranskrip vokal ke teks via <strong>Whisper Large v3 Turbo</strong>, mencocokkan lirik di <strong>LRCLIB &amp; Lyrics.ovh</strong>, menghitung <strong>Shazam Landmark Hash + Cosine Acoustic Similarity</strong>, dan menggabungkan <strong>Multi-AI Publik Gratis (GPT-OSS, Gemma-4/Gemini, GLM-5.3) + Apple Music, Spotify, Shazam, YouTube &amp; TikTok</strong>.
               </p>
             </div>
           </div>
@@ -2227,8 +2227,8 @@ export function createToolsHubController({
                   <span class="conv-detected-sub">
                     ${
                       kindInfo?.mediaKind === 'video'
-                        ? 'Mengekstrak spektrum audio + 3 keyframe visual untuk mencari lagu & sumber video mirip di YT, TikTok, IG'
-                        : 'Menggabungkan Acoustic Chromagram, ID3/MP4 Tag, Apple iTunes, YT Music, Audius, MusicBrainz & AI Publik'
+                        ? 'Mengekstrak gelombang audio + Whisper lirik + 3 keyframe visual untuk lagu & video mirip di YT, TikTok, IG'
+                        : 'AudD Audio Fingerprint + Shazam Landmark + Whisper Lirik + LRCLIB + iTunes Cosine Similarity + Multi-AI'
                     }
                   </span>
                 </div>
@@ -2236,7 +2236,7 @@ export function createToolsHubController({
 
               <div class="conv-select-controls">
                 <label for="sf-hint-input" class="conv-select-label">
-                  2. Petunjuk Tambahan / Potongan Lirik / Konteks Video (Opsional, Memperkuat Akurasi AI):
+                  2. Potongan Lirik / Petunjuk Tambahan (Opsional, Menguatkan Pencarian Lirik &amp; AI):
                 </label>
                 <div class="conv-select-row">
                   <input
@@ -2244,7 +2244,7 @@ export function createToolsHubController({
                     id="sf-hint-input"
                     data-testid="sf-hint-input"
                     class="conv-target-select"
-                    placeholder="Contoh: potongan lirik, nama penyanyi, atau tren TikTok/Reels (kosongkan jika tidak tahu)..."
+                    placeholder="Contoh: sepenggal lirik lagu atau penyanyi (opsional)..."
                     value="${escapeHtml(toolState.sfUserHint)}"
                   />
                   <button
@@ -2303,8 +2303,8 @@ export function createToolsHubController({
                 }
                 ${
                   res.mediaKind === 'audio' && toolState.sfPreviewUrl
-                    ? `<div style="padding:0.65rem 0.75rem;width:100%;">
-                        <audio controls preload="metadata" src="${escapeHtml(toolState.sfPreviewUrl)}" style="width:100%;"></audio>
+                    ? `<div class="sf-audio-preview-wrap">
+                        <audio controls preload="metadata" src="${escapeHtml(toolState.sfPreviewUrl)}" class="sf-audio-el"></audio>
                       </div>`
                     : ''
                 }
@@ -2313,17 +2313,17 @@ export function createToolsHubController({
               <div class="comp-result-body">
                 <div class="dl-result-badges">
                   <span class="dl-plat-pill is-detected" data-testid="sf-similarity-badge">
-                    ✓ Kemiripan ${res.bestMatch.similarityPercent}% · ${res.mediaKind === 'video' ? 'VIDEO + AUDIO COCOK' : 'AUDIO LAGU COCOK'}
+                    ✓ Kemiripan ${res.bestMatch.similarityPercent}% · ${res.mediaKind === 'video' ? 'VIDEO + AUDIO' : 'AUDIO LAGU'}
                   </span>
                   <span class="dl-dur-pill">${escapeHtml(res.formatLabel)}</span>
                   <span class="dl-dur-pill">${escapeHtml(res.bestMatch.provider || 'Multi-API Music Engine')}</span>
-                  <span class="dl-dur-pill mono-num">${escapeHtml(res.acoustic.fingerprintHex)}</span>
+                  <span class="dl-dur-pill mono-num">${escapeHtml(res.acoustic.shazamHash || res.acoustic.fingerprintHex)}</span>
                 </div>
 
-                <h4 class="dl-result-title" data-testid="sf-song-title" style="font-size:1.22rem;margin-top:0.25rem;">
+                <h4 class="dl-result-title" data-testid="sf-song-title">
                   ${escapeHtml(res.bestMatch.title)}
                 </h4>
-                <p style="margin:0.15rem 0 0.65rem;font-size:0.94rem;font-weight:600;color:var(--accent);" data-testid="sf-song-artist">
+                <p class="sf-artist-line" data-testid="sf-song-artist">
                   Penyanyi / Artis: ${escapeHtml(res.bestMatch.artist)}
                 </p>
 
@@ -2334,22 +2334,40 @@ export function createToolsHubController({
                     <small>${escapeHtml(res.bestMatch.genre || 'Pop / Musik')} ${res.bestMatch.releaseYear ? `· ${escapeHtml(String(res.bestMatch.releaseYear))}` : ''}</small>
                   </div>
                   <div class="comp-stat-box">
-                    <span>Analisis Spektrum Audio</span>
+                    <span>Spektrum &amp; Shazam Hash</span>
                     <strong class="mono-num">${res.acoustic.bpm} BPM · Nada ${escapeHtml(res.acoustic.dominantPitch)}</strong>
-                    <small class="mono-num">Durasi ${res.durationSec || 0}s · ${res.sampleRate} Hz</small>
+                    <small class="mono-num">Durasi ${res.durationSec || 0}s · ${res.sampleRate} Hz${res.bestMatch.acousticSimilarity ? ` · Kemiripan Audio ${res.bestMatch.acousticSimilarity}%` : ''}</small>
                   </div>
                   <div class="comp-stat-box">
                     <span>Tingkat Kecocokan</span>
                     <strong class="mono-num">${res.bestMatch.similarityPercent}% Valid</strong>
-                    <small>${res.activeEngines.length} Metode &amp; API Digabungkan</small>
+                    <small>${res.activeEngines.length} Metode &amp; API Aktif</small>
                   </div>
                 </div>
 
                 ${
                   res.bestMatch.aiSummary
                     ? `<div class="sf-ai-summary-box" data-testid="sf-ai-summary">
-                        <strong>Ringkasan Identifikasi Multi-API &amp; AI:</strong>
+                        <strong>Ringkasan Identifikasi Multi-API &amp; AI (${escapeHtml(res.activeEngines.slice(0, 4).join(' · '))}):</strong>
                         <p>${escapeHtml(res.bestMatch.aiSummary)}</p>
+                      </div>`
+                    : ''
+                }
+
+                ${
+                  res.whisperLyrics || res.detectedLyrics
+                    ? `<div class="sf-lyrics-box" data-testid="sf-lyrics-box">
+                        <strong>Deteksi Lirik Vokal &amp; Pencocokan Lirik Resmi:</strong>
+                        ${
+                          res.whisperLyrics
+                            ? `<small class="sf-whisper-tag">Transkrip Audio (Whisper AI): "${escapeHtml(res.whisperLyrics)}"</small>`
+                            : ''
+                        }
+                        ${
+                          res.detectedLyrics
+                            ? `<p class="sf-lyrics-excerpt">${escapeHtml(String(res.detectedLyrics).slice(0, 420))}${String(res.detectedLyrics).length > 420 ? '…' : ''}</p>`
+                            : ''
+                        }
                       </div>`
                     : ''
                 }
@@ -2357,7 +2375,7 @@ export function createToolsHubController({
                 <!-- Music / Audio Platform Sources (Always Shown for Both Audio & Video) -->
                 <div class="sf-links-section">
                   <h5 class="sf-section-title">
-                    Sumber Musik &amp; Lagu yang Relevan 100% (YouTube, Spotify, Apple Music, YT Music, TikTok):
+                    Sumber Musik &amp; Lagu yang Relevan (YouTube, Spotify, Shazam, Apple Music, YT Music, TikTok):
                   </h5>
                   <div class="sf-sources-grid" data-testid="sf-music-sources">
                     ${res.musicSources
@@ -2394,7 +2412,7 @@ export function createToolsHubController({
                       ${
                         res.videoAnalysis
                           ? `<span class="mono-num sf-video-hash-pill">
-                              ${res.videoAnalysis.width}×${res.videoAnalysis.height}px · ${escapeHtml(res.videoAnalysis.orientationLabel)} · Hash ${escapeHtml(res.videoAnalysis.visualHash)}
+                              ${res.videoAnalysis.width}×${res.videoAnalysis.height}px · ${escapeHtml(res.videoAnalysis.orientationLabel)} · ${escapeHtml(res.videoAnalysis.visualHash)}
                             </span>`
                           : ''
                       }
@@ -2488,7 +2506,7 @@ export function createToolsHubController({
                         .map(
                           (alt) => `
                         <div class="sf-alt-row">
-                          <div>
+                          <div class="sf-alt-copy">
                             <strong>${escapeHtml(alt.title)}</strong>
                             <span> — ${escapeHtml(alt.artist)} (${escapeHtml(alt.provider || 'Music API')})</span>
                           </div>
@@ -2510,7 +2528,7 @@ export function createToolsHubController({
                     id="sf-play-in-ytmusic-btn"
                     data-testid="sf-play-in-ytmusic-btn"
                   >
-                    Putar "${escapeHtml(res.bestMatch.title)}" di Pemutar YT Music Web Ini
+                    Putar di Pemutar YT Music Web Ini
                   </button>
                   <button type="button" class="btn btn-ghost btn-sm" id="sf-reset-btn">
                     Cari Lagu / Video Lain
