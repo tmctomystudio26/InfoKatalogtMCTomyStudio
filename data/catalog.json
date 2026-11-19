@@ -53,8 +53,8 @@
     "callout": {
       "icon": "./assets/icons/menu-utilitas.svg",
       "title": "Menu Utilitas",
-      "badge": "9 Fitur Gratis",
-      "description": "Jadwal Sholat · Cuaca · Jam Dunia & Globe · Speedtest · Downloader · Kompres HD · Konversi File · Cari Judul Lagu & Video · YT Music"
+      "badge": "10 Fitur Gratis",
+      "description": "Jadwal Sholat · Cuaca · Jam Dunia & Globe · Speedtest · Downloader · Kompres HD · Konversi File · Cari Judul Lagu & Video · YT Music · Drama China"
     },
     "musicHero": {
       "icon": "https://thumb.wikimedia.org/wikipedia/commons/thumb/6/6a/Youtube_Music_icon.svg/3840px-Youtube_Music_icon.svg.png?utm_source=commons.wikimedia.org&utm_campaign=index&utm_content=thumbnail",
@@ -151,6 +151,16 @@
         "heroKicker": "YT Music API · Bebas Iklan",
         "heroTitle": "Pemutar YT Music Gratis",
         "heroDescription": "Putar lagu tanpa iklan, cari musik favorit, kelola daftar putar, & sinkron dengan tombol putar mengambang."
+      },
+      {
+        "id": "dracin",
+        "label": "Drama China",
+        "icon": "./assets/icons/tool-dracin.svg",
+        "pageTitle": "Drama China (Dracin) Gratis Tanpa Iklan — 18+ Platform",
+        "pageSubtitle": "DramaBox, ReelShort, ShortMax, NetShort, GoodShort, Anichin & 12+ platform lain bebas lompat episode, layar penuh scroll episode, subtitle Indonesia otomatis, & cari dari klip/screenshot AI.",
+        "heroKicker": "18+ Platform Short Drama · Multi-API Paralel & Multi-AI Tanpa Key",
+        "heroTitle": "Nonton Drama China Pendek Gratis Tanpa Iklan",
+        "heroDescription": "Satukan DramaBox, ReelShort, ShortMax, NetShort, GoodShort, DramaWave, FlickReels, FreeReels, StardustTV, iDrama, DramaNova, StarShort, DramaBite, Melolo, MoboReels, FlexTV, KalosTV & Anichin dengan subtitle otomatis multi-bahasa dan pencarian klip AI."
       }
     ]
   },

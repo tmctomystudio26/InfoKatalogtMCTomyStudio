@@ -1,4 +1,4 @@
-const CACHE_NAME = 'manifestudio-cache-v50';
+const CACHE_NAME = 'manifestudio-cache-v51';
 
 const PRECACHE_ASSETS = [
   './',
@@ -34,6 +34,9 @@ const PRECACHE_ASSETS = [
   './js/tools-page.js',
   './js/music-logic.js',
   './js/music.js',
+  './js/dracin-logic.js',
+  './js/dracin.js',
+  './js/dracin-ui.js',
   './js/receipt.js',
   './js/vault.js',
   './js/pwa.js',
@@ -62,6 +65,7 @@ const PRECACHE_ASSETS = [
   './assets/icons/tool-converter.svg',
   './assets/icons/tool-songfinder.svg',
   './assets/icons/tool-music.svg',
+  './assets/icons/tool-dracin.svg',
   './assets/icons/icon-192.png',
   './assets/icons/icon-512.png',
   './assets/icons/icon-maskable-512.png',

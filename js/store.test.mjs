@@ -2,6 +2,24 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { getDefaultCatalogSnapshot, PRODUCTS, VOUCHERS } from './data.js';
 import {
+  CURATED_DRACIN_CATALOG,
+  DRACIN_PLATFORMS,
+  DRACIN_SUBTITLE_LANGS,
+  buildEpisodeList,
+  buildEpisodeRanges,
+  buildEpisodeSubtitleCues,
+  buildWebVttFromCues,
+  filterDracinCatalog,
+  getActiveSubtitleCue,
+  getNextPrevEpisode,
+  mergeParallelDracinFeeds,
+  parseAiDramaIdentification,
+  rankClipIdentifierCandidates,
+  resolveAutoSubtitleLang,
+  toggleFavoriteDramaId,
+  upsertWatchHistory,
+} from './dracin-logic.js';
+import {
   DEFAULT_UTILITY_CONFIG,
   MAX_HISTORY_LOGS,
   addToCart,
@@ -1699,12 +1717,13 @@ test('normalizeYtMusicTrack supports hybrid tracks with both videoId and backgro
 test('normalizeUtilityConfig, upsertUtilityItemInCatalog, and describeCatalogChanges manage utility icons, labels, page headers, and YT Music hero card', () => {
   const base = getDefaultCatalogSnapshot();
   const util = normalizeUtilityConfig(base.utilities);
-  assert.equal(util.items.length, 9);
+  assert.equal(util.items.length, 10);
   assert.equal(util.items.some((i) => i.id === 'downloader' && i.label === 'Downloader'), true);
   assert.equal(util.items.some((i) => i.id === 'converter' && i.label === 'Konversi File'), true);
   assert.equal(util.items.some((i) => i.id === 'songfinder' && i.label === 'Cari Judul Lagu'), true);
+  assert.equal(util.items.some((i) => i.id === 'dracin' && i.label === 'Drama China'), true);
   assert.equal(util.musicHero.icon, './assets/icons/tool-music.svg');
-  assert.ok(DEFAULT_UTILITY_CONFIG.items.length === 9);
+  assert.ok(DEFAULT_UTILITY_CONFIG.items.length === 10);
 
   let next = upsertUtilityItemInCatalog(base, {
     id: 'downloader',
@@ -3142,5 +3161,145 @@ test('v49 AI Hybrid Super-Compressor & Ultra Perceptual AVIF/WebP planner, PSNR 
   assert.equal(ffArgs[crfIdx + 1], '24');
   assert.ok(ffArgs.some((arg) => arg.includes('flags=lanczos')));
 });
+
+test('v51 Drama China (Dracin) unifies 15+ short-drama platforms, parallel APIs, free episode jump, auto-ID subtitles, history, and AI clip matcher', () => {
+  // 1. Utility registration (10 free utilities including dracin)
+  const utilCfg = normalizeUtilityConfig();
+  assert.equal(utilCfg.items.length, 10);
+  const dracinTool = utilCfg.items.find((it) => it.id === 'dracin');
+  assert.ok(dracinTool);
+  assert.equal(dracinTool.label, 'Drama China');
+
+  // 2. 15+ named short-drama platforms (excluding 'all' = 18 platforms!)
+  const realPlatforms = DRACIN_PLATFORMS.filter((p) => p.id !== 'all');
+  assert.ok(realPlatforms.length >= 15, `Expected >= 15 platforms, got ${realPlatforms.length}`);
+  const requiredPlatformNames = [
+    'DramaBox',
+    'ReelShort',
+    'ShortMax',
+    'NetShort',
+    'GoodShort',
+    'DramaWave',
+    'FlickReels',
+    'FreeReels',
+    'StardustTV',
+    'iDrama',
+    'DramaNova',
+    'StarShort',
+    'DramaBite',
+    'Melolo',
+    'MoboReels',
+    'Anichin',
+  ];
+  for (const name of requiredPlatformNames) {
+    assert.ok(
+      realPlatforms.some((p) => p.name === name),
+      `Missing required platform ${name}`
+    );
+  }
+
+  // 3. Parallel multi-API feed merging & deduplication
+  const merged = mergeParallelDracinFeeds(
+    [
+      {
+        sourceId: 'dailymotion',
+        items: [
+          { title: 'Pewaris Rahasia di Balik Senyum Sang CEO', platformId: 'dramabox' }, // duplicate
+          { title: 'Cinta Terlarang Sang Panglima Naga', platformId: 'shortmax', totalEpisodes: 65 },
+        ],
+      },
+      {
+        sourceId: 'anichin-api',
+        fallbackPlatformId: 'anichin',
+        items: [{ title: 'Battle Through The Heavens Special', totalEpisodes: 52 }],
+      },
+    ],
+    CURATED_DRACIN_CATALOG
+  );
+  assert.equal(merged.length, CURATED_DRACIN_CATALOG.length + 2);
+  assert.ok(merged.some((d) => d.title === 'Cinta Terlarang Sang Panglima Naga' && d.platformId === 'shortmax'));
+  assert.ok(merged.some((d) => d.title === 'Battle Through The Heavens Special' && d.platformId === 'anichin'));
+
+  // 4. Platform & title search filtering
+  const anichinOnly = filterDracinCatalog(merged, { platformId: 'anichin' });
+  assert.ok(anichinOnly.length >= 2);
+  assert.ok(anichinOnly.every((d) => d.platformId === 'anichin'));
+  const ceoSearch = filterDracinCatalog(merged, { query: 'miliarder' });
+  assert.ok(ceoSearch.some((d) => d.platformId === 'reelshort'));
+
+  // 5. Free unlimited episode jumping & range grouping (zero locked episodes)
+  const flagship = merged[0];
+  const episodes = buildEpisodeList(flagship);
+  assert.equal(episodes.length, flagship.totalEpisodes);
+  assert.ok(episodes.every((ep) => ep.free === true && ep.locked === false));
+  const ranges = buildEpisodeRanges(82, 20);
+  assert.equal(ranges.length, 5);
+  assert.equal(ranges[4].label, '81–82');
+  const navMid = getNextPrevEpisode(15, 82);
+  assert.equal(navMid.prev, 14);
+  assert.equal(navMid.next, 16);
+  const navLast = getNextPrevEpisode(82, 82);
+  assert.equal(navLast.hasNext, false);
+
+  // 6. Auto-enable Indonesian subtitles when dubbing is unavailable + multi-lang WebVTT
+  const noDubDrama = merged.find((d) => !d.hasIndonesianDub);
+  const autoSub = resolveAutoSubtitleLang(noDubDrama, null);
+  assert.equal(autoSub.lang, 'id');
+  assert.equal(autoSub.autoActivated, true);
+  assert.ok(DRACIN_SUBTITLE_LANGS.length >= 8);
+  const idCues = buildEpisodeSubtitleCues(noDubDrama, 15, 'id');
+  assert.ok(idCues.length >= 5);
+  assert.ok(idCues[0].text.includes('Ep 15'));
+  const vtt = buildWebVttFromCues(idCues);
+  assert.ok(vtt.startsWith('WEBVTT'));
+  const cueAt10 = getActiveSubtitleCue(idCues, 10);
+  assert.ok(cueAt10 && cueAt10.text.length > 5);
+
+  // 7. Watch history & favorites persistence helpers
+  let hist = upsertWatchHistory([], {
+    dramaId: flagship.id,
+    title: flagship.title,
+    platformId: flagship.platformId,
+    platformName: flagship.platformName,
+    episode: 15,
+    totalEpisodes: flagship.totalEpisodes,
+  });
+  assert.equal(hist.length, 1);
+  assert.equal(hist[0].episode, 15);
+  hist = upsertWatchHistory(hist, {
+    dramaId: flagship.id,
+    title: flagship.title,
+    platformId: flagship.platformId,
+    platformName: flagship.platformName,
+    episode: 22,
+    totalEpisodes: flagship.totalEpisodes,
+  });
+  assert.equal(hist.length, 1);
+  assert.equal(hist[0].episode, 22);
+
+  let favs = toggleFavoriteDramaId([], flagship.id);
+  assert.deepEqual(favs, [flagship.id]);
+  favs = toggleFavoriteDramaId(favs, flagship.id);
+  assert.deepEqual(favs, []);
+
+  // 8. Smart Clip/Screenshot + Multi-AI drama identifier ranking & parser
+  const parsedAi = parseAiDramaIdentification(
+    '```json\n{"summary":"Cuplikan tabib muda gunung giok","genre":"fantasy","keywords":["dokter","giok","netshort"]}\n```'
+  );
+  assert.equal(parsedAi.suggestedGenre, 'fantasy');
+  assert.ok(parsedAi.hints.includes('giok'));
+
+  const ranked = rankClipIdentifierCandidates(merged, {
+    fileName: 'cuplikan_dokter_giok_netshort.png',
+    userClue: 'tabib gunung giok tiga jarum perak',
+    aiHints: parsedAi.hints,
+    visualProfile: { aspectRatio: 0.56, warmth: 0.42, brightness: 0.45 },
+    limit: 3,
+  });
+  assert.equal(ranked.length, 3);
+  assert.equal(ranked[0].drama.id, 'ns-cinta-tak-terduga-dokter-jenius');
+  assert.ok(ranked[0].confidence >= 70);
+});
+
 
 

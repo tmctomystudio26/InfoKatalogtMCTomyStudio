@@ -88,11 +88,11 @@ Dilengkapi Jadwal Sholat, Prakiraan Cuaca, Jam Dunia, Speedtest, Social Media Do
     />
 
     <!-- Styles -->
-    <link rel="stylesheet" href="./css/tokens.css?v=50" />
-    <link rel="stylesheet" href="./css/styles.css?v=50" />
+    <link rel="stylesheet" href="./css/tokens.css?v=51" />
+    <link rel="stylesheet" href="./css/styles.css?v=51" />
     <script>
       (function () {
-        var CURRENT_CACHE = 'manifestudio-cache-v50';
+        var CURRENT_CACHE = 'manifestudio-cache-v51';
         if ('caches' in window) {
           caches.keys().then(function (keys) {
             keys.forEach(function (k) {
@@ -101,7 +101,7 @@ Dilengkapi Jadwal Sholat, Prakiraan Cuaca, Jam Dunia, Speedtest, Social Media Do
           });
         }
         if ('serviceWorker' in navigator) {
-          navigator.serviceWorker.register('./sw.js?v=50').then(function (reg) {
+          navigator.serviceWorker.register('./sw.js?v=51').then(function (reg) {
             reg.update();
           }).catch(function () {});
         }
@@ -148,6 +148,7 @@ Dilengkapi Jadwal Sholat, Prakiraan Cuaca, Jam Dunia, Speedtest, Social Media Do
           <a href="./tools.html?tab=compressor" class="header-nav-link">Kompresor HD</a>
           <a href="./tools.html?tab=converter" class="header-nav-link">Konversi File</a>
           <a href="./tools.html?tab=music" class="header-nav-link">Musik YT</a>
+          <a href="./tools.html?tab=dracin" class="header-nav-link">Drama China</a>
         </nav>
 
         <div class="header-actions">
@@ -394,10 +395,10 @@ Dilengkapi Jadwal Sholat, Prakiraan Cuaca, Jam Dunia, Speedtest, Social Media Do
           <div class="utilities-callout-copy">
             <div class="utilities-callout-head">
               <strong class="utilities-callout-title">Menu Utilitas</strong>
-              <span class="utilities-callout-sub-tag">9 Fitur Gratis</span>
+              <span class="utilities-callout-sub-tag">10 Fitur Gratis</span>
             </div>
             <p class="utilities-callout-desc">
-              Jadwal Sholat · Cuaca · Jam Dunia &amp; Globe · Speedtest · Downloader · Kompres HD · Konversi File · Cari Judul Lagu &amp; Video · YT Music
+              Jadwal Sholat · Cuaca · Jam Dunia &amp; Globe · Speedtest · Downloader · Kompres HD · Konversi File · Cari Judul Lagu &amp; Video · YT Music · Drama China
             </p>
           </div>
           <span class="utilities-callout-cta" aria-hidden="true">
@@ -510,6 +511,6 @@ Dilengkapi Jadwal Sholat, Prakiraan Cuaca, Jam Dunia, Speedtest, Social Media Do
     <div id="cart-drawer-root" class="drawer-root" hidden></div>
     <div id="toast-notification" class="toast-notification" role="status" aria-live="polite" hidden></div>
 
-    <script type="module" src="./js/app.js?v=50"></script>
+    <script type="module" src="./js/app.js?v=51"></script>
   </body>
 </html>

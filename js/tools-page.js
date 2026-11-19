@@ -1,10 +1,10 @@
-import { createToolsHubController } from './tools-ui.js?v=50';
-import { initMusicPlayer } from './music.js?v=50';
-import { loadCatalogData } from './data.js?v=50';
-import { normalizeBrandConfig, normalizeUtilityConfig } from './store.js?v=50';
+import { createToolsHubController } from './tools-ui.js?v=51';
+import { initMusicPlayer } from './music.js?v=51';
+import { loadCatalogData } from './data.js?v=51';
+import { normalizeBrandConfig, normalizeUtilityConfig } from './store.js?v=51';
 
 const THEME_STORAGE_KEY = 'manifestudio_theme_v1';
-const VALID_TABS = new Set(['prayer', 'weather', 'worldclock', 'speedtest', 'downloader', 'compressor', 'converter', 'songfinder', 'music']);
+const VALID_TABS = new Set(['prayer', 'weather', 'worldclock', 'speedtest', 'downloader', 'compressor', 'converter', 'songfinder', 'music', 'dracin']);
 
 let currentTheme = 'dark';
 let toolsHub = null;
@@ -95,6 +95,7 @@ const CONCISE_HEADER_NAV_LABELS = {
   converter: 'Konversi File',
   songfinder: 'Cari Lagu',
   music: 'Musik YT',
+  dracin: 'Drama China',
 };
 
 function syncHeaderNavLabels() {

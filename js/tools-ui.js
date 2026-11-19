@@ -22,40 +22,41 @@ import {
   matchIndonesianCityQuery,
   planMediaCompression,
   resolveAccurateWeatherCondition,
-} from './tools-logic.js?v=50';
+} from './tools-logic.js?v=51';
 import {
   describeLocationSource,
   resolveUserLocation,
   searchCitiesOnline,
   setManualLocation,
-} from './location.js?v=50';
-import { createInteractiveGlobe } from './globe.js?v=50';
+} from './location.js?v=51';
+import { createInteractiveGlobe } from './globe.js?v=51';
 import {
   createSpeedometerGauge,
   fetchSpeedtestEnvironment,
   readClientDeviceTelemetry,
   runInternetSpeedtest,
-} from './speedtest.js?v=50';
+} from './speedtest.js?v=51';
 import {
   extractAudioFromVideoUrl,
   fetchMediaDownload,
   triggerBatchPhotoDownload,
   triggerDirectMediaSave,
-} from './downloader.js?v=50';
-import { compressMediaFile, inspectMediaFile } from './compressor.js?v=50';
+} from './downloader.js?v=51';
+import { compressMediaFile, inspectMediaFile } from './compressor.js?v=51';
 import {
   ALL_TARGET_FORMATS,
   convertAnyFile,
   detectSourceFormat,
   getAvailableTargetFormats,
-} from './converter.js?v=50';
+} from './converter.js?v=51';
 import {
   detectMediaFileKind,
   identifyMediaSongAndVideo,
-} from './song-finder.js?v=50';
-import { formatAudioTime, getLoadingProgressMeta, isTrackInWatchLater } from './music-logic.js?v=50';
-import { MUSIC_PRESET_CATEGORIES, getMusicController, initMusicPlayer } from './music.js?v=50';
-import { normalizeUtilityConfig } from './store.js?v=50';
+} from './song-finder.js?v=51';
+import { formatAudioTime, getLoadingProgressMeta, isTrackInWatchLater } from './music-logic.js?v=51';
+import { MUSIC_PRESET_CATEGORIES, getMusicController, initMusicPlayer } from './music.js?v=51';
+import { createDracinController } from './dracin-ui.js?v=51';
+import { normalizeUtilityConfig } from './store.js?v=51';
 
 const PRAYER_CACHE_KEY = 'manifestudio_prayer_cache_v1';
 const MYQURAN_CITIES_KEY = 'manifestudio_myquran_cities_v1';
@@ -470,6 +471,7 @@ export function createToolsHubController({
   let prayerSearchTimer = null;
   let mounted = false;
   let musicUnsub = null;
+  let dracinCtrl = null;
   let isHubSeeking = false;
 
   function getUtilityItemConfig(id) {
@@ -4457,6 +4459,15 @@ export function createToolsHubController({
     `;
   }
 
+  function renderDracinPanel() {
+    return `
+      <section class="tool-panel dracin-panel" aria-label="Drama China (Dracin) Gratis Tanpa Iklan">
+        ${renderSubPanelIntro('dracin')}
+        <div id="dracin-hub-mount"></div>
+      </section>
+    `;
+  }
+
   function bindToolEvents() {
     rootEl.querySelectorAll('[data-tool-subtab]').forEach((btn) => {
       btn.addEventListener('click', () => {
@@ -5253,6 +5264,18 @@ export function createToolsHubController({
         });
       }
     }
+
+    if (toolState.activeSubTab === 'dracin') {
+      const dracinMount = rootEl.querySelector('#dracin-hub-mount');
+      if (dracinMount) {
+        if (!dracinCtrl) {
+          dracinCtrl = createDracinController({ onToast });
+        }
+        dracinCtrl.mount(dracinMount);
+      }
+    } else if (dracinCtrl) {
+      dracinCtrl.unmount();
+    }
   }
 
   function renderPrayerSearchResultsHtml(subDistrictResults = [], filteredCities = []) {
@@ -5304,6 +5327,8 @@ export function createToolsHubController({
         ? renderSongFinderPanel()
         : toolState.activeSubTab === 'music'
         ? renderMusicPanel()
+        : toolState.activeSubTab === 'dracin'
+        ? renderDracinPanel()
         : renderDownloaderPanel();
 
     const subnavButtonsHtml = (toolState.utilities?.items || [])
@@ -5371,7 +5396,8 @@ export function createToolsHubController({
         subTab === 'compressor' ||
         subTab === 'converter' ||
         subTab === 'songfinder' ||
-        subTab === 'music'
+        subTab === 'music' ||
+        subTab === 'dracin'
       ) {
         toolState.activeSubTab = subTab;
       }
@@ -5410,6 +5436,9 @@ export function createToolsHubController({
         speedAbort.abort();
         speedAbort = null;
         toolState.speedRunning = false;
+      }
+      if (dracinCtrl) {
+        dracinCtrl.unmount();
       }
       stopLiveTimers();
       if (rootEl) rootEl.innerHTML = '';

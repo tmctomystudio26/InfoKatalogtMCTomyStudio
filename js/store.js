@@ -608,9 +608,9 @@ export const DEFAULT_UTILITY_CONFIG = {
   callout: {
     icon: './assets/icons/menu-utilitas.svg',
     title: 'Menu Utilitas',
-    badge: '9 Fitur Gratis',
+    badge: '10 Fitur Gratis',
     description:
-      'Jadwal Sholat · Cuaca · Jam Dunia & Globe · Speedtest · Downloader · Kompres HD · Konversi File · Cari Judul Lagu & Video · YT Music',
+      'Jadwal Sholat · Cuaca · Jam Dunia & Globe · Speedtest · Downloader · Kompres HD · Konversi File · Cari Judul Lagu & Video · YT Music · Drama China',
   },
   musicHero: {
     icon: './assets/icons/tool-music.svg',
@@ -726,6 +726,18 @@ export const DEFAULT_UTILITY_CONFIG = {
       heroTitle: 'Pemutar YT Music & Daftar Putar Viral',
       heroDescription:
         'Putar lagu Indonesia viral tanpa iklan, cari musik favorit, kelola daftar putar, & sinkron dengan tombol putar mengambang.',
+    },
+    {
+      id: 'dracin',
+      label: 'Drama China',
+      icon: './assets/icons/tool-dracin.svg',
+      pageTitle: 'Drama China (Dracin) Gratis Tanpa Iklan — 18+ Platform',
+      pageSubtitle:
+        'DramaBox, ReelShort, ShortMax, NetShort, GoodShort, Anichin & 12+ platform lain bebas lompat episode, layar penuh scroll episode, subtitle Indonesia otomatis, & cari dari klip/screenshot AI.',
+      heroKicker: '18+ Platform Short Drama · Multi-API Paralel & Multi-AI Tanpa Key',
+      heroTitle: 'Nonton Drama China Pendek Gratis Tanpa Iklan',
+      heroDescription:
+        'Satukan DramaBox, ReelShort, ShortMax, NetShort, GoodShort, DramaWave, FlickReels, FreeReels, StardustTV, iDrama, DramaNova, StarShort, DramaBite, Melolo, MoboReels, FlexTV, KalosTV & Anichin dengan subtitle otomatis multi-bahasa dan pencarian klip AI.',
     },
   ],
 };
