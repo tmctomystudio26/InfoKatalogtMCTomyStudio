@@ -17,7 +17,9 @@ import {
   SANSEKAI_SUPPORTED_PLATFORMS,
   buildDailymotionEmbedUrl,
   buildDailymotionWatchUrl,
+  buildSansekaiDirectWatchUrl,
   extractAdaptiveEpisodePayload,
+  extractSansekaiApiBaseCandidates,
   extractSansekaiEpisodeStreams,
   extractSansekaiFeedItems,
   extractSansekaiMeloloVideoId,
@@ -25,7 +27,9 @@ import {
   extractTokens,
   formatDracinUserError,
   getPlatformMeta,
+  getSansekaiCooldownRemainingSec,
   inferPlatformFromText,
+  isSansekaiCooldownActive,
   mergeParallelDracinFeeds,
   normalizeAnichinDramaItem,
   normalizeDramaMatchText,
@@ -38,10 +42,12 @@ import {
   rankCrossPlatformDramaMatches,
   rankHealthyApiMirrors,
   recordMirrorHealth,
+  recordSansekaiOutcome,
   resolveAnichinMediaUrl,
   scoreCrossPlatformDramaMatch,
+  scoreDailymotionAutoMatch,
   unwrapHlsJsonPayload,
-} from './dracin-logic.js?v=56';
+} from './dracin-logic.js?v=57';
 
 const API_TIMEOUT_MS = 8500;
 const EPISODE_TIMEOUT_MS = 9000;
@@ -107,6 +113,22 @@ function mergeEndpointConfig(remote = null) {
       )
         .trim()
         .replace(/\/+$/, ''),
+      minRequestSpacingMs:
+        Number(remoteSansekai.minRequestSpacingMs) ||
+        DEFAULT_DRACIN_ENDPOINT_CONFIG.sansekai.minRequestSpacingMs ||
+        1400,
+      rateLimitCooldownMs:
+        Number(remoteSansekai.rateLimitCooldownMs) ||
+        DEFAULT_DRACIN_ENDPOINT_CONFIG.sansekai.rateLimitCooldownMs ||
+        90_000,
+      forbiddenCooldownMs:
+        Number(remoteSansekai.forbiddenCooldownMs) ||
+        DEFAULT_DRACIN_ENDPOINT_CONFIG.sansekai.forbiddenCooldownMs ||
+        180_000,
+      mirrors:
+        Array.isArray(remoteSansekai.mirrors) && remoteSansekai.mirrors.length > 0
+          ? remoteSansekai.mirrors.filter((m) => m && m.baseUrl)
+          : DEFAULT_DRACIN_ENDPOINT_CONFIG.sansekai.mirrors,
       supportedPlatforms:
         Array.isArray(remoteSansekai.supportedPlatforms) && remoteSansekai.supportedPlatforms.length > 0
           ? remoteSansekai.supportedPlatforms.map((p) => String(p).toLowerCase())
@@ -200,7 +222,7 @@ async function fetchFromAdaptiveMirrors(
 
 function readSessionCache(key, ttlMs = 8 * 60_000) {
   try {
-    const raw = sessionStorage.getItem(`dracin_cache_v56_${key}`);
+    const raw = sessionStorage.getItem(`dracin_cache_v57_${key}`);
     if (!raw) return null;
     const parsed = JSON.parse(raw);
     if (!parsed || Date.now() - parsed.ts > ttlMs) return null;
@@ -212,7 +234,27 @@ function readSessionCache(key, ttlMs = 8 * 60_000) {
 
 function writeSessionCache(key, data) {
   try {
-    sessionStorage.setItem(`dracin_cache_v56_${key}`, JSON.stringify({ ts: Date.now(), data }));
+    sessionStorage.setItem(`dracin_cache_v57_${key}`, JSON.stringify({ ts: Date.now(), data }));
+  } catch {
+    // Ignore storage quota
+  }
+}
+
+function readLocalCache(key, ttlMs = 20 * 60_000) {
+  try {
+    const raw = localStorage.getItem(`dracin_sk_v57_${key}`);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (!parsed || Date.now() - parsed.ts > ttlMs) return null;
+    return parsed.data;
+  } catch {
+    return null;
+  }
+}
+
+function writeLocalCache(key, data) {
+  try {
+    localStorage.setItem(`dracin_sk_v57_${key}`, JSON.stringify({ ts: Date.now(), data }));
   } catch {
     // Ignore storage quota
   }
@@ -364,42 +406,161 @@ const SANSEKAI_FEED_PATHS = {
   dramanova: () => ['/dramanova/home'],
 };
 
-async function getSansekaiBaseUrl() {
-  const cfg = await loadEndpointConfig();
-  return String(cfg?.sansekai?.baseUrl || 'https://api.sansekai.my.id/api').replace(/\/+$/, '');
+const SANSEKAI_COOLDOWN_KEY = 'dracin_sk_cooldown_v57';
+const SANSEKAI_CUSTOM_MIRROR_KEY = 'manifestudio_dracin_custom_mirror';
+let sansekaiMirrorStates = {};
+let sansekaiQueueTail = Promise.resolve();
+let lastSansekaiRequestAt = 0;
+
+function loadSansekaiMirrorStates() {
+  if (Object.keys(sansekaiMirrorStates).length > 0) return sansekaiMirrorStates;
+  try {
+    const raw = localStorage.getItem(SANSEKAI_COOLDOWN_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (parsed && typeof parsed === 'object') {
+        sansekaiMirrorStates = parsed;
+      }
+    }
+  } catch {
+    // Ignore storage access failures
+  }
+  return sansekaiMirrorStates;
 }
 
-async function fetchSansekaiJsonPaths(paths = [], timeoutMs = SANSEKAI_TIMEOUT_MS, acceptFn = null) {
-  const baseUrl = await getSansekaiBaseUrl();
+function saveSansekaiMirrorStates(nextStates) {
+  sansekaiMirrorStates = nextStates || {};
+  try {
+    localStorage.setItem(SANSEKAI_COOLDOWN_KEY, JSON.stringify(sansekaiMirrorStates));
+  } catch {
+    // Ignore storage quota
+  }
+}
+
+function getCustomSansekaiMirrorUrl() {
+  try {
+    return String(localStorage.getItem(SANSEKAI_CUSTOM_MIRROR_KEY) || '').trim();
+  } catch {
+    return '';
+  }
+}
+
+/**
+ * Returns live status of the Sansekai API mirrors (whether all mirrors are currently
+ * in rate-limit/403 cooldown, remaining cooldown seconds, and SekaiDrama Web URL).
+ */
+export function getSansekaiStatus() {
+  const states = loadSansekaiMirrorStates();
+  const candidates = extractSansekaiApiBaseCandidates(endpointConfigCache, states, {
+    customBaseUrl: getCustomSansekaiMirrorUrl(),
+    now: Date.now(),
+  });
+  const healthy = candidates.filter((c) => !c.inCooldown);
+  const minCooldownSec =
+    healthy.length > 0
+      ? 0
+      : candidates.reduce(
+          (min, c) => (c.cooldownRemainingSec > 0 && c.cooldownRemainingSec < min ? c.cooldownRemainingSec : min),
+          Infinity
+        );
+  return {
+    available: healthy.length > 0,
+    inCooldown: healthy.length === 0 && candidates.length > 0,
+    cooldownRemainingSec: Number.isFinite(minCooldownSec) ? minCooldownSec : 0,
+    webBaseUrl: endpointConfigCache?.sansekai?.webBaseUrl || 'https://drama.sansekai.my.id',
+  };
+}
+
+/**
+ * Serializes Sansekai HTTP calls with minimum spacing (~1.4s) so we NEVER burst past
+ * Sansekai's 10 req/min rate limit from concurrent UI/catalog calls.
+ */
+function enqueueSansekaiRequest(taskFn, spacingMs = 1400) {
+  const run = async () => {
+    const gap = Math.max(0, spacingMs - (Date.now() - lastSansekaiRequestAt));
+    if (gap > 0) {
+      await new Promise((r) => setTimeout(r, gap));
+    }
+    lastSansekaiRequestAt = Date.now();
+    return taskFn();
+  };
+  const next = sansekaiQueueTail.then(run, run);
+  sansekaiQueueTail = next.catch(() => {});
+  return next;
+}
+
+async function fetchSansekaiJsonPaths(
+  paths = [],
+  timeoutMs = SANSEKAI_TIMEOUT_MS,
+  acceptFn = null,
+  { bypassCooldown = false } = {}
+) {
+  const cfg = await loadEndpointConfig();
+  const states = loadSansekaiMirrorStates();
+  const candidates = extractSansekaiApiBaseCandidates(cfg, states, {
+    customBaseUrl: getCustomSansekaiMirrorUrl(),
+    now: Date.now(),
+  });
+  const activeMirrors = bypassCooldown ? candidates : candidates.filter((c) => !c.inCooldown);
+  if (activeMirrors.length === 0) {
+    throw new Error('SANSEKAI_COOLDOWN');
+  }
+
+  const spacingMs = Number(cfg?.sansekai?.minRequestSpacingMs) || 1400;
+  const rateLimitCooldownMs = Number(cfg?.sansekai?.rateLimitCooldownMs) || 90_000;
+  const forbiddenCooldownMs = Number(cfg?.sansekai?.forbiddenCooldownMs) || 180_000;
+
   let lastErr = null;
   let lastJson = null;
-  for (const rawPath of paths) {
-    if (!rawPath) continue;
-    const url = `${baseUrl}${rawPath.startsWith('/') ? rawPath : `/${rawPath}`}`;
-    try {
-      const json = await fetchJsonWithTimeout(url, {}, timeoutMs);
-      lastJson = json;
-      if (typeof acceptFn !== 'function' || acceptFn(json)) {
-        return { json, url };
-      }
-    } catch (err) {
-      lastErr = err;
-      const msg = String(err?.message || '');
-      // Stop immediately on 403/429 rate-limit/IP block so we don't spam requests
-      if (msg.includes('HTTP 403') || msg.includes('HTTP 429')) {
-        throw err;
+
+  for (const mirror of activeMirrors) {
+    let mirrorBlocked = false;
+    for (const rawPath of paths) {
+      if (!rawPath || mirrorBlocked) continue;
+      const url = `${mirror.baseUrl}${rawPath.startsWith('/') ? rawPath : `/${rawPath}`}`;
+      try {
+        const json = await enqueueSansekaiRequest(() => fetchJsonWithTimeout(url, {}, timeoutMs), spacingMs);
+        lastJson = json;
+        saveSansekaiMirrorStates({
+          ...loadSansekaiMirrorStates(),
+          [mirror.id]: recordSansekaiOutcome(loadSansekaiMirrorStates()[mirror.id], { ok: true, statusCode: 200 }),
+        });
+        if (typeof acceptFn !== 'function' || acceptFn(json)) {
+          return { json, url, mirror };
+        }
+      } catch (err) {
+        lastErr = err;
+        const msg = String(err?.message || '');
+        const statusCode = msg.includes('HTTP 403') ? 403 : msg.includes('HTTP 429') ? 429 : 0;
+        if (statusCode === 403 || statusCode === 429) {
+          saveSansekaiMirrorStates({
+            ...loadSansekaiMirrorStates(),
+            [mirror.id]: recordSansekaiOutcome(loadSansekaiMirrorStates()[mirror.id], {
+              ok: false,
+              statusCode,
+              rateLimitCooldownMs,
+              forbiddenCooldownMs,
+            }),
+          });
+          mirrorBlocked = true;
+          break;
+        }
       }
     }
   }
+
   if (lastJson) return { json: lastJson, url: '' };
   throw lastErr || new Error('TIMEOUT');
 }
 
 /**
  * Fetches live drama catalog or search results from Sansekai / SekaiDrama API
- * for any of its 11 supported platforms (Melolo, DramaBox, PineDrama, MyDrama, etc.).
+ * with persistent localStorage caching + cooldown protection.
  */
-export async function fetchSansekaiPlatformFeed(platformId = 'melolo', { page = 1, query = '' } = {}) {
+export async function fetchSansekaiPlatformFeed(
+  platformId = 'melolo',
+  { page = 1, query = '', bypassCooldown = false } = {}
+) {
   const src = String(platformId || '').toLowerCase();
   if (!SANSEKAI_SUPPORTED_PLATFORMS.has(src)) {
     return { sourceId: `sansekai-${src}`, platformId: src, items: [], hasMore: false };
@@ -409,12 +570,12 @@ export async function fetchSansekaiPlatformFeed(platformId = 'melolo', { page = 
   const cacheKey = `sansekai::${src}::p${page}::q:${cleanQ.toLowerCase()}`;
   if (feedCache.has(cacheKey)) {
     const cached = feedCache.get(cacheKey);
-    if (Date.now() - cached.ts < 8 * 60_000) return cached.payload;
+    if (Date.now() - cached.ts < 15 * 60_000) return cached.payload;
   }
-  const sessCached = readSessionCache(cacheKey);
-  if (sessCached && Array.isArray(sessCached.items) && sessCached.items.length > 0) {
-    feedCache.set(cacheKey, { ts: Date.now(), payload: sessCached });
-    return sessCached;
+  const persisted = readLocalCache(cacheKey, 20 * 60_000) || readSessionCache(cacheKey, 15 * 60_000);
+  if (persisted && Array.isArray(persisted.items) && persisted.items.length > 0) {
+    feedCache.set(cacheKey, { ts: Date.now(), payload: persisted });
+    return persisted;
   }
 
   const paths = cleanQ
@@ -428,7 +589,8 @@ export async function fetchSansekaiPlatformFeed(platformId = 'melolo', { page = 
     const { json } = await fetchSansekaiJsonPaths(
       paths,
       SANSEKAI_TIMEOUT_MS,
-      (j) => extractSansekaiFeedItems(j, src).length > 0
+      (j) => extractSansekaiFeedItems(j, src).length > 0,
+      { bypassCooldown }
     );
     items = extractSansekaiFeedItems(json, src);
   } catch (err) {
@@ -449,35 +611,50 @@ export async function fetchSansekaiPlatformFeed(platformId = 'melolo', { page = 
   if (items.length > 0) {
     feedCache.set(cacheKey, { ts: Date.now(), payload });
     writeSessionCache(cacheKey, payload);
+    writeLocalCache(cacheKey, payload);
   }
   return payload;
 }
 
 /**
- * Fetches unified SekaiDrama (Sansekai) catalog across its top VIP-free platforms.
- * If Sansekai returns 403/429 or empty (e.g. rate limit or datacenter IP), falls back
- * gracefully to live Anichin feeds marked with sansekaiFallback so the grid is never blank.
+ * Fetches unified SekaiDrama (Sansekai) catalog WITHOUT bursting rate limits:
+ * - Probes 1 flagship platform first (sequentially spaced) instead of blasting 4 parallel requests!
+ * - If Sansekai is in cooldown or returns 403/429, immediately returns healthy live multi-platform
+ *   mirror feeds (Melolo, DramaBox, ReelShort, NetShort) with a calm status note and ZERO blank grids.
  */
 export async function fetchSansekaiCatalog({ page = 1, query = '' } = {}) {
   const cleanQ = String(query || '').trim();
-  const settled = await Promise.allSettled(
-    SANSEKAI_FLAGSHIP_PLATFORMS.map((pid) => fetchSansekaiPlatformFeed(pid, { page, query: cleanQ }))
-  );
-
   const buckets = [];
   const activeSources = [];
   let hasMore = false;
   let sawBlocked = false;
 
-  for (const s of settled) {
-    if (s.status === 'fulfilled' && s.value) {
-      if (s.value.blockedReason) sawBlocked = true;
-      if (Array.isArray(s.value.items) && s.value.items.length > 0) {
-        buckets.push(s.value);
-        activeSources.push(s.value.label || s.value.sourceId);
-        if (s.value.hasMore) hasMore = true;
+  const skStatus = getSansekaiStatus();
+  if (!skStatus.inCooldown) {
+    // Probe 1 flagship platform first; only fetch up to 2 more sequentially if healthy (avoids 10 req/min burst!)
+    const first = await fetchSansekaiPlatformFeed(SANSEKAI_FLAGSHIP_PLATFORMS[0], { page, query: cleanQ });
+    if (first.blockedReason) {
+      sawBlocked = true;
+    } else if (Array.isArray(first.items) && first.items.length > 0) {
+      buckets.push(first);
+      activeSources.push(first.label || first.sourceId);
+      if (first.hasMore) hasMore = true;
+
+      for (const pid of SANSEKAI_FLAGSHIP_PLATFORMS.slice(1, 3)) {
+        const res = await fetchSansekaiPlatformFeed(pid, { page, query: cleanQ });
+        if (res.blockedReason) {
+          sawBlocked = true;
+          break;
+        }
+        if (Array.isArray(res.items) && res.items.length > 0) {
+          buckets.push(res);
+          activeSources.push(res.label || res.sourceId);
+          if (res.hasMore) hasMore = true;
+        }
       }
     }
+  } else {
+    sawBlocked = true;
   }
 
   if (buckets.length > 0) {
@@ -494,9 +671,11 @@ export async function fetchSansekaiCatalog({ page = 1, query = '' } = {}) {
     };
   }
 
-  // Graceful fallback so users NEVER see an empty grid if Sansekai is rate-limited/403
+  // Seamless healthy mirror fallback (zero wasted 403 loops, full real posters & live catalogs!)
   const fallbackSettled = await Promise.allSettled(
-    ['melolo', 'dramabox', 'reelshort'].map((pid) => fetchAnichinPlatformFeed(pid, { page, query: cleanQ }))
+    ['melolo', 'dramabox', 'reelshort', 'netshort'].map((pid) =>
+      fetchAnichinPlatformFeed(pid, { page, query: cleanQ })
+    )
   );
   const fbBuckets = [];
   const fbSources = [];
@@ -520,7 +699,7 @@ export async function fetchSansekaiCatalog({ page = 1, query = '' } = {}) {
     platformId: 'sansekai',
     page,
     sansekaiFallbackNote: sawBlocked
-      ? 'API Sansekai sedang membatasi akses dari jaringan ini — menampilkan katalog mirror aktif.'
+      ? 'Mode Mirror Multi-API Aktif · Menampilkan katalog live DramaBox, Melolo, ReelShort & NetShort (otomatis terhubung ke Sansekai saat kuota terbuka).'
       : '',
     fetchedAt: Date.now(),
   };
@@ -729,16 +908,24 @@ function buildSansekaiDetailPaths(platformId, id) {
   }
 }
 
-async function fetchSansekaiRawDetail(platformId, id, { forceRefresh = false } = {}) {
+async function fetchSansekaiRawDetail(platformId, id, { forceRefresh = false, bypassCooldown = false } = {}) {
   const key = `${platformId}::${id}`;
   if (!forceRefresh && sansekaiDetailCache.has(key)) {
     return sansekaiDetailCache.get(key);
   }
+  if (!forceRefresh) {
+    const persisted = readLocalCache(`detail::${key}`, 45 * 60_000);
+    if (persisted && typeof persisted === 'object') {
+      sansekaiDetailCache.set(key, persisted);
+      return persisted;
+    }
+  }
   const paths = buildSansekaiDetailPaths(platformId, id);
   if (!paths.length) return null;
-  const { json } = await fetchSansekaiJsonPaths(paths, SANSEKAI_TIMEOUT_MS);
+  const { json } = await fetchSansekaiJsonPaths(paths, SANSEKAI_TIMEOUT_MS, null, { bypassCooldown });
   if (json && typeof json === 'object') {
     sansekaiDetailCache.set(key, json);
+    writeLocalCache(`detail::${key}`, json);
   }
   return json;
 }
@@ -885,7 +1072,12 @@ async function unwrapProxyStreamUrlIfNeeded(url = '') {
  * Fetches direct playable streams for a known (platformId, sansekaiId, episodeNumber) from
  * https://api.sansekai.my.id/api with per-drama detail & all-episode caching.
  */
-async function resolveSansekaiDirectById(platformId, sansekaiId, episodeNumber = 1, { forceRefresh = false } = {}) {
+async function resolveSansekaiDirectById(
+  platformId,
+  sansekaiId,
+  episodeNumber = 1,
+  { forceRefresh = false, bypassCooldown = false } = {}
+) {
   const plat = String(platformId || '').toLowerCase();
   const id = String(sansekaiId || '').trim();
   const ep = Math.max(1, Math.round(Number(episodeNumber) || 1));
@@ -897,13 +1089,20 @@ async function resolveSansekaiDirectById(platformId, sansekaiId, episodeNumber =
   if (!forceRefresh && sansekaiStreamCache.has(streamKey)) {
     return sansekaiStreamCache.get(streamKey);
   }
+  if (!forceRefresh) {
+    const persistedStream = readLocalCache(`stream::${streamKey}`, 30 * 60_000);
+    if (persistedStream && Array.isArray(persistedStream.servers) && persistedStream.servers.length > 0) {
+      sansekaiStreamCache.set(streamKey, persistedStream);
+      return persistedStream;
+    }
+  }
 
   const encId = encodeURIComponent(id);
   let parsed = { servers: [], subtitles: [], locked: false };
 
   // 1. Melolo requires fetching /melolo/detail?book_id=... to get `vid` for Ep N, then /melolo/get-episode?videoId=${vid}
   if (plat === 'melolo') {
-    const detailJson = await fetchSansekaiRawDetail('melolo', id, { forceRefresh });
+    const detailJson = await fetchSansekaiRawDetail('melolo', id, { forceRefresh, bypassCooldown });
     const vid = extractSansekaiMeloloVideoId(detailJson, ep);
     if (vid) {
       const { json } = await fetchSansekaiJsonPaths(
@@ -912,14 +1111,17 @@ async function resolveSansekaiDirectById(platformId, sansekaiId, episodeNumber =
           `/melolo/stream?videoId=${encodeURIComponent(vid)}`,
         ],
         SANSEKAI_TIMEOUT_MS,
-        (j) => extractSansekaiEpisodeStreams(j, { platformId: 'melolo', episodeNumber: ep }).servers.length > 0
+        (j) => extractSansekaiEpisodeStreams(j, { platformId: 'melolo', episodeNumber: ep }).servers.length > 0,
+        { bypassCooldown }
       );
       parsed = extractSansekaiEpisodeStreams(json, { platformId: 'melolo', episodeNumber: ep });
     }
   } else if (plat === 'dramabox' || plat === 'goodshort' || plat === 'freereels') {
-    // All-episode batch endpoints -> cached per drama so jumping Ep 6 -> 7 -> 8 -> 9 is instant!
+    // All-episode batch endpoints -> cached in memory + localStorage so jumping Ep 6 -> 7 -> 8 -> 9 uses 0 extra calls!
     const allKey = `${plat}::${id}`;
-    let allJson = forceRefresh ? null : sansekaiAllEpisodeCache.get(allKey) || null;
+    let allJson = forceRefresh
+      ? null
+      : sansekaiAllEpisodeCache.get(allKey) || readLocalCache(`allep::${allKey}`, 45 * 60_000) || null;
     if (!allJson) {
       const allPaths =
         plat === 'dramabox'
@@ -927,22 +1129,29 @@ async function resolveSansekaiDirectById(platformId, sansekaiId, episodeNumber =
           : plat === 'goodshort'
           ? [`/goodshort/get-allepisode?bookId=${encId}`, `/goodshort/allepisode?bookId=${encId}`]
           : [`/freereels/detailAndAllEpisode?key=${encId}`];
-      const { json } = await fetchSansekaiJsonPaths(allPaths, SANSEKAI_TIMEOUT_MS);
+      const { json } = await fetchSansekaiJsonPaths(allPaths, SANSEKAI_TIMEOUT_MS, null, { bypassCooldown });
       allJson = json;
-      if (allJson) sansekaiAllEpisodeCache.set(allKey, allJson);
+      if (allJson) {
+        sansekaiAllEpisodeCache.set(allKey, allJson);
+        writeLocalCache(`allep::${allKey}`, allJson);
+      }
+    } else if (!sansekaiAllEpisodeCache.has(allKey)) {
+      sansekaiAllEpisodeCache.set(allKey, allJson);
     }
     if (allJson) {
       parsed = extractSansekaiEpisodeStreams(allJson, { platformId: plat, episodeNumber: ep });
     }
   } else if (plat === 'dramanova') {
-    const detailJson = await fetchSansekaiRawDetail('dramanova', id, { forceRefresh });
+    const detailJson = await fetchSansekaiRawDetail('dramanova', id, { forceRefresh, bypassCooldown });
     const eps = detailJson?.data?.episodes || detailJson?.episodes || [];
     const epObj = eps.find((e) => Number(e?.episodeNumber || e?.episode) === ep) || eps[ep - 1];
     const fileId = epObj?.fileId || epObj?.file_id || '';
     if (fileId) {
       const { json } = await fetchSansekaiJsonPaths(
         [`/dramanova/getvideo?fileId=${encodeURIComponent(String(fileId))}`],
-        SANSEKAI_TIMEOUT_MS
+        SANSEKAI_TIMEOUT_MS,
+        null,
+        { bypassCooldown }
       );
       parsed = extractSansekaiEpisodeStreams(json, { platformId: 'dramanova', episodeNumber: ep });
     }
@@ -976,7 +1185,8 @@ async function resolveSansekaiDirectById(platformId, sansekaiId, episodeNumber =
       const { json } = await fetchSansekaiJsonPaths(
         paths,
         SANSEKAI_TIMEOUT_MS,
-        (j) => extractSansekaiEpisodeStreams(j, { platformId: plat, episodeNumber: ep }).servers.length > 0
+        (j) => extractSansekaiEpisodeStreams(j, { platformId: plat, episodeNumber: ep }).servers.length > 0,
+        { bypassCooldown }
       );
       parsed = extractSansekaiEpisodeStreams(json, { platformId: plat, episodeNumber: ep });
     }
@@ -984,34 +1194,44 @@ async function resolveSansekaiDirectById(platformId, sansekaiId, episodeNumber =
 
   if (parsed.servers.length > 0) {
     sansekaiStreamCache.set(streamKey, parsed);
+    writeLocalCache(`stream::${streamKey}`, parsed);
   }
   return parsed;
 }
 
 /**
  * Resolves a playable VIP-free stream for ANY drama & episode via https://api.sansekai.my.id/api.
- * - Step 1: Direct ID lookup on the same platform (Melolo/DramaBox/etc. IDs match directly!).
- * - Step 2: If Direct ID misses (or platform isn't directly mapped), searches Sansekai by cleaned title
- *   on the same platform first, then across flagship Sansekai platforms, picks the top match via
- *   scoreCrossPlatformDramaMatch, caches the resolved sansekaiId, and returns playable servers!
+ * - Respects persistent cooldown circuit-breaker so we NEVER spam 403/429 requests.
+ * - Checks cached streams/details first (0 network calls).
+ * - Only bypasses cooldown when user explicitly requests a fresh manual probe (`bypassCooldown: true`).
  */
-export async function resolveSansekaiEpisodePlayback(drama, episodeNumber = 1, { forceRefresh = false } = {}) {
+export async function resolveSansekaiEpisodePlayback(
+  drama,
+  episodeNumber = 1,
+  { forceRefresh = false, bypassCooldown = false } = {}
+) {
   const ep = Math.max(1, Math.round(Number(episodeNumber) || 1));
   if (!drama) {
     return { servers: [], subtitles: [], locked: false, platformId: '', platformName: '', error: '' };
   }
 
-  const cachedMatch = sansekaiMatchCache.get(drama.id) || null;
+  const cachedMatch = sansekaiMatchCache.get(drama.id) || readLocalCache(`match::${drama.id}`, 60 * 60_000) || null;
   const preferredPlat = String(
     cachedMatch?.platformId || drama.sansekaiPlatform || drama.platformId || ''
   ).toLowerCase();
   const preferredId = String(cachedMatch?.sansekaiId || drama.sansekaiId || drama.sourceId || '').trim();
   let lastErrMsg = '';
 
+  const isLimitError = (msg = '') =>
+    msg.includes('HTTP 403') || msg.includes('HTTP 429') || msg.includes('SANSEKAI_COOLDOWN');
+
   // Step 1: Direct ID lookup when supported by Sansekai
   if (SANSEKAI_SUPPORTED_PLATFORMS.has(preferredPlat) && preferredId) {
     try {
-      const direct = await resolveSansekaiDirectById(preferredPlat, preferredId, ep, { forceRefresh });
+      const direct = await resolveSansekaiDirectById(preferredPlat, preferredId, ep, {
+        forceRefresh,
+        bypassCooldown,
+      });
       if (direct.servers.length > 0) {
         return {
           ...direct,
@@ -1023,7 +1243,7 @@ export async function resolveSansekaiEpisodePlayback(drama, episodeNumber = 1, {
       }
     } catch (err) {
       lastErrMsg = String(err?.message || '');
-      if (lastErrMsg.includes('HTTP 403') || lastErrMsg.includes('HTTP 429')) {
+      if (isLimitError(lastErrMsg)) {
         return {
           servers: [],
           subtitles: [],
@@ -1036,7 +1256,19 @@ export async function resolveSansekaiEpisodePlayback(drama, episodeNumber = 1, {
     }
   }
 
-  // Step 2: Cross-title search on Sansekai (same platform first, then flagship VIP-free platforms)
+  // Stop before title-search cascade if Sansekai is in cooldown
+  if (!bypassCooldown && getSansekaiStatus().inCooldown) {
+    return {
+      servers: [],
+      subtitles: [],
+      locked: false,
+      platformId: preferredPlat,
+      platformName: preferredPlat ? getPlatformMeta(preferredPlat).name : 'Sansekai',
+      error: lastErrMsg || 'SANSEKAI_COOLDOWN',
+    };
+  }
+
+  // Step 2: Cross-title search on Sansekai (max 2 platforms to respect 10 req/min limit!)
   const cleanTitle = String(drama.title || '')
     .replace(/\[[^\]]*\]/g, ' ')
     .replace(/【[^】]*】/g, ' ')
@@ -1052,17 +1284,15 @@ export async function resolveSansekaiEpisodePlayback(drama, episodeNumber = 1, {
         SANSEKAI_SUPPORTED_PLATFORMS.has(preferredPlat) ? preferredPlat : null,
         'dramabox',
         'melolo',
-        'pinedrama',
-        'reelshort',
       ].filter(Boolean)
     )
-  ).slice(0, 4);
+  ).slice(0, 2);
 
   let bestMatch = null;
   for (const candPlat of searchOrder) {
     try {
-      const feed = await fetchSansekaiPlatformFeed(candPlat, { page: 1, query: cleanTitle });
-      if (feed.blockedReason && (feed.blockedReason.includes('403') || feed.blockedReason.includes('429'))) {
+      const feed = await fetchSansekaiPlatformFeed(candPlat, { page: 1, query: cleanTitle, bypassCooldown });
+      if (feed.blockedReason && isLimitError(feed.blockedReason)) {
         lastErrMsg = feed.blockedReason;
         break;
       }
@@ -1074,21 +1304,20 @@ export async function resolveSansekaiEpisodePlayback(drama, episodeNumber = 1, {
           bestMatch = { score: totalScore, platformId: candPlat, sansekaiId: item.sansekaiId || item.sourceId };
         }
       }
-      // Stop searching once we have a high-confidence match on the primary platform
-      if (bestMatch && bestMatch.score >= 60) break;
+      if (bestMatch && bestMatch.score >= 55) break;
     } catch {
       // Try next platform
     }
   }
 
   if (bestMatch?.sansekaiId) {
-    sansekaiMatchCache.set(drama.id, {
-      platformId: bestMatch.platformId,
-      sansekaiId: bestMatch.sansekaiId,
-    });
+    const matchRec = { platformId: bestMatch.platformId, sansekaiId: bestMatch.sansekaiId };
+    sansekaiMatchCache.set(drama.id, matchRec);
+    writeLocalCache(`match::${drama.id}`, matchRec);
     try {
       const resolved = await resolveSansekaiDirectById(bestMatch.platformId, bestMatch.sansekaiId, ep, {
         forceRefresh,
+        bypassCooldown,
       });
       if (resolved.servers.length > 0) {
         return {
@@ -1123,10 +1352,10 @@ export async function resolveSansekaiEpisodePlayback(drama, episodeNumber = 1, {
 export async function resolveEpisodePlayback(
   drama,
   episodeNumber = 1,
-  { forceRefresh = false, preferSansekai = false } = {}
+  { forceRefresh = false, preferSansekai = false, allowSansekai = true, allowAutoDailymotion = true } = {}
 ) {
   const ep = Math.max(1, Math.round(Number(episodeNumber) || 1));
-  const flightKey = `${drama?.id || drama?.sourceId || 'unknown'}::ep${ep}${preferSansekai ? '::sk' : ''}`;
+  const flightKey = `${drama?.id || drama?.sourceId || 'unknown'}::ep${ep}${preferSansekai ? '::sk' : ''}${allowSansekai ? '' : '::nosk'}`;
 
   if (!forceRefresh && inFlightEpisodeMap.has(flightKey)) {
     return inFlightEpisodeMap.get(flightKey);
@@ -1138,6 +1367,7 @@ export async function resolveEpisodePlayback(
     let rawError = '';
     let isLockedVip = false;
     let switchedViaSansekai = false;
+    let switchedViaDailymotion = false;
     let sansekaiPlatformName = '';
     const cfg = await loadEndpointConfig();
 
@@ -1148,8 +1378,11 @@ export async function resolveEpisodePlayback(
       drama?.platformId === 'mydrama';
 
     // 0. Sansekai-first path (when user picked SekaiDrama/PineDrama/MyDrama from the start or clicked Server Sansekai)
-    if (isSansekaiNative) {
-      const skRes = await resolveSansekaiEpisodePlayback(drama, ep, { forceRefresh });
+    if (isSansekaiNative && allowSansekai) {
+      const skRes = await resolveSansekaiEpisodePlayback(drama, ep, {
+        forceRefresh,
+        bypassCooldown: Boolean(preferSansekai && forceRefresh),
+      });
       if (skRes.servers.length > 0) {
         servers.push(...skRes.servers);
         if (skRes.subtitles?.length) subtitles = skRes.subtitles;
@@ -1314,10 +1547,9 @@ export async function resolveEpisodePlayback(
     }
 
     // 1.5 AUTOMATIC IN-PLAYER SANSEKAI VIP FAILOVER:
-    // If primary mirror returned VIP-locked or 0 video links (and we haven't already tried Sansekai),
-    // automatically resolve via https://api.sansekai.my.id/api so the user keeps watching seamlessly!
-    if (servers.length === 0 && !isSansekaiNative && drama) {
-      const skFallback = await resolveSansekaiEpisodePlayback(drama, ep, { forceRefresh });
+    // Respects cooldown circuit-breaker and NEVER runs during silent background prefetch!
+    if (servers.length === 0 && !isSansekaiNative && allowSansekai && drama) {
+      const skFallback = await resolveSansekaiEpisodePlayback(drama, ep, { forceRefresh: false });
       if (skFallback.servers.length > 0) {
         servers.push(...skFallback.servers);
         if (skFallback.subtitles?.length && subtitles.length === 0) {
@@ -1340,7 +1572,7 @@ export async function resolveEpisodePlayback(
       });
     }
 
-    // 3. Dailymotion Embed ONLY for dramas that actually have a verified dailymotionId
+    // 3. Dailymotion Embed for dramas that already have a verified dailymotionId
     const dmId = drama?.dailymotionId || '';
     if (dmId) {
       servers.push({
@@ -1353,18 +1585,38 @@ export async function resolveEpisodePlayback(
       });
     }
 
+    // 3.5 AUTOMATIC HIGH-PRECISION DAILYMOTION HD FAILOVER:
+    // When both primary & Sansekai return 0 streams (e.g. VIP lock + Sansekai cooldown),
+    // automatically search Dailymotion HD with strict title relevance so genuine drama mirrors play immediately!
+    if (servers.length === 0 && allowAutoDailymotion && drama?.title) {
+      try {
+        const autoDm = await searchDailymotionEpisodeBackup(drama, ep, { strictAuto: true });
+        if (autoDm) {
+          servers.push(autoDm);
+          isLockedVip = false;
+          switchedViaDailymotion = true;
+        }
+      } catch {
+        // Continue cleanly to action card
+      }
+    }
+
     const best = pickBestPlaybackServer(servers);
+    const skStatus = getSansekaiStatus();
+    const sansekaiWebUrl = buildSansekaiDirectWatchUrl(drama, ep, cfg?.sansekai?.webBaseUrl);
     let friendlyError = '';
     if (servers.length === 0) {
       if (isLockedVip) {
-        friendlyError = `Episode ${ep} dikunci VIP di server asli ${drama?.platformName || 'platform'} dan server Sansekai sedang penuh. Coba tekan Buka via Sansekai API, cari di platform lain, atau gunakan Mirror Dailymotion.`;
+        friendlyError = skStatus.inCooldown
+          ? `Episode ${ep} dikunci VIP di server ${drama?.platformName || 'platform'}. Buka langsung di SekaiDrama Web (bebas limit), cari di platform lain, atau Mirror Dailymotion.`
+          : `Episode ${ep} dikunci VIP di server asli ${drama?.platformName || 'platform'}. Gunakan SekaiDrama Web, cari di platform lain, atau Mirror Dailymotion.`;
       } else if (rawError) {
         friendlyError = formatDracinUserError(rawError, {
           platformName: drama?.platformName || 'platform',
           episode: ep,
         });
       } else {
-        friendlyError = `Server ${drama?.platformName || 'platform'} belum mengembalikan link video untuk Episode ${ep}. Coba Buka via Sansekai API atau cari mirror cadangan.`;
+        friendlyError = `Server ${drama?.platformName || 'platform'} belum mengembalikan link video untuk Episode ${ep}. Gunakan SekaiDrama Web atau mirror cadangan.`;
       }
     }
 
@@ -1376,7 +1628,10 @@ export async function resolveEpisodePlayback(
       locked: Boolean(isLockedVip && servers.length === 0),
       error: friendlyError,
       switchedViaSansekai,
+      switchedViaDailymotion,
       sansekaiPlatformName,
+      sansekaiCooldownSec: skStatus.cooldownRemainingSec,
+      sansekaiWebUrl,
     };
   })();
 
@@ -1390,20 +1645,25 @@ export async function resolveEpisodePlayback(
 
 /**
  * Silent background episode metadata & stream URL prefetcher for zero-wait episode transitions.
+ * Explicitly disables Sansekai & auto-Dailymotion during background prefetch so we NEVER burn
+ * Sansekai's 10 req/min rate limit before the user even opens the episode!
  */
 export async function prefetchEpisodePlayback(drama, episodeNumber) {
   if (!drama || !episodeNumber) return null;
   try {
-    return await resolveEpisodePlayback(drama, episodeNumber);
+    return await resolveEpisodePlayback(drama, episodeNumber, {
+      allowSansekai: false,
+      allowAutoDailymotion: false,
+    });
   } catch {
     return null;
   }
 }
 
 /**
- * On-demand backup mirror lookup on Dailymotion when an original platform server locks an episode behind VIP.
+ * Backup mirror lookup on Dailymotion (both strict automatic failover and on-demand manual lookup).
  */
-export async function searchDailymotionEpisodeBackup(drama, episodeNumber = 1) {
+export async function searchDailymotionEpisodeBackup(drama, episodeNumber = 1, { strictAuto = false } = {}) {
   if (!drama?.title) return null;
   const ep = Math.max(1, Math.round(Number(episodeNumber) || 1));
   const cleanTitle = String(drama.title)
@@ -1414,30 +1674,53 @@ export async function searchDailymotionEpisodeBackup(drama, episodeNumber = 1) {
   const synopsisKeywords = extractSynopsisKeywords(drama, 3).join(' ');
   const queries = Array.from(
     new Set(
-      [
-        `${cleanTitle} episode ${ep} sub indo`,
-        `${cleanTitle} drama china sub indo`,
-        synopsisKeywords ? `${synopsisKeywords} drama china sub indo` : '',
-      ].filter(Boolean)
+      (strictAuto
+        ? [`${cleanTitle} episode ${ep} sub indo`, `${cleanTitle} drama china sub indo`]
+        : [
+            `${cleanTitle} episode ${ep} sub indo`,
+            `${cleanTitle} drama china sub indo`,
+            synopsisKeywords ? `${synopsisKeywords} drama china sub indo` : '',
+          ]
+      ).filter(Boolean)
     )
   );
   const titleTokens = normalizeDramaMatchText(`${cleanTitle} ${drama.altTitle || ''}`);
 
   for (const q of queries) {
     try {
-      const res = await fetchDailymotionDracin(q, 10, drama.platformId);
+      const res = await fetchDailymotionDracin(q, strictAuto ? 6 : 10, drama.platformId);
       const candidates = (res?.items || []).filter((item) => Boolean(item?.dailymotionId));
       if (!candidates.length) continue;
 
+      if (strictAuto) {
+        const strongRanked = candidates
+          .map((item) => ({ item, evalRes: scoreDailymotionAutoMatch(drama, item, ep) }))
+          .filter((entry) => entry.evalRes.isStrongMatch)
+          .sort((a, b) => b.evalRes.score - a.evalRes.score);
+        const top = strongRanked[0]?.item || null;
+        if (top?.dailymotionId) {
+          return {
+            id: `dm-auto-ep${ep}-${top.dailymotionId}`,
+            label: `Mirror Dailymotion HD · ${top.title.slice(0, 22)}`,
+            kind: 'dailymotion',
+            videoId: top.dailymotionId,
+            embedUrl: buildDailymotionEmbedUrl(top.dailymotionId, endpointConfigCache?.dailymotionPlayerId),
+            watchUrl: buildDailymotionWatchUrl(top.dailymotionId),
+          };
+        }
+        continue;
+      }
+
       const scored = candidates
         .map((item) => {
+          const evalRes = scoreDailymotionAutoMatch(drama, item, ep);
           const hay = `${item.title} ${item.synopsis || ''}`.toLowerCase();
           let hits = 0;
           for (const tok of titleTokens) {
             if (hay.includes(tok)) hits += 1;
           }
           const epMatch = new RegExp(`\\b(ep|episode)\\s*0?${ep}\\b`, 'i').test(hay) ? 2 : 0;
-          return { item, rank: hits * 3 + epMatch };
+          return { item, rank: Math.max(evalRes.score, hits * 3 + epMatch) };
         })
         .sort((a, b) => b.rank - a.rank);
 
@@ -1579,8 +1862,9 @@ export async function findCrossPlatformDramaMatches(drama, currentCatalog = [], 
     }
   }
   if (titleQuery) {
-    jobs.push(fetchSansekaiPlatformFeed('dramabox', { page: 1, query: titleQuery }));
-    jobs.push(fetchSansekaiPlatformFeed('pinedrama', { page: 1, query: titleQuery }));
+    if (!getSansekaiStatus().inCooldown) {
+      jobs.push(fetchSansekaiPlatformFeed('dramabox', { page: 1, query: titleQuery }));
+    }
     jobs.push(fetchDailymotionDracin(`${titleQuery} drama china sub indo`, 8));
   }
 

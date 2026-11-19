@@ -13,12 +13,14 @@ import {
   buildEpisodeList,
   buildEpisodeRanges,
   buildEpisodeSubtitleCues,
+  buildSansekaiDirectWatchUrl,
   buildSansekaiWebUrl,
   buildWebVttFromCues,
   computePreloadEpisodeTargets,
   computeTokenJaccardSimilarity,
   computeVisualProfileSimilarity,
   extractAdaptiveEpisodePayload,
+  extractSansekaiApiBaseCandidates,
   extractSansekaiEpisodeStreams,
   extractSansekaiFeedItems,
   extractSansekaiMeloloVideoId,
@@ -28,6 +30,8 @@ import {
   formatDracinUserError,
   getActiveSubtitleCue,
   getNextPrevEpisode,
+  getSansekaiCooldownRemainingSec,
+  isSansekaiCooldownActive,
   mergeParallelDracinFeeds,
   normalizeAnichinDramaItem,
   normalizeDramaMatchText,
@@ -40,11 +44,13 @@ import {
   rankCrossPlatformDramaMatches,
   rankHealthyApiMirrors,
   recordMirrorHealth,
+  recordSansekaiOutcome,
   resolveAnichinMediaUrl,
   resolveAutoSubtitleLang,
   resolveCleanScreenState,
   resolveNextMuteState,
   scoreCrossPlatformDramaMatch,
+  scoreDailymotionAutoMatch,
   shouldPreserveFullscreenOnEpisodeChange,
   toggleFavoriteDramaId,
   unwrapHlsJsonPayload,
@@ -3865,6 +3871,77 @@ test('v56 Sansekai/SekaiDrama platforms, URL normalizer, feed extractors, Melolo
   assert.equal(meloloVmStream.servers[0].url, 'https://cdn.melolo.example/ep6-720.mp4');
   assert.equal(meloloVmStream.servers[0].qualityLabel, '720P');
   assert.equal(meloloVmStream.servers[1].url, 'https://cdn.melolo.example/ep6-main.mp4');
+});
+
+test('v57 Sansekai anti-rate-limit circuit breaker, mirror rotation, direct SekaiDrama Web link & strict Dailymotion auto-matcher', () => {
+  const t0 = 1_700_000_000_000;
+
+  // 1. Cooldown circuit breaker trips cleanly on 403 and 429, escalates, and resets on 200
+  assert.equal(isSansekaiCooldownActive(null, t0), false);
+  assert.equal(getSansekaiCooldownRemainingSec(null, t0), 0);
+
+  const after429 = recordSansekaiOutcome(null, { ok: false, statusCode: 429, now: t0, rateLimitCooldownMs: 90_000 });
+  assert.equal(isSansekaiCooldownActive(after429, t0 + 10_000), true);
+  assert.equal(getSansekaiCooldownRemainingSec(after429, t0 + 10_000), 80);
+  assert.equal(isSansekaiCooldownActive(after429, t0 + 91_000), false);
+
+  const after403 = recordSansekaiOutcome(after429, { ok: false, statusCode: 403, now: t0, forbiddenCooldownMs: 180_000 });
+  assert.equal(after403.failures, 2);
+  assert.ok(after403.cooldownUntil - t0 >= 180_000);
+
+  const resetOk = recordSansekaiOutcome(after403, { ok: true, statusCode: 200, now: t0 + 200_000 });
+  assert.equal(resetOk.failures, 0);
+  assert.equal(isSansekaiCooldownActive(resetOk, t0 + 200_000), false);
+
+  // 2. Multi-mirror Sansekai candidate ordering prioritizes custom mirror & healthy mirrors over cooled-down mirrors
+  const cfg = {
+    sansekai: {
+      mirrors: [
+        { id: 'sk-1', label: 'Primary', baseUrl: 'https://api.sansekai.my.id/api', priority: 1 },
+        { id: 'sk-2', label: 'Backup', baseUrl: 'https://mirror.example.com/api', priority: 2 },
+      ],
+    },
+  };
+  const ordered = extractSansekaiApiBaseCandidates(
+    cfg,
+    { 'sk-1': after403 },
+    { customBaseUrl: 'https://my-selfhost.example/api/', now: t0 + 5_000 }
+  );
+  assert.equal(ordered[0].id, 'sansekai-custom');
+  assert.equal(ordered[0].baseUrl, 'https://my-selfhost.example/api');
+  assert.equal(ordered[1].id, 'sk-2');
+  assert.equal(ordered[1].inCooldown, false);
+  assert.equal(ordered[2].id, 'sk-1');
+  assert.equal(ordered[2].inCooldown, true);
+
+  // 3. Direct SekaiDrama Web link strips brackets and encodes query cleanly
+  assert.equal(
+    buildSansekaiDirectWatchUrl({ title: '[Dubbing] Hidup Demi Balas Dendam (Indo)' }, 6),
+    'https://drama.sansekai.my.id/?q=Hidup%20Demi%20Balas%20Dendam'
+  );
+  assert.equal(buildSansekaiDirectWatchUrl(null, 1), 'https://drama.sansekai.my.id');
+
+  // 4. Friendly error formatter maps HTTP 403 / 429 / SANSEKAI_COOLDOWN without exposing raw HTTP errors
+  const msg403 = formatDracinUserError(new Error('HTTP 403'), { platformName: 'Melolo', episode: 6 });
+  assert.ok(msg403.includes('SekaiDrama Web'));
+  assert.ok(!msg403.includes('403'));
+  const msgCooldown = formatDracinUserError('SANSEKAI_COOLDOWN', { platformName: 'Melolo', episode: 6 });
+  assert.ok(msgCooldown.includes('Episode 6'));
+
+  // 5. Strict Dailymotion auto-matcher accepts genuine Chinese drama match & rejects unrelated news/FTV noise
+  const sourceDrama = { title: 'Hidup Demi Balas Dendam', platformId: 'melolo' };
+  const goodCand = {
+    title: 'Hidup Demi Balas Dendam Episode 6 Sub Indo Drama China Full',
+    synopsis: 'DramaBox Melolo sub indo',
+  };
+  const badCand = {
+    title: 'Jet Tempur Israel Menuju Yaman Demi Balas Dendam',
+    synopsis: 'Berita internasional hari ini',
+  };
+  const goodEval = scoreDailymotionAutoMatch(sourceDrama, goodCand, 6);
+  const badEval = scoreDailymotionAutoMatch(sourceDrama, badCand, 6);
+  assert.equal(goodEval.isStrongMatch, true);
+  assert.equal(badEval.isStrongMatch, false);
 });
 
 
