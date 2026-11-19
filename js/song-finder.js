@@ -22,8 +22,8 @@
  * 9. Video-Exclusive Keyframe & Social Media Similarity Analyzer (`YouTube`, `YouTube Shorts`, `TikTok`, `Instagram Reels`, `Facebook Watch`).
  */
 
-import { formatBytes } from './tools-logic.js?v=49';
-import { transcodeWithFfmpeg } from './media-engine.js?v=49';
+import { formatBytes } from './tools-logic.js?v=50';
+import { transcodeWithFfmpeg } from './media-engine.js?v=50';
 
 const AUDIO_EXTENSIONS = new Set([
   'mp3', 'wav', 'm4a', 'mp4a', 'aac', 'ogg', 'oga', 'opus', 'flac', 'weba', 'wma', 'aiff', 'amr',

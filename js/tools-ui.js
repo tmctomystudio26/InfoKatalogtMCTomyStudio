@@ -22,40 +22,40 @@ import {
   matchIndonesianCityQuery,
   planMediaCompression,
   resolveAccurateWeatherCondition,
-} from './tools-logic.js?v=49';
+} from './tools-logic.js?v=50';
 import {
   describeLocationSource,
   resolveUserLocation,
   searchCitiesOnline,
   setManualLocation,
-} from './location.js?v=49';
-import { createInteractiveGlobe } from './globe.js?v=49';
+} from './location.js?v=50';
+import { createInteractiveGlobe } from './globe.js?v=50';
 import {
   createSpeedometerGauge,
   fetchSpeedtestEnvironment,
   readClientDeviceTelemetry,
   runInternetSpeedtest,
-} from './speedtest.js?v=49';
+} from './speedtest.js?v=50';
 import {
   extractAudioFromVideoUrl,
   fetchMediaDownload,
   triggerBatchPhotoDownload,
   triggerDirectMediaSave,
-} from './downloader.js?v=49';
-import { compressMediaFile, inspectMediaFile } from './compressor.js?v=49';
+} from './downloader.js?v=50';
+import { compressMediaFile, inspectMediaFile } from './compressor.js?v=50';
 import {
   ALL_TARGET_FORMATS,
   convertAnyFile,
   detectSourceFormat,
   getAvailableTargetFormats,
-} from './converter.js?v=49';
+} from './converter.js?v=50';
 import {
   detectMediaFileKind,
   identifyMediaSongAndVideo,
-} from './song-finder.js?v=49';
-import { formatAudioTime, getLoadingProgressMeta, isTrackInWatchLater } from './music-logic.js?v=49';
-import { MUSIC_PRESET_CATEGORIES, getMusicController, initMusicPlayer } from './music.js?v=49';
-import { normalizeUtilityConfig } from './store.js?v=49';
+} from './song-finder.js?v=50';
+import { formatAudioTime, getLoadingProgressMeta, isTrackInWatchLater } from './music-logic.js?v=50';
+import { MUSIC_PRESET_CATEGORIES, getMusicController, initMusicPlayer } from './music.js?v=50';
+import { normalizeUtilityConfig } from './store.js?v=50';
 
 const PRAYER_CACHE_KEY = 'manifestudio_prayer_cache_v1';
 const MYQURAN_CITIES_KEY = 'manifestudio_myquran_cities_v1';
@@ -2018,7 +2018,7 @@ export function createToolsHubController({
                       ? 'Sedang Mengompresi Media...'
                       : inspect
                       ? 'Kompres Sekarang'
-                      : 'Pilih File Dulu untuk Kompres Sekarang'
+                      : 'Pilih File untuk Mulai Kompres'
                   }
                 </button>
               </div>
