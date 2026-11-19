@@ -683,13 +683,13 @@ export const DEFAULT_UTILITY_CONFIG = {
       id: 'compressor',
       label: 'Kompresor HD',
       icon: './assets/icons/tool-compressor.svg',
-      pageTitle: 'Kompresor Foto & Video HD (Open-Source Engine)',
+      pageTitle: 'Kompresor Foto & Video HD (Anti-Pecah Sosmed)',
       pageSubtitle:
-        'Kompresi ukuran foto & video nyata berbasis algoritma open-source (FFmpeg WASM/Squoosh/UPNG) agar hemat kuota & lolos kompresi sosmed.',
-      heroKicker: 'Open-Source Compression Engine · FFmpeg WebAssembly / Squoosh / UPNG',
+        '6 metode kompresi AI & Open-Source (Multi-AI Tanpa Key, AVIF/WebP 2-Pass, & FFmpeg WASM) agar lolos kompresi ulang TikTok, IG, & WA.',
+      heroKicker: 'AI Hybrid & Open-Source Engine · Multi-AI / AVIF / WebP / FFmpeg WASM',
       heroTitle: 'Kompres Foto & Video HD Nyata Tanpa Pecah di Sosmed',
       heroDescription:
-        'Menggunakan algoritma pencarian biner kualitas adaptif & kuantisasi palet open-source untuk memangkas ukuran byte foto & video secara nyata (30%–80% lebih ringan) agar lolos kompresi paksa TikTok, Instagram, dan WhatsApp.',
+        'Didukung Multi-AI Publik tanpa API key, codec generasi baru AVIF/WebP/MozJPEG, Unsharp Clarity, & FFmpeg WASM untuk memangkas ukuran file secara nyata sambil menjaga ketajaman HD.',
     },
     {
       id: 'converter',

@@ -108,7 +108,9 @@ import {
   COMPRESSION_PLATFORM_PRESETS,
   WORLD_LOCATIONS,
   calculatePingStats,
+  computeLocalPerceptualAiRecipe,
   computeMbps,
+  computeRgbaPsnrDb,
   computeSustainedAverageMbps,
   convertWorldTime,
   describeCloudflareColo,
@@ -125,6 +127,7 @@ import {
   isIndonesiaLocation,
   matchIndonesianCityQuery,
   normalizeDownloaderResult,
+  parseAndSanitizeAiCompressionRecipe,
   parseDeviceTelemetry,
   parseIndonesianAddressHierarchy,
   parseYouTubeVideoId,
@@ -1353,7 +1356,7 @@ test('social media downloader normalizes single-photo posts, multi-photo carouse
 });
 
 test('HD media compression planner & binary lossless strippers preserve bitstreams and plan optimal dimensions', () => {
-  assert.equal(COMPRESSION_METHODS.length, 4);
+  assert.equal(COMPRESSION_METHODS.length, 6);
   assert.equal(COMPRESSION_PLATFORM_PRESETS.length, 4);
   assert.equal(formatBytes(1572864), '1.5 MB');
 
@@ -3057,4 +3060,87 @@ test('55. Multi-Engine Song & Video Identifier (song-finder.js) auto-detects aud
   assert.ok(videoLinks.videoSources.some((v) => v.platform.includes('Instagram')));
   assert.ok(videoLinks.videoSources.some((v) => v.platform.includes('YouTube')));
 });
+
+test('v49 AI Hybrid Super-Compressor & Ultra Perceptual AVIF/WebP planner, PSNR guard, keyless AI sanitizer, and Lanczos FFmpeg args work accurately', () => {
+  const aiMethod = COMPRESSION_METHODS.find((m) => m.id === 'ai-hybrid-super');
+  const ultraMethod = COMPRESSION_METHODS.find((m) => m.id === 'ultra-perceptual-avif');
+  assert.ok(aiMethod && aiMethod.isAiPowered);
+  assert.ok(ultraMethod);
+
+  // 1. Planning for AI Hybrid & Ultra Perceptual
+  const aiPlan = planMediaCompression({
+    mediaKind: 'image',
+    methodId: 'ai-hybrid-super',
+    presetId: 'wa-status-hd',
+    originalWidth: 3120,
+    originalHeight: 4160,
+    originalBytes: 2_960_000,
+  });
+  assert.equal(aiPlan.usesAiAdvisor, true);
+  assert.equal(aiPlan.enableMultiCodecRace, true);
+  assert.equal(aiPlan.enableUnsharpRestore, true);
+  assert.equal(aiPlan.targetWidth, 1200);
+  assert.equal(aiPlan.targetHeight, 1600);
+  assert.ok(aiPlan.minPsnrDb >= 35.5);
+
+  const ultraPlan = planMediaCompression({
+    mediaKind: 'image',
+    methodId: 'ultra-perceptual-avif',
+    presetId: 'tiktok-hd',
+    originalWidth: 2160,
+    originalHeight: 3840,
+    originalBytes: 4_200_000,
+  });
+  assert.equal(ultraPlan.usesAiAdvisor, false);
+  assert.equal(ultraPlan.enableMultiCodecRace, true);
+  assert.equal(ultraPlan.targetHeight, 1080);
+
+  // 2. Real PSNR calculation
+  const identicalA = new Uint8Array([100, 120, 140, 255, 200, 180, 160, 255]);
+  const identicalB = new Uint8Array([100, 120, 140, 255, 200, 180, 160, 255]);
+  assert.equal(computeRgbaPsnrDb(identicalA, identicalB), 99.9);
+
+  const slightlyDiff = new Uint8Array([102, 119, 141, 255, 198, 181, 159, 255]);
+  const psnrVal = computeRgbaPsnrDb(identicalA, slightlyDiff);
+  assert.ok(psnrVal > 40 && psnrVal < 60, `Expected high PSNR dB, got ${psnrVal}`);
+
+  // 3. Deterministic local perceptual AI recipe
+  const localRecipe = computeLocalPerceptualAiRecipe(
+    { edgeDensity: 44, colorEntropy: 6.9, hasAlpha: false, bytesPerMp: 720000 },
+    COMPRESSION_PLATFORM_PRESETS[0],
+    'image'
+  );
+  assert.equal(localRecipe.codecPreference, 'avif');
+  assert.ok(localRecipe.sharpenAmount >= 0.2);
+  assert.ok(localRecipe.minPsnrDb >= 37);
+
+  // 4. Remote AI JSON sanitizer handles markdown fences, percentage quality, and clamping
+  const sanitized = parseAndSanitizeAiCompressionRecipe(
+    '```json\n{"codecPreference":"avif","quality":68,"sharpenAmount":22,"minPsnrDb":38.2,"videoCrf":24,"maxVideoMbps":6.4,"summary":"Detail tepi tinggi cocok dengan AVIF q=68 dan sharpening ringan."}\n```',
+    localRecipe
+  );
+  assert.equal(sanitized.fromRemoteAi, true);
+  assert.equal(sanitized.recipe.codecPreference, 'avif');
+  assert.equal(sanitized.recipe.quality, 0.68);
+  assert.equal(sanitized.recipe.sharpenAmount, 0.22);
+  assert.equal(sanitized.recipe.videoCrf, 24);
+
+  // Malformed AI output safely falls back to local deterministic recipe
+  const fallbackParsed = parseAndSanitizeAiCompressionRecipe('Rate limited or non-JSON text', localRecipe);
+  assert.equal(fallbackParsed.fromRemoteAi, false);
+  assert.equal(fallbackParsed.recipe.codecPreference, localRecipe.codecPreference);
+
+  // 5. Video FFmpeg args use AI override CRF & Lanczos filter
+  const ffArgs = buildFfmpegVideoCompressArgs('in.mp4', 'out.mp4', {
+    methodId: 'ai-hybrid-super',
+    targetWidth: 1080,
+    targetHeight: 1920,
+    targetVideoMbps: 6.4,
+    overrideCrf: 24,
+  });
+  const crfIdx = ffArgs.indexOf('-crf');
+  assert.equal(ffArgs[crfIdx + 1], '24');
+  assert.ok(ffArgs.some((arg) => arg.includes('flags=lanczos')));
+});
+
 

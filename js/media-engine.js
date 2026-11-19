@@ -86,6 +86,7 @@ export function buildFfmpegVideoCompressArgs(
     targetHeight = 1920,
     targetVideoMbps = 5.0,
     tighterPass = false,
+    overrideCrf = null,
   } = {}
 ) {
   let crf = 25;
@@ -96,6 +97,15 @@ export function buildFfmpegVideoCompressArgs(
     crf = tighterPass ? 28 : 23;
   } else if (methodId === 'social-shield') {
     crf = tighterPass ? 31 : 25;
+  } else if (methodId === 'ai-hybrid-super') {
+    const baseCrf = Number.isFinite(Number(overrideCrf))
+      ? Math.max(20, Math.min(32, Math.round(Number(overrideCrf))))
+      : 26;
+    crf = tighterPass ? Math.min(33, baseCrf + 4) : baseCrf;
+    audioBitrate = '112k';
+  } else if (methodId === 'ultra-perceptual-avif') {
+    crf = tighterPass ? 32 : 28;
+    audioBitrate = '96k';
   } else {
     crf = tighterPass ? 33 : 28;
     audioBitrate = '96k';
@@ -106,6 +116,11 @@ export function buildFfmpegVideoCompressArgs(
   const safeW = Math.max(2, Math.round(Number(targetWidth) / 2) * 2);
   const safeH = Math.max(2, Math.round(Number(targetHeight) / 2) * 2);
 
+  const scaleFilter =
+    methodId === 'ai-hybrid-super' || methodId === 'ultra-perceptual-avif'
+      ? `scale=w='min(iw,${safeW})':h='min(ih,${safeH})':force_original_aspect_ratio=decrease:flags=lanczos,scale=trunc(iw/2)*2:trunc(ih/2)*2`
+      : `scale=w='min(iw,${safeW})':h='min(ih,${safeH})':force_original_aspect_ratio=decrease,scale=trunc(iw/2)*2:trunc(ih/2)*2`;
+
   return [
     '-i',
     inName,
@@ -114,7 +129,7 @@ export function buildFfmpegVideoCompressArgs(
     '-map',
     '0:a?',
     '-vf',
-    `scale=w='min(iw,${safeW})':h='min(ih,${safeH})':force_original_aspect_ratio=decrease,scale=trunc(iw/2)*2:trunc(ih/2)*2`,
+    scaleFilter,
     '-c:v',
     'libx264',
     '-preset',
@@ -520,7 +535,8 @@ export async function compressVideoWithRealEngine(file, plan, onProgress = () =>
         methodId: plan.methodId,
         targetWidth: plan.targetWidth,
         targetHeight: plan.targetHeight,
-        targetVideoMbps: plan.targetVideoMbps,
+        targetVideoMbps: plan.aiMaxVideoMbps || plan.targetVideoMbps,
+        overrideCrf: plan.aiVideoCrf || null,
         tighterPass: false,
       });
 
@@ -540,7 +556,8 @@ export async function compressVideoWithRealEngine(file, plan, onProgress = () =>
           methodId: plan.methodId,
           targetWidth: plan.targetWidth,
           targetHeight: plan.targetHeight,
-          targetVideoMbps: Math.max(1.2, (plan.targetVideoMbps || 4) * 0.6),
+          targetVideoMbps: Math.max(1.2, (plan.aiMaxVideoMbps || plan.targetVideoMbps || 4) * 0.6),
+          overrideCrf: plan.aiVideoCrf || null,
           tighterPass: true,
         });
         exitCode = await ffmpeg.exec(args);

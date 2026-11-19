@@ -22,40 +22,40 @@ import {
   matchIndonesianCityQuery,
   planMediaCompression,
   resolveAccurateWeatherCondition,
-} from './tools-logic.js?v=48';
+} from './tools-logic.js?v=49';
 import {
   describeLocationSource,
   resolveUserLocation,
   searchCitiesOnline,
   setManualLocation,
-} from './location.js?v=48';
-import { createInteractiveGlobe } from './globe.js?v=48';
+} from './location.js?v=49';
+import { createInteractiveGlobe } from './globe.js?v=49';
 import {
   createSpeedometerGauge,
   fetchSpeedtestEnvironment,
   readClientDeviceTelemetry,
   runInternetSpeedtest,
-} from './speedtest.js?v=48';
+} from './speedtest.js?v=49';
 import {
   extractAudioFromVideoUrl,
   fetchMediaDownload,
   triggerBatchPhotoDownload,
   triggerDirectMediaSave,
-} from './downloader.js?v=48';
-import { compressMediaFile, inspectMediaFile } from './compressor.js?v=48';
+} from './downloader.js?v=49';
+import { compressMediaFile, inspectMediaFile } from './compressor.js?v=49';
 import {
   ALL_TARGET_FORMATS,
   convertAnyFile,
   detectSourceFormat,
   getAvailableTargetFormats,
-} from './converter.js?v=48';
+} from './converter.js?v=49';
 import {
   detectMediaFileKind,
   identifyMediaSongAndVideo,
-} from './song-finder.js?v=48';
-import { formatAudioTime, getLoadingProgressMeta, isTrackInWatchLater } from './music-logic.js?v=48';
-import { MUSIC_PRESET_CATEGORIES, getMusicController, initMusicPlayer } from './music.js?v=48';
-import { normalizeUtilityConfig } from './store.js?v=48';
+} from './song-finder.js?v=49';
+import { formatAudioTime, getLoadingProgressMeta, isTrackInWatchLater } from './music-logic.js?v=49';
+import { MUSIC_PRESET_CATEGORIES, getMusicController, initMusicPlayer } from './music.js?v=49';
+import { normalizeUtilityConfig } from './store.js?v=49';
 
 const PRAYER_CACHE_KEY = 'manifestudio_prayer_cache_v1';
 const MYQURAN_CITIES_KEY = 'manifestudio_myquran_cities_v1';
@@ -424,8 +424,10 @@ export function createToolsHubController({
     dlBatchProgressText: '',
     dlError: '',
     dlResult: null,
-    compMethodId: 'social-shield',
+    compMethodId: 'ai-hybrid-super',
     compPresetId: 'tiktok-hd',
+    compMethodDropdownOpen: false,
+    compPresetDropdownOpen: false,
     compFile: null,
     compInspect: null,
     compLoading: false,
@@ -1669,6 +1671,12 @@ export function createToolsHubController({
   function renderCompressorPanel() {
     const inspect = toolState.compInspect;
     const res = toolState.compResult;
+    const activeMethod =
+      COMPRESSION_METHODS.find((m) => m.id === toolState.compMethodId) || COMPRESSION_METHODS[0];
+    const activePreset =
+      COMPRESSION_PLATFORM_PRESETS.find((p) => p.id === toolState.compPresetId) ||
+      COMPRESSION_PLATFORM_PRESETS[0];
+
     const previewPlan = inspect
       ? planMediaCompression({
           mediaKind: inspect.mediaKind,
@@ -1692,26 +1700,29 @@ export function createToolsHubController({
       : res
       ? `Kompresi selesai! Hemat -${res.savedPercent}% (${res.savedBytesLabel})`
       : inspect
-      ? `File siap dikompres (${formatBytes(inspect.sizeBytes)}) — Tekan "Kompres Sekarang"`
+      ? `File siap dikompres (${formatBytes(inspect.sizeBytes)}) — Atur metode & standar di bawah, lalu tekan "Kompres Sekarang"`
       : 'Masukkan file foto atau video untuk memulai kompresi';
 
     const compMeta = getUtilityItemConfig('compressor');
+    const methodOpen = Boolean(toolState.compMethodDropdownOpen);
+    const presetOpen = Boolean(toolState.compPresetDropdownOpen);
+    const presetSpecText = `Maks ${activePreset.maxDimension === 99999 ? 'Asli 1:1' : `${activePreset.maxDimension}px`} · ${activePreset.targetVideoMbps} Mbps`;
 
     return `
       <div class="tool-panel" data-testid="compressor-panel">
         <div class="compressor-hero-card">
           <div class="compressor-head">
             <div>
-              <span class="tool-kicker">${escapeHtml(compMeta.heroKicker || 'Open-Source Compression Engine · FFmpeg WebAssembly / Squoosh / UPNG')}</span>
+              <span class="tool-kicker">${escapeHtml(compMeta.heroKicker || 'AI Hybrid & Open-Source Engine · Multi-AI / AVIF / WebP / FFmpeg WASM')}</span>
               <h3 class="tool-subhead">${escapeHtml(compMeta.heroTitle || 'Kompres Foto & Video HD Nyata Tanpa Pecah di Sosmed')}</h3>
               <p class="tool-hint">
-                ${escapeHtml(compMeta.heroDescription || 'Menggunakan algoritma pencarian biner kualitas adaptif & kuantisasi palet open-source untuk memangkas ukuran byte foto & video secara nyata (30%–80% lebih ringan) agar lolos kompresi paksa TikTok, Instagram, dan WhatsApp.')}
+                ${escapeHtml(compMeta.heroDescription || 'Didukung Multi-AI Publik tanpa API key, codec generasi baru AVIF/WebP/MozJPEG, Unsharp Clarity, & FFmpeg WASM untuk memangkas ukuran file secara maksimal sambil menjaga ketajaman HD.')}
               </p>
             </div>
           </div>
 
-          <!-- 1. File Upload / Dropzone right at the top after Title & Description -->
-          <div class="comp-section-block" style="margin-top:0.35rem;">
+          <!-- 1. File Upload / Dropzone (File selection only; Kompres CTA sits at bottom) -->
+          <div class="comp-section-block" style="margin-top:0.25rem;">
             <label class="comp-block-label">1. Masukkan atau Pilih File Foto / Video yang Ingin Dikompres:</label>
             <div class="comp-dropzone" id="comp-dropzone" data-testid="comp-dropzone">
               <input
@@ -1719,7 +1730,7 @@ export function createToolsHubController({
                 id="comp-file-input"
                 data-testid="comp-file-input"
                 class="visually-hidden-file"
-                accept="image/jpeg,image/png,image/webp,video/mp4,video/webm,video/quicktime"
+                accept="image/jpeg,image/png,image/webp,image/avif,video/mp4,video/webm,video/quicktime"
               />
               <div class="comp-dropzone-inner">
                 <div class="comp-dropzone-icon">
@@ -1731,7 +1742,7 @@ export function createToolsHubController({
                     ${
                       inspect
                         ? `${inspect.mediaKind === 'video' ? 'Video' : 'Foto'} · ${inspect.width}×${inspect.height}px · ${formatBytes(inspect.sizeBytes)}${inspect.durationSec ? ` · ${inspect.durationSec}s` : ''}`
-                        : 'Mendukung Foto (JPG, JPEG, PNG, WebP) & Video (MP4, MOV, WebM) — Kompresi Nyata Berbasis Engine Open-Source'
+                        : 'Mendukung Foto (JPG, PNG, WebP, AVIF) & Video (MP4, MOV, WebM) — Kompresi Nyata Berbasis AI & Open-Source'
                     }
                   </span>
                 </div>
@@ -1739,13 +1750,6 @@ export function createToolsHubController({
                   <label for="comp-file-input" class="btn btn-secondary btn-sm admin-file-trigger">
                     ${inspect ? 'Ganti File' : 'Pilih Foto / Video'}
                   </label>
-                  ${
-                    inspect
-                      ? `<button type="button" class="btn btn-primary btn-sm" id="comp-run-btn" data-testid="comp-run-btn" ${toolState.compLoading ? 'disabled' : ''}>
-                          ${toolState.compLoading ? 'Mengompresi...' : 'Kompres Sekarang'}
-                        </button>`
-                      : ''
-                  }
                 </div>
               </div>
             </div>
@@ -1775,17 +1779,6 @@ export function createToolsHubController({
             }
 
             ${
-              previewPlan && !res && !toolState.compLoading
-                ? `
-              <div class="comp-plan-preview">
-                <span>Rencana Optimasi: <strong>${escapeHtml(previewPlan.methodLabel)}</strong> (${escapeHtml(previewPlan.presetLabel)})</span>
-                <span class="mono-num">Resolusi: ${previewPlan.originalWidth}×${previewPlan.originalHeight} → ${previewPlan.targetWidth}×${previewPlan.targetHeight} · Target Hemat ~${previewPlan.estimatedSavedPercent}%</span>
-              </div>
-            `
-                : ''
-            }
-
-            ${
               toolState.compError
                 ? `<div class="form-error" role="alert">${escapeHtml(toolState.compError)}</div>`
                 : ''
@@ -1795,7 +1788,7 @@ export function createToolsHubController({
           ${
             res
               ? `
-            <div class="comp-result-card" data-testid="comp-result-card" style="margin-top:0.85rem;">
+            <div class="comp-result-card" data-testid="comp-result-card" style="margin-top:0.35rem;">
               <div class="comp-result-preview">
                 ${
                   res.mediaKind === 'video'
@@ -1826,9 +1819,27 @@ export function createToolsHubController({
                   <div class="comp-stat-box">
                     <span>Penghematan Nyata</span>
                     <strong class="mono-num" data-testid="comp-saved-pct">${res.savedBytes > 0 ? `-${res.savedPercent}% (${escapeHtml(res.savedBytesLabel)})` : 'Bit-Exact Optimal'}</strong>
-                    <small>${escapeHtml(res.engineLabel || 'Open-Source Squoosh/UPNG Engine')}</small>
+                    <small>${escapeHtml(res.engineLabel || 'Open-Source Multi-Codec Engine')}</small>
                   </div>
                 </div>
+
+                ${
+                  res.aiAdvisory
+                    ? `
+                  <div class="comp-ai-insight-box" data-testid="comp-ai-insight-box">
+                    <div class="comp-ai-insight-head">
+                      <strong>${escapeHtml(res.aiAdvisory.provider || 'AI Perceptual Advisor')}</strong>
+                      ${
+                        res.aiAdvisory.psnrDb
+                          ? `<span class="comp-ai-psnr-tag mono-num">Ketajaman PSNR ${res.aiAdvisory.psnrDb} dB</span>`
+                          : ''
+                      }
+                    </div>
+                    <p>${escapeHtml(res.aiAdvisory.summary || '')}</p>
+                  </div>
+                `
+                    : ''
+                }
 
                 <ul class="comp-guard-list">
                   ${(res.plan.guardrails || [])
@@ -1845,60 +1856,175 @@ export function createToolsHubController({
                   >
                     Unduh Hasil Kompres HD (${escapeHtml(res.compressedSizeLabel)})
                   </a>
-                  <button type="button" class="btn btn-ghost btn-sm" id="comp-reset-btn">
+                  <button type="button" class="btn btn-ghost btn-sm" id="comp-reset-btn" data-testid="comp-reset-btn">
                     Kompres File Lain
                   </button>
                 </div>
               </div>
             </div>
           `
-              : ''
-          }
-
-          <!-- 2. Method Selector -->
-          <div class="comp-section-block">
-            <label class="comp-block-label">2. Pilih Metode Kompresi Open-Source (Tanpa Blur / Pecah):</label>
-            <div class="comp-methods-grid" role="radiogroup" aria-label="Metode kompresi tanpa kurangi kualitas">
-              ${COMPRESSION_METHODS.map((m) => {
-                const isSelected = toolState.compMethodId === m.id;
-                return `
+              : `
+            <!-- 2 & 3. Space-Saving Informative Dropdowns + Bottom Kompres CTA (hidden once compression succeeds) -->
+            <div class="comp-config-stage" data-testid="comp-config-section">
+              <div class="comp-dropdowns-grid">
+                <!-- 2. Method Dropdown -->
+                <div class="comp-section-block comp-dd-wrapper" data-comp-dropdown="method">
+                  <label class="comp-block-label" for="comp-method-trigger">2. Pilih Metode Kompresi (AI &amp; Open-Source):</label>
                   <button
                     type="button"
-                    class="comp-method-card ${isSelected ? 'is-active' : ''}"
-                    data-comp-method="${escapeHtml(m.id)}"
-                    aria-pressed="${isSelected}"
+                    id="comp-method-trigger"
+                    data-testid="comp-method-trigger"
+                    class="comp-dd-trigger ${methodOpen ? 'is-open' : ''}"
+                    aria-expanded="${methodOpen}"
+                    aria-haspopup="listbox"
+                    aria-controls="comp-method-menu"
                   >
-                    <div class="comp-method-top">
-                      <strong>${escapeHtml(m.label)}</strong>
-                      <span class="comp-method-badge">${escapeHtml(m.badge)}</span>
+                    <div class="comp-dd-trigger-main">
+                      <div class="comp-dd-trigger-top">
+                        <strong>${escapeHtml(activeMethod.label)}</strong>
+                        <span class="comp-method-badge ${activeMethod.isAiPowered ? 'is-ai' : ''}">${escapeHtml(activeMethod.badge)}</span>
+                      </div>
+                      <span class="comp-dd-trigger-sub">${escapeHtml(activeMethod.description)}</span>
                     </div>
-                    <p class="comp-method-desc">${escapeHtml(m.description)}</p>
+                    <span class="comp-dd-chevron" aria-hidden="true">
+                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
+                    </span>
                   </button>
-                `;
-              }).join('')}
-            </div>
-          </div>
 
-          <!-- 3. Target Platform Preset -->
-          <div class="comp-section-block">
-            <label class="comp-block-label">3. Pilih Standar Platform Tujuan (Anti-Recompress Guard):</label>
-            <div class="comp-presets-row" role="radiogroup" aria-label="Target platform media sosial">
-              ${COMPRESSION_PLATFORM_PRESETS.map((p) => {
-                const isSelected = toolState.compPresetId === p.id;
-                return `
+                  ${
+                    methodOpen
+                      ? `
+                    <div
+                      id="comp-method-menu"
+                      data-testid="comp-method-menu"
+                      class="comp-dd-menu"
+                      role="listbox"
+                      aria-label="Daftar metode kompresi"
+                    >
+                      ${COMPRESSION_METHODS.map((m) => {
+                        const isSelected = toolState.compMethodId === m.id;
+                        return `
+                          <button
+                            type="button"
+                            role="option"
+                            aria-selected="${isSelected}"
+                            class="comp-dd-option ${isSelected ? 'is-active' : ''}"
+                            data-comp-method="${escapeHtml(m.id)}"
+                          >
+                            <div class="comp-dd-option-head">
+                              <span class="comp-dd-option-title">
+                                ${isSelected ? '<span class="comp-dd-check" aria-hidden="true">✓</span>' : ''}
+                                <strong>${escapeHtml(m.label)}</strong>
+                              </span>
+                              <span class="comp-method-badge ${m.isAiPowered ? 'is-ai' : ''}">${escapeHtml(m.badge)}</span>
+                            </div>
+                            <p class="comp-dd-option-desc">${escapeHtml(m.description)}</p>
+                          </button>
+                        `;
+                      }).join('')}
+                    </div>
+                  `
+                      : ''
+                  }
+                </div>
+
+                <!-- 3. Platform Standard Dropdown -->
+                <div class="comp-section-block comp-dd-wrapper" data-comp-dropdown="preset">
+                  <label class="comp-block-label" for="comp-preset-trigger">3. Pilih Standar Platform Tujuan (Anti-Recompress):</label>
                   <button
                     type="button"
-                    class="comp-preset-pill ${isSelected ? 'is-active' : ''}"
-                    data-comp-preset="${escapeHtml(p.id)}"
-                    aria-pressed="${isSelected}"
+                    id="comp-preset-trigger"
+                    data-testid="comp-preset-trigger"
+                    class="comp-dd-trigger ${presetOpen ? 'is-open' : ''}"
+                    aria-expanded="${presetOpen}"
+                    aria-haspopup="listbox"
+                    aria-controls="comp-preset-menu"
                   >
-                    <strong>${escapeHtml(p.label)}</strong>
-                    <span>Maks ${p.maxDimension === 99999 ? 'Asli 1:1' : `${p.maxDimension}px`} · ${p.targetVideoMbps} Mbps</span>
+                    <div class="comp-dd-trigger-main">
+                      <div class="comp-dd-trigger-top">
+                        <strong>${escapeHtml(activePreset.label)}</strong>
+                        <span class="comp-method-badge">${escapeHtml(presetSpecText)}</span>
+                      </div>
+                      <span class="comp-dd-trigger-sub">${escapeHtml(activePreset.description)}</span>
+                    </div>
+                    <span class="comp-dd-chevron" aria-hidden="true">
+                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
+                    </span>
                   </button>
-                `;
-              }).join('')}
+
+                  ${
+                    presetOpen
+                      ? `
+                    <div
+                      id="comp-preset-menu"
+                      data-testid="comp-preset-menu"
+                      class="comp-dd-menu"
+                      role="listbox"
+                      aria-label="Daftar standar platform tujuan"
+                    >
+                      ${COMPRESSION_PLATFORM_PRESETS.map((p) => {
+                        const isSelected = toolState.compPresetId === p.id;
+                        const spec = `Maks ${p.maxDimension === 99999 ? 'Asli 1:1' : `${p.maxDimension}px`} · ${p.targetVideoMbps} Mbps`;
+                        return `
+                          <button
+                            type="button"
+                            role="option"
+                            aria-selected="${isSelected}"
+                            class="comp-dd-option ${isSelected ? 'is-active' : ''}"
+                            data-comp-preset="${escapeHtml(p.id)}"
+                          >
+                            <div class="comp-dd-option-head">
+                              <span class="comp-dd-option-title">
+                                ${isSelected ? '<span class="comp-dd-check" aria-hidden="true">✓</span>' : ''}
+                                <strong>${escapeHtml(p.label)}</strong>
+                              </span>
+                              <span class="comp-method-badge">${escapeHtml(spec)}</span>
+                            </div>
+                            <p class="comp-dd-option-desc">${escapeHtml(p.description)}</p>
+                          </button>
+                        `;
+                      }).join('')}
+                    </div>
+                  `
+                      : ''
+                  }
+                </div>
+              </div>
+
+              <!-- 4. Bottom Action Bar (Kompres Sekarang sits at the very bottom after choosing Method & Standard) -->
+              <div class="comp-bottom-action-bar" data-testid="comp-bottom-action-bar">
+                <div class="comp-bottom-summary">
+                  ${
+                    previewPlan
+                      ? `
+                    <span>Rencana Aktif: <strong>${escapeHtml(activeMethod.shortLabel || activeMethod.label)}</strong> · ${escapeHtml(activePreset.label)}</span>
+                    <span class="mono-num">Resolusi: ${previewPlan.originalWidth}×${previewPlan.originalHeight} → ${previewPlan.targetWidth}×${previewPlan.targetHeight} · Target Hemat ~${previewPlan.estimatedSavedPercent}%</span>
+                  `
+                      : `
+                    <span>Pilihan Aktif: <strong>${escapeHtml(activeMethod.shortLabel || activeMethod.label)}</strong> · ${escapeHtml(activePreset.label)}</span>
+                    <span>Pilih file foto atau video di Langkah 1 terlebih dahulu untuk mulai mengompres.</span>
+                  `
+                  }
+                </div>
+                <button
+                  type="button"
+                  class="btn btn-primary comp-run-cta"
+                  id="comp-run-btn"
+                  data-testid="comp-run-btn"
+                  ${!inspect || toolState.compLoading ? 'disabled' : ''}
+                >
+                  ${
+                    toolState.compLoading
+                      ? 'Sedang Mengompresi Media...'
+                      : inspect
+                      ? 'Kompres Sekarang'
+                      : 'Pilih File Dulu untuk Kompres Sekarang'
+                  }
+                </button>
+              </div>
             </div>
-          </div>
+          `
+          }
         </div>
       </div>
     `;
@@ -2710,6 +2836,8 @@ export function createToolsHubController({
     if (!file) return;
     toolState.compError = '';
     toolState.compResult = null;
+    toolState.compMethodDropdownOpen = false;
+    toolState.compPresetDropdownOpen = false;
     toolState.compProgressPct = 0;
     toolState.compProgressLabel = '';
     try {
@@ -2725,6 +2853,8 @@ export function createToolsHubController({
 
   async function runActiveCompression() {
     if (!toolState.compFile || toolState.compLoading) return;
+    toolState.compMethodDropdownOpen = false;
+    toolState.compPresetDropdownOpen = false;
     toolState.compLoading = true;
     toolState.compError = '';
     toolState.compProgressPct = 12;
@@ -4837,20 +4967,42 @@ export function createToolsHubController({
     }
 
     if (toolState.activeSubTab === 'compressor') {
+      rootEl.querySelector('#comp-method-trigger')?.addEventListener('click', (e) => {
+        e.stopPropagation();
+        toolState.compMethodDropdownOpen = !toolState.compMethodDropdownOpen;
+        if (toolState.compMethodDropdownOpen) {
+          toolState.compPresetDropdownOpen = false;
+        }
+        render();
+      });
+
+      rootEl.querySelector('#comp-preset-trigger')?.addEventListener('click', (e) => {
+        e.stopPropagation();
+        toolState.compPresetDropdownOpen = !toolState.compPresetDropdownOpen;
+        if (toolState.compPresetDropdownOpen) {
+          toolState.compMethodDropdownOpen = false;
+        }
+        render();
+      });
+
       rootEl.querySelectorAll('[data-comp-method]').forEach((btn) => {
-        btn.addEventListener('click', () => {
+        btn.addEventListener('click', (e) => {
+          e.stopPropagation();
           const id = btn.getAttribute('data-comp-method');
           if (!id) return;
           toolState.compMethodId = id;
+          toolState.compMethodDropdownOpen = false;
           render();
         });
       });
 
       rootEl.querySelectorAll('[data-comp-preset]').forEach((btn) => {
-        btn.addEventListener('click', () => {
+        btn.addEventListener('click', (e) => {
+          e.stopPropagation();
           const id = btn.getAttribute('data-comp-preset');
           if (!id) return;
           toolState.compPresetId = id;
+          toolState.compPresetDropdownOpen = false;
           render();
         });
       });
@@ -4887,6 +5039,8 @@ export function createToolsHubController({
         toolState.compError = '';
         toolState.compProgressPct = 0;
         toolState.compProgressLabel = '';
+        toolState.compMethodDropdownOpen = false;
+        toolState.compPresetDropdownOpen = false;
         render();
       });
     }
@@ -5183,9 +5337,31 @@ export function createToolsHubController({
     startLiveTimers();
   }
 
+  const handleCompressorGlobalClick = (e) => {
+    if (!mounted || toolState.activeSubTab !== 'compressor') return;
+    if (!toolState.compMethodDropdownOpen && !toolState.compPresetDropdownOpen) return;
+    if (e.target && typeof e.target.closest === 'function' && e.target.closest('[data-comp-dropdown]')) {
+      return;
+    }
+    toolState.compMethodDropdownOpen = false;
+    toolState.compPresetDropdownOpen = false;
+    render();
+  };
+
+  const handleCompressorGlobalKeydown = (e) => {
+    if (!mounted || toolState.activeSubTab !== 'compressor') return;
+    if (e.key !== 'Escape') return;
+    if (!toolState.compMethodDropdownOpen && !toolState.compPresetDropdownOpen) return;
+    toolState.compMethodDropdownOpen = false;
+    toolState.compPresetDropdownOpen = false;
+    render();
+  };
+
   return {
     mount(subTab = null) {
       mounted = true;
+      document.addEventListener('click', handleCompressorGlobalClick);
+      document.addEventListener('keydown', handleCompressorGlobalKeydown);
       if (
         subTab === 'prayer' ||
         subTab === 'weather' ||
@@ -5228,6 +5404,8 @@ export function createToolsHubController({
     },
     unmount() {
       mounted = false;
+      document.removeEventListener('click', handleCompressorGlobalClick);
+      document.removeEventListener('keydown', handleCompressorGlobalKeydown);
       if (speedAbort) {
         speedAbort.abort();
         speedAbort = null;

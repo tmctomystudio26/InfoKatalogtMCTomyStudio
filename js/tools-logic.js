@@ -1954,13 +1954,23 @@ export function normalizeDownloaderResult(raw, platform, sourceUrl = '') {
  */
 export const COMPRESSION_METHODS = [
   {
-    id: 'lossless-strip',
-    name: 'Lossless Bitstream Stripper (100% Bit-Exact)',
-    label: 'Lossless Bitstream Stripper (100% Bit-Exact)',
-    badge: '0% Quality Loss',
-    shortLabel: 'Lossless Stripper',
+    id: 'ai-hybrid-super',
+    name: 'AI Hybrid Super-Compressor (Multi-AI Gemini / Claude / GPT + Perceptual)',
+    label: 'AI Hybrid Super-Compressor (Multi-AI + Perceptual)',
+    badge: 'AI Super-Kompres',
+    shortLabel: 'AI Hybrid Multi-Codec',
+    isAiPowered: true,
     description:
-      'Menghapus metadata EXIF, profil warna berlebih, thumbnail tersembunyi, dan chunk sampah biner tanpa menyentuh bit piksel/frame sedikit pun.',
+      'Menggabungkan analisis AI publik tanpa API key (Gemini / GPT / Mistral-Claude class) + pengukuran tepi & entropi gambar untuk memilih codec terbaik (AVIF / WebP / MozJPEG), Unsharp Clarity, dan kunci ketajaman PSNR tinggi.',
+  },
+  {
+    id: 'ultra-perceptual-avif',
+    name: 'Ultra-Compress AVIF / WebP 2-Pass Perceptual HD (Paling Ampuh)',
+    label: 'Ultra-Compress AVIF / WebP 2-Pass Perceptual HD',
+    badge: 'Super Hemat -85%',
+    shortLabel: 'Ultra Perceptual AVIF/WebP',
+    description:
+      'Mesin kompresi generasi baru 2-pass yang memperlombakan AVIF, WebP, dan MozJPEG dengan pemulih ketajaman tepi (Unsharp Mask) serta pagar kualitas visual PSNR >= 35.5 dB agar ukuran jauh lebih kecil namun tetap tajam.',
   },
   {
     id: 'social-shield',
@@ -1970,6 +1980,15 @@ export const COMPRESSION_METHODS = [
     shortLabel: 'Anti-Kompres Sosmed',
     description:
       'Mengunci struktur bit-rate, profil kroma sRGB, dan ambang byte optimal agar algoritma TikTok, Instagram, & WhatsApp tidak menurunkan kualitas unggahan.',
+  },
+  {
+    id: 'lossless-strip',
+    name: 'Lossless Bitstream Stripper (100% Bit-Exact)',
+    label: 'Lossless Bitstream Stripper (100% Bit-Exact)',
+    badge: '0% Quality Loss',
+    shortLabel: 'Lossless Stripper',
+    description:
+      'Menghapus metadata EXIF, profil warna berlebih, thumbnail tersembunyi, dan chunk sampah biner tanpa menyentuh bit piksel/frame sedikit pun.',
   },
   {
     id: 'pixel-lock',
@@ -2038,13 +2057,206 @@ export function formatBytes(bytes = 0) {
   return `${mb.toFixed(2).replace(/\.00$/, '').replace(/(\.\d)0$/, '$1')} MB`;
 }
 
+/**
+ * Pure mathematical Peak Signal-to-Noise Ratio (PSNR in dB) between two equal-length RGBA buffers.
+ * Values >= 36 dB are typically visually indistinguishable to the human eye; 99.9 denotes bit-exact match.
+ */
+export function computeRgbaPsnrDb(refRgba, testRgba) {
+  if (!refRgba || !testRgba || refRgba.length === 0 || refRgba.length !== testRgba.length) {
+    return 0;
+  }
+  let sqErr = 0;
+  let channels = 0;
+  for (let i = 0; i < refRgba.length; i += 4) {
+    const dr = refRgba[i] - testRgba[i];
+    const dg = refRgba[i + 1] - testRgba[i + 1];
+    const db = refRgba[i + 2] - testRgba[i + 2];
+    sqErr += dr * dr + dg * dg + db * db;
+    channels += 3;
+  }
+  if (channels === 0) return 0;
+  const mse = sqErr / channels;
+  if (mse <= 0.0001) return 99.9;
+  const psnr = 10 * Math.log10((255 * 255) / mse);
+  return Math.round(Math.max(0, Math.min(99.9, psnr)) * 10) / 10;
+}
+
+/**
+ * Deterministic On-Device Perceptual Vision AI Recipe Generator.
+ * Computes optimal codec, quality floor, unsharp clarity restoration, and video CRF
+ * directly from real edge density, color entropy, alpha presence, and platform preset.
+ */
+export function computeLocalPerceptualAiRecipe(
+  telemetry = {},
+  preset = COMPRESSION_PLATFORM_PRESETS[0],
+  mediaKind = 'image'
+) {
+  const edgeDensity = Math.max(0, Math.min(100, Number(telemetry.edgeDensity) || 28));
+  const colorEntropy = Math.max(0, Math.min(8, Number(telemetry.colorEntropy) || 5.4));
+  const hasAlpha = Boolean(telemetry.hasAlpha);
+  const bytesPerMp = Math.max(0, Number(telemetry.bytesPerMp) || 450000);
+  const presetId = preset?.id || 'tiktok-hd';
+
+  if (mediaKind === 'video') {
+    const crf =
+      presetId === 'wa-status-hd'
+        ? 28
+        : presetId === 'original-lock'
+        ? 23
+        : 25;
+    const maxVideoMbps = Math.max(
+      1.8,
+      Math.min(Number(preset?.targetVideoMbps) || 6.0, presetId === 'wa-status-hd' ? 3.8 : 7.2)
+    );
+    return {
+      codecPreference: 'h264',
+      quality: 0.72,
+      sharpenAmount: 0,
+      minPsnrDb: 36.0,
+      videoCrf: crf,
+      maxVideoMbps,
+      summary: `AI Vision memilih H.264 CRF ${crf} dengan batas ${maxVideoMbps.toFixed(1)} Mbps & +faststart agar video ringan tanpa patah-patah di ${preset?.label || 'platform tujuan'}.`,
+    };
+  }
+
+  // High edge density (text, UI, product photo) needs slightly higher quality & crisp unsharp pass
+  const isDetailRich = edgeDensity >= 36 || colorEntropy >= 6.4;
+  const isFlatGraphic = edgeDensity < 22 && colorEntropy < 4.8;
+  const isHeavyUncompressed = bytesPerMp >= 900000;
+
+  let codecPreference = hasAlpha ? 'webp' : 'avif';
+  if (presetId === 'wa-status-hd' && !hasAlpha) {
+    // WebP/MozJPEG keeps broad WhatsApp gallery compatibility while still racing AVIF/WebP
+    codecPreference = 'webp';
+  }
+
+  let quality = isDetailRich ? 0.72 : isFlatGraphic ? 0.56 : 0.64;
+  if (isHeavyUncompressed) quality = Math.max(0.52, quality - 0.05);
+  if (presetId === 'original-lock') quality = Math.min(0.84, quality + 0.08);
+
+  const sharpenAmount = isDetailRich ? 0.24 : isFlatGraphic ? 0.08 : 0.16;
+  const minPsnrDb = isDetailRich ? 37.5 : isFlatGraphic ? 35.0 : 36.2;
+
+  const sceneLabel = isDetailRich
+    ? 'detail tepi & tekstur tinggi'
+    : isFlatGraphic
+    ? 'bidang warna halus / grafis'
+    : 'foto natural seimbang';
+
+  return {
+    codecPreference,
+    quality: Math.round(quality * 100) / 100,
+    sharpenAmount: Math.round(sharpenAmount * 100) / 100,
+    minPsnrDb,
+    videoCrf: 25,
+    maxVideoMbps: Number(preset?.targetVideoMbps) || 6.0,
+    summary: `Terdeteksi ${sceneLabel} (Edge ${Math.round(edgeDensity)}/100 · Entropi ${colorEntropy.toFixed(1)} bit). AI memilih prioritas ${codecPreference.toUpperCase()} q=${Math.round(quality * 100)}%, Unsharp +${Math.round(sharpenAmount * 100)}%, & pagar ketajaman PSNR ≥ ${minPsnrDb} dB.`,
+  };
+}
+
+/**
+ * Pure JSON parser & safety sanitizer for Keyless Public Multi-AI responses
+ * (Gemini/Gemma, ChatGPT/GPT-OSS, Claude/Mistral). Never throws on malformed output.
+ */
+export function parseAndSanitizeAiCompressionRecipe(rawText, fallbackRecipe) {
+  const base = {
+    codecPreference: 'webp',
+    quality: 0.66,
+    sharpenAmount: 0.16,
+    minPsnrDb: 36.0,
+    videoCrf: 25,
+    maxVideoMbps: 6.0,
+    summary: 'Optimasi perseptual multi-codec aktif.',
+    ...(fallbackRecipe || {}),
+  };
+
+  if (typeof rawText !== 'string' || !rawText.trim()) {
+    return { recipe: base, fromRemoteAi: false };
+  }
+
+  const cleaned = rawText
+    .replace(/```json/gi, '')
+    .replace(/```/g, '')
+    .trim();
+  const match = cleaned.match(/\{[\s\S]*\}/);
+  if (!match) {
+    return { recipe: base, fromRemoteAi: false };
+  }
+
+  try {
+    const parsed = JSON.parse(match[0]);
+    if (!parsed || typeof parsed !== 'object') {
+      return { recipe: base, fromRemoteAi: false };
+    }
+
+    const rawCodec = String(parsed.codecPreference || parsed.codec || '').toLowerCase().trim();
+    const allowedCodecs = new Set(['avif', 'webp', 'jpeg', 'jpg', 'h264']);
+    const codecPreference = allowedCodecs.has(rawCodec)
+      ? rawCodec === 'jpg'
+        ? 'jpeg'
+        : rawCodec
+      : base.codecPreference;
+
+    const rawQ = Number(parsed.quality);
+    const normalizedQ = Number.isFinite(rawQ)
+      ? rawQ > 1
+        ? rawQ / 100
+        : rawQ
+      : base.quality;
+    const quality = Math.round(Math.max(0.42, Math.min(0.88, normalizedQ)) * 100) / 100;
+
+    const rawSharp = Number(parsed.sharpenAmount ?? parsed.sharpen);
+    const sharpenAmount = Number.isFinite(rawSharp)
+      ? Math.round(Math.max(0, Math.min(0.38, rawSharp > 1 ? rawSharp / 100 : rawSharp)) * 100) / 100
+      : base.sharpenAmount;
+
+    const rawPsnr = Number(parsed.minPsnrDb ?? parsed.psnr);
+    const minPsnrDb = Number.isFinite(rawPsnr)
+      ? Math.round(Math.max(33.5, Math.min(43.0, rawPsnr)) * 10) / 10
+      : base.minPsnrDb;
+
+    const rawCrf = Number(parsed.videoCrf ?? parsed.crf);
+    const videoCrf = Number.isFinite(rawCrf)
+      ? Math.round(Math.max(20, Math.min(32, rawCrf)))
+      : base.videoCrf;
+
+    const rawMbps = Number(parsed.maxVideoMbps ?? parsed.bitrateMbps);
+    const maxVideoMbps = Number.isFinite(rawMbps)
+      ? Math.round(Math.max(1.2, Math.min(12.0, rawMbps)) * 10) / 10
+      : base.maxVideoMbps;
+
+    const rawSummary = String(parsed.summary || parsed.reason || '').trim();
+    const summary =
+      rawSummary.length >= 12 && rawSummary.length <= 260
+        ? rawSummary
+        : base.summary;
+
+    return {
+      recipe: {
+        codecPreference,
+        quality,
+        sharpenAmount,
+        minPsnrDb,
+        videoCrf,
+        maxVideoMbps,
+        summary,
+      },
+      fromRemoteAi: true,
+    };
+  } catch {
+    return { recipe: base, fromRemoteAi: false };
+  }
+}
+
 export function planMediaCompression(input = {}) {
   const mime = String(input.fileType || input.mediaKind || 'image/jpeg').toLowerCase();
   const isVideo = mime === 'video' || mime.startsWith('video/');
   const isImage = !isVideo;
 
   const method =
-    COMPRESSION_METHODS.find((m) => m.id === input.methodId) || COMPRESSION_METHODS[1];
+    COMPRESSION_METHODS.find((m) => m.id === input.methodId) ||
+    COMPRESSION_METHODS.find((m) => m.id === 'social-shield') ||
+    COMPRESSION_METHODS[0];
   const preset =
     COMPRESSION_PLATFORM_PRESETS.find((p) => p.id === input.presetId) ||
     COMPRESSION_PLATFORM_PRESETS[0];
@@ -2077,6 +2289,10 @@ export function planMediaCompression(input = {}) {
       ? 0.78
       : method.id === 'social-shield'
       ? 0.72
+      : method.id === 'ai-hybrid-super'
+      ? 0.66
+      : method.id === 'ultra-perceptual-avif'
+      ? 0.62
       : 0.58;
 
   const targetSavingsRatio =
@@ -2086,7 +2302,23 @@ export function planMediaCompression(input = {}) {
       ? 0.62
       : method.id === 'social-shield'
       ? 0.52
+      : method.id === 'ai-hybrid-super'
+      ? 0.28
+      : method.id === 'ultra-perceptual-avif'
+      ? 0.24
       : 0.36;
+
+  const usesAiAdvisor = method.id === 'ai-hybrid-super';
+  const enableMultiCodecRace =
+    method.id === 'ai-hybrid-super' || method.id === 'ultra-perceptual-avif';
+  const enableUnsharpRestore =
+    method.id === 'ai-hybrid-super' || method.id === 'ultra-perceptual-avif';
+  const minPsnrDb =
+    method.id === 'ai-hybrid-super'
+      ? 36.2
+      : method.id === 'ultra-perceptual-avif'
+      ? 35.5
+      : 34.0;
 
   const dur = Math.max(1, Number(input.durationSec) || 10);
   const targetMaxBytes = preset.targetMaxMb * 1024 * 1024;
@@ -2098,23 +2330,41 @@ export function planMediaCompression(input = {}) {
   );
 
   const estimatedRatio = resized
-    ? Math.min(targetSavingsRatio, Math.max(0.22, (targetWidth * targetHeight) / (origW * origH)))
+    ? Math.min(targetSavingsRatio, Math.max(0.16, (targetWidth * targetHeight) / (origW * origH)))
     : targetSavingsRatio;
   const estimatedOutputBytes = origBytes > 0 ? Math.round(origBytes * estimatedRatio) : 0;
   const estimatedSavedPercent =
     origBytes > 0
       ? Math.max(18, Math.round(((origBytes - estimatedOutputBytes) / origBytes) * 100))
+      : usesAiAdvisor || method.id === 'ultra-perceptual-avif'
+      ? 72
       : 45;
 
   const guardrails = isImage
-    ? [
-        'Engine Open-Source (Squoosh / Libvips Weserv / UPNG Quantizer) + Pembersihan EXIF/ICC',
-        `Penguncian resolusi piksel ${targetWidth}×${targetHeight} dengan pencarian biner kualitas adaptif`,
-        `Kuantisasi palet & tabel Huffman (${method.shortLabel} · Target Hemat ~${estimatedSavedPercent}%)`,
-        `Validasi ukuran byte nyata di bawah ambang kompresi ulang ${preset.label}`,
-      ]
+    ? usesAiAdvisor
+      ? [
+          'Analisis AI Tanpa API Key (Multi-AI Gemini / GPT / Mistral + Perceptual Vision Engine) untuk profil kualitas optimal',
+          `Perlombaan multi-codec generasi baru (AVIF / WebP / MozJPEG) pada resolusi ${targetWidth}×${targetHeight}px`,
+          `Pemulihan ketajaman tepi adaptif (Unsharp Mask) + pagar ketajaman visual PSNR ≥ ${minPsnrDb} dB`,
+          `Validasi byte nyata di bawah ambang kompresi ulang ${preset.label}`,
+        ]
+      : method.id === 'ultra-perceptual-avif'
+      ? [
+          'Engine 2-Pass Perceptual Multi-Codec Race (AVIF / WebP / MozJPEG) + Pembersihan EXIF/ICC',
+          `Penguncian resolusi ${targetWidth}×${targetHeight}px + filter pemulih ketajaman tepi (Unsharp Mask)`,
+          `Verifikasi kualitas PSNR ≥ ${minPsnrDb} dB untuk penghematan maksimal (~${estimatedSavedPercent}%) tanpa blur`,
+          `Validasi ukuran byte nyata untuk lolos kompresi ${preset.label}`,
+        ]
+      : [
+          'Engine Open-Source (Squoosh / Libvips Weserv / UPNG Quantizer) + Pembersihan EXIF/ICC',
+          `Penguncian resolusi piksel ${targetWidth}×${targetHeight} dengan pencarian biner kualitas adaptif`,
+          `Kuantisasi palet & tabel Huffman (${method.shortLabel} · Target Hemat ~${estimatedSavedPercent}%)`,
+          `Validasi ukuran byte nyata di bawah ambang kompresi ulang ${preset.label}`,
+        ]
     : [
-        'Engine Open-Source Video Bitstream Compactor + WebCodecs/MediaRecorder Transcoder',
+        usesAiAdvisor
+          ? 'Penyetelan CRF & bitrate oleh Multi-AI Tanpa Key + FFmpeg WebAssembly H.264 / AAC Lanczos'
+          : 'Engine Open-Source Video Bitstream Compactor + FFmpeg WebAssembly H.264 / AAC',
         `Optimasi resolusi frame ${targetWidth}×${targetHeight} dengan bitrate adaptif ${(videoBitrateBps / 1_000_000).toFixed(1)} Mbps`,
         `Pembersihan atom padding free/skip/udta & kompresi stream (${method.shortLabel})`,
         `Validasi penurunan ukuran byte nyata untuk lolos kompresi ${preset.label}`,
@@ -2134,6 +2384,10 @@ export function planMediaCompression(input = {}) {
     keepExactDimensions,
     resized,
     zeroVisualLoss: true,
+    usesAiAdvisor,
+    enableMultiCodecRace,
+    enableUnsharpRestore,
+    minPsnrDb,
     targetWidth,
     targetHeight,
     qualityFactor,
