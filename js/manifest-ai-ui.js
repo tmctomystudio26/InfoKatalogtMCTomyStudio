@@ -1,13 +1,14 @@
 /**
- * Manifest AI — Chat Workspace UI Controller (v60)
- * Multi-Model AI Ensemble (Gemini, ChatGPT, DeepSeek, Claude, Grok, Meta, Qwen, Mistral),
- * Real-Time Auto-Upgrading Model Registry, Per-User Rate Limit & Failover,
- * Unlimited Multi-Provider BYOK Vault, and Persistent Chat History.
+ * Manifest AI — Chat Workspace UI Controller (v64)
+ * Multi-Model AI Ensemble, Fullscreen Workspace Mode, Natural Multilingual &
+ * Code-Switching Neural Voice Reader (Male & Female), Strict Owner Privacy Guard,
+ * Real-Time Auto-Upgrading Model Registry, Multi-Provider BYOK Vault & Persistent History.
  */
 
 import {
   MANIFEST_AI_PROVIDERS,
   MANIFEST_AI_STORAGE_KEYS,
+  MANIFEST_AI_VOICE_CATALOG,
   createChatThread,
   deleteChatThread,
   deriveThreadTitle,
@@ -16,12 +17,13 @@ import {
   formatCooldownShort,
   getCooldownRemainingMs,
   getProviderMeta,
+  getVoiceProfileById,
   maskApiKey,
   normalizeChatThreads,
   renderMarkdownSafe,
   upsertByokKey,
   upsertChatThread,
-} from './manifest-ai-logic.js?v=63';
+} from './manifest-ai-logic.js?v=64';
 import {
   getCachedModelRegistry,
   isPuterAiReady,
@@ -36,7 +38,8 @@ import {
   signInPuterSdk,
   syncLiveModelRegistry,
   testByokKeyConnection,
-} from './manifest-ai.js?v=63';
+} from './manifest-ai.js?v=64';
+import { createManifestAiVoicePlayer } from './manifest-ai-voice.js?v=64';
 
 const STARTER_PROMPTS = Object.freeze([
   {
@@ -141,12 +144,16 @@ export function createManifestAiController({ onToast = () => {} } = {}) {
   const storedThreads = readStoredThreads();
   const initialThread = storedThreads[0] || createChatThread('Percakapan Baru');
 
+  const voicePlayer = createManifestAiVoicePlayer();
+  let savedScrollY = 0;
+
   const state = {
     threads: storedThreads.length > 0 ? storedThreads : [initialThread],
     activeThreadId: initialThread.id,
     historyQuery: '',
     drawerOpen: false,
-    activeModal: null, // 'models' | 'byok' | null
+    isFullscreen: false,
+    activeModal: null, // 'models' | 'byok' | 'voice' | null
     confirmClearAll: false,
     renamingThreadId: null,
     renameDraft: '',
@@ -155,9 +162,20 @@ export function createManifestAiController({ onToast = () => {} } = {}) {
     byokKeys: loadStoredByokKeys(),
     limitMap: loadStoredLimitMap(),
     registry: getCachedModelRegistry(),
+    catalogData: null,
     syncingRegistry: false,
     puterLoading: false,
     puterReady: isPuterAiReady(),
+
+    // Natural Multilingual Voice Reader state
+    voice: {
+      msgId: null,
+      isLoading: false,
+      isPlaying: false,
+      langBadge: '',
+      genderFilter: 'all',
+      langFilter: 'all',
+    },
 
     // BYOK form state
     byokForm: {
@@ -213,6 +231,185 @@ export function createManifestAiController({ onToast = () => {} } = {}) {
     if (!ta) return;
     ta.style.height = 'auto';
     ta.style.height = `${Math.min(180, Math.max(44, ta.scrollHeight))}px`;
+  }
+
+  function syncFullscreenBodyClass() {
+    if (typeof document === 'undefined') return;
+    document.body.classList.toggle('mai-fullscreen-open', Boolean(state.isFullscreen));
+  }
+
+  function enterFullscreen() {
+    if (state.isFullscreen) return;
+    savedScrollY = typeof window !== 'undefined' ? window.scrollY : 0;
+    state.isFullscreen = true;
+    syncFullscreenBodyClass();
+    render();
+    scrollMessagesToBottom();
+    // Optional native Fullscreen API on documentElement (persistent across re-renders so modals & toasts remain visible)
+    try {
+      const target = document.documentElement;
+      if (target && typeof target.requestFullscreen === 'function' && !document.fullscreenElement) {
+        Promise.resolve(target.requestFullscreen()).catch(() => {});
+      }
+    } catch {
+      // CSS fixed 100vw x 100dvh fullscreen already active
+    }
+  }
+
+  function exitFullscreen({ fromNativeEvent = false } = {}) {
+    if (!state.isFullscreen) return;
+    state.isFullscreen = false;
+    syncFullscreenBodyClass();
+    if (!fromNativeEvent && typeof document !== 'undefined' && document.fullscreenElement) {
+      try {
+        Promise.resolve(document.exitFullscreen()).catch(() => {});
+      } catch {
+        // Ignore
+      }
+    }
+    if (mounted) {
+      render();
+      if (typeof window !== 'undefined' && savedScrollY > 0) {
+        requestAnimationFrame(() => window.scrollTo(0, savedScrollY));
+      }
+    }
+  }
+
+  function toggleFullscreen() {
+    if (state.isFullscreen) {
+      exitFullscreen();
+    } else {
+      enterFullscreen();
+    }
+  }
+
+  const handleNativeFullscreenChange = () => {
+    if (!mounted) return;
+    if (!document.fullscreenElement && state.isFullscreen) {
+      // Only exit if the shell itself was the native fullscreen target and user pressed Esc natively
+      exitFullscreen({ fromNativeEvent: true });
+    }
+  };
+
+  function handleVoiceStateUpdate(nextVoice) {
+    state.voice.msgId = nextVoice.msgId;
+    state.voice.isLoading = nextVoice.isLoading;
+    state.voice.isPlaying = nextVoice.isPlaying;
+    state.voice.langBadge = nextVoice.langBadge || '';
+    if (mounted) {
+      // Update speak buttons & playback bar smoothly without losing input focus!
+      syncVoiceControlsInDom();
+    }
+  }
+
+  function syncVoiceControlsInDom() {
+    if (!hostEl) return;
+    const activeId = state.voice.msgId;
+    const isBusy = state.voice.isLoading || state.voice.isPlaying;
+
+    hostEl.querySelectorAll('[data-mai-speak-msg]').forEach((btn) => {
+      const mid = btn.getAttribute('data-mai-speak-msg');
+      const isThis = mid && mid === activeId && isBusy;
+      btn.classList.toggle('is-speaking', Boolean(isThis));
+      btn.setAttribute('aria-pressed', isThis ? 'true' : 'false');
+      if (isThis) {
+        btn.textContent = state.voice.isLoading
+          ? 'Memuat suara...'
+          : `Berhenti${state.voice.langBadge ? ` · ${state.voice.langBadge}` : ''}`;
+      } else {
+        btn.textContent = 'Dengarkan';
+      }
+    });
+
+    hostEl.querySelectorAll('[data-mai-preview-voice]').forEach((btn) => {
+      const vid = btn.getAttribute('data-mai-preview-voice');
+      const isThis = activeId === `preview:${vid}` && isBusy;
+      btn.classList.toggle('is-speaking', Boolean(isThis));
+      btn.textContent = isThis ? (state.voice.isLoading ? 'Memuat...' : 'Berhenti') : 'Coba';
+    });
+
+    const topVoiceBtn = hostEl.querySelector('[data-mai-action="open-voice"]');
+    if (topVoiceBtn) {
+      topVoiceBtn.classList.toggle('is-accent', Boolean(isBusy || state.prefs.voiceAutoRead));
+    }
+
+    const bar = hostEl.querySelector('#mai-voice-now-playing');
+    if (bar) {
+      const showBar = Boolean(isBusy && activeId && !String(activeId).startsWith('preview:'));
+      bar.hidden = !showBar;
+      if (showBar) {
+        const vp = getVoiceProfileById(state.prefs.voiceId);
+        const labelEl = bar.querySelector('[data-mai-voice-bar-label]');
+        if (labelEl) {
+          labelEl.textContent = state.voice.isLoading
+            ? `Menyiapkan suara ${vp.name}...`
+            : `Membacakan (${vp.name}${state.voice.langBadge ? ` · ${state.voice.langBadge}` : ''})`;
+        }
+      }
+    }
+  }
+
+  function stopVoicePlayback() {
+    voicePlayer.stop(handleVoiceStateUpdate);
+  }
+
+  function speakMessage(msgId, text) {
+    if (!text || !String(text).trim()) return;
+    if (state.voice.msgId === msgId && (state.voice.isLoading || state.voice.isPlaying)) {
+      stopVoicePlayback();
+      return;
+    }
+    voicePlayer.play({
+      msgId,
+      text,
+      catalogData: state.catalogData,
+      voiceId: state.prefs.voiceId,
+      rate: state.prefs.voiceRate,
+      style: state.prefs.voiceStyle,
+      codeSwitch: state.prefs.voiceCodeSwitch,
+      onStateChange: handleVoiceStateUpdate,
+      onError: (msg) => onToast(msg),
+    });
+  }
+
+  function previewVoiceProfile(voiceId) {
+    const previewKey = `preview:${voiceId}`;
+    if (state.voice.msgId === previewKey && (state.voice.isLoading || state.voice.isPlaying)) {
+      stopVoicePlayback();
+      return;
+    }
+    const vp = getVoiceProfileById(voiceId);
+    const sampleByGroup = {
+      id: 'Halo! Pak Salim membeli buku The King Of Madagascar and Island di perpustakaan yang melelang buku.',
+      multi: 'Halo! Saya Manifest AI. Pak Salim membeli buku The King Of Madagascar and Island di perpustakaan.',
+      en: 'Hello! Welcome to Manifest AI. Natural voice switching works smoothly for English and Indonesian.',
+      ms: 'Helo! Selamat datang ke Manifest AI dengan gaya pertuturan semula jadi.',
+      asia:
+        vp.baseLang === 'ja'
+          ? 'こんにちは！Manifest AIへようこそ。自然な声でお話しします。'
+          : vp.baseLang === 'ko'
+            ? '안녕하세요! Manifest AI입니다. 자연스러운 목소리로 읽어드립니다.'
+            : '你好！欢迎使用 Manifest AI，我可以为您自然朗读回答。',
+      ar: 'مرحباً بك في مانيفست إيه آي، أقرأ لك الإجابات بصوت طبيعي وواضح.',
+      eu:
+        vp.baseLang === 'fr'
+          ? 'Bonjour ! Bienvenue sur Manifest AI avec une voix naturelle.'
+          : vp.baseLang === 'es'
+            ? '¡Hola! Bienvenido a Manifest AI con una voz muy natural.'
+            : 'Hallo! Willkommen bei Manifest AI mit einer natürlichen Stimme.',
+    };
+    const sampleText = sampleByGroup[vp.langGroup] || sampleByGroup.id;
+    voicePlayer.play({
+      msgId: previewKey,
+      text: sampleText,
+      catalogData: state.catalogData,
+      voiceId,
+      rate: state.prefs.voiceRate,
+      style: state.prefs.voiceStyle,
+      codeSwitch: state.prefs.voiceCodeSwitch,
+      onStateChange: handleVoiceStateUpdate,
+      onError: (msg) => onToast(msg),
+    });
   }
 
   async function refreshRegistry(force = false) {
@@ -473,6 +670,13 @@ export function createManifestAiController({ onToast = () => {} } = {}) {
       state.threads = upsertChatThread(state.threads, finishedThread);
       state.lastError = null;
       persistThreads();
+
+      // Auto-read finished AI response when user enabled Auto-Baca Suara
+      if (state.prefs.voiceAutoRead && mounted && assistantMsg.content) {
+        setTimeout(() => {
+          if (mounted) speakMessage(assistantMsg.id, assistantMsg.content);
+        }, 120);
+      }
     } catch (err) {
       if (err?.message !== 'ABORTED' && !ctrl.signal.aborted) {
         state.limitMap = err?.limitMap || loadStoredLimitMap();
@@ -678,6 +882,13 @@ export function createManifestAiController({ onToast = () => {} } = {}) {
       `;
     }
 
+    const isSpeakingThis = state.voice.msgId === msg.id && (state.voice.isLoading || state.voice.isPlaying);
+    const speakLabel = isSpeakingThis
+      ? state.voice.isLoading
+        ? 'Memuat suara...'
+        : `Berhenti${state.voice.langBadge ? ` · ${state.voice.langBadge}` : ''}`
+      : 'Dengarkan';
+
     return `
       <article class="mai-msg mai-msg-assistant" aria-label="Jawaban Manifest AI">
         <div class="mai-assistant-avatar" aria-hidden="true">
@@ -690,6 +901,13 @@ export function createManifestAiController({ onToast = () => {} } = {}) {
 
           <div class="mai-msg-footer">
             <div class="mai-msg-actions">
+              <button
+                type="button"
+                class="mai-msg-act-btn mai-speak-btn ${isSpeakingThis ? 'is-speaking' : ''}"
+                data-mai-speak-msg="${escapeAiHtml(msg.id)}"
+                aria-pressed="${isSpeakingThis ? 'true' : 'false'}"
+                aria-label="${isSpeakingThis ? 'Hentikan pembacaan suara' : 'Dengarkan jawaban AI dengan suara natural'}"
+              >${escapeAiHtml(speakLabel)}</button>
               <button type="button" class="mai-msg-act-btn" data-mai-copy-msg="${escapeAiHtml(msg.id)}">Salin</button>
               ${
                 isLastAssistant && !state.sending
@@ -700,6 +918,126 @@ export function createManifestAiController({ onToast = () => {} } = {}) {
           </div>
         </div>
       </article>
+    `;
+  }
+
+  function renderVoiceModal() {
+    const selectedProfile = getVoiceProfileById(state.prefs.voiceId);
+    const filteredVoices = MANIFEST_AI_VOICE_CATALOG.filter((v) => {
+      if (state.voice.genderFilter !== 'all' && v.gender !== state.voice.genderFilter) return false;
+      if (state.voice.langFilter !== 'all' && v.langGroup !== state.voice.langFilter) return false;
+      return true;
+    });
+
+    return `
+      <div class="mai-modal-backdrop" data-mai-action="close-modal">
+        <div class="mai-modal mai-voice-modal" role="dialog" aria-modal="true" aria-labelledby="mai-voice-modal-title">
+          <div class="mai-modal-head">
+            <div>
+              <h3 id="mai-voice-modal-title" class="mai-modal-title">Mode Suara AI Natural & Campuran Bahasa</h3>
+              <p class="mai-modal-sub">
+                Suara aktif: <strong>${escapeAiHtml(selectedProfile.label)}</strong> (${selectedProfile.gender === 'male' ? 'Pria' : 'Wanita'}) · Pelafalan alami Indonesia, Inggris & multibahasa
+              </p>
+            </div>
+            <button type="button" class="mai-icon-btn" data-mai-action="close-modal" aria-label="Tutup pengaturan suara">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+            </button>
+          </div>
+
+          <div class="mai-modal-body">
+            <div class="mai-voice-settings-grid">
+              <label class="mai-check-row">
+                <input type="checkbox" id="mai-voice-codeswitch" ${state.prefs.voiceCodeSwitch ? 'checked' : ''} />
+                <span><strong>Deteksi Campuran Bahasa Otomatis</strong> — kata Indonesia dilafalkan bergaya Indonesia & kata Inggris/asing otomatis dilafalkan bergaya penutur asli (gender tetap selaras).</span>
+              </label>
+
+              <label class="mai-check-row">
+                <input type="checkbox" id="mai-voice-autoread" ${state.prefs.voiceAutoRead ? 'checked' : ''} />
+                <span><strong>Bacakan Jawaban AI Otomatis</strong> setiap kali Manifest AI selesai menjawab.</span>
+              </label>
+
+              <div class="mai-voice-sliders">
+                <label class="mai-field">
+                  <span class="mai-field-label">Kecepatan Bicara (<strong id="mai-voice-rate-val">${Number(state.prefs.voiceRate || 1.0).toFixed(2)}×</strong>)</span>
+                  <input
+                    type="range"
+                    id="mai-voice-rate"
+                    min="0.80"
+                    max="1.35"
+                    step="0.05"
+                    value="${Number(state.prefs.voiceRate || 1.0).toFixed(2)}"
+                  />
+                </label>
+
+                <label class="mai-field">
+                  <span class="mai-field-label">Gaya Intonasi Suara</span>
+                  <select id="mai-voice-style" class="mai-select">
+                    <option value="natural" ${state.prefs.voiceStyle === 'natural' ? 'selected' : ''}>Natural Santai (Seperti Manusia Asli)</option>
+                    <option value="ekspresif" ${state.prefs.voiceStyle === 'ekspresif' ? 'selected' : ''}>Ekspresif & Hangat</option>
+                    <option value="tenang" ${state.prefs.voiceStyle === 'tenang' ? 'selected' : ''}>Tenang & Narator Jelas</option>
+                  </select>
+                </label>
+              </div>
+            </div>
+
+            <div class="mai-voice-filters">
+              <div class="mai-mode-switch" role="group" aria-label="Filter gender suara">
+                <button type="button" class="mai-mode-btn ${state.voice.genderFilter === 'all' ? 'is-active' : ''}" data-mai-voice-gender="all">Semua (${MANIFEST_AI_VOICE_CATALOG.length})</button>
+                <button type="button" class="mai-mode-btn ${state.voice.genderFilter === 'female' ? 'is-active' : ''}" data-mai-voice-gender="female">Wanita</button>
+                <button type="button" class="mai-mode-btn ${state.voice.genderFilter === 'male' ? 'is-active' : ''}" data-mai-voice-gender="male">Pria</button>
+              </div>
+
+              <select id="mai-voice-lang-filter" class="mai-select mai-voice-lang-select" aria-label="Filter bahasa suara">
+                <option value="all" ${state.voice.langFilter === 'all' ? 'selected' : ''}>Semua Bahasa</option>
+                <option value="id" ${state.voice.langFilter === 'id' ? 'selected' : ''}>Indonesia Asli</option>
+                <option value="multi" ${state.voice.langFilter === 'multi' ? 'selected' : ''}>Multibahasa Natural</option>
+                <option value="en" ${state.voice.langFilter === 'en' ? 'selected' : ''}>Inggris (US & UK)</option>
+                <option value="ms" ${state.voice.langFilter === 'ms' ? 'selected' : ''}>Melayu</option>
+                <option value="asia" ${state.voice.langFilter === 'asia' ? 'selected' : ''}>Jepang, Korea & Mandarin</option>
+                <option value="ar" ${state.voice.langFilter === 'ar' ? 'selected' : ''}>Arab</option>
+                <option value="eu" ${state.voice.langFilter === 'eu' ? 'selected' : ''}>Prancis, Spanyol & Jerman</option>
+              </select>
+            </div>
+
+            <div class="mai-voice-grid" role="list" aria-label="Daftar pilihan suara AI">
+              ${
+                filteredVoices.length === 0
+                  ? `<p class="mai-empty-note">Tidak ada suara yang cocok dengan filter ini.</p>`
+                  : filteredVoices
+                      .map((v) => {
+                        const isSelected = v.id === state.prefs.voiceId;
+                        const isPreviewing =
+                          state.voice.msgId === `preview:${v.id}` && (state.voice.isLoading || state.voice.isPlaying);
+                        return `
+                          <div class="mai-voice-card ${isSelected ? 'is-selected' : ''}" role="listitem">
+                            <div class="mai-voice-card-info">
+                              <div class="mai-voice-card-head">
+                                <strong>${escapeAiHtml(v.name)}</strong>
+                                <span class="mai-voice-tag">${v.gender === 'male' ? 'Pria' : 'Wanita'} · ${escapeAiHtml(v.langLabel)}</span>
+                              </div>
+                              <p class="mai-voice-card-style">${escapeAiHtml(v.style)}</p>
+                            </div>
+                            <div class="mai-voice-card-actions">
+                              <button
+                                type="button"
+                                class="mai-mini-btn ${isPreviewing ? 'is-speaking' : ''}"
+                                data-mai-preview-voice="${escapeAiHtml(v.id)}"
+                              >${isPreviewing ? (state.voice.isLoading ? 'Memuat...' : 'Berhenti') : 'Coba'}</button>
+                              <button
+                                type="button"
+                                class="mai-mini-btn ${isSelected ? 'is-primary' : ''}"
+                                data-mai-select-voice="${escapeAiHtml(v.id)}"
+                              >${isSelected ? 'Aktif' : 'Pilih'}</button>
+                            </div>
+                          </div>
+                        `;
+                      })
+                      .join('')
+              }
+            </div>
+          </div>
+        </div>
+      </div>
     `;
   }
 
@@ -975,8 +1313,11 @@ export function createManifestAiController({ onToast = () => {} } = {}) {
         ? `Manifest AI · ${activeByokCount} API Key Pribadi Aktif`
         : 'Manifest AI · Gratis · Model diperbarui otomatis';
 
+    const activeVoice = getVoiceProfileById(state.prefs.voiceId);
+    const voiceBusy = Boolean((state.voice.isLoading || state.voice.isPlaying) && state.voice.msgId && !String(state.voice.msgId).startsWith('preview:'));
+
     hostEl.innerHTML = `
-      <div class="mai-shell">
+      <div class="mai-shell ${state.isFullscreen ? 'is-fullscreen' : ''}">
         <aside class="mai-sidebar ${state.drawerOpen ? 'is-open' : ''}" aria-label="Riwayat Chat Manifest AI">
           ${renderSidebarInner()}
         </aside>
@@ -1015,6 +1356,11 @@ export function createManifestAiController({ onToast = () => {} } = {}) {
                   : ''
               }
 
+              <button type="button" class="mai-top-btn ${voiceBusy || state.prefs.voiceAutoRead ? 'is-accent' : ''}" data-mai-action="open-voice" aria-label="Pengaturan suara AI">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/></svg>
+                <span>Suara</span>
+              </button>
+
               <button type="button" class="mai-top-btn" data-mai-action="open-models">
                 <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/></svg>
                 <span>Model Live</span>
@@ -1024,8 +1370,34 @@ export function createManifestAiController({ onToast = () => {} } = {}) {
                 <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m21 2-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0 3 3L22 7l-3-3m-3.5 3.5L19 4"/></svg>
                 <span>API Key${activeByokCount > 0 ? ` (${activeByokCount})` : ''}</span>
               </button>
+
+              <button
+                type="button"
+                class="mai-top-btn ${state.isFullscreen ? 'is-accent' : ''}"
+                data-mai-action="toggle-fullscreen"
+                aria-pressed="${state.isFullscreen ? 'true' : 'false'}"
+                aria-label="${state.isFullscreen ? 'Keluar dari layar penuh' : 'Buka layar penuh'}"
+              >
+                ${
+                  state.isFullscreen
+                    ? `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 3v3a2 2 0 0 1-2 2H3"/><path d="M21 8h-3a2 2 0 0 1-2-2V3"/><path d="M3 16h3a2 2 0 0 1 2 2v3"/><path d="M16 21v-3a2 2 0 0 1 2-2h3"/></svg><span>Keluar Full</span>`
+                    : `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 3H5a2 2 0 0 0-2 2v3"/><path d="M21 8V5a2 2 0 0 0-2-2h-3"/><path d="M3 16v3a2 2 0 0 0 2 2h3"/><path d="M16 21h3a2 2 0 0 0 2-2v-3"/></svg><span>Layar Penuh</span>`
+                }
+              </button>
             </div>
           </header>
+
+          <div class="mai-voice-bar" id="mai-voice-now-playing" ${voiceBusy ? '' : 'hidden'}>
+            <span class="mai-voice-bar-dot" aria-hidden="true"></span>
+            <span class="mai-voice-bar-text" data-mai-voice-bar-label>
+              ${
+                state.voice.isLoading
+                  ? `Menyiapkan suara ${escapeAiHtml(activeVoice.name)}...`
+                  : `Membacakan (${escapeAiHtml(activeVoice.name)}${state.voice.langBadge ? ` · ${escapeAiHtml(state.voice.langBadge)}` : ''})`
+              }
+            </span>
+            <button type="button" class="mai-mini-btn" data-mai-action="stop-voice">Berhenti</button>
+          </div>
 
           <div class="mai-messages-scroll" role="log" aria-live="polite" aria-label="Percakapan Manifest AI">
             <div class="mai-messages-inner">
@@ -1110,6 +1482,7 @@ export function createManifestAiController({ onToast = () => {} } = {}) {
 
       ${state.activeModal === 'models' ? renderModelsModal() : ''}
       ${state.activeModal === 'byok' ? renderByokModal() : ''}
+      ${state.activeModal === 'voice' ? renderVoiceModal() : ''}
     `;
 
     bindEvents();
@@ -1272,6 +1645,16 @@ export function createManifestAiController({ onToast = () => {} } = {}) {
             state.activeModal = 'byok';
             render();
             break;
+          case 'open-voice':
+            state.activeModal = 'voice';
+            render();
+            break;
+          case 'stop-voice':
+            stopVoicePlayback();
+            break;
+          case 'toggle-fullscreen':
+            toggleFullscreen();
+            break;
           case 'close-modal':
             state.activeModal = null;
             render();
@@ -1371,6 +1754,73 @@ export function createManifestAiController({ onToast = () => {} } = {}) {
       btn.addEventListener('click', () => handleTestByokKey(btn.getAttribute('data-mai-test-key')));
     });
 
+    // Per-message Listen / Stop Voice button
+    hostEl.querySelectorAll('[data-mai-speak-msg]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const msgId = btn.getAttribute('data-mai-speak-msg');
+        const msg = (getActiveThread().messages || []).find((m) => m.id === msgId);
+        if (msg) speakMessage(msg.id, msg.content);
+      });
+    });
+
+    // Voice Modal controls
+    hostEl.querySelector('#mai-voice-codeswitch')?.addEventListener('change', (e) => {
+      state.prefs.voiceCodeSwitch = Boolean(e.target.checked);
+      persistPrefs();
+    });
+
+    hostEl.querySelector('#mai-voice-autoread')?.addEventListener('change', (e) => {
+      state.prefs.voiceAutoRead = Boolean(e.target.checked);
+      persistPrefs();
+      syncVoiceControlsInDom();
+    });
+
+    hostEl.querySelector('#mai-voice-rate')?.addEventListener('input', (e) => {
+      const val = Number(e.target.value);
+      if (Number.isFinite(val)) {
+        state.prefs.voiceRate = val;
+        persistPrefs();
+        const label = hostEl.querySelector('#mai-voice-rate-val');
+        if (label) label.textContent = `${val.toFixed(2)}×`;
+      }
+    });
+
+    hostEl.querySelector('#mai-voice-style')?.addEventListener('change', (e) => {
+      state.prefs.voiceStyle = e.target.value;
+      persistPrefs();
+    });
+
+    hostEl.querySelectorAll('[data-mai-voice-gender]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        state.voice.genderFilter = btn.getAttribute('data-mai-voice-gender') || 'all';
+        render();
+      });
+    });
+
+    hostEl.querySelector('#mai-voice-lang-filter')?.addEventListener('change', (e) => {
+      state.voice.langFilter = e.target.value || 'all';
+      render();
+    });
+
+    hostEl.querySelectorAll('[data-mai-preview-voice]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const vid = btn.getAttribute('data-mai-preview-voice');
+        if (vid) previewVoiceProfile(vid);
+      });
+    });
+
+    hostEl.querySelectorAll('[data-mai-select-voice]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const vid = btn.getAttribute('data-mai-select-voice');
+        if (!vid) return;
+        state.prefs.voiceId = vid;
+        persistPrefs();
+        const vp = getVoiceProfileById(vid);
+        render();
+        onToast(`Suara diubah ke ${vp.label}.`);
+      });
+    });
+
     hostEl.querySelectorAll('[data-mai-remove-key]').forEach((btn) => {
       btn.addEventListener('click', () => {
         const kid = btn.getAttribute('data-mai-remove-key');
@@ -1392,6 +1842,8 @@ export function createManifestAiController({ onToast = () => {} } = {}) {
       } else if (state.drawerOpen) {
         state.drawerOpen = false;
         render();
+      } else if (state.isFullscreen) {
+        exitFullscreen();
       }
     }
   };
@@ -1401,15 +1853,24 @@ export function createManifestAiController({ onToast = () => {} } = {}) {
       hostEl = containerEl;
       mounted = true;
       document.addEventListener('keydown', handleGlobalKeydown);
+      document.addEventListener('fullscreenchange', handleNativeFullscreenChange);
       render();
       scrollMessagesToBottom();
       // Background auto-upgrade of flagship models & live Manifestudio catalog grounding
       refreshRegistry(false);
-      loadManifestudioCatalogData();
+      loadManifestudioCatalogData().then((data) => {
+        state.catalogData = data;
+      });
     },
     unmount() {
       mounted = false;
       document.removeEventListener('keydown', handleGlobalKeydown);
+      document.removeEventListener('fullscreenchange', handleNativeFullscreenChange);
+      if (state.isFullscreen) {
+        state.isFullscreen = false;
+        syncFullscreenBodyClass();
+      }
+      voicePlayer.destroy();
       if (activeAbort) {
         activeAbort.abort();
         activeAbort = null;

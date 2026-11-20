@@ -5,28 +5,39 @@ import {
   DEFAULT_MANIFESTUDIO_PROFILE,
   HF_GRADIO_FREE_SPACES,
   MANIFEST_AI_SYSTEM_PROMPT,
+  MANIFEST_AI_VOICE_CATALOG,
   OVH_FREE_DEFAULT_MODELS,
   buildLocalManifestudioFallback,
   buildManifestudioKnowledgeBlock,
   buildUnifiedContextMessages,
+  cleanTextForSpeech,
   detectTopicShift,
+  getVoiceProfileById,
   isManifestudioQuery,
   mergeLiveModelCatalog,
   planEnsembleExecution,
   recordProviderCooldown,
+  redactSensitiveOwnerData,
   renderMarkdownSafe,
+  resolveVoiceForSegment,
   sanitizeConversationHistory,
+  segmentMultilingualSpeech,
 } from './manifest-ai-logic.js';
 
 const liveCatalog = JSON.parse(
   fs.readFileSync(new URL('../data/catalog.json', import.meta.url), 'utf8')
 );
 
-test('Manifest AI v62 knows its creator Tomy, real Manifestudio products & 12 utilities (anti-hallucination)', () => {
+test('Manifest AI v64 knows its creator Tomy & real Manifestudio products while strictly protecting sensitive owner contacts', () => {
   assert.ok(MANIFEST_AI_SYSTEM_PROMPT.includes('Tomy'));
-  assert.ok(MANIFEST_AI_SYSTEM_PROMPT.includes('@tmctomystudio'));
   assert.ok(MANIFEST_AI_SYSTEM_PROMPT.includes('manifestudio.my.id'));
+  assert.ok(MANIFEST_AI_SYSTEM_PROMPT.includes('footer'));
+  assert.ok(MANIFEST_AI_SYSTEM_PROMPT.includes('62xxxxxxxxxx'));
   assert.ok(MANIFEST_AI_SYSTEM_PROMPT.includes('JANGAN pernah mengarang'));
+  // Privacy rule: system prompt must NEVER embed raw WhatsApp numbers or raw social handles
+  assert.equal(MANIFEST_AI_SYSTEM_PROMPT.includes('6285122936027'), false);
+  assert.equal(MANIFEST_AI_SYSTEM_PROMPT.includes('851-2293-6027'), false);
+  assert.equal(MANIFEST_AI_SYSTEM_PROMPT.includes('@tmctomystudio'), false);
 
   // Recognizes exact spelling AND common typos like "manefestudio"
   assert.equal(isManifestudioQuery('Ada apa aja di manefestudio'), true);
@@ -39,7 +50,11 @@ test('Manifest AI v62 knows its creator Tomy, real Manifestudio products & 12 ut
   assert.ok(knowledge.includes('Netflix Premium'));
   assert.ok(knowledge.includes('Drama China'));
   assert.ok(knowledge.includes('Audio Editor'));
-  assert.ok(knowledge.includes('6285122936027'));
+  assert.ok(knowledge.includes('footer'));
+  assert.ok(knowledge.includes('62xxxxxxxxxx'));
+  // Raw owner phone/social must NOT be exposed in knowledge block
+  assert.equal(knowledge.includes('6285122936027'), false);
+  assert.equal(knowledge.includes('@tmctomystudio'), false);
 
   // Local fallback handles casual "P" greeting and Manifestudio identity queries accurately
   const pingReply = buildLocalManifestudioFallback('P', liveCatalog);
@@ -50,6 +65,9 @@ test('Manifest AI v62 knows its creator Tomy, real Manifestudio products & 12 ut
   assert.ok(brandReply.includes('Manifestudio'));
   assert.ok(brandReply.includes('Tomy'));
   assert.ok(brandReply.includes('Menu Utilitas'));
+  assert.ok(brandReply.includes('footer'));
+  assert.equal(brandReply.includes('6285122936027'), false);
+  assert.equal(brandReply.includes('@tmctomystudio'), false);
   assert.equal(/AR\/VR|studio kreatif.*game/i.test(brandReply), false);
 
   // Unrelated general queries do NOT hijack normal LLM routing
@@ -174,3 +192,87 @@ test('Manifest AI v63 rotates across 4 independent free networks and survives fu
   assert.ok(html.includes('<strong>Manifestudio</strong>') && !html.includes('<script>'));
   assert.ok(DEFAULT_MANIFESTUDIO_PROFILE.utilities.length === 12);
 });
+
+test('Manifest AI v64 strictly censors leaked owner WhatsApp, phones, socials, and emails while preserving prices & normal numbers', () => {
+  const leaked = [
+    'Hubungi admin Tomy di +62 851-2293-6027 atau 085122936027.',
+    'Link WA: https://wa.me/6285122936027?text=Halo',
+    'Sosmed resmi: @tmctomystudio, https://instagram.com/tmctomystudio, dan github.com/tmctomystudio26.',
+    'Email: tomy@manifestudio.my.id.',
+    'Harga Netflix Premium mulai Rp25.000, CapCut Pro Rp50.000 di tahun 2026.',
+  ].join(' ');
+
+  const safe = redactSensitiveOwnerData(leaked, liveCatalog);
+
+  // Must NOT leak any raw owner contact or social handle
+  assert.equal(safe.includes('6285122936027'), false);
+  assert.equal(safe.includes('851-2293-6027'), false);
+  assert.equal(safe.includes('085122936027'), false);
+  assert.equal(safe.includes('wa.me/62851'), false);
+  assert.equal(safe.includes('@tmctomystudio'), false);
+  assert.equal(safe.includes('instagram.com/tmctomystudio'), false);
+  assert.equal(safe.includes('tmctomystudio26'), false);
+  assert.equal(safe.includes('tomy@manifestudio.my.id'), false);
+
+  // Must contain masked placeholders
+  assert.ok(safe.includes('62xxxxxxxxxx'));
+  assert.ok(safe.includes('@t***********o'));
+
+  // Must preserve normal prices and years untouched
+  assert.ok(safe.includes('Rp25.000'));
+  assert.ok(safe.includes('Rp50.000'));
+  assert.ok(safe.includes('2026'));
+});
+
+test('Manifest AI v64 natural multilingual voice catalog & code-switching engine handles mixed Indonesian/English seamlessly', () => {
+  // Catalog must provide rich Male & Female voices across many languages including Indonesian
+  assert.ok(MANIFEST_AI_VOICE_CATALOG.length >= 25);
+  const males = MANIFEST_AI_VOICE_CATALOG.filter((v) => v.gender === 'male');
+  const females = MANIFEST_AI_VOICE_CATALOG.filter((v) => v.gender === 'female');
+  const idVoices = MANIFEST_AI_VOICE_CATALOG.filter((v) => v.baseLang === 'id');
+  assert.ok(males.length >= 10);
+  assert.ok(females.length >= 10);
+  assert.ok(idVoices.some((v) => v.gender === 'male'));
+  assert.ok(idVoices.some((v) => v.gender === 'female'));
+  assert.equal(getVoiceProfileById('id-gadis').edgeVoice, 'id-ID-GadisNeural - id-ID (Female)');
+  assert.equal(getVoiceProfileById('id-ardi').edgeVoice, 'id-ID-ArdiNeural - id-ID (Male)');
+
+  // Exact user code-switching test case:
+  // "pak salim membeli buku The King Of Madagascar and Island di perpustakaan yang melelang buku"
+  const mixedSentence = 'pak salim membeli buku The King Of Madagascar and Island di perpustakaan yang melelang buku';
+  const segments = segmentMultilingualSpeech(mixedSentence, 'id', { codeSwitch: true });
+  assert.deepEqual(segments, [
+    { lang: 'id', text: 'pak salim membeli buku' },
+    { lang: 'en', text: 'The King Of Madagascar and Island' },
+    { lang: 'id', text: 'di perpustakaan yang melelang buku' },
+  ]);
+
+  // Gender consistency across language switches:
+  // Female Indonesian voice -> English segment uses Female AvaMultilingualNeural
+  const femaleIdSeg = resolveVoiceForSegment('id-gadis', 'id', true);
+  const femaleEnSeg = resolveVoiceForSegment('id-gadis', 'en', true);
+  assert.equal(femaleIdSeg.edgeVoice, 'id-ID-GadisNeural - id-ID (Female)');
+  assert.equal(femaleEnSeg.edgeVoice, 'en-US-AvaMultilingualNeural - en-US (Female)');
+  assert.equal(femaleEnSeg.gender, 'female');
+
+  // Male Indonesian voice -> English segment uses Male AndrewMultilingualNeural
+  const maleIdSeg = resolveVoiceForSegment('id-ardi', 'id', true);
+  const maleEnSeg = resolveVoiceForSegment('id-ardi', 'en', true);
+  assert.equal(maleIdSeg.edgeVoice, 'id-ID-ArdiNeural - id-ID (Male)');
+  assert.equal(maleEnSeg.edgeVoice, 'en-US-AndrewMultilingualNeural - en-US (Male)');
+  assert.equal(maleEnSeg.gender, 'male');
+
+  // Non-Latin code-switching (Indonesian + Japanese + Arabic)
+  const triSegments = segmentMultilingualSpeech('Halo teman こんにちは dunia مرحبا semuanya', 'id', { codeSwitch: true });
+  assert.ok(triSegments.some((s) => s.lang === 'id'));
+  assert.ok(triSegments.some((s) => s.lang === 'ja' && s.text.includes('こんにちは')));
+  assert.ok(triSegments.some((s) => s.lang === 'ar' && s.text.includes('مرحبا')));
+
+  // cleanTextForSpeech strips markdown & masks sensitive owner numbers cleanly before TTS
+  const spoken = cleanTextForSpeech('**Halo!** Kontak WA +62 851-2293-6027 dan ```js\nconsole.log(1)\n```', liveCatalog);
+  assert.equal(spoken.includes('**'), false);
+  assert.equal(spoken.includes('851-2293-6027'), false);
+  assert.ok(spoken.includes('nomor yang disensor'));
+  assert.ok(spoken.includes('Potongan kode tersedia di layar'));
+});
+

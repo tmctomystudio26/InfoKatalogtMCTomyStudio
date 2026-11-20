@@ -1,5 +1,5 @@
 /**
- * Manifest AI — Instant Streaming Multi-Model Engine (v63)
+ * Manifest AI — Instant Streaming Multi-Model Engine (v64)
  * - 4 independent keyless CORS streaming networks: LLM7 + Pollinations (45s reset) + OVHcloud (14+ flagship models) + HF Spaces
  * - Real-time SSE token streaming (instant ChatGPT/Gemini feel) across BYOK, Puter & keyless gateways
  * - Live Manifestudio catalog.json grounding (knows Tomy, products & 12 utilities — zero hallucination)
@@ -18,7 +18,8 @@ import {
   normalizeLimitMap,
   planEnsembleExecution,
   recordProviderCooldown,
-} from './manifest-ai-logic.js?v=63';
+  redactSensitiveOwnerData,
+} from './manifest-ai-logic.js?v=64';
 
 const MODEL_SYNC_TTL_MS = 6 * 60 * 60 * 1000; // 6 hours auto-refresh
 const REQUEST_TIMEOUT_MS = 26000;
@@ -95,11 +96,18 @@ export function saveStoredByokKeys(keys) {
 
 export function loadStoredPrefs() {
   const raw = safeReadJson(MANIFEST_AI_STORAGE_KEYS.prefs, {});
+  const validRate = Number(raw?.voiceRate);
+  const voiceStyle = ['natural', 'ekspresif', 'tenang'].includes(raw?.voiceStyle) ? raw.voiceStyle : 'natural';
   return {
     mode: raw?.mode === 'single' ? 'single' : 'ensemble',
     focusProviderId: String(raw?.focusProviderId || 'gemini'),
     combineByokWithFree: raw?.combineByokWithFree !== false,
     usePuterFreeSdk: raw?.usePuterFreeSdk !== false,
+    voiceId: String(raw?.voiceId || 'id-gadis'),
+    voiceRate: Number.isFinite(validRate) ? Math.max(0.8, Math.min(1.35, validRate)) : 1.0,
+    voiceStyle,
+    voiceCodeSwitch: raw?.voiceCodeSwitch !== false,
+    voiceAutoRead: raw?.voiceAutoRead === true,
   };
 }
 
@@ -1142,12 +1150,18 @@ export async function sendManifestAiMessage({
   let failoverUsed = false;
   const allFailures = [];
 
+  const safeOnDelta = (partial) => {
+    if (onDelta) {
+      onDelta(redactSensitiveOwnerData(partial, liveCatalog));
+    }
+  };
+
   // Stagger free primary calls (burns 1 request on normal replies instead of 3x!); race BYOK keys directly
   const isFreeOnlyPrimary = plan.primary.every((t) => t.channel !== 'byok');
 
   const primaryRes = await raceStreamingBatch(plan.primary, unifiedMessages, {
     signal,
-    onDelta,
+    onDelta: safeOnDelta,
     onCooldown: recordCooldown,
     staggerMs: isFreeOnlyPrimary ? FREE_HEDGE_DELAY_MS : 0,
   });
@@ -1166,7 +1180,7 @@ export async function sendManifestAiMessage({
 
       const backupRes = await raceStreamingBatch([backupTarget], unifiedMessages, {
         signal,
-        onDelta,
+        onDelta: safeOnDelta,
         onCooldown: recordCooldown,
         staggerMs: 0,
       });
@@ -1206,7 +1220,7 @@ export async function sendManifestAiMessage({
         };
         const pollRes = await raceStreamingBatch([pollTarget], unifiedMessages, {
           signal,
-          onDelta,
+          onDelta: safeOnDelta,
           onCooldown: recordCooldown,
           staggerMs: 0,
         });
@@ -1220,14 +1234,15 @@ export async function sendManifestAiMessage({
   if (!winner) {
     const localReply = buildLocalManifestudioFallback(prompt, liveCatalog);
     if (localReply) {
-      if (onDelta) onDelta(localReply);
+      const safeLocal = redactSensitiveOwnerData(localReply, liveCatalog);
+      if (onDelta) onDelta(safeLocal);
       return {
-        content: localReply,
+        content: safeLocal,
         meta: {
           mode,
           failoverUsed: true,
           providerId: 'manifestudio-local',
-          model: 'manifestudio-catalog-v63',
+          model: 'manifestudio-catalog-v64',
           latencyMs: 20,
         },
         limitMap,
@@ -1251,8 +1266,10 @@ export async function sendManifestAiMessage({
     recordCooldown(winner.id, OVH_PER_MODEL_COOLDOWN_MS, 'Kuota model OVH terpakai');
   }
 
+  const sanitizedContent = redactSensitiveOwnerData(winner.content, liveCatalog);
+
   return {
-    content: winner.content,
+    content: sanitizedContent,
     meta: {
       mode,
       failoverUsed,

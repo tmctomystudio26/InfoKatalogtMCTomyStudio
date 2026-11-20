@@ -18,12 +18,10 @@ export const DEFAULT_MANIFESTUDIO_PROFILE = Object.freeze({
   brandName: 'Manifestudio',
   creator: 'Tomy',
   website: 'https://manifestudio.my.id/',
-  whatsapp: '+62 851-2293-6027',
-  whatsappUrl: 'https://wa.me/6285122936027',
-  tiktok: '@tmctomystudio',
-  instagram: '@tmctomystudio',
+  whatsappMasked: '62xxxxxxxxxx',
+  socialMasked: '@t***********o',
   summary:
-    'Platform web katalog akun premium & layanan digital murah bergaransi sekaligus Menu Utilitas 12 fitur gratis tanpa iklan, dibuat dan dikelola oleh Tomy (@tmctomystudio).',
+    'Platform web katalog akun premium & layanan digital murah bergaransi sekaligus Menu Utilitas 12 fitur gratis tanpa iklan, dibuat dan dikelola oleh Tomy.',
   utilities: [
     'Jadwal Sholat & Imsakiyah (resmi Kemenag RI + GPS)',
     'Prakiraan Cuaca Real-Time (curah hujan, UV, 7 hari)',
@@ -62,17 +60,18 @@ export const DEFAULT_MANIFESTUDIO_PROFILE = Object.freeze({
 });
 
 export const MANIFEST_AI_SYSTEM_PROMPT = [
-  'Kamu adalah Manifest AI, asisten AI resmi milik Manifestudio (https://manifestudio.my.id/) yang dibuat dan dikelola oleh Tomy (@tmctomystudio).',
-  'Identitas resmi Manifestudio: Platform katalog akun premium & layanan digital murah bergaransi (seperti CapCut Pro, Netflix, Canva Pro, YouTube Premium, Spotify, Viu, Vidio, Alight Motion, WeTV, Prime Video, Cek Turnitin, Zoom Pro, Bstation, Picsart, Wink, Remini, Gemini AI) sekaligus Menu Utilitas berisi 12 fitur gratis tanpa iklan (Jadwal Sholat, Cuaca, Jam Dunia 3D, Speedtest, Downloader Sosmed, Kompresor HD, Konversi File, Cari Judul Lagu, YT Music, Drama China/Dracin, Audio Editor Studio AI, dan Manifest AI). Kontak resmi: WhatsApp Admin +62 851-2293-6027, TikTok & Instagram @tmctomystudio.',
+  'Kamu adalah Manifest AI, asisten AI resmi milik Manifestudio (https://manifestudio.my.id/) yang dibuat dan dikelola oleh Tomy.',
+  'Identitas resmi Manifestudio: Platform katalog akun premium & layanan digital murah bergaransi (seperti CapCut Pro, Netflix, Canva Pro, YouTube Premium, Spotify, Viu, Vidio, Alight Motion, WeTV, Prime Video, Cek Turnitin, Zoom Pro, Bstation, Picsart, Wink, Remini, Gemini AI) sekaligus Menu Utilitas berisi 12 fitur gratis tanpa iklan (Jadwal Sholat, Cuaca, Jam Dunia 3D, Speedtest, Downloader Sosmed, Kompresor HD, Konversi File, Cari Judul Lagu, YT Music, Drama China/Dracin, Audio Editor Studio AI, dan Manifest AI).',
   'Aturan WAJIB:',
   '1. Selalu jawab PESAN TERAKHIR pengguna secara langsung. Jika pengguna mengganti topik ke hal baru, segera ikuti topik baru dan JANGAN memaksa kembali ke topik lama.',
   '2. Jika pengguna mengirim sapaan singkat (seperti "P", "Halo", "Hai", "Tes"), balas singkat dan ramah menanyakan apa yang bisa dibantu.',
   '3. Anti-halusinasi: JANGAN pernah mengarang bahwa Manifestudio membuat game, AR/VR, animasi, atau agensi seni digital. Gunakan hanya fakta resmi Manifestudio di atas.',
-  '4. Jawab dalam bahasa yang sama dengan pengguna (utamakan Bahasa Indonesia yang natural, akurat, ringkas, dan rapi dengan Markdown bila perlu).',
+  '4. PRIVASI OWNER (WAJIB): JANGAN pernah mengungkapkan data sensitif pemilik/admin (nomor WhatsApp/telepon, akun media sosial, email, atau kontak pribadi). Jika pengguna menanyakan nomor WA, kontak admin, atau sosmed, arahkan pengguna ke tombol kontak & media sosial resmi di bagian footer (bawah halaman) website Manifestudio, dan bila perlu menyebut format kontak selalu sensor menjadi 62xxxxxxxxxx atau @t***********o.',
+  '5. Jawab dalam bahasa yang sama dengan pengguna (utamakan Bahasa Indonesia yang natural, akurat, ringkas, dan rapi dengan Markdown bila perlu).',
 ].join('\n');
 
 const MANIFESTUDIO_QUERY_RE =
-  /\b(man[ie]f[eu]s?t?studio|manifest\s*studio|manifest\s*ai|tomy|tmctomystudio|tuan|pemilik|pembuat|pencipta|siapa\s+(kamu|anda|pembuat|pemilik|tuan)|kamu\s+siapa|anda\s+siapa|katalog|akun\s+premium|menu\s+utilitas|fitur\s+di\s+sini|kontak\s+admin|whatsapp\s+admin|wa\s+admin|cara\s+order|cara\s+pesan|bayar\s+nanti|bayar\s+belakangan|capcut|netflix|canva|turnitin|dracin|drama\s+china|audio\s+editor)\b/i;
+  /\b(man[ie]f[eu]s?t?studio|manifest\s*studio|manifest\s*ai|tomy|tmctomystudio|tuan|pemilik|pembuat|pencipta|siapa\s+(kamu|anda|pembuat|pemilik|tuan)|kamu\s+siapa|anda\s+siapa|katalog|akun\s+premium|menu\s+utilitas|fitur\s+di\s+sini|kontak\s+admin|whatsapp\s+admin|wa\s+admin|sosmed|media\s+sosial|instagram|tiktok|cara\s+order|cara\s+pesan|bayar\s+nanti|bayar\s+belakangan|capcut|netflix|canva|turnitin|dracin|drama\s+china|audio\s+editor)\b/i;
 
 export function isManifestudioQuery(text = '') {
   return MANIFESTUDIO_QUERY_RE.test(String(text || ''));
@@ -84,18 +83,98 @@ function formatIdrSimple(n) {
   return `Rp${Math.round(num).toLocaleString('id-ID')}`;
 }
 
+function escapeRegexLiteral(str = '') {
+  return String(str || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function maskSocialHandle(handle = '') {
+  const clean = String(handle || '').trim().replace(/^@+/, '');
+  if (!clean) return '@t***********o';
+  if (clean.length <= 3) return `@${clean[0] || 't'}***`;
+  return `@${clean[0]}${'*'.repeat(Math.min(11, clean.length - 2))}${clean[clean.length - 1]}`;
+}
+
+/**
+ * Defense-in-depth owner privacy guard: masks any sensitive owner WhatsApp/phone number,
+ * social media handle/URL, or personal email that any LLM might attempt to output,
+ * replacing them with safe censored placeholders (62xxxxxxxxxx / @t***********o)
+ * while preserving normal prices (Rp25.000), dates, and general numbers.
+ */
+export function redactSensitiveOwnerData(text = '', catalogData = null) {
+  let out = String(text || '');
+  if (!out) return '';
+
+  const brand = catalogData?.brand || {};
+  const waRaw = String(brand.whatsappNumber || '6285122936027').replace(/\D/g, '');
+  const waCandidates = new Set([waRaw, '6285122936027'].filter((x) => x.length >= 9));
+
+  // Build local (08...) variants for each owner WhatsApp number
+  const digitPatterns = new Set();
+  for (const num of waCandidates) {
+    digitPatterns.add(num);
+    if (num.startsWith('62')) {
+      digitPatterns.add(`0${num.slice(2)}`);
+      digitPatterns.add(num.slice(2));
+    }
+  }
+
+  // 1. Censor wa.me / api.whatsapp.com URLs pointing to owner or any direct phone link
+  out = out.replace(/https?:\/\/(?:wa\.me|api\.whatsapp\.com\/send\?phone=)\/?\d{8,15}/gi, '62xxxxxxxxxx');
+  out = out.replace(/\bwa\.me\/\d{8,15}\b/gi, '62xxxxxxxxxx');
+
+  // 2. Censor exact owner WhatsApp number in ANY separator formatting (+62 851-2293-6027, 0851 2293 6027, etc.)
+  for (const digits of digitPatterns) {
+    if (digits.length < 9) continue;
+    const flexPattern = digits
+      .split('')
+      .map((d) => escapeRegexLiteral(d))
+      .join('[\\s\\-().]*');
+    const re = new RegExp(`(?:\\+?\\s*)?${flexPattern}`, 'g');
+    out = out.replace(re, '62xxxxxxxxxx');
+  }
+
+  // 3. Censor owner social handles & direct social URLs (TikTok, Instagram, etc.)
+  const rawHandles = new Set(
+    [
+      String(brand.instagramHandle || ''),
+      String(brand.tiktokHandle || ''),
+      '@tmctomystudio',
+      'tmctomystudio26',
+    ]
+      .map((h) => h.trim().replace(/^@+/, ''))
+      .filter((h) => h.length >= 4)
+  );
+
+  for (const handle of rawHandles) {
+    const masked = maskSocialHandle(handle);
+    const esc = escapeRegexLiteral(handle);
+    out = out.replace(
+      new RegExp(`https?:\\/\\/(?:www\\.)?(?:instagram\\.com|tiktok\\.com|facebook\\.com|x\\.com|twitter\\.com|t\\.me)\\/@?${esc}[^\\s)]*`, 'gi'),
+      masked
+    );
+    out = out.replace(new RegExp(`@?\\b${esc}\\b`, 'gi'), masked);
+  }
+
+  // 4. Censor any email address linked to owner/manifestudio
+  out = out.replace(/\b[a-zA-Z0-9._%+-]*(?:tomy|manifestudio)[a-zA-Z0-9._%+-]*@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}\b/gi, 't***@*****.***');
+
+  // 5. Contextual safeguard: if a sentence mentions WA/WhatsApp/kontak/admin/owner/Tomy alongside
+  //    a raw Indonesian phone number (+628... / 08...), censor that number to 62xxxxxxxxxx.
+  if (/(?:whatsapp|\bwa\b|kontak|telepon|telp|hubungi|admin|owner|pemilik|tomy|manifestudio)/i.test(out)) {
+    out = out.replace(/(?:\+?62|0)\s*8[\d\s\-().]{7,14}\d/g, '62xxxxxxxxxx');
+  }
+
+  return out;
+}
+
 /**
  * Builds a concise, 100% factual Manifestudio knowledge block directly from live
- * `data/catalog.json` (with safe defaults) so Manifest AI NEVER hallucinates products or services.
+ * `data/catalog.json` (with safe defaults) WITHOUT exposing sensitive owner phone/social data.
  */
 export function buildManifestudioKnowledgeBlock(catalogData = null) {
   const brand = catalogData?.brand || {};
   const name = String(brand.name || DEFAULT_MANIFESTUDIO_PROFILE.brandName);
   const tagline = String(brand.tagline || 'by Tomy');
-  const waNum = String(brand.whatsappNumber || '6285122936027');
-  const waFormatted = waNum.startsWith('62') ? `+${waNum}` : waNum;
-  const ig = String(brand.instagramHandle || DEFAULT_MANIFESTUDIO_PROFILE.instagram);
-  const tt = String(brand.tiktokHandle || DEFAULT_MANIFESTUDIO_PROFILE.tiktok);
 
   const liveProducts = Array.isArray(catalogData?.products) && catalogData.products.length > 0
     ? catalogData.products
@@ -119,12 +198,11 @@ export function buildManifestudioKnowledgeBlock(catalogData = null) {
   return [
     `[DATA RESMI TERVERIFIKASI ${name.toUpperCase()} (${tagline}) — WAJIB DIJADIKAN ACUAN UTAMA]`,
     `- Nama Platform: ${name} (${tagline}) · Situs resmi: https://manifestudio.my.id/`,
-    `- Pemilik / Pengelola / Tuan: Tomy (${tt} / ${ig})`,
-    `- Kontak Resmi: WhatsApp Admin ${waFormatted} (https://wa.me/${waNum}), TikTok ${tt}, Instagram ${ig}`,
-    `- Promo & Pembayaran: Potongan otomatis ${formatIdrSimple(discAmt)} mulai belanja ${formatIdrSimple(threshold)}, dukungan kode voucher, opsi Bayar Sekarang (0%) atau Bayar Belakangan, struk otomatis & konfirmasi via WhatsApp.`,
+    `- Pemilik / Pengelola / Tuan: Tomy (privasi kontak dilindungi — JANGAN sebut nomor WA atau username sosmed asli; sensor menjadi 62xxxxxxxxxx / @t***********o dan arahkan pengguna ke tombol resmi di footer website).`,
+    `- Promo & Pembayaran: Potongan otomatis ${formatIdrSimple(discAmt)} mulai belanja ${formatIdrSimple(threshold)}, dukungan kode voucher, opsi Bayar Sekarang (0%) atau Bayar Belakangan, struk otomatis & konfirmasi pesanan.`,
     `- Daftar Katalog Layanan Digital (${liveProducts.length} produk): ${liveProducts.join(', ')}.`,
     `- Daftar Menu Utilitas Gratis Tanpa Iklan (${liveUtilities.length} fitur di tools.html): ${liveUtilities.join('; ')}.`,
-    `- LARANGAN KERAS: Jangan pernah menyebut atau mengarang layanan di luar daftar resmi ini (seperti pembuatan game, AR/VR, animasi, atau agensi seni digital).`,
+    `- LARANGAN KERAS: Jangan pernah menyebut layanan fiktif di luar daftar ini (game, AR/VR, animasi, seni digital) dan JANGAN pernah membocorkan nomor WhatsApp, akun sosmed, atau kontak pribadi owner tanpa sensor.`,
   ].join('\n');
 }
 
@@ -132,6 +210,7 @@ export function buildManifestudioKnowledgeBlock(catalogData = null) {
  * Generates an accurate, verified Indonesian response directly from live Manifestudio data
  * when external free gateways are temporarily cooling down and the user asks about
  * Manifestudio, its creator Tomy, products, utilities, or sends a quick greeting.
+ * Respects strict owner privacy: masks phone/socials and points to website footer.
  */
 export function buildLocalManifestudioFallback(prompt = '', catalogData = null) {
   const raw = String(prompt || '').trim();
@@ -143,6 +222,15 @@ export function buildLocalManifestudioFallback(prompt = '', catalogData = null) 
     return 'Halo! Saya **Manifest AI** dari **Manifestudio** (*by Tomy*). Ada yang bisa saya bantu hari ini?';
   }
 
+  // Direct owner contact / WhatsApp / social media inquiry -> privacy-safe reply pointing to footer
+  if (/\b(nomor\s*(wa|whatsapp|hp|telepon)|no\s*(wa|whatsapp|hp)|kontak\s*(admin|owner|tomy|pemilik)|sosmed|media\s*sosial|instagram|tiktok)\b/i.test(lower)) {
+    return [
+      'Demi menjaga privasi pemilik (**Tomy**), Manifest AI tidak menampilkan nomor WhatsApp maupun akun media sosial secara terbuka (`62xxxxxxxxxx` · `@t***********o`).',
+      '',
+      'Untuk menghubungi **WhatsApp Admin** atau mengunjungi **media sosial resmi Manifestudio**, silakan langsung klik tombol kontak & sosmed resmi yang sudah tersedia di **bagian footer (bawah halaman)** website ini.',
+    ].join('\n');
+  }
+
   // Identity / creator / "what is Manifestudio" / "what's in Manifestudio"
   const asksAboutManifestudio =
     /\b(man[ie]f[eu]s?t?studio|manifest\s*studio|manifest\s*ai)\b/i.test(lower) ||
@@ -150,10 +238,6 @@ export function buildLocalManifestudioFallback(prompt = '', catalogData = null) 
 
   if (!asksAboutManifestudio) return '';
 
-  const brand = catalogData?.brand || {};
-  const waNum = String(brand.whatsappNumber || '6285122936027');
-  const ig = String(brand.instagramHandle || '@tmctomystudio');
-  const tt = String(brand.tiktokHandle || '@tmctomystudio');
   const products = Array.isArray(catalogData?.products) && catalogData.products.length > 0
     ? catalogData.products.slice(0, 12).map((p) => p.name)
     : ['CapCut Pro', 'Netflix Premium', 'Canva Pro', 'YouTube Premium', 'Spotify Premium', 'Viu', 'Vidio', 'Alight Motion', 'WeTV', 'Prime Video', 'Cek Turnitin', 'Zoom Pro', 'Gemini AI'];
@@ -164,12 +248,12 @@ export function buildLocalManifestudioFallback(prompt = '', catalogData = null) 
   return [
     'Halo! Saya **Manifest AI**, asisten resmi milik **Manifestudio** (*by Tomy*) di [manifestudio.my.id](https://manifestudio.my.id/).',
     '',
-    '**Manifestudio** adalah platform web yang dikelola oleh **Tomy** (`@tmctomystudio`) yang menyediakan dua layanan utama:',
+    '**Manifestudio** adalah platform web yang dikelola oleh **Tomy** yang menyediakan dua layanan utama:',
     '',
     `1. **Katalog Akun Premium & Layanan Digital Bergaransi**: ${products.join(', ')}, dan lainnya (dilengkapi diskon otomatis mulai Rp50.000, kode voucher, struk otomatis, serta opsi Bayar Sekarang / Bayar Belakangan).`,
     `2. **Menu Utilitas (${utilities.length} Fitur Gratis Tanpa Iklan)**: ${utilities.join(', ')}.`,
     '',
-    `**Kontak Resmi Manifestudio**: WhatsApp Admin [wa.me/${waNum}](https://wa.me/${waNum}) · TikTok ${tt} · Instagram ${ig}.`,
+    '**Kontak & Sosmed Resmi**: Demi privasi pemilik (`62xxxxxxxxxx` · `@t***********o`), silakan akses tombol WhatsApp Admin dan media sosial resmi langsung di **bagian footer (bawah halaman)** website ini.',
   ].join('\n');
 }
 
@@ -1606,4 +1690,762 @@ export function renderMarkdownSafe(markdown = '') {
 
   closeLists();
   return html.join('');
+}
+
+/**
+ * ============================================================================
+ * Natural Human Neural Voice Catalog & Mixed-Language (Code-Switching) Engine
+ * ============================================================================
+ * Curated Microsoft Edge Neural TTS voices (Male & Female across Indonesian,
+ * Multilingual, English US/UK/AU, Malay, Japanese, Korean, Mandarin, Arabic,
+ * French, German, Spanish) + intelligent Indo/English/foreign code-switching
+ * segmentation so mixed sentences are pronounced naturally per language.
+ */
+export const MANIFEST_AI_VOICE_CATALOG = Object.freeze([
+  // Indonesian Native Neural Voices (Male & Female)
+  {
+    id: 'id-gadis',
+    name: 'Gadis',
+    label: 'Gadis — Indonesia Natural',
+    lang: 'id-ID',
+    baseLang: 'id',
+    langGroup: 'id',
+    langLabel: 'Indonesia',
+    gender: 'female',
+    style: 'Hangat, luwes, pelafalan Indonesia asli',
+    edgeVoice: 'id-ID-GadisNeural - id-ID (Female)',
+    tiktokVoice: 'id_001',
+    defaultPitch: 0,
+    defaultRateDelta: 0,
+  },
+  {
+    id: 'id-ardi',
+    name: 'Ardi',
+    label: 'Ardi — Indonesia Natural',
+    lang: 'id-ID',
+    baseLang: 'id',
+    langGroup: 'id',
+    langLabel: 'Indonesia',
+    gender: 'male',
+    style: 'Berwibawa, santai, pelafalan Indonesia asli',
+    edgeVoice: 'id-ID-ArdiNeural - id-ID (Male)',
+    tiktokVoice: 'id_001',
+    defaultPitch: 0,
+    defaultRateDelta: 0,
+  },
+  {
+    id: 'id-gadis-santai',
+    name: 'Nadia',
+    label: 'Nadia — Indonesia Ramah & Cerah',
+    lang: 'id-ID',
+    baseLang: 'id',
+    langGroup: 'id',
+    langLabel: 'Indonesia',
+    gender: 'female',
+    style: 'Ceria, ekspresif, cocok untuk obrolan harian',
+    edgeVoice: 'id-ID-GadisNeural - id-ID (Female)',
+    tiktokVoice: 'id_001',
+    defaultPitch: 3,
+    defaultRateDelta: 4,
+  },
+  {
+    id: 'id-ardi-tenang',
+    name: 'Raka',
+    label: 'Raka — Indonesia Tenang & Narator',
+    lang: 'id-ID',
+    baseLang: 'id',
+    langGroup: 'id',
+    langLabel: 'Indonesia',
+    gender: 'male',
+    style: 'Dalam, tenang, cocok untuk penjelasan panjang',
+    edgeVoice: 'id-ID-ArdiNeural - id-ID (Male)',
+    tiktokVoice: 'id_001',
+    defaultPitch: -3,
+    defaultRateDelta: -3,
+  },
+  // Ultra-Natural Multilingual Neural Voices (Female & Male)
+  {
+    id: 'multi-ava',
+    name: 'Ava Multilingual',
+    label: 'Ava — Multibahasa Natural',
+    lang: 'en-US',
+    baseLang: 'multi',
+    langGroup: 'multi',
+    langLabel: 'Multibahasa',
+    gender: 'female',
+    style: 'Sangat natural seperti manusia, ekspresif lintas bahasa',
+    edgeVoice: 'en-US-AvaMultilingualNeural - en-US (Female)',
+    tiktokVoice: 'en_us_001',
+    defaultPitch: 0,
+    defaultRateDelta: 0,
+  },
+  {
+    id: 'multi-andrew',
+    name: 'Andrew Multilingual',
+    label: 'Andrew — Multibahasa Natural',
+    lang: 'en-US',
+    baseLang: 'multi',
+    langGroup: 'multi',
+    langLabel: 'Multibahasa',
+    gender: 'male',
+    style: 'Pria natural hangat, gaya podcast & percakapan',
+    edgeVoice: 'en-US-AndrewMultilingualNeural - en-US (Male)',
+    tiktokVoice: 'en_us_006',
+    defaultPitch: 0,
+    defaultRateDelta: 0,
+  },
+  {
+    id: 'multi-emma',
+    name: 'Emma Multilingual',
+    label: 'Emma — Multibahasa Lembut',
+    lang: 'en-US',
+    baseLang: 'multi',
+    langGroup: 'multi',
+    langLabel: 'Multibahasa',
+    gender: 'female',
+    style: 'Lembut, jernih, intonasi kasual modern',
+    edgeVoice: 'en-US-EmmaMultilingualNeural - en-US (Female)',
+    tiktokVoice: 'en_us_002',
+    defaultPitch: 0,
+    defaultRateDelta: 0,
+  },
+  {
+    id: 'multi-brian',
+    name: 'Brian Multilingual',
+    label: 'Brian — Multibahasa Profesional',
+    lang: 'en-US',
+    baseLang: 'multi',
+    langGroup: 'multi',
+    langLabel: 'Multibahasa',
+    gender: 'male',
+    style: 'Mantap, jelas, gaya presenter & asisten cerdas',
+    edgeVoice: 'en-US-BrianMultilingualNeural - en-US (Male)',
+    tiktokVoice: 'en_us_009',
+    defaultPitch: 0,
+    defaultRateDelta: 0,
+  },
+  {
+    id: 'multi-william',
+    name: 'William Multilingual',
+    label: 'William — Multibahasa Australia',
+    lang: 'en-AU',
+    baseLang: 'multi',
+    langGroup: 'multi',
+    langLabel: 'Multibahasa',
+    gender: 'male',
+    style: 'Santai berkarakter dengan aksen Australia halus',
+    edgeVoice: 'en-AU-WilliamMultilingualNeural - en-AU (Male)',
+    tiktokVoice: 'en_au_002',
+    defaultPitch: 0,
+    defaultRateDelta: 0,
+  },
+  // English Native Neural Voices (US / UK / AU)
+  {
+    id: 'en-jenny',
+    name: 'Jenny (US)',
+    label: 'Jenny — Inggris Amerika',
+    lang: 'en-US',
+    baseLang: 'en',
+    langGroup: 'en',
+    langLabel: 'Inggris (US)',
+    gender: 'female',
+    style: 'Ramah, komunikatif, pelafalan US standar',
+    edgeVoice: 'en-US-JennyNeural - en-US (Female)',
+    tiktokVoice: 'en_us_001',
+    defaultPitch: 0,
+    defaultRateDelta: 0,
+  },
+  {
+    id: 'en-guy',
+    name: 'Guy (US)',
+    label: 'Guy — Inggris Amerika',
+    lang: 'en-US',
+    baseLang: 'en',
+    langGroup: 'en',
+    langLabel: 'Inggris (US)',
+    gender: 'male',
+    style: 'Pria Amerika modern, lugas & natural',
+    edgeVoice: 'en-US-GuyNeural - en-US (Male)',
+    tiktokVoice: 'en_us_006',
+    defaultPitch: 0,
+    defaultRateDelta: 0,
+  },
+  {
+    id: 'en-sonia',
+    name: 'Sonia (UK)',
+    label: 'Sonia — Inggris British',
+    lang: 'en-GB',
+    baseLang: 'en',
+    langGroup: 'en',
+    langLabel: 'Inggris (UK)',
+    gender: 'female',
+    style: 'Elegan dengan aksen British natural',
+    edgeVoice: 'en-GB-SoniaNeural - en-GB (Female)',
+    tiktokVoice: 'en_uk_001',
+    defaultPitch: 0,
+    defaultRateDelta: 0,
+  },
+  {
+    id: 'en-ryan',
+    name: 'Ryan (UK)',
+    label: 'Ryan — Inggris British',
+    lang: 'en-GB',
+    baseLang: 'en',
+    langGroup: 'en',
+    langLabel: 'Inggris (UK)',
+    gender: 'male',
+    style: 'Pria British hangat & artikulatif',
+    edgeVoice: 'en-GB-RyanNeural - en-GB (Male)',
+    tiktokVoice: 'en_uk_003',
+    defaultPitch: 0,
+    defaultRateDelta: 0,
+  },
+  // Malay (Serumpun)
+  {
+    id: 'ms-yasmin',
+    name: 'Yasmin',
+    label: 'Yasmin — Melayu',
+    lang: 'ms-MY',
+    baseLang: 'ms',
+    langGroup: 'ms',
+    langLabel: 'Melayu',
+    gender: 'female',
+    style: 'Lembut dengan pelafalan Melayu natural',
+    edgeVoice: 'ms-MY-YasminNeural - ms-MY (Female)',
+    tiktokVoice: 'id_001',
+    defaultPitch: 0,
+    defaultRateDelta: 0,
+  },
+  {
+    id: 'ms-osman',
+    name: 'Osman',
+    label: 'Osman — Melayu',
+    lang: 'ms-MY',
+    baseLang: 'ms',
+    langGroup: 'ms',
+    langLabel: 'Melayu',
+    gender: 'male',
+    style: 'Pria Melayu jelas & tenang',
+    edgeVoice: 'ms-MY-OsmanNeural - ms-MY (Male)',
+    tiktokVoice: 'id_001',
+    defaultPitch: 0,
+    defaultRateDelta: 0,
+  },
+  // Japanese, Korean, Mandarin, Arabic, European
+  {
+    id: 'ja-nanami',
+    name: 'Nanami',
+    label: 'Nanami — Jepang',
+    lang: 'ja-JP',
+    baseLang: 'ja',
+    langGroup: 'asia',
+    langLabel: 'Jepang',
+    gender: 'female',
+    style: 'Pelafalan Jepang alami & ekspresif',
+    edgeVoice: 'ja-JP-NanamiNeural - ja-JP (Female)',
+    tiktokVoice: 'jp_001',
+    defaultPitch: 0,
+    defaultRateDelta: 0,
+  },
+  {
+    id: 'ja-keita',
+    name: 'Keita',
+    label: 'Keita — Jepang',
+    lang: 'ja-JP',
+    baseLang: 'ja',
+    langGroup: 'asia',
+    langLabel: 'Jepang',
+    gender: 'male',
+    style: 'Pria Jepang natural & tenang',
+    edgeVoice: 'ja-JP-KeitaNeural - ja-JP (Male)',
+    tiktokVoice: 'jp_006',
+    defaultPitch: 0,
+    defaultRateDelta: 0,
+  },
+  {
+    id: 'ko-sunhi',
+    name: 'SunHi',
+    label: 'SunHi — Korea',
+    lang: 'ko-KR',
+    baseLang: 'ko',
+    langGroup: 'asia',
+    langLabel: 'Korea',
+    gender: 'female',
+    style: 'Pelafalan Korea halus & natural',
+    edgeVoice: 'ko-KR-SunHiNeural - ko-KR (Female)',
+    tiktokVoice: 'kr_003',
+    defaultPitch: 0,
+    defaultRateDelta: 0,
+  },
+  {
+    id: 'ko-hyunsu',
+    name: 'Hyunsu',
+    label: 'Hyunsu — Korea Multibahasa',
+    lang: 'ko-KR',
+    baseLang: 'ko',
+    langGroup: 'asia',
+    langLabel: 'Korea',
+    gender: 'male',
+    style: 'Pria Korea natural & fasih multibahasa',
+    edgeVoice: 'ko-KR-HyunsuMultilingualNeural - ko-KR (Male)',
+    tiktokVoice: 'kr_002',
+    defaultPitch: 0,
+    defaultRateDelta: 0,
+  },
+  {
+    id: 'zh-xiaoxiao',
+    name: 'Xiaoxiao',
+    label: 'Xiaoxiao — Mandarin',
+    lang: 'zh-CN',
+    baseLang: 'zh',
+    langGroup: 'asia',
+    langLabel: 'Mandarin',
+    gender: 'female',
+    style: 'Mandarin ekspresif & hangat',
+    edgeVoice: 'zh-CN-XiaoxiaoNeural - zh-CN (Female)',
+    tiktokVoice: 'en_us_001',
+    defaultPitch: 0,
+    defaultRateDelta: 0,
+  },
+  {
+    id: 'zh-yunxi',
+    name: 'Yunxi',
+    label: 'Yunxi — Mandarin',
+    lang: 'zh-CN',
+    baseLang: 'zh',
+    langGroup: 'asia',
+    langLabel: 'Mandarin',
+    gender: 'male',
+    style: 'Pria Mandarin ceria & natural',
+    edgeVoice: 'zh-CN-YunxiNeural - zh-CN (Male)',
+    tiktokVoice: 'en_us_006',
+    defaultPitch: 0,
+    defaultRateDelta: 0,
+  },
+  {
+    id: 'ar-zariyah',
+    name: 'Zariyah',
+    label: 'Zariyah — Arab',
+    lang: 'ar-SA',
+    baseLang: 'ar',
+    langGroup: 'ar',
+    langLabel: 'Arab',
+    gender: 'female',
+    style: 'Bahasa Arab fusha jernih & fasih',
+    edgeVoice: 'ar-SA-ZariyahNeural - ar-SA (Female)',
+    tiktokVoice: 'en_us_001',
+    defaultPitch: 0,
+    defaultRateDelta: 0,
+  },
+  {
+    id: 'ar-hamed',
+    name: 'Hamed',
+    label: 'Hamed — Arab',
+    lang: 'ar-SA',
+    baseLang: 'ar',
+    langGroup: 'ar',
+    langLabel: 'Arab',
+    gender: 'male',
+    style: 'Pria Arab fusha mantap & berwibawa',
+    edgeVoice: 'ar-SA-HamedNeural - ar-SA (Male)',
+    tiktokVoice: 'en_us_006',
+    defaultPitch: 0,
+    defaultRateDelta: 0,
+  },
+  {
+    id: 'fr-vivienne',
+    name: 'Vivienne',
+    label: 'Vivienne — Prancis Multibahasa',
+    lang: 'fr-FR',
+    baseLang: 'fr',
+    langGroup: 'eu',
+    langLabel: 'Prancis',
+    gender: 'female',
+    style: 'Aksen Prancis elegan & natural',
+    edgeVoice: 'fr-FR-VivienneMultilingualNeural - fr-FR (Female)',
+    tiktokVoice: 'fr_001',
+    defaultPitch: 0,
+    defaultRateDelta: 0,
+  },
+  {
+    id: 'fr-remy',
+    name: 'Remy',
+    label: 'Remy — Prancis Multibahasa',
+    lang: 'fr-FR',
+    baseLang: 'fr',
+    langGroup: 'eu',
+    langLabel: 'Prancis',
+    gender: 'male',
+    style: 'Pria Prancis ekspresif & multibahasa',
+    edgeVoice: 'fr-FR-RemyMultilingualNeural - fr-FR (Male)',
+    tiktokVoice: 'fr_002',
+    defaultPitch: 0,
+    defaultRateDelta: 0,
+  },
+  {
+    id: 'es-elvira',
+    name: 'Elvira',
+    label: 'Elvira — Spanyol',
+    lang: 'es-ES',
+    baseLang: 'es',
+    langGroup: 'eu',
+    langLabel: 'Spanyol',
+    gender: 'female',
+    style: 'Pelafalan Spanyol natural & jelas',
+    edgeVoice: 'es-ES-ElviraNeural - es-ES (Female)',
+    tiktokVoice: 'es_002',
+    defaultPitch: 0,
+    defaultRateDelta: 0,
+  },
+  {
+    id: 'de-conrad',
+    name: 'Conrad',
+    label: 'Conrad — Jerman',
+    lang: 'de-DE',
+    baseLang: 'de',
+    langGroup: 'eu',
+    langLabel: 'Jerman',
+    gender: 'male',
+    style: 'Pria Jerman jernih & natural',
+    edgeVoice: 'de-DE-ConradNeural - de-DE (Male)',
+    tiktokVoice: 'de_002',
+    defaultPitch: 0,
+    defaultRateDelta: 0,
+  },
+]);
+
+export function getVoiceProfileById(voiceId = 'id-gadis') {
+  return MANIFEST_AI_VOICE_CATALOG.find((v) => v.id === voiceId) || MANIFEST_AI_VOICE_CATALOG[0];
+}
+
+// High-precision English & Indonesian word sets for natural code-switching detection
+const EN_STRONG_WORDS = new Set([
+  'the', 'of', 'and', 'in', 'to', 'for', 'with', 'on', 'at', 'by', 'from', 'about', 'into', 'over', 'after',
+  'is', 'are', 'was', 'were', 'be', 'been', 'being', 'have', 'has', 'had', 'do', 'does', 'did', 'will', 'would',
+  'should', 'could', 'can', 'may', 'might', 'must', 'not', 'no', 'yes', 'this', 'that', 'these', 'those',
+  'you', 'your', 'yours', 'we', 'our', 'they', 'their', 'he', 'his', 'she', 'her', 'it', 'its', 'my', 'me',
+  'what', 'which', 'who', 'whom', 'where', 'when', 'why', 'how', 'all', 'each', 'every', 'both', 'few', 'more',
+  'most', 'other', 'some', 'such', 'only', 'own', 'same', 'than', 'too', 'very', 'just', 'also', 'now', 'here',
+  'there', 'then', 'once', 'again', 'still', 'back', 'even', 'well', 'much', 'many', 'between', 'through',
+  'king', 'queen', 'prince', 'princess', 'island', 'islands', 'world', 'land', 'kingdom', 'empire', 'city',
+  'story', 'book', 'books', 'movie', 'film', 'music', 'song', 'album', 'game', 'games', 'play', 'player',
+  'love', 'life', 'time', 'day', 'night', 'star', 'stars', 'sun', 'moon', 'fire', 'water', 'earth', 'sky',
+  'dark', 'light', 'black', 'white', 'red', 'blue', 'green', 'gold', 'golden', 'silver', 'magic', 'legend',
+  'secret', 'mystery', 'adventure', 'journey', 'quest', 'battle', 'war', 'peace', 'dream', 'dreams', 'shadow',
+  'heart', 'soul', 'mind', 'power', 'force', 'spirit', 'hero', 'knight', 'dragon', 'angel', 'ghost', 'monster',
+  'house', 'home', 'castle', 'forest', 'mountain', 'river', 'ocean', 'sea', 'road', 'street', 'bridge', 'tower',
+  'good', 'great', 'best', 'better', 'new', 'old', 'first', 'last', 'next', 'big', 'small', 'little', 'long',
+  'short', 'high', 'low', 'fast', 'slow', 'free', 'open', 'full', 'real', 'true', 'right', 'left', 'top',
+  'hello', 'welcome', 'please', 'thank', 'thanks', 'sorry', 'make', 'made', 'take', 'give', 'get', 'got',
+  'find', 'found', 'know', 'think', 'want', 'need', 'use', 'used', 'work', 'help', 'start', 'stop', 'keep',
+  'machine', 'learning', 'deep', 'neural', 'network', 'artificial', 'intelligence', 'model', 'cloud', 'server',
+  'client', 'browser', 'code', 'coding', 'script', 'function', 'framework', 'library', 'database', 'query',
+  'design', 'system', 'platform', 'service', 'feature', 'update', 'upgrade', 'version', 'streaming', 'download',
+  'upload', 'backup', 'security', 'privacy', 'account', 'premium', 'content', 'creator', 'marketing', 'business',
+  'strategy', 'project', 'workflow', 'performance', 'speed', 'quality', 'voice', 'speech', 'audio', 'video',
+  'image', 'photo', 'search', 'engine', 'smart', 'auto', 'natural', 'human', 'language', 'english', 'global',
+  'madagascar', 'paradise', 'wonderland', 'chronicles', 'forever', 'beyond', 'rising', 'return', 'returns',
+  'revenge', 'destiny', 'future', 'legacy', 'genesis', 'horizon', 'odyssey', 'phantom', 'eclipse', 'infinity',
+]);
+
+const ID_STRONG_WORDS = new Set([
+  'yang', 'di', 'ke', 'dari', 'dan', 'atau', 'dengan', 'untuk', 'pada', 'dalam', 'adalah', 'ialah', 'yaitu',
+  'ini', 'itu', 'tersebut', 'saya', 'aku', 'kamu', 'anda', 'kami', 'kita', 'mereka', 'dia', 'beliau', 'nya',
+  'tidak', 'tak', 'bukan', 'belum', 'jangan', 'sudah', 'telah', 'sedang', 'akan', 'bisa', 'dapat', 'boleh',
+  'harus', 'wajib', 'perlu', 'ingin', 'mau', 'suka', 'ada', 'tiada', 'jadi', 'menjadi', 'buat', 'membuat',
+  'pak', 'bu', 'ibu', 'bapak', 'mas', 'mbak', 'bang', 'kak', 'adik', 'tuan', 'nyonya', 'orang', 'anak',
+  'membeli', 'beli', 'menjual', 'jual', 'melelang', 'lelang', 'membaca', 'baca', 'menulis', 'tulis', 'buku',
+  'perpustakaan', 'sekolah', 'kampus', 'rumah', 'kantor', 'toko', 'pasar', 'jalan', 'kota', 'desa', 'negara',
+  'hari', 'pagi', 'siang', 'sore', 'malam', 'kemarin', 'besok', 'sekarang', 'nanti', 'tadi', 'lalu', 'kemudian',
+  'sangat', 'sekali', 'banget', 'lebih', 'paling', 'hanya', 'cuma', 'saja', 'juga', 'pun', 'lagi', 'masih',
+  'karena', 'sebab', 'jika', 'kalau', 'bila', 'ketika', 'saat', 'waktu', 'sebelum', 'sesudah', 'setelah',
+  'sambil', 'hingga', 'sampai', 'supaya', 'agar', 'meski', 'walau', 'namun', 'tetapi', 'tapi', 'melainkan',
+  'halo', 'hai', 'selamat', 'terima', 'kasih', 'maaf', 'tolong', 'silakan', 'mohon', 'baik', 'bagus', 'keren',
+  'murah', 'mahal', 'gratis', 'resmi', 'lengkap', 'cepat', 'mudah', 'aman', 'nyaman', 'baru', 'lama', 'besar',
+  'kecil', 'banyak', 'sedikit', 'semua', 'seluruh', 'setiap', 'beberapa', 'salah', 'benar', 'tepat', 'jelas',
+  'cara', 'langkah', 'tips', 'ide', 'contoh', 'daftar', 'menu', 'fitur', 'layanan', 'produk', 'harga', 'diskon',
+  'akun', 'pengguna', 'pemilik', 'pengelola', 'bantuan', 'jawaban', 'pertanyaan', 'suara', 'bahasa', 'gaya',
+  'pengucapan', 'pelafalan', 'layar', 'penuh', 'tombol', 'halaman', 'bagian', 'bawah', 'atas', 'kiri', 'kanan',
+  'kopi', 'air', 'panas', 'dingin', 'makan', 'minum', 'tidur', 'pergi', 'datang', 'pulang', 'lihat', 'dengar',
+  'bicara', 'tanya', 'jawab', 'cari', 'temukan', 'pilih', 'simpan', 'hapus', 'ubah', 'tambah', 'kurang',
+  'seperti', 'misalnya', 'contohnya', 'yaitu', 'yakni', 'antara', 'tentang', 'mengenai', 'terhadap', 'melalui',
+  'tanpa', 'secara', 'langsung', 'otomatis', 'sementara', 'terlebih', 'dahulu', 'berikut', 'dibawah', 'diatas',
+  'indo', 'indonesia', 'inggris', 'jepang', 'korea', 'arab', 'melayu',
+]);
+
+function detectNonLatinScript(word = '') {
+  if (/[\u0600-\u06FF\u0750-\u077F]/.test(word)) return 'ar';
+  if (/[\u3040-\u309F\u30A0-\u30FF]/.test(word)) return 'ja';
+  if (/[\uAC00-\uD7AF\u1100-\u11FF]/.test(word)) return 'ko';
+  if (/[\u4E00-\u9FFF]/.test(word)) return 'zh';
+  return null;
+}
+
+function classifyLatinWord(rawWord = '') {
+  const clean = String(rawWord || '').toLowerCase().replace(/^[^a-z']+|[^a-z']+$/g, '');
+  if (!clean || clean.length <= 1) return 'neutral';
+
+  if (ID_STRONG_WORDS.has(clean)) return 'id';
+  if (EN_STRONG_WORDS.has(clean)) return 'en';
+
+  // Strong Indonesian morphological markers
+  if (
+    /^(?:meng|meny|mem|men|me|ber|ter|per|pen|pem|peng|peny|se|ke)[a-z]{3,}(?:kan|an|i|nya)?$/.test(clean) &&
+    !/(?:tion|sion|ment|ness|able|ible|ship|hood|ward|ing|ed|ly|th|sh|ch|wh|ck|qu|ph)/.test(clean)
+  ) {
+    if (/(?:nya|kan|lah|kah|pun)$/.test(clean) || /^(?:mele|memb|mend|meng|meny|perp|berb|terd|kebe|dise|dipe)/.test(clean)) {
+      return 'id';
+    }
+  }
+  if (/(?:nya|lah|kah)$/.test(clean) && clean.length >= 5) return 'id';
+
+  // Strong English orthographic & suffix markers
+  if (
+    /'(?:s|t|re|ve|ll|d|m)$/.test(clean) ||
+    /(?:tion|sion|ment|ness|ship|ight|ough|ould|ance|ence|ical|ious|eous|able|ible|ful|less|ward|wise|ing)$/.test(clean) ||
+    /(?:^th|th$|sh|ch|wh|ck|qu|ph|ee|oo|ea|oa|wr|kn)/.test(clean) ||
+    /[xqvz]/.test(clean)
+  ) {
+    // Guard common Indonesian loanwords containing sh/ch/ng/etc.
+    if (/^(?:sholat|shalat|syarat|syukur|khas|khusus|akhir|waktu|zakat|zaman|izin|video|musik|fokus|teks|ekspor)$/.test(clean)) {
+      return 'id';
+    }
+    return 'en';
+  }
+
+  return 'neutral';
+}
+
+/**
+ * Strips Markdown formatting and masks sensitive owner info so TTS reads naturally like a human.
+ */
+export function cleanTextForSpeech(markdown = '', catalogData = null) {
+  let text = redactSensitiveOwnerData(String(markdown || ''), catalogData);
+  // Replace fenced code blocks with a polite spoken cue instead of reading ugly syntax
+  text = text.replace(/```[\s\S]*?```/g, '. Potongan kode tersedia di layar. ');
+  // Convert Markdown links `[Label](https://...)` to just `Label`
+  text = text.replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g, '$1');
+  // Remove bare URLs except short domain names
+  text = text.replace(/https?:\/\/(?:www\.)?([a-zA-Z0-9.-]+)(?:\/[^\s)]*)?/g, '$1');
+  // Strip inline code backticks, headings, bold/italic markers, blockquotes, list bullets
+  text = text
+    .replace(/`([^`]+)`/g, '$1')
+    .replace(/^\s{0,3}#{1,6}\s+/gm, '')
+    .replace(/^\s*>\s?/gm, '')
+    .replace(/^\s*[-*•]\s+/gm, '')
+    .replace(/\*\*\*([^*]+)\*\*\*/g, '$1')
+    .replace(/\*\*([^*]+)\*\*/g, '$1')
+    .replace(/\*([^*\n]+)\*/g, '$1')
+    .replace(/_{1,2}([^_\n]+)_{1,2}/g, '$1')
+    .replace(/~~([^~]+)~~/g, '$1');
+  // Make masked owner placeholders sound natural instead of reading "x x x x x"
+  text = text.replace(/62x{5,}/gi, 'nomor yang disensor');
+  text = text.replace(/@[a-z]\*{4,}[a-z]/gi, 'akun yang disensor');
+  // Normalize whitespace & newlines into smooth pauses
+  text = text
+    .replace(/\r?\n{2,}/g, '. ')
+    .replace(/\r?\n/g, ', ')
+    .replace(/[·•|]/g, ', ')
+    .replace(/\s{2,}/g, ' ')
+    .replace(/\.\s*\./g, '.')
+    .trim();
+  return text;
+}
+
+/**
+ * Splits a text into natural language-tagged segments (`id`, `en`, `ja`, `ko`, `zh`, `ar`, etc.)
+ * so mixed-language sentences (code-switching) switch smoothly to native pronunciation per span.
+ *
+ * Example:
+ * "pak salim membeli buku The King Of Madagascar and Island di perpustakaan yang melelang buku"
+ * -> [
+ *      { lang: 'id', text: 'pak salim membeli buku' },
+ *      { lang: 'en', text: 'The King Of Madagascar and Island' },
+ *      { lang: 'id', text: 'di perpustakaan yang melelang buku' },
+ *    ]
+ */
+export function segmentMultilingualSpeech(rawText = '', primaryLang = 'id', { maxSegmentChars = 220, codeSwitch = true } = {}) {
+  const clean = String(rawText || '').trim();
+  if (!clean) return [];
+
+  const baseLang = primaryLang === 'multi' ? 'id' : String(primaryLang || 'id').toLowerCase().split('-')[0];
+
+  const splitLongChunks = (str, lang) => {
+    const trimmed = str.trim();
+    if (!trimmed) return [];
+    if (trimmed.length <= maxSegmentChars) return [{ lang, text: trimmed }];
+    const parts = [];
+    const sentences = trimmed.split(/(?<=[.!?。！？])\s+/);
+    let current = '';
+    for (const s of sentences) {
+      if (!s.trim()) continue;
+      if (current && current.length + s.length + 1 > maxSegmentChars) {
+        parts.push({ lang, text: current.trim() });
+        current = s;
+      } else {
+        current = current ? `${current} ${s}` : s;
+      }
+    }
+    if (current.trim()) parts.push({ lang, text: current.trim() });
+    // Secondary split on commas if any single sentence is still huge
+    const finalParts = [];
+    for (const p of parts) {
+      if (p.text.length <= maxSegmentChars) {
+        finalParts.push(p);
+      } else {
+        const sub = p.text.split(/(?<=,|;)\s+/);
+        let acc = '';
+        for (const piece of sub) {
+          if (acc && acc.length + piece.length + 1 > maxSegmentChars) {
+            finalParts.push({ lang, text: acc.trim() });
+            acc = piece;
+          } else {
+            acc = acc ? `${acc} ${piece}` : piece;
+          }
+        }
+        if (acc.trim()) finalParts.push({ lang, text: acc.trim() });
+      }
+    }
+    return finalParts;
+  };
+
+  if (!codeSwitch) {
+    return splitLongChunks(clean, baseLang);
+  }
+
+  // Tokenize by whitespace while keeping punctuation attached to tokens
+  const tokens = clean.split(/\s+/).filter(Boolean);
+  if (tokens.length === 0) return [];
+
+  // Step 1: Initial per-token language classification
+  const tagged = tokens.map((tok) => {
+    const nonLatin = detectNonLatinScript(tok);
+    if (nonLatin) return { tok, lang: nonLatin, strong: true };
+    if (/^[0-9.,:%+-]+$/.test(tok)) return { tok, lang: 'neutral', strong: false };
+    const cls = classifyLatinWord(tok);
+    return {
+      tok,
+      lang: cls,
+      strong: cls !== 'neutral',
+      isTitleCase: /^[A-Z][a-z]+/.test(tok),
+    };
+  });
+
+  // Detect overall dominant Latin language of this text (default to baseLang when tied)
+  let idCount = 0;
+  let enCount = 0;
+  for (const t of tagged) {
+    if (t.lang === 'id') idCount += 1;
+    else if (t.lang === 'en') enCount += 1;
+  }
+  const dominantLang = enCount > idCount * 1.4 && enCount >= 3 ? 'en' : idCount > 0 ? 'id' : baseLang;
+
+  // Step 2: Bridge neutral proper nouns / short connectors inside foreign phrases
+  // e.g. "The King Of Madagascar and Island" -> Madagascar (neutral) sits between "Of" (en) and "and" (en) -> becomes 'en'!
+  for (let i = 0; i < tagged.length; i += 1) {
+    if (tagged[i].lang !== 'neutral') continue;
+    // Find nearest strong left and right within window of 2
+    let leftLang = null;
+    for (let l = i - 1; l >= Math.max(0, i - 2); l -= 1) {
+      if (tagged[l].lang !== 'neutral') {
+        leftLang = tagged[l].lang;
+        break;
+      }
+    }
+    let rightLang = null;
+    for (let r = i + 1; r <= Math.min(tagged.length - 1, i + 2); r += 1) {
+      if (tagged[r].lang !== 'neutral') {
+        rightLang = tagged[r].lang;
+        break;
+      }
+    }
+
+    if (leftLang && rightLang && leftLang === rightLang) {
+      tagged[i].lang = leftLang;
+    } else if (tagged[i].isTitleCase && (leftLang === 'en' || rightLang === 'en') && leftLang !== 'id') {
+      tagged[i].lang = 'en';
+    } else if (leftLang && !rightLang) {
+      tagged[i].lang = leftLang;
+    } else if (!leftLang && rightLang) {
+      tagged[i].lang = rightLang;
+    } else {
+      tagged[i].lang = dominantLang;
+    }
+  }
+
+  // Step 3: Prevent choppy 1-word accidental micro-flips for weak ambiguous Latin words,
+  // while preserving genuine single English words with clear English phonetics or non-Latin scripts.
+  for (let i = 0; i < tagged.length; i += 1) {
+    const prev = i > 0 ? tagged[i - 1].lang : null;
+    const next = i < tagged.length - 1 ? tagged[i + 1].lang : null;
+    if (prev && next && prev === next && tagged[i].lang !== prev) {
+      const isNonLatin = Boolean(detectNonLatinScript(tagged[i].tok));
+      const cleanTok = tagged[i].tok.toLowerCase().replace(/[^a-z']/g, '');
+      const clearEnglishLoan =
+        tagged[i].lang === 'en' &&
+        (EN_STRONG_WORDS.has(cleanTok) || /(?:tion|sion|ing|ight|ough|th|sh|ch|ee|oo|ea)/.test(cleanTok));
+      if (!isNonLatin && !clearEnglishLoan && cleanTok.length <= 4) {
+        tagged[i].lang = prev;
+      }
+    }
+  }
+
+  // Step 4: Merge consecutive tokens of the same language into fluent spans
+  const merged = [];
+  for (const item of tagged) {
+    const last = merged[merged.length - 1];
+    if (last && last.lang === item.lang) {
+      last.text = `${last.text} ${item.tok}`;
+    } else {
+      merged.push({ lang: item.lang, text: item.tok });
+    }
+  }
+
+  // Step 5: Split any overly long spans at natural punctuation boundaries
+  const result = [];
+  for (const seg of merged) {
+    result.push(...splitLongChunks(seg.text, seg.lang));
+  }
+  return result;
+}
+
+/**
+ * Resolves the exact natural voice profile to speak a given language segment while
+ * preserving the user's chosen gender (Female stays Female, Male stays Male) and
+ * ensuring Indonesian words use authentic Indonesian pronunciation while English/foreign
+ * words switch to authentic native pronunciation!
+ */
+export function resolveVoiceForSegment(selectedVoiceId = 'id-gadis', segmentLang = 'id', codeSwitch = true) {
+  const base = getVoiceProfileById(selectedVoiceId);
+  const targetLang = String(segmentLang || 'id').toLowerCase().split('-')[0];
+
+  if (!codeSwitch) return base;
+
+  // If selected voice is already native for this exact segment language, keep it!
+  if (base.baseLang === targetLang) return base;
+
+  // Pick native voice matching the user's chosen gender!
+  const gender = base.gender === 'male' ? 'male' : 'female';
+  const langPreferredMap = {
+    id: gender === 'male' ? 'id-ardi' : 'id-gadis',
+    en: gender === 'male' ? 'multi-andrew' : 'multi-ava',
+    ms: gender === 'male' ? 'ms-osman' : 'ms-yasmin',
+    ja: gender === 'male' ? 'ja-keita' : 'ja-nanami',
+    ko: gender === 'male' ? 'ko-hyunsu' : 'ko-sunhi',
+    zh: gender === 'male' ? 'zh-yunxi' : 'zh-xiaoxiao',
+    ar: gender === 'male' ? 'ar-hamed' : 'ar-zariyah',
+    fr: gender === 'male' ? 'fr-remy' : 'fr-vivienne',
+    es: 'es-elvira',
+    de: 'de-conrad',
+  };
+
+  // If user specifically picked a Multilingual voice (e.g. Ava / Andrew / Emma / Brian / William):
+  // - For English spans, keep their chosen Multilingual voice (native US/AU English!).
+  // - For Indonesian spans, switch to native Indonesian Gadis/Ardi so Indonesian pronunciation is 100% authentic!
+  if (base.baseLang === 'multi' && targetLang === 'en') {
+    return base;
+  }
+
+  const mappedId = langPreferredMap[targetLang];
+  return mappedId ? getVoiceProfileById(mappedId) : base;
 }
