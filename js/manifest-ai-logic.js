@@ -1,9 +1,10 @@
 /**
- * Manifest AI — Pure Logic Module (v62)
+ * Manifest AI — Pure Logic Module (v66)
  * Multi-model ensemble planning, real-time latest-model catalog auto-upgrader,
- * Manifestudio live-catalog grounding (anti-hallucination), topic-shift aware
- * conversation memory, per-user quota-bucket cooldown tracker, multi-BYOK vault,
- * chat history store, and safe Markdown renderer.
+ * live web research grounding & Manifestudio catalog grounding (anti-hallucination),
+ * topic-shift aware conversation memory, zero-leak owner privacy shield,
+ * per-user quota-bucket cooldown tracker, multi-BYOK vault, chat history store,
+ * safe Markdown renderer (with tables), and single-speaker fast neural voice chunking.
  */
 
 export const MANIFEST_AI_STORAGE_KEYS = Object.freeze({
@@ -65,16 +66,41 @@ export const MANIFEST_AI_SYSTEM_PROMPT = [
   'Aturan WAJIB:',
   '1. Selalu jawab PESAN TERAKHIR pengguna secara langsung. Jika pengguna mengganti topik ke hal baru, segera ikuti topik baru dan JANGAN memaksa kembali ke topik lama.',
   '2. Jika pengguna mengirim sapaan singkat (seperti "P", "Halo", "Hai", "Tes"), balas singkat dan ramah menanyakan apa yang bisa dibantu.',
-  '3. Anti-halusinasi: JANGAN pernah mengarang bahwa Manifestudio membuat game, AR/VR, animasi, atau agensi seni digital. Gunakan hanya fakta resmi Manifestudio di atas.',
-  '4. PRIVASI OWNER (WAJIB): JANGAN pernah mengungkapkan data sensitif pemilik/admin (nomor WhatsApp/telepon, akun media sosial, email, atau kontak pribadi). Jika pengguna menanyakan nomor WA, kontak admin, atau sosmed, arahkan pengguna ke tombol kontak & media sosial resmi di bagian footer (bawah halaman) website Manifestudio, dan bila perlu menyebut format kontak selalu sensor menjadi 62xxxxxxxxxx atau @t***********o.',
+  '3. ANTI-HALUSINASI KETAT: Gunakan data riset terverifikasi (bila disediakan di sistem) dan fakta nyata yang benar-benar kamu pastikan. JANGAN pernah mengarang nama warung/toko/orang palsu (misalnya "Pak Budi", "Pak Sani", "Pak Wayan") atau tertukar makanan khas antar daerah (misalnya Sate Maranggi khas Purwakarta bukan Tasikmalaya; Tasikmalaya terkenal dengan Nasi Tutug Oncom/Nasi TO, Soto Ayam Pataruman, Kupat Tahu Mangunreja, Bubur Ayam, Mie Bakso, Nasi Cikur, dll.). Jika tidak yakin akan nama tempat spesifik, jelaskan makanannya secara jujur tanpa mengarang nama warung. Untuk Manifestudio, JANGAN pernah mengarang bahwa Manifestudio membuat game, AR/VR, animasi, atau agensi seni digital.',
+  '4. PRIVASI OWNER (MUTLAK — TANPA PENGECUALIAN): JANGAN PERNAH menuliskan nomor WhatsApp/telepon pemilik/admin (termasuk format +62/08), username media sosial, atau email pribadi. Jangan pernah berkontradiksi (misalnya berkata tidak bisa memberi nomor lalu menuliskan nomor di kalimat berikutnya). Jika pengguna menanyakan nomor WA, kontak admin/owner, atau sosmed, cukup arahkan pengguna ke tombol kontak & media sosial resmi di bagian footer (bawah halaman) website Manifestudio (dan bila menyebut format kontak selalu sensor menjadi 62xxxxxxxxxx atau @t***********o).',
   '5. Jawab dalam bahasa yang sama dengan pengguna (utamakan Bahasa Indonesia yang natural, akurat, ringkas, dan rapi dengan Markdown bila perlu).',
 ].join('\n');
 
 const MANIFESTUDIO_QUERY_RE =
-  /\b(man[ie]f[eu]s?t?studio|manifest\s*studio|manifest\s*ai|tomy|tmctomystudio|tuan|pemilik|pembuat|pencipta|siapa\s+(kamu|anda|pembuat|pemilik|tuan)|kamu\s+siapa|anda\s+siapa|katalog|akun\s+premium|menu\s+utilitas|fitur\s+di\s+sini|kontak\s+admin|whatsapp\s+admin|wa\s+admin|sosmed|media\s+sosial|instagram|tiktok|cara\s+order|cara\s+pesan|bayar\s+nanti|bayar\s+belakangan|capcut|netflix|canva|turnitin|dracin|drama\s+china|audio\s+editor)\b/i;
+  /\b(man[ie]f[eu]s?t?studio|manifest\s*studio|manifest\s*ai|tomy|tmctomystudio|tuan|pemilik|pembuat|pencipta|siapa\s+(kamu|anda|pembuat|pemilik|tuan)|kamu\s+siapa|anda\s+siapa|katalog|akun\s+premium|menu\s+utilitas|fitur\s+di\s+sini|kontak\s+admin|whatsapp\s+admin|wa\s+admin|whatsapp\s+owner|wa\s+owner|sosmed|media\s+sosial|instagram|tiktok|cara\s+order|cara\s+pesan|bayar\s+nanti|bayar\s+belakangan|capcut|netflix|canva|turnitin|dracin|drama\s+china|audio\s+editor)\b/i;
 
 export function isManifestudioQuery(text = '') {
   return MANIFESTUDIO_QUERY_RE.test(String(text || ''));
+}
+
+const DIRECT_OWNER_CONTACT_RE =
+  /(?:(?:berapa|mana|minta|kasih|bagi|tahu|info|apa|nomor|no\.?|kontak|hubungi|chat|telepon|telp|hp)\s*(?:nya\s*)?(?:wa|whatsapp|telepon|telp|hp|kontak|nomor)\s*(?:nya\s*)?(?:owner|admin|pemilik|tomy|tuan|manifestudio|web|resmi)|(?:wa|whatsapp|nomor|no\.?|kontak|sosmed|media\s*sosial|instagram|ig|tiktok|email|gmail)\s*(?:nya\s*)?(?:owner|admin|pemilik|tomy|tuan|manifestudio|resmi)|(?:owner|admin|pemilik|tomy|manifestudio)\s*(?:punya\s*)?(?:wa|whatsapp|nomor|no\.?\s*(?:wa|hp)|kontak|sosmed|instagram|ig|tiktok|email))/i;
+
+/**
+ * Detects direct user requests asking for owner/admin WhatsApp, phone, email, or social accounts
+ * so Manifest AI responds deterministically with a non-contradictory privacy-safe footer guide.
+ */
+export function isDirectOwnerContactQuery(text = '') {
+  const clean = String(text || '').trim();
+  if (!clean) return false;
+  // Don't hijack general tutorials like "cara membuat whatsapp bisnis" unless owner/admin/manifestudio/tomy is referenced
+  if (!/(?:owner|admin|pemilik|tomy|tuan|manifestudio|web\s*ini|situs\s*ini|resmi)/i.test(clean)) {
+    return false;
+  }
+  return DIRECT_OWNER_CONTACT_RE.test(clean);
+}
+
+export function buildOwnerContactPrivacyReply() {
+  return [
+    'Demi menjaga privasi pemilik (**Tomy**), Manifest AI tidak dapat menampilkan nomor WhatsApp, email pribadi, maupun akun media sosial secara terbuka (`62xxxxxxxxxx` · `@t***********o`).',
+    '',
+    'Untuk menghubungi **WhatsApp Admin** atau mengunjungi **media sosial resmi Manifestudio**, silakan langsung klik tombol **Kontak & Sosmed resmi** yang sudah tersedia di **bagian footer (bawah halaman)** website ini.',
+  ].join('\n');
 }
 
 function formatIdrSimple(n) {
@@ -94,8 +120,110 @@ function maskSocialHandle(handle = '') {
   return `@${clean[0]}${'*'.repeat(Math.min(11, clean.length - 2))}${clean[clean.length - 1]}`;
 }
 
+// Matches ANY ASCII or Unicode space, hyphen/dash (including \u2011 non-breaking hyphen, \u2013 en-dash,
+// \u202F narrow no-break space, \u00A0 nbsp, \u00AD soft hyphen, zero-width chars), brackets, dots, or Markdown wraps
+const FLEX_PHONE_SEP_CLASS =
+  '[\\s\\u00A0\\u00AD\\u1680\\u2000-\\u200F\\u2028-\\u202F\\u205F\\u2060\\u3000\\uFEFF\\-\\u2010-\\u2015\\u2212_.()/*~`]*';
+
 /**
- * Defense-in-depth owner privacy guard: masks any sensitive owner WhatsApp/phone number,
+ * Digit-stream fallback scanner: replaces any occurrence of a sensitive digit sequence even if
+ * obfuscated with arbitrary Markdown, Unicode spaces, Unicode hyphens, dots, or mixed symbols.
+ */
+function redactDigitSequences(text, targetDigitStrings = []) {
+  if (!text || targetDigitStrings.length === 0) return text;
+  const digitChars = [];
+  const digitIndices = [];
+  for (let i = 0; i < text.length; i += 1) {
+    const ch = text[i];
+    if (ch >= '0' && ch <= '9') {
+      digitChars.push(ch);
+      digitIndices.push(i);
+    }
+  }
+  if (digitChars.length < 9) return text;
+
+  const digitStream = digitChars.join('');
+  const spans = [];
+
+  for (const target of targetDigitStrings) {
+    if (!target || target.length < 9) continue;
+    let searchFrom = 0;
+    while (searchFrom <= digitStream.length - target.length) {
+      const idx = digitStream.indexOf(target, searchFrom);
+      if (idx === -1) break;
+      let startChar = digitIndices[idx];
+      const endChar = digitIndices[idx + target.length - 1] + 1;
+      // Only treat as a single phone number if intervening non-digits are short formatting chars
+      const spanLen = endChar - startChar;
+      if (spanLen <= target.length + 18) {
+        // Include an immediately preceding '+' or '(+' if present
+        while (startChar > 0 && /[\s+\u00A0\u202F(*`]/.test(text[startChar - 1])) {
+          if (text[startChar - 1] === '+') {
+            startChar -= 1;
+            break;
+          }
+          if (text[startChar - 1] === '(') break;
+          startChar -= 1;
+        }
+        spans.push([startChar, endChar]);
+      }
+      searchFrom = idx + 1;
+    }
+  }
+
+  if (spans.length === 0) return text;
+  spans.sort((a, b) => a[0] - b[0] || b[1] - a[1]);
+  const merged = [];
+  for (const sp of spans) {
+    const prev = merged[merged.length - 1];
+    if (prev && sp[0] <= prev[1]) {
+      prev[1] = Math.max(prev[1], sp[1]);
+    } else {
+      merged.push([...sp]);
+    }
+  }
+
+  let out = '';
+  let cursor = 0;
+  for (const [s, e] of merged) {
+    out += text.slice(cursor, s) + '62xxxxxxxxxx';
+    cursor = e;
+  }
+  out += text.slice(cursor);
+  return out;
+}
+
+/**
+ * Removes self-contradictory phrasing where an LLM claims it cannot share owner/admin contact
+ * and then appends "atau kirim pesan ke WhatsApp Admin resmi kami di 62xxxxxxxxxx".
+ */
+export function sanitizeOwnerContactContradiction(text = '') {
+  let out = String(text || '');
+  if (!out) return '';
+
+  const declinesContact =
+    /(?:tidak\s+(?:dapat|bisa)\s+(?:memberikan|membagikan|menampilkan|mengungkapkan)|privasi\s+(?:pemilik|owner))/i.test(out);
+
+  if (declinesContact && /62x{5,}/i.test(out)) {
+    const before = out;
+    out = out.replace(
+      /[ \t]*(?:atau|maupun)[ \t]+(?:kirim[ \t]+pesan|hubungi|chat|kontak)[ \t]+(?:ke|melalui|via)[ \t]+(?:WhatsApp|WA)[ \t]*(?:Admin|Owner|Resmi|kami)?[ \t]*(?:resmi[ \t]*)?(?:kami[ \t]*)?(?:di|ke|nomor)?[ \t]*[*_`]*62x{5,}[*_`]*/gi,
+      ''
+    );
+    out = out.replace(
+      /[ \t]*(?:di|ke|nomor)[ \t]+[*_`]*62x{5,}[*_`]*(?=[ \t]*[.,!?\n]|$)/gi,
+      ''
+    );
+    if (out !== before) {
+      out = out.replace(/[ \t]+([.,!?])/g, '$1').replace(/[ \t]{2,}/g, ' ');
+    }
+  }
+  return out.trim();
+}
+
+/**
+ * Defense-in-depth owner privacy guard: masks any sensitive owner WhatsApp/phone number
+ * (including Unicode non-breaking spaces \u00A0/\u202F and Unicode hyphens \u2010-\u2015),
  * social media handle/URL, or personal email that any LLM might attempt to output,
  * replacing them with safe censored placeholders (62xxxxxxxxxx / @t***********o)
  * while preserving normal prices (Rp25.000), dates, and general numbers.
@@ -108,7 +236,7 @@ export function redactSensitiveOwnerData(text = '', catalogData = null) {
   const waRaw = String(brand.whatsappNumber || '6285122936027').replace(/\D/g, '');
   const waCandidates = new Set([waRaw, '6285122936027'].filter((x) => x.length >= 9));
 
-  // Build local (08...) variants for each owner WhatsApp number
+  // Build full (628...), local (08...), and core (8...) variants for each owner WhatsApp number
   const digitPatterns = new Set();
   for (const num of waCandidates) {
     digitPatterns.add(num);
@@ -122,16 +250,20 @@ export function redactSensitiveOwnerData(text = '', catalogData = null) {
   out = out.replace(/https?:\/\/(?:wa\.me|api\.whatsapp\.com\/send\?phone=)\/?\d{8,15}/gi, '62xxxxxxxxxx');
   out = out.replace(/\bwa\.me\/\d{8,15}\b/gi, '62xxxxxxxxxx');
 
-  // 2. Censor exact owner WhatsApp number in ANY separator formatting (+62 851-2293-6027, 0851 2293 6027, etc.)
-  for (const digits of digitPatterns) {
+  // 2. Censor exact owner WhatsApp number in ANY ASCII or Unicode separator formatting
+  const sortedDigits = [...digitPatterns].sort((a, b) => b.length - a.length);
+  for (const digits of sortedDigits) {
     if (digits.length < 9) continue;
     const flexPattern = digits
       .split('')
       .map((d) => escapeRegexLiteral(d))
-      .join('[\\s\\-().]*');
-    const re = new RegExp(`(?:\\+?\\s*)?${flexPattern}`, 'g');
+      .join(FLEX_PHONE_SEP_CLASS);
+    const re = new RegExp(`(?:\\+?${FLEX_PHONE_SEP_CLASS})?${flexPattern}`, 'g');
     out = out.replace(re, '62xxxxxxxxxx');
   }
+
+  // 2b. Digit-stream scanner catch-all (catches exotic Unicode dashes/Markdown bold/zero-width chars)
+  out = redactDigitSequences(out, sortedDigits);
 
   // 3. Censor owner social handles & direct social URLs (TikTok, Instagram, etc.)
   const rawHandles = new Set(
@@ -158,11 +290,18 @@ export function redactSensitiveOwnerData(text = '', catalogData = null) {
   // 4. Censor any email address linked to owner/manifestudio
   out = out.replace(/\b[a-zA-Z0-9._%+-]*(?:tomy|manifestudio)[a-zA-Z0-9._%+-]*@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}\b/gi, 't***@*****.***');
 
-  // 5. Contextual safeguard: if a sentence mentions WA/WhatsApp/kontak/admin/owner/Tomy alongside
-  //    a raw Indonesian phone number (+628... / 08...), censor that number to 62xxxxxxxxxx.
-  if (/(?:whatsapp|\bwa\b|kontak|telepon|telp|hubungi|admin|owner|pemilik|tomy|manifestudio)/i.test(out)) {
-    out = out.replace(/(?:\+?62|0)\s*8[\d\s\-().]{7,14}\d/g, '62xxxxxxxxxx');
+  // 5. Contextual safeguard: if text mentions WA/WhatsApp/kontak/admin/owner/Tomy/Manifestudio alongside
+  //    ANY raw Indonesian mobile number (+62 8... / 08... with ASCII OR Unicode spaces/hyphens), censor it!
+  if (/(?:whatsapp|\bwa\b|kontak|telepon|telp|\bhp\b|hubungi|admin|owner|pemilik|tomy|manifestudio|nomor\s*pribadi)/i.test(out)) {
+    const indonesianPhoneRe = new RegExp(
+      `(?:\\+?62|0)${FLEX_PHONE_SEP_CLASS}8(?:${FLEX_PHONE_SEP_CLASS}\\d){7,12}`,
+      'g'
+    );
+    out = out.replace(indonesianPhoneRe, '62xxxxxxxxxx');
   }
+
+  // 6. Clean any contradictory "tidak bisa memberi nomor ... kirim pesan ke 62xxxxxxxxxx" phrasing
+  out = sanitizeOwnerContactContradiction(out);
 
   return out;
 }
@@ -223,12 +362,11 @@ export function buildLocalManifestudioFallback(prompt = '', catalogData = null) 
   }
 
   // Direct owner contact / WhatsApp / social media inquiry -> privacy-safe reply pointing to footer
-  if (/\b(nomor\s*(wa|whatsapp|hp|telepon)|no\s*(wa|whatsapp|hp)|kontak\s*(admin|owner|tomy|pemilik)|sosmed|media\s*sosial|instagram|tiktok)\b/i.test(lower)) {
-    return [
-      'Demi menjaga privasi pemilik (**Tomy**), Manifest AI tidak menampilkan nomor WhatsApp maupun akun media sosial secara terbuka (`62xxxxxxxxxx` · `@t***********o`).',
-      '',
-      'Untuk menghubungi **WhatsApp Admin** atau mengunjungi **media sosial resmi Manifestudio**, silakan langsung klik tombol kontak & sosmed resmi yang sudah tersedia di **bagian footer (bawah halaman)** website ini.',
-    ].join('\n');
+  if (
+    isDirectOwnerContactQuery(raw) ||
+    /\b(nomor\s*(wa|whatsapp|hp|telepon)|no\s*(wa|whatsapp|hp)|kontak\s*(admin|owner|tomy|pemilik)|sosmed|media\s*sosial|instagram|tiktok)\b/i.test(lower)
+  ) {
+    return buildOwnerContactPrivacyReply();
   }
 
   // Identity / creator / "what is Manifestudio" / "what's in Manifestudio"
@@ -916,16 +1054,124 @@ export function detectTopicShift(history = [], currentPrompt = '') {
   return { shifted: false, reason: 'same-topic-overlap' };
 }
 
+const WEB_RESEARCH_SKIP_RE =
+  /^(?:p+|ping|halo+|hai+|hi+|hey+|tes+|test+|ok|oke|siap|makasih|terima\s*kasih|thanks|thank\s*you|lanjut|teruskan|jelaskan\s*lebih\s*lanjut)[\s!?.]*$/i;
+
+const WEB_RESEARCH_CODING_RE =
+  /\b(?:buatkan\s+(?:kode|fungsi|script|html|css|komponen)|fix\s+bug|regex|refactor|typescript|javascript|python|sql\s+query|css\s+grid|flexbox|hitung\s+\d+|terjemahkan\s+kalimat)\b/i;
+
+const WEB_RESEARCH_TRIGGER_RE =
+  /\b(?:rekomendasi|makanan\s*khas|kuliner|jajanan|oleh[- ]?oleh|minuman\s*khas|wisata|tempat\s*(?:wisata|makan|populer|hits)|kota|kabupaten|provinsi|daerah|sejarah|siapa\s+(?:itu|presiden|penemu|pendiri|gubernur|bupati|walikota|aktor|penyanyi)|apa\s+itu|dimana|di\s*mana|kapan|berapa\s+(?:luas|penduduk|tinggi|jarak|harga|usia)|fakta|daftar|terkenal|populer|terbaik|terbaru|berita|profil|biografi|arti\s+kata|definisi|perbedaan|resep\s+asli|budaya|adat|bahasa\s+daerah|universitas|kampus|gunung|pantai|pulau|negara|ibukota|ibu\s*kota|recommend|best\s+food|traditional\s+food|history\s+of|who\s+is|what\s+is|where\s+is)\b/i;
+
+const CULINARY_OR_TRAVEL_RE =
+  /\b(?:makanan|kuliner|jajanan|oleh[- ]?oleh|minuman|masakan|hidangan|soto|bakso|nasi|sate|kupat|bubur|warung|restoran|cafe|kafe|wisata|liburan|hotel|penginapan|travel|visit|eat|food|kota|kabupaten|daerah|tasikmalaya|bandung|garut|jogja|yogyakarta|solo|semarang|surabaya|malang|bali|lombok|medan|padang|palembang|makassar|manado|cirebon|bogor|purwakarta|ciamis|pangandaran)\b/i;
+
+const RESEARCH_FILLER_RE =
+  /\b(?:tolong|coba|bisa|dong|nih|ya|kasih|berikan|sebutkan|carikan|jelaskan|rekomendasi(?:kan)?|daftar|list|apa\s+saja|yang\s+enak|yang\s+terkenal|yang\s+populer|yang\s+wajib\s+dicoba|paling\s+enak|terbaik|terpopuler|hits|viral|dong|sih|please|give\s+me|tell\s+me|about|what\s+are|best|top)\b/gi;
+
+/**
+ * Decides whether a user prompt benefits from silent live web research grounding
+ * (factual, regional/culinary, travel, history, entities, recommendations) to eliminate hallucinations.
+ */
+export function shouldPerformWebResearch(prompt = '') {
+  const clean = String(prompt || '').trim();
+  if (clean.length < 6 || clean.length > 360) return false;
+  if (WEB_RESEARCH_SKIP_RE.test(clean)) return false;
+  if (isDirectOwnerContactQuery(clean) || isManifestudioQuery(clean)) return false;
+  if (WEB_RESEARCH_CODING_RE.test(clean)) return false;
+  if (WEB_RESEARCH_TRIGGER_RE.test(clean)) return true;
+  // Also trigger on short factual questions ending in '?' with capitalized proper nouns or place names
+  if (/\?$/.test(clean) && clean.split(/\s+/).length >= 3) return true;
+  if (CULINARY_OR_TRAVEL_RE.test(clean)) return true;
+  return false;
+}
+
+/**
+ * Extracts clean search queries + primary place/entity name for Wikipedia & Wikivoyage live research.
+ */
+export function buildResearchSearchQueries(prompt = '') {
+  const raw = String(prompt || '')
+    .replace(/[?!.,;:()[\]"]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  const stripped = raw
+    .replace(RESEARCH_FILLER_RE, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  const primaryQuery = (stripped.length >= 3 ? stripped : raw).slice(0, 90);
+  const isCulinaryOrTravel = CULINARY_OR_TRAVEL_RE.test(raw);
+
+  // Extract a likely city/place/topic entity (e.g. "makanan khas Tasikmalaya" -> "Tasikmalaya")
+  let entityQuery = '';
+  const khasMatch = raw.match(/(?:khas|dari|di|kota|kabupaten|provinsi|pulau|gunung|pantai|negara|sejarah|wisata|kuliner)\s+([A-Za-zÀ-ÿ]+(?:\s+[A-Za-zÀ-ÿ]+){0,2})/i);
+  if (khasMatch && khasMatch[1]) {
+    entityQuery = khasMatch[1]
+      .replace(/\b(?:yang|enak|terkenal|populer|murah|terbaik|wajib|dicoba|indonesia|jawa|dan|atau)\b.*/i, '')
+      .trim();
+  }
+  if (!entityQuery) {
+    const tokens = primaryQuery
+      .split(/\s+/)
+      .filter((w) => w.length >= 3 && !/^(?:makanan|minuman|kuliner|jajanan|wisata|tempat|khas|tradisional|daerah|resep|cara|harga|apa|siapa|dimana|kapan)$/i.test(w));
+    if (tokens.length > 0) {
+      entityQuery = tokens.slice(-2).join(' ');
+    }
+  }
+
+  return {
+    primaryQuery,
+    entityQuery: entityQuery.slice(0, 50),
+    isCulinaryOrTravel,
+  };
+}
+
+/**
+ * Formats live web research snippets into a compact, high-signal factual grounding block.
+ */
+export function formatResearchContextBlock(items = [], maxChars = 2200) {
+  const valid = (Array.isArray(items) ? items : [])
+    .filter((it) => it && typeof it.snippet === 'string' && it.snippet.trim().length >= 20)
+    .slice(0, 6);
+  if (valid.length === 0) return '';
+
+  const lines = [
+    '[DATA RISET WEB LANGSUNG TERVERIFIKASI — WAJIB DIJADIKAN ACUAN FAKTA]',
+    'Aturan penggunaan data riset:',
+    '- Prioritaskan fakta, nama makanan/tempat/tokoh yang terverifikasi di data riset berikut serta pengetahuan geografis/budaya nyata yang 100% akurat.',
+    '- DILARANG KERAS mengarang nama warung/toko/orang palsu yang tidak terverifikasi (seperti "Pak Budi", "Pak Sani", "Pak Wayan") atau mencampuradukkan makanan khas daerah lain.',
+    '- Jika nama warung spesifik tidak tercantum di data riset, sebutkan nama hidangan khas aslinya beserta penjelasan akurat tanpa mengarang nama tempat.',
+  ];
+
+  let used = lines.join('\n').length;
+  for (const it of valid) {
+    const source = String(it.source || 'Web').trim();
+    const title = String(it.title || '').trim();
+    const snippet = String(it.snippet || '')
+      .replace(/\s+/g, ' ')
+      .trim()
+      .slice(0, 420);
+    const row = `- [${source}] ${title ? `${title}: ` : ''}${snippet}`;
+    if (used + row.length + 1 > maxChars) break;
+    lines.push(row);
+    used += row.length + 1;
+  }
+
+  return lines.length > 5 ? lines.join('\n') : '';
+}
+
 /**
  * Sanitizes raw chat history by removing orphaned unanswered user turns (e.g. from prior
- * rate-limit errors) so user/assistant alternation stays clean for every LLM API.
+ * rate-limit errors) AND scrubbing any legacy leaked owner contact info from past messages
+ * so user/assistant alternation stays clean and zero sensitive numbers ever enter LLM prompts.
  */
-export function sanitizeConversationHistory(history = []) {
+export function sanitizeConversationHistory(history = [], catalogData = null) {
   const valid = (Array.isArray(history) ? history : [])
     .filter((m) => m && (m.role === 'user' || m.role === 'assistant') && typeof m.content === 'string' && m.content.trim())
     .map((m) => ({
       role: m.role,
-      content: m.content.trim(),
+      content: m.role === 'assistant' ? redactSensitiveOwnerData(m.content.trim(), catalogData) : m.content.trim(),
     }));
 
   const normalized = [];
@@ -955,7 +1201,7 @@ export function sanitizeConversationHistory(history = []) {
  * participating model (and any failover model).
  * - Keeps full memory when continuing or revisiting a topic.
  * - Isolates cleanly when the user switches to a brand-new topic so models NEVER cling to old topics.
- * - Injects live verified Manifestudio catalog data on demand.
+ * - Injects live verified Manifestudio catalog data AND live web research context on demand.
  */
 export function buildUnifiedContextMessages(
   history = [],
@@ -965,15 +1211,19 @@ export function buildUnifiedContextMessages(
     maxTotalChars = 9000,
     customSystemPrompt = '',
     catalogData = null,
+    researchContext = '',
   } = {}
 ) {
   const promptClean = String(currentUserPrompt || '').trim();
-  const cleanHistory = sanitizeConversationHistory(history);
+  const cleanHistory = sanitizeConversationHistory(history, catalogData);
   const shift = detectTopicShift(cleanHistory, promptClean);
 
   const systemParts = [customSystemPrompt || MANIFEST_AI_SYSTEM_PROMPT];
   if (isManifestudioQuery(promptClean)) {
     systemParts.push(buildManifestudioKnowledgeBlock(catalogData));
+  }
+  if (researchContext && String(researchContext).trim()) {
+    systemParts.push(String(researchContext).trim());
   }
 
   // When user clearly switched to an unrelated new topic, keep context laser-focused on the new topic!
@@ -1511,7 +1761,7 @@ export function createChatThread(title = 'Percakapan Baru') {
   };
 }
 
-export function normalizeChatThreads(raw = []) {
+export function normalizeChatThreads(raw = [], catalogData = null) {
   if (!Array.isArray(raw)) return [];
   return raw
     .filter((t) => t && typeof t === 'object' && t.id)
@@ -1526,7 +1776,7 @@ export function normalizeChatThreads(raw = []) {
             .map((m) => ({
               id: String(m.id || `msg_${Math.random().toString(36).slice(2, 8)}`),
               role: m.role,
-              content: m.content,
+              content: m.role === 'assistant' ? redactSensitiveOwnerData(m.content, catalogData) : m.content,
               createdAt: Number(m.createdAt) || Date.now(),
               meta: m.meta && typeof m.meta === 'object' ? m.meta : null,
             }))
@@ -1577,9 +1827,14 @@ export function escapeAiHtml(str = '') {
 }
 
 function formatInlineMarkdown(escapedLine = '') {
-  let out = escapedLine;
-  // Inline code
-  out = out.replace(/`([^`]+)`/g, '<code class="mai-inline-code">$1</code>');
+  // Tokenize inline code spans FIRST so characters like `*` inside `@t***********o`
+  // or `a * b * c` never interfere with bold/italic Markdown parsing!
+  const inlineCodes = [];
+  let out = escapedLine.replace(/`([^`]+)`/g, (_m, code) => {
+    const idx = inlineCodes.length;
+    inlineCodes.push(`<code class="mai-inline-code">${code}</code>`);
+    return `@@INLINE_CODE_${idx}@@`;
+  });
   // Bold + italic
   out = out.replace(/\*\*\*([^*]+)\*\*\*/g, '<strong><em>$1</em></strong>');
   // Bold
@@ -1591,7 +1846,25 @@ function formatInlineMarkdown(escapedLine = '') {
     /\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g,
     '<a href="$2" target="_blank" rel="noopener noreferrer" class="mai-md-link">$1</a>'
   );
+  // Restore tokenized inline code spans
+  out = out.replace(/@@INLINE_CODE_(\d+)@@/g, (_m, idx) => inlineCodes[Number(idx)] || '');
   return out;
+}
+
+function isMarkdownTableSeparator(line = '') {
+  const t = String(line || '').trim();
+  if (!t.includes('|')) return false;
+  const cells = t.replace(/^\|/, '').replace(/\|$/, '').split('|');
+  return cells.length >= 2 && cells.every((c) => /^\s*:?-{2,}:?\s*$/.test(c));
+}
+
+function parseMarkdownTableRow(line = '') {
+  return String(line || '')
+    .trim()
+    .replace(/^\|/, '')
+    .replace(/\|$/, '')
+    .split('|')
+    .map((cell) => cell.trim());
 }
 
 export function renderMarkdownSafe(markdown = '') {
@@ -1639,6 +1912,39 @@ export function renderMarkdownSafe(markdown = '') {
     if (codeMatch) {
       closeLists();
       html.push(codeBlocks[Number(codeMatch[1])] || '');
+      continue;
+    }
+
+    // Markdown table block (`| Col A | Col B |` followed by `|---|---|`)
+    if (trimmed.includes('|') && i + 1 < lines.length && isMarkdownTableSeparator(lines[i + 1])) {
+      closeLists();
+      const headers = parseMarkdownTableRow(trimmed);
+      const bodyRows = [];
+      let j = i + 2;
+      while (j < lines.length) {
+        const nextTrimmed = lines[j].trim();
+        if (!nextTrimmed || !nextTrimmed.includes('|')) break;
+        if (!isMarkdownTableSeparator(nextTrimmed)) {
+          bodyRows.push(parseMarkdownTableRow(nextTrimmed));
+        }
+        j += 1;
+      }
+      const theadHtml = `<thead><tr>${headers
+        .map((h) => `<th>${formatInlineMarkdown(escapeAiHtml(h))}</th>`)
+        .join('')}</tr></thead>`;
+      const tbodyHtml =
+        bodyRows.length > 0
+          ? `<tbody>${bodyRows
+              .map(
+                (row) =>
+                  `<tr>${headers
+                    .map((_, colIdx) => `<td>${formatInlineMarkdown(escapeAiHtml(row[colIdx] || ''))}</td>`)
+                    .join('')}</tr>`
+              )
+              .join('')}</tbody>`
+          : '';
+      html.push(`<div class="mai-table-wrap"><table class="mai-md-table">${theadHtml}${tbodyHtml}</table></div>`);
+      i = j - 1;
       continue;
     }
 
@@ -2384,12 +2690,16 @@ export function cleanTextForSpeech(markdown = '', catalogData = null) {
 export function segmentMultilingualSpeech(
   rawText = '',
   primaryLang = 'multi',
-  { maxSegmentChars = 340, codeSwitch = true, isMultilingualVoice = false } = {}
+  { maxSegmentChars = 320, maxFirstSegmentChars = 0, codeSwitch = true, isMultilingualVoice = false } = {}
 ) {
   const clean = String(rawText || '').trim();
   if (!clean) return [];
 
   const baseLang = primaryLang === 'multi' ? 'id' : String(primaryLang || 'id').toLowerCase().split('-')[0];
+  const firstCap =
+    Number(maxFirstSegmentChars) > 0
+      ? Math.max(40, Math.min(maxSegmentChars, Number(maxFirstSegmentChars)))
+      : maxSegmentChars;
 
   const detectMixedLatinTag = (str) => {
     const hasIndo = /\b(?:yang|dan|di|ke|dari|untuk|dengan|buku|membeli|melelang|perpustakaan|halo|saya|anda|ini|itu)\b/i.test(str);
@@ -2399,18 +2709,22 @@ export function segmentMultilingualSpeech(
     return baseLang === 'en' ? 'en' : 'id';
   };
 
-  const splitLongChunks = (str, explicitLang = null) => {
+  const splitLongChunks = (str, explicitLang = null, useFastFirst = false) => {
     const trimmed = str.trim();
     if (!trimmed) return [];
     const tag = explicitLang || detectMixedLatinTag(trimmed);
-    if (trimmed.length <= maxSegmentChars) return [{ lang: tag, text: trimmed }];
+    const activeFirstCap = useFastFirst ? firstCap : maxSegmentChars;
+    if (trimmed.length <= activeFirstCap) return [{ lang: tag, text: trimmed }];
 
     const parts = [];
     const sentences = trimmed.split(/(?<=[.!?。！？])\s+/);
     let current = '';
+    const limitFor = (idx) => (useFastFirst && idx === 0 ? activeFirstCap : maxSegmentChars);
+
     for (const s of sentences) {
       if (!s.trim()) continue;
-      if (current && current.length + s.length + 1 > maxSegmentChars) {
+      const cap = limitFor(parts.length);
+      if (current && current.length + s.length + 1 > cap) {
         parts.push({ lang: explicitLang || detectMixedLatinTag(current), text: current.trim() });
         current = s;
       } else {
@@ -2421,20 +2735,36 @@ export function segmentMultilingualSpeech(
 
     const finalParts = [];
     for (const p of parts) {
-      if (p.text.length <= maxSegmentChars) {
+      const cap = limitFor(finalParts.length);
+      if (p.text.length <= cap) {
         finalParts.push(p);
       } else {
         const sub = p.text.split(/(?<=,|;)\s+/);
         let acc = '';
         for (const piece of sub) {
-          if (acc && acc.length + piece.length + 1 > maxSegmentChars) {
+          const innerCap = limitFor(finalParts.length);
+          if (acc && acc.length + piece.length + 1 > innerCap) {
             finalParts.push({ lang: explicitLang || detectMixedLatinTag(acc), text: acc.trim() });
             acc = piece;
           } else {
             acc = acc ? `${acc} ${piece}` : piece;
           }
         }
-        if (acc.trim()) finalParts.push({ lang: explicitLang || detectMixedLatinTag(acc), text: acc.trim() });
+        if (acc.trim()) {
+          // If the very first clause itself had no punctuation and is still longer than cap, split cleanly on a word boundary
+          const tailCap = limitFor(finalParts.length);
+          if (useFastFirst && finalParts.length === 0 && acc.length > tailCap && acc.length > tailCap + 35) {
+            const cutIdx = acc.lastIndexOf(' ', tailCap);
+            if (cutIdx >= 35) {
+              const head = acc.slice(0, cutIdx).trim();
+              const rest = acc.slice(cutIdx + 1).trim();
+              finalParts.push({ lang: explicitLang || detectMixedLatinTag(head), text: head });
+              if (rest) finalParts.push({ lang: explicitLang || detectMixedLatinTag(rest), text: rest });
+              continue;
+            }
+          }
+          finalParts.push({ lang: explicitLang || detectMixedLatinTag(acc), text: acc.trim() });
+        }
       }
     }
     return finalParts;
@@ -2443,7 +2773,7 @@ export function segmentMultilingualSpeech(
   // Keep mixed Latin text ALWAYS unified! Only split off non-Latin runs when voice is Latin-only & codeSwitch is enabled
   const hasNonLatin = /[\u0600-\u06FF\u0750-\u077F\u3040-\u309F\u30A0-\u30FF\uAC00-\uD7AF\u1100-\u11FF\u4E00-\u9FFF]/.test(clean);
   if (!hasNonLatin || !codeSwitch || isMultilingualVoice) {
-    return splitLongChunks(clean);
+    return splitLongChunks(clean, null, firstCap < maxSegmentChars);
   }
 
   // Split ONLY at non-Latin script boundaries while keeping surrounding Latin text unified
@@ -2460,8 +2790,9 @@ export function segmentMultilingualSpeech(
   }
 
   const out = [];
-  for (const r of runs) {
-    out.push(...splitLongChunks(r.text, r.script === 'latin' ? null : r.script));
+  for (let idx = 0; idx < runs.length; idx += 1) {
+    const r = runs[idx];
+    out.push(...splitLongChunks(r.text, r.script === 'latin' ? null : r.script, idx === 0 && firstCap < maxSegmentChars));
   }
   return out;
 }

@@ -142,6 +142,10 @@ Dokumen ini adalah panduan resmi tujuan proyek, arsitektur, pencapaian implement
 - [x] **Suara AI Natural 1-Speaker Konsisten, 29 Model Unik & Retry Otomatis (`v65`)**:
   - **100% Model Unik & Azure V2 Multilingual**: Menghapus duplikat *pitch-shift*, memperluas katalog ke **29 suara neural unik Pria & Wanita** (Azure V2 `Ava`, `Andrew`, `Emma`, `Brian`, `William`, `Thalita`, `Giuseppe` + `Gadis`, `Ardi`, `Aria`, `Jenny`, `Michelle`, `Guy`, `Christopher`, `Sonia`, `Ryan`, `Natasha`, dll.) dengan `defaultPitch: 0` bebas suara robotik kaku.
   - **1 Suara Konsisten Lintas Bahasa (Tanpa Ganti Orang)**: Menjaga kalimat campuran Indonesia + Inggris tetap dibacakan utuh oleh 1 suara yang dipilih user (tidak lagi menimpa pilihan ke Gadis/Ardi atau mengganti pembicara di tengah kalimat), ditambah normalisasi bahasa lisan Indonesia (Rp, %, singkatan) serta 3× auto-retry + opsional `gpt-4o-mini-tts` Puter (`manifestudio-cache-v65`).
+- [x] **Privasi Owner Zero-Leak, Suara AI Ultra-Cepat, Riset Web Real-Time & Tabel Markdown (`v66`)**:
+  - **Perisai Privasi Owner 4-Lapis (Anti-Blunder & Anti-Unicode Bypass)**: Menutup celah kebocoran nomor kontak dengan spasi/tanda hubung Unicode (`\u202F`, `\u2011`, `\u2013`), pemindai *digit-stream*, penghapusan frasa kontradiktif otomatis, pembersihan riwayat lama di `localStorage`, serta jawaban deterministik instan khusus pertanyaan kontak owner/admin menuju footer website.
+  - **Pembacaan Suara 3×–4.5× Lebih Cepat**: Pemecahan klausa pertama singkat (`<= 90` karakter), pemutaran *progressive audio streaming* langsung dari URL audio (tanpa unduh blob MP3 berulang), serta *parallel prefetch* segmen berikutnya sambil tetap menjaga **1 suara konsisten** tanpa ganti orang.
+  - **Riset Web Real-Time Anti-Halusinasi & Tabel Markdown Responsif**: Melakukan riset web otomatis senyap via CORS (Wikipedia ID/EN, Wikivoyage EN/ID, & DuckDuckGo) untuk pertanyaan faktual/kuliner/daerah sebelum model menjawab agar akurat dan bebas halusinasi, serta merender tabel Markdown (`|---|---|`) secara rapi dan responsif di desktop & mobile (`manifestudio-cache-v66`).
 
 ---
 

@@ -1,8 +1,8 @@
 /**
- * Manifest AI — Chat Workspace UI Controller (v65)
- * Multi-Model AI Ensemble, Fullscreen Workspace Mode, Natural Multilingual &
- * Single-Speaker Voice Reader (29 Unique Male & Female Neural Voices), Strict Owner Privacy Guard,
- * Real-Time Auto-Upgrading Model Registry, Multi-Provider BYOK Vault & Persistent History.
+ * Manifest AI — Chat Workspace UI Controller (v66)
+ * Multi-Model AI Ensemble, Live Web Research Grounding, Fullscreen Workspace Mode,
+ * Fast Low-Latency Natural Single-Speaker Voice Reader (31 Unique Male & Female Neural Voices),
+ * Zero-Leak Owner Privacy Shield, Responsive Markdown Tables & Persistent History.
  */
 
 import {
@@ -20,10 +20,11 @@ import {
   getVoiceProfileById,
   maskApiKey,
   normalizeChatThreads,
+  redactSensitiveOwnerData,
   renderMarkdownSafe,
   upsertByokKey,
   upsertChatThread,
-} from './manifest-ai-logic.js?v=65';
+} from './manifest-ai-logic.js?v=66';
 import {
   getCachedModelRegistry,
   isPuterAiReady,
@@ -38,8 +39,8 @@ import {
   signInPuterSdk,
   syncLiveModelRegistry,
   testByokKeyConnection,
-} from './manifest-ai.js?v=65';
-import { createManifestAiVoicePlayer } from './manifest-ai-voice.js?v=65';
+} from './manifest-ai.js?v=66';
+import { createManifestAiVoicePlayer } from './manifest-ai-voice.js?v=66';
 
 const STARTER_PROMPTS = Object.freeze([
   {
@@ -72,7 +73,13 @@ function readStoredThreads() {
   try {
     const raw = localStorage.getItem(MANIFEST_AI_STORAGE_KEYS.chats);
     if (!raw) return [];
-    return normalizeChatThreads(JSON.parse(raw));
+    const cleaned = normalizeChatThreads(JSON.parse(raw));
+    // Re-persist scrubbed threads so any pre-v66 cached leaked numbers are wiped permanently
+    const serialized = JSON.stringify(cleaned);
+    if (serialized !== raw) {
+      localStorage.setItem(MANIFEST_AI_STORAGE_KEYS.chats, serialized);
+    }
+    return cleaned;
   } catch {
     return [];
   }
@@ -892,6 +899,7 @@ export function createManifestAiController({ onToast = () => {} } = {}) {
         : `Berhenti${state.voice.langBadge ? ` · ${state.voice.langBadge}` : ''}`
       : 'Dengarkan';
 
+    const safeContent = redactSensitiveOwnerData(msg.content, state.catalogData);
     return `
       <article class="mai-msg mai-msg-assistant" aria-label="Jawaban Manifest AI">
         <div class="mai-assistant-avatar" aria-hidden="true">
@@ -899,7 +907,7 @@ export function createManifestAiController({ onToast = () => {} } = {}) {
         </div>
         <div class="mai-assistant-body">
           <div class="mai-md-content" data-mai-msg-content="${escapeAiHtml(msg.id)}">
-            ${renderMarkdownSafe(msg.content)}
+            ${renderMarkdownSafe(safeContent)}
           </div>
 
           <div class="mai-msg-footer">

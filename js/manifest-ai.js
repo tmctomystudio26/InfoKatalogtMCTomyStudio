@@ -1,6 +1,8 @@
 /**
- * Manifest AI — Instant Streaming Multi-Model Engine (v65)
+ * Manifest AI — Instant Streaming Multi-Model Engine (v66)
  * - 4 independent keyless CORS streaming networks: LLM7 + Pollinations (45s reset) + OVHcloud (14+ flagship models) + HF Spaces
+ * - Silent real-time CORS web research grounding (Wikipedia ID/EN + Wikivoyage + DuckDuckGo) to prevent factual hallucinations
+ * - Strict zero-leak owner privacy guard + instant deterministic footer guide for direct owner-contact queries
  * - Real-time SSE token streaming (instant ChatGPT/Gemini feel) across BYOK, Puter & keyless gateways
  * - Live Manifestudio catalog.json grounding (knows Tomy, products & 12 utilities — zero hallucination)
  * - Smart Staggered Hedging: sends ONLY 1 free request first & hedges only if slow/failing
@@ -10,19 +12,26 @@
 import {
   MANIFEST_AI_STORAGE_KEYS,
   buildLocalManifestudioFallback,
+  buildOwnerContactPrivacyReply,
+  buildResearchSearchQueries,
   buildUnifiedContextMessages,
+  formatResearchContextBlock,
   getCooldownRemainingMs,
   getProviderMeta,
   getVoiceProfileById,
+  isDirectOwnerContactQuery,
   mergeLiveModelCatalog,
   normalizeByokKeys,
   normalizeLimitMap,
   planEnsembleExecution,
   recordProviderCooldown,
   redactSensitiveOwnerData,
-} from './manifest-ai-logic.js?v=65';
+  shouldPerformWebResearch,
+} from './manifest-ai-logic.js?v=66';
 
 const MODEL_SYNC_TTL_MS = 6 * 60 * 60 * 1000; // 6 hours auto-refresh
+const RESEARCH_CACHE_TTL_MS = 10 * 60 * 1000; // 10 minutes live research cache
+const RESEARCH_TIMEOUT_MS = 2600; // Crisp upper bound so chat stays fast & snappy
 const REQUEST_TIMEOUT_MS = 26000;
 const FREE_CONNECT_TIMEOUT_MS = 10500;
 const FREE_HEDGE_DELAY_MS = 3400; // Only launch 2nd free provider if 1st fails or stalls >3.4s (saves 3x quota!)
@@ -30,6 +39,8 @@ const POLLINATIONS_RESET_MS = 46000; // Pollinations Classic resets every 45s pe
 const POLLINATIONS_AUTO_WAIT_MAX_MS = 22000; // Smoothly wait up to 22s for Pollinations reset instead of throwing limit error
 const OVH_PER_MODEL_COOLDOWN_MS = 12 * 60 * 60 * 1000; // OVH anonymous allows 1 call per model — roll cleanly to next model!
 const REGISTRY_TIMEOUT_MS = 7000;
+
+const researchCache = new Map(); // normalizedQuery -> { ts, block }
 
 let cachedRegistry = null;
 let cachedCatalogData = null;
@@ -174,6 +185,212 @@ async function fetchJsonTimeout(url, options = {}, timeoutMs = REQUEST_TIMEOUT_M
   } finally {
     linked.cleanup();
   }
+}
+
+function stripHtmlTags(raw = '') {
+  return String(raw || '')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/&quot;/g, '"')
+    .replace(/&amp;/g, '&')
+    .replace(/&#039;|&apos;/g, "'")
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function extractRelevantSection(fullText = '', sectionRe = /==\s*(?:Eat|Makan|Kuliner|See|Lihat|Drink|Minum)\s*==/i, maxLen = 650) {
+  const txt = String(fullText || '').trim();
+  if (!txt) return '';
+  const match = txt.match(sectionRe);
+  if (match && typeof match.index === 'number') {
+    const start = match.index;
+    const afterHeading = txt.slice(start + match[0].length);
+    const nextSection = afterHeading.search(/\n==\s*[^=]+\s*==/);
+    const body = nextSection >= 0 ? afterHeading.slice(0, nextSection) : afterHeading;
+    const cleanBody = body.replace(/\s+/g, ' ').trim();
+    if (cleanBody.length >= 30) {
+      return cleanBody.slice(0, maxLen);
+    }
+  }
+  return txt.replace(/\s+/g, ' ').trim().slice(0, Math.min(360, maxLen));
+}
+
+function scoreResearchRelevance(title = '', snippet = '', entityTokens = [], queryTokens = []) {
+  const hay = `${title} ${snippet}`.toLowerCase();
+  // Filter out noisy Wikipedia citation-maintenance fragments
+  if (/pemeliharaan cs1|diarsipkan dari versi aslinya/i.test(snippet) && snippet.length < 180) {
+    return -10;
+  }
+  let score = 0;
+  for (const tok of entityTokens) {
+    if (tok.length >= 3 && hay.includes(tok)) score += 6;
+  }
+  for (const tok of queryTokens) {
+    if (tok.length >= 3 && hay.includes(tok)) score += 2;
+  }
+  return score;
+}
+
+/**
+ * Performs fast, silent, keyless CORS web research across Wikipedia ID/EN, Wikivoyage EN/ID,
+ * and DuckDuckGo Instant Answer (~0.5–2.6s max) to ground Manifest AI answers in verified real facts.
+ */
+export async function fetchLiveWebResearch(prompt = '', { signal = null, timeoutMs = RESEARCH_TIMEOUT_MS } = {}) {
+  if (typeof fetch !== 'function') return '';
+  const { primaryQuery, entityQuery, isCulinaryOrTravel } = buildResearchSearchQueries(prompt);
+  if (!primaryQuery) return '';
+
+  const cacheKey = `${primaryQuery.toLowerCase()}|${entityQuery.toLowerCase()}|${isCulinaryOrTravel ? '1' : '0'}`;
+  const cached = researchCache.get(cacheKey);
+  if (cached && Date.now() - cached.ts < RESEARCH_CACHE_TTL_MS) {
+    return cached.block;
+  }
+
+  const entityTokens = entityQuery
+    .toLowerCase()
+    .split(/\s+/)
+    .filter((t) => t.length >= 3);
+  const queryTokens = primaryQuery
+    .toLowerCase()
+    .split(/\s+/)
+    .filter((t) => t.length >= 3);
+
+  const tasks = [
+    // 1. Wikipedia Indonesia full-text search snippets (fast & rich for regional Indonesia facts)
+    fetchJsonTimeout(
+      `https://id.wikipedia.org/w/api.php?action=query&list=search&srsearch=${encodeURIComponent(primaryQuery)}&srlimit=6&srprop=snippet&format=json&origin=*`,
+      {},
+      timeoutMs,
+      signal
+    ).then((r) => ({ kind: 'wiki-id-search', res: r })),
+
+    // 2. Wikipedia Indonesia lead extracts
+    fetchJsonTimeout(
+      `https://id.wikipedia.org/w/api.php?action=query&generator=search&gsrsearch=${encodeURIComponent(primaryQuery)}&gsrlimit=4&prop=extracts&exintro=1&explaintext=1&exchars=420&format=json&origin=*`,
+      {},
+      timeoutMs,
+      signal
+    ).then((r) => ({ kind: 'wiki-id-extract', res: r })),
+
+    // 3. Wikipedia English extracts (great for global, tech, science, history & travel facts)
+    fetchJsonTimeout(
+      `https://en.wikipedia.org/w/api.php?action=query&generator=search&gsrsearch=${encodeURIComponent(primaryQuery)}&gsrlimit=3&prop=extracts&exintro=1&explaintext=1&exchars=360&format=json&origin=*`,
+      {},
+      timeoutMs,
+      signal
+    ).then((r) => ({ kind: 'wiki-en-extract', res: r })),
+
+    // 4. DuckDuckGo Instant Answer API (native CORS *)
+    fetchJsonTimeout(
+      `https://api.duckduckgo.com/?q=${encodeURIComponent(primaryQuery)}&format=json&no_html=1&skip_disambig=1`,
+      {},
+      timeoutMs,
+      signal
+    ).then((r) => ({ kind: 'ddg', res: r })),
+  ];
+
+  // 5 & 6. Wikivoyage EN + ID travel/culinary guides when query references a city, region, food, or tourism
+  if (entityQuery && isCulinaryOrTravel) {
+    const titleCaseEntity = entityQuery
+      .split(/\s+/)
+      .map((w) => (w ? `${w[0].toUpperCase()}${w.slice(1)}` : ''))
+      .join(' ');
+    tasks.push(
+      fetchJsonTimeout(
+        `https://en.wikivoyage.org/w/api.php?action=query&titles=${encodeURIComponent(titleCaseEntity)}&redirects=1&prop=extracts&explaintext=1&format=json&origin=*`,
+        {},
+        timeoutMs,
+        signal
+      ).then((r) => ({ kind: 'wikivoyage-en', res: r })),
+      fetchJsonTimeout(
+        `https://id.wikivoyage.org/w/api.php?action=query&titles=${encodeURIComponent(titleCaseEntity)}&redirects=1&prop=extracts&explaintext=1&format=json&origin=*`,
+        {},
+        timeoutMs,
+        signal
+      ).then((r) => ({ kind: 'wikivoyage-id', res: r }))
+    );
+  }
+
+  const settled = await Promise.allSettled(tasks);
+  if (signal?.aborted) return '';
+
+  const candidates = [];
+  const seenKeys = new Set();
+
+  const pushCandidate = (source, title, rawSnippet, bonus = 0) => {
+    const snippet = stripHtmlTags(rawSnippet);
+    if (snippet.length < 25) return;
+    const dedupeKey = `${String(title || '').toLowerCase()}|${snippet.slice(0, 60).toLowerCase()}`;
+    if (seenKeys.has(dedupeKey)) return;
+    const rel = scoreResearchRelevance(title, snippet, entityTokens, queryTokens) + bonus;
+    // Require entity relevance when an explicit place/entity was extracted
+    if (entityTokens.length > 0 && rel < 4) return;
+    seenKeys.add(dedupeKey);
+    candidates.push({ source, title, snippet, score: rel });
+  };
+
+  for (const outcome of settled) {
+    if (outcome.status !== 'fulfilled') continue;
+    const { kind, res } = outcome.value || {};
+    if (!res?.ok || !res.json) continue;
+
+    if (kind === 'wikivoyage-en' || kind === 'wikivoyage-id') {
+      const pages = Object.values(res.json?.query?.pages || {});
+      for (const page of pages) {
+        if (!page || page.missing !== undefined || !page.extract) continue;
+        const sectionRe = isCulinaryOrTravel
+          ? /==\s*(?:Eat|Makan|Kuliner|Drink|Minum)\s*==/i
+          : /==\s*(?:See|Lihat|Understand|Pahami)\s*==/i;
+        const sec = extractRelevantSection(page.extract, sectionRe, 750);
+        if (sec) {
+          pushCandidate(
+            kind === 'wikivoyage-en' ? 'Wikivoyage EN' : 'Wikivoyage ID',
+            page.title || entityQuery,
+            sec,
+            12
+          );
+        }
+      }
+    } else if (kind === 'wiki-id-search') {
+      const hits = Array.isArray(res.json?.query?.search) ? res.json.query.search : [];
+      for (const hit of hits) {
+        pushCandidate('Wikipedia ID', hit.title || '', hit.snippet || '', 4);
+      }
+    } else if (kind === 'wiki-id-extract' || kind === 'wiki-en-extract') {
+      const pages = Object.values(res.json?.query?.pages || {}).sort((a, b) => (a.index || 99) - (b.index || 99));
+      for (const page of pages) {
+        if (!page?.extract) continue;
+        pushCandidate(
+          kind === 'wiki-id-extract' ? 'Wikipedia ID' : 'Wikipedia EN',
+          page.title || '',
+          page.extract,
+          kind === 'wiki-id-extract' ? 5 : 2
+        );
+      }
+    } else if (kind === 'ddg') {
+      const j = res.json;
+      if (j.AbstractText) {
+        pushCandidate('DuckDuckGo', j.Heading || primaryQuery, j.AbstractText, 6);
+      }
+      if (Array.isArray(j.RelatedTopics)) {
+        for (const rt of j.RelatedTopics.slice(0, 3)) {
+          if (rt && typeof rt.Text === 'string') {
+            pushCandidate('DuckDuckGo', j.Heading || primaryQuery, rt.Text, 2);
+          }
+        }
+      }
+    }
+  }
+
+  candidates.sort((a, b) => b.score - a.score);
+  const block = formatResearchContextBlock(candidates, 2200);
+  if (researchCache.size > 40) {
+    const oldestKey = researchCache.keys().next().value;
+    researchCache.delete(oldestKey);
+  }
+  researchCache.set(cacheKey, { ts: Date.now(), block });
+  return block;
 }
 
 /**
@@ -1125,8 +1342,39 @@ export async function sendManifestAiMessage({
   const registry = liveRegistry || getCachedModelRegistry();
   const liveCatalog = catalogData || (await loadManifestudioCatalogData());
   let limitMap = loadStoredLimitMap();
+
+  // Direct owner/admin WhatsApp, email, or social-media inquiry: respond deterministically &
+  // instantaneously without risking any LLM contradiction or privacy leak!
+  if (isDirectOwnerContactQuery(prompt)) {
+    const safePrivacyReply = redactSensitiveOwnerData(buildOwnerContactPrivacyReply(), liveCatalog);
+    if (onDelta) onDelta(safePrivacyReply);
+    return {
+      content: safePrivacyReply,
+      meta: {
+        mode,
+        failoverUsed: false,
+        providerId: 'manifestudio-privacy-guard',
+        model: 'manifestudio-catalog-v66',
+        latencyMs: 12,
+      },
+      limitMap,
+    };
+  }
+
+  // Silent live web research grounding for factual, culinary, travel, local & knowledge queries
+  let researchContext = '';
+  if (shouldPerformWebResearch(prompt)) {
+    try {
+      researchContext = await fetchLiveWebResearch(prompt, { signal, timeoutMs: RESEARCH_TIMEOUT_MS });
+    } catch {
+      researchContext = '';
+    }
+    if (signal?.aborted) throw new Error('ABORTED');
+  }
+
   const unifiedMessages = buildUnifiedContextMessages(history, prompt, {
     catalogData: liveCatalog,
+    researchContext,
   });
 
   const turnIndex = freeTurnCounter;
@@ -1244,7 +1492,7 @@ export async function sendManifestAiMessage({
           mode,
           failoverUsed: true,
           providerId: 'manifestudio-local',
-          model: 'manifestudio-catalog-v65',
+          model: 'manifestudio-catalog-v66',
           latencyMs: 20,
         },
         limitMap,

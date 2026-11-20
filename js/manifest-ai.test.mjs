@@ -9,19 +9,26 @@ import {
   OVH_FREE_DEFAULT_MODELS,
   buildLocalManifestudioFallback,
   buildManifestudioKnowledgeBlock,
+  buildOwnerContactPrivacyReply,
+  buildResearchSearchQueries,
   buildUnifiedContextMessages,
   cleanTextForSpeech,
   detectTopicShift,
+  formatResearchContextBlock,
   getVoiceProfileById,
+  isDirectOwnerContactQuery,
   isManifestudioQuery,
   mergeLiveModelCatalog,
+  normalizeChatThreads,
   planEnsembleExecution,
   recordProviderCooldown,
   redactSensitiveOwnerData,
   renderMarkdownSafe,
   resolveVoiceForSegment,
   sanitizeConversationHistory,
+  sanitizeOwnerContactContradiction,
   segmentMultilingualSpeech,
+  shouldPerformWebResearch,
 } from './manifest-ai-logic.js';
 
 const liveCatalog = JSON.parse(
@@ -292,4 +299,131 @@ test('Manifest AI v65 voice catalog has zero duplicates, keeps 1 consistent spea
   assert.ok(spoken.includes('nomor yang disensor'));
   assert.ok(spoken.includes('Potongan kode tersedia di layar'));
 });
+
+test('Manifest AI v66 blocks Unicode-hyphen phone leaks, eliminates contradictory contact replies, and scrubs legacy localStorage history', () => {
+  // Exact blunder from user screenshot: Unicode narrow no-break space (\u202F) + non-breaking hyphen (\u2011) + Markdown bold
+  const screenshotBlunder =
+    'Maaf atas kebingungan tersebut. Saya tidak dapat memberikan nomor pribadi atau kontak langsung. Silakan gunakan tombol "Kontak" di footer website Manifestudio atau kirim pesan ke WhatsApp Admin resmi kami di **+62\u202f851\u20112293\u20116027**. Terima kasih atas pengertiannya!';
+
+  const fixed = redactSensitiveOwnerData(screenshotBlunder, liveCatalog);
+  assert.equal(fixed.includes('851'), false, 'Must NEVER retain raw digits 851');
+  assert.equal(fixed.includes('2293'), false, 'Must NEVER retain raw digits 2293');
+  assert.equal(fixed.includes('6027'), false, 'Must NEVER retain raw digits 6027');
+  assert.equal(/kirim pesan ke WhatsApp Admin/i.test(fixed), false, 'Must strip contradictory "atau kirim pesan ke..." clause');
+  assert.ok(fixed.includes('footer website Manifestudio'));
+
+  // Also test en-dash (\u2013), soft hyphen (\u00AD), and zero-width space (\u200B)
+  const obfuscated = 'Hubungi WA owner di +62\u00A0851\u20132293\u200B6027 atau 0851\u00AD2293\u20146027.';
+  const cleanObf = redactSensitiveOwnerData(obfuscated, liveCatalog);
+  assert.equal(cleanObf.includes('851'), false);
+  assert.equal(cleanObf.includes('6027'), false);
+  assert.ok(cleanObf.includes('62xxxxxxxxxx'));
+
+  // Direct owner contact queries trigger instant deterministic privacy reply
+  assert.equal(isDirectOwnerContactQuery('Berapa WhatsApp owner'), true);
+  assert.equal(isDirectOwnerContactQuery('Minta nomor WA admin Manifestudio'), true);
+  assert.equal(isDirectOwnerContactQuery('Apa Instagram Tomy?'), true);
+  assert.equal(isDirectOwnerContactQuery('Cara membuat akun WhatsApp bisnis'), false);
+  const directReply = buildOwnerContactPrivacyReply();
+  assert.ok(directReply.includes('footer'));
+  assert.ok(directReply.includes('62xxxxxxxxxx'));
+  assert.equal(directReply.includes('851'), false);
+
+  // Legacy localStorage threads & conversation history are scrubbed automatically
+  const legacyThreads = [
+    {
+      id: 'chat_old',
+      title: 'Halo anda siapa',
+      messages: [
+        { id: 'm1', role: 'user', content: 'Berapa WA owner?' },
+        { id: 'm2', role: 'assistant', content: 'WA admin di **+62\u202f851\u20112293\u20116027**.' },
+      ],
+    },
+  ];
+  const normalizedThreads = normalizeChatThreads(legacyThreads, liveCatalog);
+  assert.equal(normalizedThreads[0].messages[1].content.includes('851'), false);
+  assert.ok(normalizedThreads[0].messages[1].content.includes('62xxxxxxxxxx'));
+
+  const sanitizedHist = sanitizeConversationHistory(legacyThreads[0].messages, liveCatalog);
+  assert.equal(sanitizedHist[1].content.includes('851'), false);
+  assert.equal(sanitizeOwnerContactContradiction('Saya tidak dapat memberikan nomor pribadi atau kirim pesan ke WhatsApp Admin di 62xxxxxxxxxx.').includes('kirim pesan'), false);
+});
+
+test('Manifest AI v66 live web research grounding, Markdown tables, and fast first-clause single-speaker chunking', () => {
+  // 1. Web research trigger & query builder
+  assert.equal(shouldPerformWebResearch('Rekomendasi makanan khas Tasikmalaya'), true);
+  assert.equal(shouldPerformWebResearch('Siapa penemu lampu pijar?'), true);
+  assert.equal(shouldPerformWebResearch('Halo'), false);
+  assert.equal(shouldPerformWebResearch('Apa itu Manifestudio?'), false);
+  assert.equal(shouldPerformWebResearch('Buatkan kode JavaScript debounce'), false);
+
+  const q = buildResearchSearchQueries('Rekomendasi makanan khas Tasikmalaya yang enak');
+  assert.ok(q.primaryQuery.toLowerCase().includes('tasikmalaya'));
+  assert.equal(q.entityQuery.toLowerCase(), 'tasikmalaya');
+  assert.equal(q.isCulinaryOrTravel, true);
+
+  const block = formatResearchContextBlock([
+    {
+      source: 'Wikivoyage EN',
+      title: 'Tasikmalaya',
+      snippet: 'A traditional type of food from Tasik is nasi tutug oncom, rice mixed with fried or grilled oncom.',
+    },
+    {
+      source: 'Wikipedia ID',
+      title: 'Tutug oncom',
+      snippet: 'Nasi Tutug Oncom (nasi T.O.) adalah makanan khas Tasikmalaya yang terbuat dari nasi diaduk dengan oncom.',
+    },
+  ]);
+  assert.ok(block.includes('DATA RISET WEB LANGSUNG TERVERIFIKASI'));
+  assert.ok(block.includes('Nasi Tutug Oncom'));
+  assert.ok(block.includes('DILARANG KERAS mengarang nama warung'));
+
+  const ctx = buildUnifiedContextMessages([], 'Rekomendasi makanan khas Tasikmalaya', {
+    catalogData: liveCatalog,
+    researchContext: block,
+  });
+  assert.ok(ctx[0].content.includes('Nasi Tutug Oncom'));
+
+  // 2. Markdown table rendering (fixes raw |---|---| pipes!)
+  const tableMd = [
+    '## Kuliner Khas Tasikmalaya',
+    '',
+    '| Makanan | Deskripsi | Keterangan |',
+    '|---|---|---|',
+    '| **Nasi Tutug Oncom** | Nasi hangat diaduk oncom bakar | Ikonik Tasikmalaya |',
+    '| Soto Ayam Pataruman | Soto kuah santan gurih | Kuliner legendaris |',
+  ].join('\n');
+  const html = renderMarkdownSafe(tableMd);
+  assert.ok(html.includes('<div class="mai-table-wrap"><table class="mai-md-table">'));
+  assert.ok(html.includes('<thead><tr><th>Makanan</th><th>Deskripsi</th><th>Keterangan</th></tr></thead>'));
+  assert.ok(html.includes('<td><strong>Nasi Tutug Oncom</strong></td>'));
+  assert.equal(html.includes('|---|---|'), false);
+
+  // Inline code containing asterisks (`@t***********o`) must NOT corrupt subsequent **bold** Markdown or strip paragraphs
+  const privacyHtml = renderMarkdownSafe(redactSensitiveOwnerData(buildOwnerContactPrivacyReply(), liveCatalog));
+  const withoutCode = privacyHtml.replace(/<code[^>]*>[\s\S]*?<\/code>/g, '');
+  assert.equal(withoutCode.includes('**'), false, 'No stray unparsed ** should remain outside inline code');
+  assert.ok(privacyHtml.includes('<strong>WhatsApp Admin</strong>'));
+  assert.ok(privacyHtml.includes('<strong>bagian footer (bawah halaman)</strong>'));
+  assert.ok(privacyHtml.includes('<code class="mai-inline-code">@t***********o</code>'));
+  assert.equal((privacyHtml.match(/<p class="mai-md-p">/g) || []).length, 2, 'Paragraph break preserved cleanly');
+
+  // 3. Fast first-clause chunking keeps Segment 0 short (<= 95 chars) while preserving 1 consistent speaker
+  const longReply =
+    'Tasikmalaya sangat terkenal dengan kuliner Sunda yang autentik. Salah satu yang paling ikonik adalah Nasi Tutug Oncom yang disajikan hangat bersama lalapan, sambal terasi, dan ayam goreng kampung yang gurih serta renyah.';
+  const fastSegs = segmentMultilingualSpeech(longReply, 'multi', {
+    maxFirstSegmentChars: 90,
+    maxSegmentChars: 320,
+    codeSwitch: true,
+    isMultilingualVoice: true,
+  });
+  assert.ok(fastSegs.length >= 2, 'Long text splits short first clause for fast time-to-first-audio');
+  assert.ok(fastSegs[0].text.length <= 95, `First clause should be short (got ${fastSegs[0].text.length})`);
+  assert.equal(
+    new Set(fastSegs.map((s) => resolveVoiceForSegment('multi-ava', s.lang, true).edgeVoice)).size,
+    1,
+    'All fast chunks must keep the exact same single speaker'
+  );
+});
+
 
