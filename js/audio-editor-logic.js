@@ -49,12 +49,20 @@ export const AUDIO_STEM_MODES = [
 ];
 
 export const AUDIO_EXPORT_FORMATS = [
-  { id: 'mp3', label: 'MP3', ext: 'mp3', mime: 'audio/mpeg', desc: 'Universal + Tag ID3v2 & Cover Art', engine: 'LAME MP3 / FFmpeg' },
-  { id: 'wav', label: 'WAV', ext: 'wav', mime: 'audio/wav', desc: 'Lossless PCM 16-bit + RIFF INFO', engine: 'Native PCM Studio' },
-  { id: 'm4a', label: 'M4A (AAC)', ext: 'm4a', mime: 'audio/mp4', desc: 'Tajam & ringan untuk iOS/Sosmed', engine: 'FFmpeg WASM AAC' },
-  { id: 'ogg', label: 'OGG Vorbis', ext: 'ogg', mime: 'audio/ogg', desc: 'Open-source streaming efisiensi tinggi', engine: 'FFmpeg WASM Vorbis' },
-  { id: 'flac', label: 'FLAC', ext: 'flac', mime: 'audio/flac', desc: 'Lossless arsip studio tanpa penurunan', engine: 'FFmpeg WASM FLAC' },
-  { id: 'webm', label: 'WebM Opus', ext: 'webm', mime: 'audio/webm', desc: 'Web modern & latensi rendah', engine: 'FFmpeg WASM / WebAudio' },
+  { id: 'mp3', label: 'MP3', ext: 'mp3', mime: 'audio/mpeg', tier: 'standard', desc: 'Universal + Tag ID3v2 & Cover Art', engine: 'LAME MP3 / FFmpeg' },
+  { id: 'aac', label: 'AAC', ext: 'aac', mime: 'audio/aac', tier: 'standard', desc: 'Kompresi efisien & jernih', engine: 'FFmpeg WASM AAC' },
+  { id: 'm4a', label: 'M4A', ext: 'm4a', mime: 'audio/mp4', tier: 'standard', desc: 'Tajam & ringan untuk iOS/Sosmed', engine: 'FFmpeg WASM M4A' },
+  { id: 'wav', label: 'WAV', ext: 'wav', mime: 'audio/wav', tier: 'pro', desc: 'Lossless PCM 16-bit + RIFF INFO', engine: 'Native PCM Studio' },
+  { id: 'flac', label: 'FLAC', ext: 'flac', mime: 'audio/flac', tier: 'pro', desc: 'Lossless arsip studio tanpa penurunan', engine: 'FFmpeg WASM FLAC' },
+  { id: 'ogg', label: 'OGG', ext: 'ogg', mime: 'audio/ogg', tier: 'pro', desc: 'Open-source streaming efisiensi tinggi', engine: 'FFmpeg WASM Vorbis' },
+  { id: 'opus', label: 'OPUS', ext: 'webm', mime: 'audio/webm', tier: 'pro', desc: 'Web modern & latensi rendah', engine: 'FFmpeg WASM / Opus' },
+];
+
+export const AUDIO_EXPORT_QUALITIES = [
+  { id: 'small', label: 'Kecil', tag: 'Hemat', bitrate: 128 },
+  { id: 'standard', label: 'Standar', tag: '', bitrate: 192 },
+  { id: 'high', label: 'Tinggi', tag: 'Podcast', bitrate: 256, pro: true },
+  { id: 'hifi', label: 'Hi-Fi', tag: 'Kualitas CD', bitrate: 320, pro: true },
 ];
 
 export const AUDIO_AI_ENGINES = [
@@ -77,6 +85,7 @@ export const AUDIO_AI_GOALS = [
 
 export function createDefaultAudioEditorState() {
   return {
+    trimMode: 'keep', // 'keep' (Pangkas) | 'cut-middle' (Potong Tengah)
     trimStart: 0,
     trimEnd: 0,
     fadeIn: 0,
@@ -95,6 +104,8 @@ export function createDefaultAudioEditorState() {
     echoMix: 0, // 0..100
     eqPreset: 'flat',
     eqGains: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+    bassBoostPct: 0, // 0..100
+    virtualizerPct: 0, // 0..100
     noiseReduction: 0, // 0..100
     noiseGateDb: -70, // -70 (off) .. -24
     clarityAmount: 0, // 0..100
@@ -116,6 +127,7 @@ export function createDefaultAudioEditorState() {
       comment: 'Edited with Manifestudio Audio Editor',
       coverDataUrl: '',
     },
+    exportFileName: '',
     exportFormat: 'mp3',
     exportBitrate: 192,
     exportSampleRate: 44100,
@@ -163,6 +175,161 @@ export function volumePctToGain(volumePct) {
 export function gainToDb(gain) {
   const g = Math.max(1e-6, Number(gain) || 1e-6);
   return Number((20 * Math.log10(g)).toFixed(1));
+}
+
+/**
+ * Computes resulting output duration for 'keep' (Pangkas) vs 'cut-middle' (Potong Tengah).
+ */
+export function computeTrimmedDuration(duration, trimStart, trimEnd, trimMode = 'keep') {
+  const safeDur = Math.max(0, Number(duration) || 0);
+  if (safeDur <= 0) return 0;
+  const clamped = clampTrimRange(trimStart, trimEnd, safeDur);
+  if (trimMode === 'cut-middle') {
+    const remaining = safeDur - (clamped.trimEnd - clamped.trimStart);
+    return Number(Math.max(0.1, remaining).toFixed(3));
+  }
+  return clamped.trimDuration;
+}
+
+/**
+ * Removes the middle sample range [startIdx, endIdx) and crossfades the splice cleanly (12ms)
+ * to eliminate any audible click at the cut point.
+ */
+export function applyCutMiddleSamples(samples, startIdx, endIdx, sampleRate = 44100) {
+  const len = samples.length;
+  const s = Math.max(0, Math.min(len, Math.floor(startIdx)));
+  const e = Math.max(s, Math.min(len, Math.floor(endIdx)));
+  const headLen = s;
+  const tailLen = len - e;
+  if (headLen + tailLen <= 0) {
+    return samples.slice(0, Math.min(len, Math.max(128, Math.floor(sampleRate * 0.1))));
+  }
+  const out = new Float32Array(headLen + tailLen);
+  if (headLen > 0) out.set(samples.subarray(0, headLen), 0);
+  if (tailLen > 0) out.set(samples.subarray(e, len), headLen);
+
+  // Micro-crossfade at splice boundary so there is never an audible click
+  const xfade = Math.min(Math.floor(sampleRate * 0.012), headLen, tailLen);
+  for (let i = 0; i < xfade; i += 1) {
+    const t = i / Math.max(1, xfade);
+    out[headLen - xfade + i] *= 1 - t * 0.35;
+    out[headLen + i] *= 0.65 + t * 0.35;
+  }
+  return out;
+}
+
+/**
+ * Applies interactive Bass Boost (low-shelf 95Hz) and 3D Stereo Virtualizer (Mid-Side width + Haas micro-presence).
+ */
+export function applyBassBoostAndVirtualizer(leftIn, rightIn, sampleRate = 44100, bassBoostPct = 0, virtualizerPct = 0) {
+  let left = new Float32Array(leftIn);
+  let right = new Float32Array(rightIn);
+  const bass = clampNum(bassBoostPct, 0, 100, 0);
+  const virt = clampNum(virtualizerPct, 0, 100, 0);
+
+  if (bass > 0.5) {
+    const gainDb = (bass / 100) * 10.5; // up to +10.5 dB punchy low-shelf
+    left = applyBiquadFilter(left, sampleRate, 'lowshelf', 95, 0.75, gainDb);
+    right = applyBiquadFilter(right, sampleRate, 'lowshelf', 95, 0.75, gainDb);
+  }
+
+  if (virt > 0.5) {
+    const amt = virt / 100;
+    const width = 1 + amt * 1.15;
+    const delaySamples = Math.max(4, Math.min(64, Math.round(sampleRate * 0.00055 * (1 + amt))));
+    const outL = new Float32Array(left.length);
+    const outR = new Float32Array(right.length);
+    for (let i = 0; i < left.length; i += 1) {
+      const mid = 0.5 * (left[i] + right[i]);
+      const side = 0.5 * (left[i] - right[i]) * width;
+      const haas = i >= delaySamples ? (left[i - delaySamples] - right[i - delaySamples]) * 0.14 * amt : 0;
+      outL[i] = Math.max(-0.99, Math.min(0.99, mid + side + haas));
+      outR[i] = Math.max(-0.99, Math.min(0.99, mid - side - haas));
+    }
+    left = outL;
+    right = outR;
+  }
+
+  return { left, right };
+}
+
+/**
+ * Estimates output file size range for the "Simpan sebagai" dialog.
+ */
+export function estimateExportFileSizeRange(durationSec, format = 'mp3', bitrateKbps = 192, sampleRate = 44100) {
+  const dur = Math.max(0.1, Number(durationSec) || 0);
+  const fmt = String(format || 'mp3').toLowerCase();
+  const sr = clampNum(sampleRate, 22050, 96000, 44100);
+  let baseBytes = 0;
+
+  if (fmt === 'wav') {
+    baseBytes = dur * sr * 2 * 2 + 128; // stereo 16-bit PCM
+  } else if (fmt === 'flac') {
+    baseBytes = dur * sr * 2 * 2 * 0.58; // ~58% lossless compression ratio
+  } else {
+    const kbps = clampNum(bitrateKbps, 64, 320, 192);
+    const effFactor = fmt === 'opus' || fmt === 'webm' ? 0.85 : fmt === 'aac' || fmt === 'm4a' ? 0.94 : 1.0;
+    baseBytes = ((kbps * 1000) / 8) * dur * effFactor + 4096;
+  }
+
+  const minBytes = Math.max(1024, Math.round(baseBytes * 0.96));
+  const maxBytes = Math.max(minBytes + 512, Math.round(baseBytes * 1.04));
+
+  const fmtSize = (b) => {
+    if (b >= 1024 * 1024) {
+      return `${(b / (1024 * 1024)).toFixed(1).replace('.', ',')} MB`;
+    }
+    return `${Math.max(1, Math.round(b / 1024))} KB`;
+  };
+
+  return {
+    minBytes,
+    maxBytes,
+    label: `${fmtSize(minBytes)} - ${fmtSize(maxBytes)}`,
+  };
+}
+
+/**
+ * Pure Undo/Redo editor snapshot history helpers.
+ */
+export function createEditorHistory(initialSnapshot, maxLen = 25) {
+  const clone = JSON.parse(JSON.stringify(initialSnapshot));
+  return { stack: [clone], index: 0, maxLen: Math.max(5, maxLen) };
+}
+
+export function pushEditorHistory(history, snapshot) {
+  const nextJson = JSON.stringify(snapshot);
+  const current = history?.stack?.[history.index];
+  if (current && JSON.stringify(current) === nextJson) {
+    return history;
+  }
+  const baseStack = Array.isArray(history?.stack) ? history.stack.slice(0, (history.index ?? 0) + 1) : [];
+  baseStack.push(JSON.parse(nextJson));
+  const maxLen = history?.maxLen || 25;
+  while (baseStack.length > maxLen) {
+    baseStack.shift();
+  }
+  return { stack: baseStack, index: baseStack.length - 1, maxLen };
+}
+
+export function undoEditorHistory(history) {
+  if (!history || history.index <= 0) return { changed: false, history, snapshot: null };
+  const nextIdx = history.index - 1;
+  return {
+    changed: true,
+    history: { ...history, index: nextIdx },
+    snapshot: JSON.parse(JSON.stringify(history.stack[nextIdx])),
+  };
+}
+
+export function redoEditorHistory(history) {
+  if (!history || history.index >= history.stack.length - 1) return { changed: false, history, snapshot: null };
+  const nextIdx = history.index + 1;
+  return {
+    changed: true,
+    history: { ...history, index: nextIdx },
+    snapshot: JSON.parse(JSON.stringify(history.stack[nextIdx])),
+  };
 }
 
 /**
@@ -341,6 +508,22 @@ export function applyBiquadFilter(samples, sampleRate, type, freqHz, q = 1.0, ga
     a0 = 1 + alpha / A;
     a1 = -2 * cosW0;
     a2 = 1 - alpha / A;
+  } else if (type === 'lowshelf') {
+    const beta = (2 * Math.sqrt(A)) * alpha;
+    b0 = A * ((A + 1) - (A - 1) * cosW0 + beta);
+    b1 = 2 * A * ((A - 1) - (A + 1) * cosW0);
+    b2 = A * ((A + 1) - (A - 1) * cosW0 - beta);
+    a0 = (A + 1) + (A - 1) * cosW0 + beta;
+    a1 = -2 * ((A - 1) + (A + 1) * cosW0);
+    a2 = (A + 1) + (A - 1) * cosW0 - beta;
+  } else if (type === 'highshelf') {
+    const beta = (2 * Math.sqrt(A)) * alpha;
+    b0 = A * ((A + 1) + (A - 1) * cosW0 + beta);
+    b1 = -2 * A * ((A - 1) + (A + 1) * cosW0);
+    b2 = A * ((A + 1) + (A - 1) * cosW0 - beta);
+    a0 = (A + 1) - (A - 1) * cosW0 + beta;
+    a1 = 2 * ((A - 1) - (A + 1) * cosW0);
+    a2 = (A + 1) - (A - 1) * cosW0 - beta;
   }
 
   const nb0 = b0 / a0;
@@ -1085,6 +1268,9 @@ export function buildAudioExportFfmpegArgs(inName, outName, opts = {}) {
   if (fmt === 'mp3') {
     return [...base, '-c:a', 'libmp3lame', '-b:a', `${bitrate}k`, '-id3v2_version', '3', ...metaArgs, '-y', outName];
   }
+  if (fmt === 'aac') {
+    return [...base, '-c:a', 'aac', '-b:a', `${bitrate}k`, '-f', 'adts', ...metaArgs, '-y', outName];
+  }
   if (fmt === 'm4a') {
     return [...base, '-c:a', 'aac', '-b:a', `${bitrate}k`, '-movflags', '+faststart', '-f', 'ipod', ...metaArgs, '-y', outName];
   }
@@ -1095,7 +1281,7 @@ export function buildAudioExportFfmpegArgs(inName, outName, opts = {}) {
   if (fmt === 'flac') {
     return [...base, '-c:a', 'flac', ...metaArgs, '-y', outName];
   }
-  if (fmt === 'webm') {
+  if (fmt === 'webm' || fmt === 'opus') {
     return [...base, '-c:a', 'libvorbis', '-b:a', `${bitrate}k`, ...metaArgs, '-y', outName];
   }
   return [...base, '-c:a', 'pcm_s16le', ...metaArgs, '-y', outName];

@@ -62,7 +62,7 @@ import {
   shouldStopSilentHoldAndPauseNotification,
   shuffleTracksFisherYates,
   toggleTrackInWatchLater,
-} from './music-logic.js?v=58';
+} from './music-logic.js?v=59';
 
 const MUSIC_POS_KEY = 'manifestudio_music_pos_v2';
 const MUSIC_VOL_KEY = 'manifestudio_music_vol_v2';

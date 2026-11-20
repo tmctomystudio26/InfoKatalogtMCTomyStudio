@@ -13,7 +13,9 @@ import {
   AUDIO_AI_ENGINES,
   AUDIO_EQ_BANDS,
   AUDIO_EXPORT_FORMATS,
+  applyBassBoostAndVirtualizer,
   applyBiquadFilter,
+  applyCutMiddleSamples,
   clampNum,
   clampTrimRange,
   computeAudioAcousticStats,
@@ -28,8 +30,8 @@ import {
   processSamplesStemSeparation,
   processSamplesVoiceFx,
   volumePctToGain,
-} from './audio-editor-logic.js?v=58';
-import { transcodeWithFfmpeg } from './media-engine.js?v=58';
+} from './audio-editor-logic.js?v=59';
+import { transcodeWithFfmpeg } from './media-engine.js?v=59';
 
 let sharedAudioCtx = null;
 let lameLoaded = false;
@@ -212,13 +214,23 @@ export async function renderProcessedAudio(sourceBuffer, mixTracks = [], editSta
   const srcChannels = bufferToStereoChannels(sourceBuffer);
   const srcSr = srcChannels.sampleRate;
 
-  onProgress({ percent: 12, label: 'Memotong durasi (Trim) & menyiapkan kanal stereo...' });
+  onProgress({
+    percent: 12,
+    label: editState.trimMode === 'cut-middle' ? 'Memotong bagian tengah & menyambung halus...' : 'Memotong durasi (Trim) & menyiapkan kanal stereo...',
+  });
   const { trimStart, trimEnd } = clampTrimRange(editState.trimStart, editState.trimEnd, sourceBuffer.duration);
   const startIdx = Math.max(0, Math.floor(trimStart * srcSr));
   const endIdx = Math.min(srcChannels.left.length, Math.max(startIdx + 128, Math.floor(trimEnd * srcSr)));
 
-  let left = srcChannels.left.slice(startIdx, endIdx);
-  let right = srcChannels.right.slice(startIdx, endIdx);
+  let left;
+  let right;
+  if (editState.trimMode === 'cut-middle') {
+    left = applyCutMiddleSamples(srcChannels.left, startIdx, endIdx, srcSr);
+    right = applyCutMiddleSamples(srcChannels.right, startIdx, endIdx, srcSr);
+  } else {
+    left = srcChannels.left.slice(startIdx, endIdx);
+    right = srcChannels.right.slice(startIdx, endIdx);
+  }
 
   if (srcSr !== targetSr) {
     left = resampleChannelLinear(left, srcSr, targetSr);
@@ -314,6 +326,14 @@ export async function renderProcessedAudio(sourceBuffer, mixTracks = [], editSta
     }
   }
 
+  // Interactive Rotary Bass Boost & 3D Stereo Virtualizer
+  if ((editState.bassBoostPct || 0) > 0 || (editState.virtualizerPct || 0) > 0) {
+    onProgress({ percent: 86, label: 'Menerapkan Peningkat Bass & Virtualizer 3D...' });
+    const bv = applyBassBoostAndVirtualizer(left, right, targetSr, editState.bassBoostPct || 0, editState.virtualizerPct || 0);
+    left = bv.left;
+    right = bv.right;
+  }
+
   // Volume Boost, Stereo Pan, Fade In / Out, & Final Loudness Normalization
   onProgress({ percent: 90, label: 'Finalisasi volume, panning, fade & limiter...' });
   const gain = volumePctToGain(editState.volumePct ?? 100);
@@ -373,10 +393,12 @@ export async function exportRenderedAudio(rendered, editState = {}, onProgress =
   const sr = rendered.sampleRate || 44100;
   const formatDef = AUDIO_EXPORT_FORMATS.find((f) => f.id === fmt) || AUDIO_EXPORT_FORMATS[0];
 
-  const baseName = String(meta.title || 'audio_manifestudio')
-    .replace(/[\\/:*?"<>|]+/g, '')
-    .replace(/\s+/g, '_')
-    .slice(0, 64) || 'audio_manifestudio';
+  const rawName = String(editState.exportFileName || meta.title || 'audio_manifestudio').replace(/\.[^.]+$/, '');
+  const baseName =
+    rawName
+      .replace(/[\\/:*?"<>|]+/g, '')
+      .replace(/\s+/g, '_')
+      .slice(0, 64) || 'audio_manifestudio';
 
   if (fmt === 'wav') {
     onProgress({ percent: 65, label: 'Menyusun file WAV Lossless 16-bit + Tag RIFF INFO...' });
@@ -448,10 +470,11 @@ export async function exportRenderedAudio(rendered, editState = {}, onProgress =
   onProgress({ percent: 30, label: `Menyiapkan master WAV untuk transcode FFmpeg ke .${fmt.toUpperCase()}...` });
   const wavMaster = encodeWavWithMetadata([rendered.left, rendered.right], sr, meta);
   try {
+    const targetFfmpegFmt = fmt === 'opus' ? 'webm' : fmt === 'aac' ? 'm4a' : fmt;
     const outBuf = await transcodeWithFfmpeg({
       arrayBuffer: wavMaster,
       sourceExt: 'wav',
-      targetFormat: fmt,
+      targetFormat: targetFfmpegFmt,
       onProgress: (p) => {
         if (p?.label) {
           onProgress({ percent: Math.min(96, Math.max(35, p.percent || 55)), label: p.label });

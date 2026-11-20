@@ -65,15 +65,21 @@ import {
   AUDIO_AI_ENGINES,
   AUDIO_EQ_BANDS,
   AUDIO_EXPORT_FORMATS,
+  AUDIO_EXPORT_QUALITIES,
   AUDIO_STEM_MODES,
   AUDIO_VOICE_PRESETS,
+  applyBassBoostAndVirtualizer,
+  applyCutMiddleSamples,
   buildAudioExportFfmpegArgs,
   buildId3v2TagBytes,
   clampTrimRange,
   computeAudioAcousticStats,
   computeLocalAiMasteringPlan,
+  computeTrimmedDuration,
   createDefaultAudioEditorState,
+  createEditorHistory,
   encodeWavWithMetadata,
+  estimateExportFileSizeRange,
   extractWaveformPeaks,
   formatTimecode,
   generateSyntheticDemoStereo,
@@ -84,6 +90,9 @@ import {
   processSamplesNoiseAndRepair,
   processSamplesStemSeparation,
   processSamplesVoiceFx,
+  pushEditorHistory,
+  redoEditorHistory,
+  undoEditorHistory,
 } from './audio-editor-logic.js';
 import {
   DEFAULT_UTILITY_CONFIG,
@@ -4110,6 +4119,79 @@ test('Audio Editor Studio DSP, stem separator, noise repair, multi-track mixer, 
   assert.equal(parsedAi.plan.stemMode, 'vocal-isolate');
   assert.equal(parsedAi.plan.eqGains[4], 4);
 });
+
+test('Audio Editor v59 Potong Tengah, Bass Boost + Virtualizer DSP, Export Size Estimator, Quality Presets, and Undo/Redo History', () => {
+  // 1. Export quality presets & standard/pro format tiers
+  assert.equal(AUDIO_EXPORT_QUALITIES.length, 4);
+  assert.ok(AUDIO_EXPORT_QUALITIES.some((q) => q.bitrate === 192 && q.label === 'Standar'));
+  assert.ok(AUDIO_EXPORT_QUALITIES.some((q) => q.bitrate === 320 && q.pro === true));
+  assert.ok(AUDIO_EXPORT_FORMATS.some((f) => f.id === 'mp3' && f.tier === 'standard'));
+  assert.ok(AUDIO_EXPORT_FORMATS.some((f) => f.id === 'aac' && f.tier === 'standard'));
+  assert.ok(AUDIO_EXPORT_FORMATS.some((f) => f.id === 'flac' && f.tier === 'pro'));
+  assert.ok(AUDIO_EXPORT_FORMATS.some((f) => f.id === 'opus' && f.tier === 'pro'));
+
+  // 2. computeTrimmedDuration for keep vs cut-middle
+  assert.equal(computeTrimmedDuration(10, 2, 7, 'keep'), 5);
+  assert.equal(computeTrimmedDuration(10, 2, 7, 'cut-middle'), 5);
+  assert.equal(computeTrimmedDuration(10, 2, 4, 'cut-middle'), 8);
+
+  // 3. applyCutMiddleSamples removes middle slice and preserves head+tail length
+  const sr = 22050;
+  const src = new Float32Array(1000);
+  for (let i = 0; i < 1000; i += 1) src[i] = Math.sin((2 * Math.PI * 220 * i) / sr) * 0.5;
+  const spliced = applyCutMiddleSamples(src, 300, 600, sr);
+  assert.equal(spliced.length, 700);
+  assert.ok(spliced.every((v) => Number.isFinite(v)));
+
+  // 4. applyBassBoostAndVirtualizer amplifies low-end and widens stereo image safely
+  const n = 2048;
+  const lowL = new Float32Array(n);
+  const lowR = new Float32Array(n);
+  for (let i = 0; i < n; i += 1) {
+    lowL[i] = 0.25 * Math.sin((2 * Math.PI * 70 * i) / sr) + 0.1 * Math.sin((2 * Math.PI * 600 * i) / sr);
+    lowR[i] = 0.25 * Math.sin((2 * Math.PI * 70 * i) / sr) - 0.05 * Math.sin((2 * Math.PI * 600 * i) / sr);
+  }
+  const boosted = applyBassBoostAndVirtualizer(lowL, lowR, sr, 80, 75);
+  const rmsBefore = Math.sqrt(lowL.reduce((a, v) => a + v * v, 0) / n);
+  const rmsAfter = Math.sqrt(boosted.left.reduce((a, v) => a + v * v, 0) / n);
+  assert.ok(rmsAfter > rmsBefore * 1.15, 'Bass boost 80% must audibly boost 70Hz energy');
+  assert.ok(boosted.left.every((v) => Number.isFinite(v) && Math.abs(v) <= 1.0));
+  assert.ok(boosted.right.every((v) => Number.isFinite(v) && Math.abs(v) <= 1.0));
+
+  // 5. estimateExportFileSizeRange matches realistic MP3 & WAV sizes
+  const estMp3 = estimateExportFileSizeRange(120, 'mp3', 192, 44100);
+  assert.ok(estMp3.minBytes > 2_500_000 && estMp3.maxBytes < 3_300_000);
+  assert.ok(estMp3.label.includes('MB'));
+  const estWav = estimateExportFileSizeRange(8, 'wav', 192, 44100);
+  assert.ok(estWav.minBytes > 1_200_000);
+
+  // 6. Pure Undo / Redo editor history stack
+  const s0 = createDefaultAudioEditorState();
+  let hist = createEditorHistory(s0, 10);
+  const s1 = { ...s0, volumePct: 165, bassBoostPct: 45 };
+  hist = pushEditorHistory(hist, s1);
+  const s2 = { ...s1, trimMode: 'cut-middle', virtualizerPct: 60 };
+  hist = pushEditorHistory(hist, s2);
+  assert.equal(hist.index, 2);
+
+  const u1 = undoEditorHistory(hist);
+  assert.equal(u1.changed, true);
+  assert.equal(u1.snapshot.volumePct, 165);
+  assert.equal(u1.snapshot.trimMode, 'keep');
+
+  const u2 = undoEditorHistory(u1.history);
+  assert.equal(u2.changed, true);
+  assert.equal(u2.snapshot.volumePct, 100);
+
+  const u3 = undoEditorHistory(u2.history);
+  assert.equal(u3.changed, false);
+
+  const r1 = redoEditorHistory(u2.history);
+  assert.equal(r1.changed, true);
+  assert.equal(r1.snapshot.volumePct, 165);
+  assert.equal(r1.snapshot.bassBoostPct, 45);
+});
+
 
 
 
