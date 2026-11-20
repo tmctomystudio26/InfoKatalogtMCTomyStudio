@@ -95,6 +95,30 @@ import {
   undoEditorHistory,
 } from './audio-editor-logic.js';
 import {
+  MANIFEST_AI_PROVIDERS,
+  MANIFEST_AI_STORAGE_KEYS,
+  buildConversationMemorySummary,
+  buildEnsembleSynthesisMessages,
+  buildUnifiedContextMessages,
+  createChatThread,
+  deleteChatThread,
+  deriveThreadTitle,
+  exportThreadMarkdown,
+  formatCooldownShort,
+  getCooldownRemainingMs,
+  maskApiKey,
+  mergeLiveModelCatalog,
+  normalizeByokKeys,
+  normalizeChatThreads,
+  planEnsembleExecution,
+  recordProviderCooldown,
+  renderMarkdownSafe,
+  scoreModelFreshness,
+  synthesizeEnsembleResponses,
+  upsertByokKey,
+  upsertChatThread,
+} from './manifest-ai-logic.js';
+import {
   DEFAULT_UTILITY_CONFIG,
   MAX_HISTORY_LOGS,
   addToCart,
@@ -1792,14 +1816,15 @@ test('normalizeYtMusicTrack supports hybrid tracks with both videoId and backgro
 test('normalizeUtilityConfig, upsertUtilityItemInCatalog, and describeCatalogChanges manage utility icons, labels, page headers, and YT Music hero card', () => {
   const base = getDefaultCatalogSnapshot();
   const util = normalizeUtilityConfig(base.utilities);
-  assert.equal(util.items.length, 11);
+  assert.equal(util.items.length, 12);
   assert.equal(util.items.some((i) => i.id === 'downloader' && i.label === 'Downloader'), true);
   assert.equal(util.items.some((i) => i.id === 'converter' && i.label === 'Konversi File'), true);
   assert.equal(util.items.some((i) => i.id === 'songfinder' && i.label === 'Cari Judul Lagu'), true);
   assert.equal(util.items.some((i) => i.id === 'dracin' && i.label === 'Drama China'), true);
   assert.equal(util.items.some((i) => i.id === 'audioeditor' && i.label === 'Audio Editor'), true);
+  assert.equal(util.items.some((i) => i.id === 'manifestai' && i.label === 'Manifest AI'), true);
   assert.equal(util.musicHero.icon, './assets/icons/tool-music.svg');
-  assert.ok(DEFAULT_UTILITY_CONFIG.items.length === 11);
+  assert.ok(DEFAULT_UTILITY_CONFIG.items.length === 12);
 
   let next = upsertUtilityItemInCatalog(base, {
     id: 'downloader',
@@ -3239,9 +3264,9 @@ test('v49 AI Hybrid Super-Compressor & Ultra Perceptual AVIF/WebP planner, PSNR 
 });
 
 test('v51 Drama China (Dracin) unifies 15+ short-drama platforms, parallel APIs, free episode jump, auto-ID subtitles, history, and AI clip matcher', () => {
-  // 1. Utility registration (11 free utilities including dracin & audioeditor)
+  // 1. Utility registration (12 free utilities including dracin, audioeditor & manifestai)
   const utilCfg = normalizeUtilityConfig();
-  assert.equal(utilCfg.items.length, 11);
+  assert.equal(utilCfg.items.length, 12);
   const dracinTool = utilCfg.items.find((it) => it.id === 'dracin');
   assert.ok(dracinTool);
   assert.equal(dracinTool.label, 'Drama China');
@@ -4190,6 +4215,171 @@ test('Audio Editor v59 Potong Tengah, Bass Boost + Virtualizer DSP, Export Size 
   assert.equal(r1.changed, true);
   assert.equal(r1.snapshot.volumePct, 165);
   assert.equal(r1.snapshot.bassBoostPct, 45);
+});
+
+test('Manifest AI v60 auto-upgrades latest flagship models from live registries and ranks freshness accurately', () => {
+  assert.ok(MANIFEST_AI_PROVIDERS.length >= 10);
+  assert.equal(MANIFEST_AI_STORAGE_KEYS.chats, 'manifestudio_ai_chats_v1');
+  assert.equal(MANIFEST_AI_STORAGE_KEYS.byok, 'manifestudio_ai_byok_v1');
+
+  // Freshness scoring prefers newer major flagship releases over older versions
+  assert.ok(
+    scoreModelFreshness('google/gemini-3.1-pro', 1765000000, 'gemini') >
+      scoreModelFreshness('google/gemini-2.0-flash', 1730000000, 'gemini')
+  );
+  assert.ok(
+    scoreModelFreshness('openai/gpt-5.2', 1765000000, 'openai') >
+      scoreModelFreshness('openai/gpt-4o-mini', 1720000000, 'openai')
+  );
+  assert.ok(
+    scoreModelFreshness('openai/gpt-5', 0, 'openai') >
+      scoreModelFreshness('openai/gpt-4o-2024-11-20', 0, 'openai')
+  );
+  assert.ok(
+    scoreModelFreshness('google/gemini-3.0-pro', 0, 'gemini') >
+      scoreModelFreshness('google/gemini-2.5-pro-preview-05-06', 0, 'gemini')
+  );
+
+  // Live merge upgrades default models automatically from OpenRouter + Models.dev + Pollinations + LLM7
+  const merged = mergeLiveModelCatalog({
+    openRouterModels: [
+      { id: 'google/gemini-2.0-flash', created: 1730000000 },
+      { id: 'google/gemini-3.0-pro', created: 1768000000 },
+      { id: 'openai/gpt-5.2', created: 1769000000 },
+      { id: 'deepseek/deepseek-r2', created: 1769500000 },
+      { id: 'anthropic/claude-4.5-sonnet', created: 1769600000 },
+      { id: 'x-ai/grok-4', created: 1769700000 },
+      { id: 'meta-llama/llama-4-maverick', created: 1769000000 },
+    ],
+    pollinationsModels: [{ name: 'openai', community: false }, { name: 'deepseek', community: false }],
+    llm7Models: [{ id: 'gpt-4.1-mini' }, { id: 'deepseek-r1' }],
+  });
+
+  assert.equal(merged.providers.gemini.latestModel, 'gemini-3.0-pro');
+  assert.equal(merged.providers.openai.latestModel, 'gpt-5.2');
+  assert.equal(merged.providers.deepseek.latestModel, 'deepseek-r2');
+  assert.equal(merged.providers.claude.latestModel, 'claude-4.5-sonnet');
+  assert.equal(merged.providers.grok.latestModel, 'grok-4');
+  assert.equal(merged.providers.meta.latestModel, 'meta-llama/llama-4-maverick');
+  assert.ok(merged.freeGateways.pollinations.some((m) => m.id === 'openai'));
+  assert.ok(merged.freeGateways.llm7.some((m) => m.id === 'deepseek-r1'));
+});
+
+test('Manifest AI v60 maintains unified grounded conversation memory, per-user cooldown failover, and multi-BYOK ensemble planning', () => {
+  // 1. Grounded unified conversation memory across long threads
+  const longHistory = [];
+  for (let i = 1; i <= 14; i += 1) {
+    longHistory.push({ role: 'user', content: `Pertanyaan ke-${i}: fokus proyek Manifestudio v${i}` });
+    longHistory.push({ role: 'assistant', content: `Ringkasan jawaban ke-${i} untuk Manifestudio.` });
+  }
+  const summary = buildConversationMemorySummary(longHistory.slice(0, 10), 600);
+  assert.ok(summary.includes('Pertanyaan ke-1'));
+
+  const ctx = buildUnifiedContextMessages(longHistory, 'Lanjutkan poin terakhir');
+  assert.equal(ctx[0].role, 'system');
+  assert.ok(ctx[0].content.includes('Ringkasan Memori Percakapan Sebelumnya'));
+  assert.equal(ctx[ctx.length - 1].role, 'user');
+  assert.equal(ctx[ctx.length - 1].content, 'Lanjutkan poin terakhir');
+
+  // 2. Multi-BYOK simultaneous keys + masked previews
+  assert.equal(maskApiKey('AIzaSyD1234567890ABCDEFG'), 'AIzaSy••••DEFG');
+  let keys = [];
+  keys = upsertByokKey(keys, {
+    id: 'k_gem',
+    providerId: 'gemini',
+    label: 'Gemini Utama',
+    apiKey: 'AIzaSyD1234567890ABCDEFG',
+    autoLatest: true,
+    enabled: true,
+  });
+  keys = upsertByokKey(keys, {
+    id: 'k_oai',
+    providerId: 'openai',
+    label: 'OpenAI Kerja',
+    apiKey: 'sk-proj-1234567890ABCDEFG',
+    model: 'gpt-5',
+    autoLatest: false,
+    enabled: true,
+  });
+  assert.equal(normalizeByokKeys(keys).length, 2);
+
+  // Ensemble runs BOTH user keys simultaneously + optional free gateway when combineByokWithFree=true
+  const now = 1_760_000_000_000;
+  const multiPlan = planEnsembleExecution({
+    mode: 'ensemble',
+    byokKeys: keys,
+    combineByokWithFree: true,
+    puterAvailable: false,
+    limitMap: {},
+    now,
+  });
+  assert.ok(multiPlan.primary.some((t) => t.id === 'byok:k_gem'));
+  assert.ok(multiPlan.primary.some((t) => t.id === 'byok:k_oai'));
+  assert.ok(multiPlan.primary.length >= 2);
+
+  // 3. Per-user cooldown skips rate-limited Key 1 and keeps healthy Key 2 + free backup active
+  const limits = recordProviderCooldown({}, 'byok:k_gem', 45000, '429 Rate Limit', now);
+  assert.equal(getCooldownRemainingMs(limits, 'byok:k_gem', now + 5000), 40000);
+  assert.equal(formatCooldownShort(40000), '40 dtk');
+
+  const failoverPlan = planEnsembleExecution({
+    mode: 'ensemble',
+    byokKeys: keys,
+    combineByokWithFree: true,
+    puterAvailable: false,
+    limitMap: limits,
+    now: now + 5000,
+  });
+  assert.equal(failoverPlan.primary.some((t) => t.id === 'byok:k_gem'), false);
+  assert.equal(failoverPlan.primary.some((t) => t.id === 'byok:k_oai'), true);
+
+  // 4. Free keyless mode combines multiple distinct gateways simultaneously (max 1 Pollinations per turn)
+  const freePlan = planEnsembleExecution({
+    mode: 'ensemble',
+    byokKeys: [],
+    puterAvailable: true,
+    limitMap: {},
+    now,
+  });
+  assert.ok(freePlan.primary.length >= 2);
+  assert.ok(freePlan.primary.filter((t) => t.channel === 'free-pollinations').length <= 1);
+  assert.ok(freePlan.backups.length >= 1);
+
+  // 5. Synthesis & Markdown safety + Chat Thread CRUD
+  const synth = synthesizeEnsembleResponses([
+    { providerName: 'Google Gemini', shortName: 'Gemini', model: 'gemini-2.5-pro', content: 'Jawaban singkat.' },
+    {
+      providerName: 'OpenAI ChatGPT',
+      shortName: 'ChatGPT',
+      model: 'gpt-5',
+      content: 'Penjelasan terstruktur:\n- Langkah 1: Siapkan konfigurasi.\n- Langkah 2: Jalankan pengujian.\n```js\nconst ok = true;\n```',
+    },
+  ]);
+  assert.equal(synth.contributors.length, 2);
+  assert.ok(synth.finalText.includes('Langkah 1'));
+
+  const synthMsgs = buildEnsembleSynthesisMessages('Cara kerja cache?', synth.contributors, 'Memori ringkas');
+  assert.equal(synthMsgs.length, 2);
+  assert.ok(synthMsgs[1].content.includes('Google Gemini'));
+  assert.ok(synthMsgs[1].content.includes('OpenAI ChatGPT'));
+
+  // Chat thread CRUD & Markdown export + XSS-safe Markdown rendering
+  assert.equal(deriveThreadTitle('   Buatkan rencana konten studio digital 7 hari   '), 'Buatkan rencana konten studio digital 7 hari');
+  let threads = [];
+  const t1 = createChatThread('Riset AI');
+  t1.messages.push({ role: 'user', content: 'Halo Manifest AI' });
+  t1.messages.push({ role: 'assistant', content: 'Halo! Ada yang bisa dibantu?' });
+  threads = upsertChatThread(threads, t1);
+  assert.equal(normalizeChatThreads(threads).length, 1);
+  const exported = exportThreadMarkdown(t1);
+  assert.ok(exported.includes('# Riset AI'));
+  assert.ok(exported.includes('Halo Manifest AI'));
+  assert.equal(deleteChatThread(threads, t1.id).length, 0);
+
+  const safeHtml = renderMarkdownSafe('**Judul** <script>alert(1)</script>\n```js\nconst a = 1 < 2;\n```');
+  assert.equal(safeHtml.includes('<script>'), false);
+  assert.ok(safeHtml.includes('<strong>Judul</strong>'));
+  assert.ok(safeHtml.includes('data-mai-copy-code="0"'));
 });
 
 

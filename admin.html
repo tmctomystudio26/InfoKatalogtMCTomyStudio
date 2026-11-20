@@ -19,11 +19,11 @@
       rel="stylesheet"
     />
 
-    <link rel="stylesheet" href="./css/tokens.css?v=59" />
-    <link rel="stylesheet" href="./css/styles.css?v=59" />
+    <link rel="stylesheet" href="./css/tokens.css?v=60" />
+    <link rel="stylesheet" href="./css/styles.css?v=60" />
     <script>
       (function () {
-        var CURRENT_CACHE = 'manifestudio-cache-v56';
+        var CURRENT_CACHE = 'manifestudio-cache-v60';
         if ('caches' in window) {
           caches.keys().then(function (keys) {
             keys.forEach(function (k) {
@@ -32,7 +32,7 @@
           });
         }
         if ('serviceWorker' in navigator) {
-          navigator.serviceWorker.register('./sw.js?v=59').then(function (reg) {
+          navigator.serviceWorker.register('./sw.js?v=60').then(function (reg) {
             reg.update();
           }).catch(function () {});
         }
@@ -1179,6 +1179,6 @@
 
     <div id="toast-notification" class="toast-notification" role="status" aria-live="polite" hidden></div>
 
-    <script type="module" src="./js/admin.js?v=59"></script>
+    <script type="module" src="./js/admin.js?v=60"></script>
   </body>
 </html>

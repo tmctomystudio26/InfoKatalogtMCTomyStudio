@@ -34,7 +34,7 @@ import {
   shouldPreserveFullscreenOnEpisodeChange,
   toggleFavoriteDramaId,
   upsertWatchHistory,
-} from './dracin-logic.js?v=59';
+} from './dracin-logic.js?v=60';
 import {
   fetchAiDramaInsights,
   fetchDramaDetail,
@@ -47,11 +47,11 @@ import {
   resolveEpisodePlayback,
   resolveSansekaiEpisodePlayback,
   searchDailymotionEpisodeBackup,
-} from './dracin.js?v=59';
+} from './dracin.js?v=60';
 import {
   attachClearKeyEme,
   fetchAndDecryptCencMp4,
-} from './dracin-cenc.js?v=59';
+} from './dracin-cenc.js?v=60';
 
 const HISTORY_STORAGE_KEY = 'manifestudio_dracin_history_v1';
 const FAVORITES_STORAGE_KEY = 'manifestudio_dracin_favorites_v1';
@@ -65,7 +65,7 @@ function ensureHlsLibrary() {
   if (hlsScriptPromise) return hlsScriptPromise;
   hlsScriptPromise = new Promise((resolve, reject) => {
     const script = document.createElement('script');
-    script.src = './js/vendor/hls.min.js?v=59';
+    script.src = './js/vendor/hls.min.js?v=60';
     script.async = true;
     script.onload = () => resolve(window.Hls || null);
     script.onerror = () => {

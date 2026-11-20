@@ -1,6 +1,6 @@
 # Architectural Blueprint & Developer Onboarding — Manifestudio
 
-Dokumen teknis terpadu bagi **Tim IT, Human Developer, maupun AI Coding Agent** untuk memahami, mengelola, memelihara, menguji, dan mengembangkan ekosistem **Manifestudio** (*Static Storefront + Admin Brankas Terenkripsi + Utility Hub + Full-Length Smart Music + Media Compressor HD*).
+Dokumen teknis terpadu bagi **Tim IT, Human Developer, maupun AI Coding Agent** untuk memahami, mengelola, memelihara, menguji, dan mengembangkan ekosistem **Manifestudio** (*Static Storefront + Admin Brankas Terenkripsi + 12-Feature Utility Hub termasuk Manifest AI, Audio Editor Studio DAW, Drama China Hub, & Full-Length Smart Music*).
 
 ---
 
@@ -11,11 +11,10 @@ Dokumen teknis terpadu bagi **Tim IT, Human Developer, maupun AI Coding Agent** 
 2. **Pemisahan Halaman Clean & Modular**:
    - **Storefront (`index.html`)**: Fokus pada pencarian, filter kategori dinamis, banner carousel yang dapat diatur Admin, belanja cepat, & validasi voucher ketat berkuota.
    - **Order Konfirmasi (`order.html`)**: Halaman invoice terpisah + HTML5 Canvas struk JPEG `< 60 KB` + WhatsApp handoff bebas catatan palsu.
-   - **Menu Utilitas (`tools.html`)**: Halaman terpisah untuk 9 utilitas harian (`?tab=prayer | weather | worldclock | speedtest | downloader | compressor | converter | songfinder | music`) yang ditonjolkan melalui kartu aksen `#utilities-callout-card` (`assets/icons/menu-utilitas.svg`) di atas filter kategori, lengkap dengan tombol kembali ke katalog.
+   - **Menu Utilitas (`tools.html`)**: Halaman terpisah untuk **12 utilitas harian** (`?tab=prayer | weather | worldclock | speedtest | downloader | compressor | converter | songfinder | music | dracin | audioeditor | manifestai`) yang ditonjolkan melalui kartu aksen `#utilities-callout-card` (`assets/icons/menu-utilitas.svg`).
    - **Panel Admin (`admin.html`)**: Halaman *unlisted* (`noindex`) terenkripsi AES-256-GCM yang mempublikasikan perubahan katalog, aset upload, OpenGraph `index.html`, dan riwayat perubahan terperinci langsung via GitHub REST API.
 3. **Kualitas Pengalaman Mobile-First, Presisi Tinggi, & Ad-Free**:
-   - Semua kontrol termasuk header navigasi (`1025px–1440px`), grid produk, kisi 9 menu utilitas di mobile, dan pemutar musik responsif penuh di layar HP (`360px–430px`) maupun laptop/desktop (`1025px–1440px`) tanpa tombol Keranjang atau tautan yang terpotong, menggunakan *Network-First Service Worker* (`manifestudio-cache-v45` + pelestarian `manifestudio-ffmpeg-core-v1`) + query cache-busting `?v=45` agar pembaruan langsung muncul di perangkat pengguna.
-   - Pemutar musik YT Music open-source bebas iklan dilengkapi animasi progres `%` real-time, drawer kategori slide-out berbasis ikon (`Kategori (14)` + **Minimize** + tren live real-time bebas kompilasi berjam-jam), mendukung pencarian lengkap seluruh katalog YouTube / YouTube Music (Indonesia & internasional, hingga 26 lagu per kueri), memutar lagu viral Indonesia full-length (`>= 75 detik`, bebas preview 30 detik), tetap berputar di HP & desktop saat pindah tab / keluar browser / layar mati berkat *Silent-Hold Audio Bridge* PCM micro-dither + multi-query `api.audius.co` terverifikasi probe + `pickBackgroundSafeNextTrack`, mendukung Gambar-dalam-Gambar (PiP) & Mode Headset.
+   - Semua kontrol termasuk header navigasi, grid produk, 12 menu utilitas, pemutar musik, Drama China, Audio Editor DAW, dan workspace **Manifest AI** responsif penuh di HP (`360px–430px`) maupun desktop (`1025px–1440px`) bebas overflow, menggunakan *Network-First Service Worker* (`manifestudio-cache-v60` + pelestarian `manifestudio-ffmpeg-core-v1`) + query cache-busting `?v=60`.
 
 ---
 
@@ -26,48 +25,51 @@ Dokumen teknis terpadu bagi **Tim IT, Human Developer, maupun AI Coding Agent** 
 | `index.html` + `js/app.js` | Storefront katalog, carousel banner dinamis, kategori dinamis, modal varian, drawer checkout, voucher tracking | `data.js`, `store.js`, `pwa.js`, `music.js` |
 | `order.html` + `js/order.js` + `js/receipt.js` | Invoice bersih + HTML5 Canvas Struk JPEG `< 60 KB` + format WA Order (tanpa voucher invalid) | `data.js`, `store.js`, `music.js` |
 | `admin.html` + `js/admin.js` + `js/vault.js` | Gate AES-256-GCM + PBKDF2, edit produk/varian/urutan/logo/brand/tagline/biaya layanan/sosmed/FAQ/voucher limits/OpenGraph/banner, riwayat itemized + restore 12 log | `data.js`, `store.js`, `vault.js` |
-| `tools.html` + `js/tools-page.js` + `js/tools-ui.js` + `js/tools-logic.js` | Router sub-tab 8 `Menu Utilitas`, pure math & domain logic, UI bar progres konversi & download, Hub Pemutar Musik YT lengkap | `location.js`, `globe.js`, `speedtest.js`, `downloader.js`, `compressor.js`, `converter.js`, `music.js` |
+| `tools.html` + `js/tools-page.js` + `js/tools-ui.js` + `js/tools-logic.js` | Router sub-tab 12 `Menu Utilitas`, pure math & domain logic, UI bar progres, & mounting sub-controller | `location.js`, `globe.js`, `speedtest.js`, `downloader.js`, `compressor.js`, `converter.js`, `song-finder.js`, `music.js`, `dracin-ui.js`, `audio-editor-ui.js`, `manifest-ai-ui.js` |
+| `js/manifest-ai-logic.js` + `js/manifest-ai.js` + `js/manifest-ai-ui.js` | **Manifest AI (`v60`)**: Pure logic auto-upgrade model flagship real-time, grounded conversation memory builder (anti-halusinasi lintas model), per-user cooldown/limit tracker, multi-BYOK parallel planner, runtime orchestrator (free gateways + direct BYOK), sintesis multi-jawaban, dan UI Chat Workspace + riwayat chat persisten | `localStorage`, CORS AI registries & gateways |
+| `js/audio-editor-logic.js` + `js/audio-editor-engine.js` + `js/audio-editor-ui.js` | **Audio Editor Studio AI (`v58–v59`)**: DSP Web Audio (Trim/Potong Tengah, 10-Band EQ, Bass Boost, Virtualizer, Voice FX, Noise Repair, Stem Separation, Multi-Track Mix), tag ID3v2/RIFF, Undo/Redo, & ekspor MP3/WAV/AAC/M4A/OGG/FLAC/OPUS | `media-engine.js`, `lame.min.js` |
+| `js/dracin-logic.js` + `js/dracin-cenc.js` + `js/dracin.js` + `js/dracin-ui.js` | **Drama China Hub (`v50–v57`)**: Katalog real-time 20+ platform short drama, pemutar vertikal fullscreen + Layar Bersih, preloading episode, pencocokan lintas platform + klip AI, & auto-failover SekaiDrama/Sansekai VIP-Free | `data/dracin-endpoints.json`, `hls.min.js` |
 | `js/location.js` | Geolocation GPS prioritas utama + reverse geocode Kelurahan/Kecamatan + fallback IP + autocomplete kota | `tools-logic.js` |
 | `js/globe.js` | Canvas 2D orthographic rotatable 3D globe + klik target negara + auto-rotate | `tools-logic.js` |
-| `js/speedtest.js` | Speedometer 60fps + ukur Ping/Jitter/DL/UL Cloudflare CDN (berbobot berkelanjutan) + telemetri perangkat | `tools-logic.js` |
-| `js/downloader.js` | Adapter paralel TikTok (4-node Tioo/TikWM/Cobalt/DavidCyril), YouTube (Cobalt + 4-node Tioo + Siputzx Ummy + vidsnap CORS proxy + Wave 2 audio retry + DavidCyril + ekstrak WAV client-side), IG (`Siputzx sssinstagram` + `Ummy` + Cobalt + Tioo + `fastdl`/`igram` fallback), FB + streaming download progress | `tools-logic.js` |
-| `js/media-engine.js` + `js/vendor/` | Transcoding & kompresi media client-side nyata: **FFmpeg WebAssembly** (`@ffmpeg/core@0.12.6` single-thread + Worker lokal), **LAME MP3 Encoder (`lame.min.js`)** + WebAudio `decodeAudioData`, **PDF.js (`pdfjs-dist`)**, capture frame `<video>`, serta verifikasi pemutaran nyata (`verifyPlayableMediaBlob`) & CacheStorage `manifestudio-ffmpeg-core-v1` | `@ffmpeg/core`, `lamejs`, `pdfjs-dist` |
-| `js/compressor.js` | Kompresor Foto & Video HD Open-Source Nyata (kuantisasi binary-search Squoosh/Browser-Image-Compression, kuantisasi palet RGBA 8-bit UPNG, kompresi video H.264/AAC nyata via FFmpeg WASM + fallback `MediaRecorder`, & Weserv/Images Libvips Cloud API `wsrv.nl`) | `tools-logic.js`, `media-engine.js` |
-| `js/converter.js` | Mesin Konversi Semua File Multi-Format (85+ konversi lintas 30 format target: DOCX/RTF/MD/HTML/TXT, Excel/CSV/TSV/JSON/XML/YAML, PDF via PDF.js, gambar, audio/video nyata via WebAudio+LAME & FFmpeg WASM, ZIP CRC-32 + deteksi format otomatis & verifikasi pemutaran/magic bytes) | `tools-logic.js`, `media-engine.js` |
-| `js/song-finder.js` | Mesin Pencari Judul Lagu, Musik & Analisis Kemiripan Video Sosmed Multi-API + AI Publik (Deteksi otomatis Audio vs Video, pembaca tag biner ID3/MP4/Vorbis, Acoustic Chromagram 12-nada & BPM DSP, ekstraksi 3 keyframe video + perceptual dHash, serta penggabungan paralel Apple iTunes API, Siputzx YouTube & TikTok API, Audius API, MusicBrainz API, Public AI Disambiguator, & Fingerprint DB) | `tools-logic.js`, `media-engine.js` |
-| `js/music.js` + `js/music-logic.js` | Floating dock minimalis modern draggable, YT Music API open-source (`Siputzx YT Search` + `buildAudiusLookupQueries` + probe `/stream` terverifikasi + `filterPresetCategoryTracks` anti-kompilasi), animasi progres (`getLoadingProgressMeta`), drawer kategori slide-out 14 kategori + tren real-time (`mergeRealtimeTrendCategories`), *Silent-Hold Audio Bridge* PCM micro-dither + `pickBackgroundSafeNextTrack` untuk background audio mobile anti-mati, pemblokir preview 30 detik, PiP + Mode Headset, Fisher-Yates auto-shuffle prioritas Viral Indonesia | YouTube IFrame API / Audius / Siputzx |
-| `data/catalog.json` & `data/catalog-history.json` | Single Source of Truth produk, brand, OpenGraph, banners, kategori, voucher usage limits, FAQ & 12 snapshot riwayat | Service Worker Network-First |
-| `sw.js` + `manifest.webmanifest` | Network-First code/data cache (`manifestudio-cache-v45` + pelestarian `manifestudio-ffmpeg-core-v1`) & instalasi PWA | — |
+| `js/speedtest.js` | Speedometer 60fps + ukur Ping/Jitter/DL/UL Cloudflare CDN + telemetri perangkat | `tools-logic.js` |
+| `js/downloader.js` | Adapter paralel TikTok, YouTube (Dual MP4+M4A/MP3/WAV), Instagram (Reels/Photo/Carousel/Story/Caption), & Facebook + streaming progress | `tools-logic.js` |
+| `js/media-engine.js` + `js/vendor/` | Transcoding & kompresi client-side: **FFmpeg WebAssembly** (`@ffmpeg/core@0.12.6`), **LAME MP3 (`lame.min.js`)**, **HLS.js (`hls.min.js`)**, **PDF.js**, & verifikasi pemutaran nyata | `@ffmpeg/core`, `lamejs`, `pdfjs-dist` |
+| `js/compressor.js` | Kompresor Foto & Video HD AI Hybrid & Open-Source (Multi-AI Publik, AVIF/WebP 2-Pass, Squoosh, UPNG, FFmpeg WASM, Weserv Libvips) | `tools-logic.js`, `media-engine.js` |
+| `js/converter.js` | Mesin Konversi Semua File Multi-Format (85+ konversi lintas 30 format target) | `tools-logic.js`, `media-engine.js` |
+| `js/song-finder.js` | Pencari Judul Lagu, Musik & Analisis Kemiripan Video Sosmed Multi-API + Whisper/AudD/AI Publik | `tools-logic.js`, `media-engine.js` |
+| `js/music.js` + `js/music-logic.js` | Floating dock draggable, YT Music API open-source, drawer 14 kategori + tren real-time, background audio anti-mati, PiP + Mode Headset | YouTube IFrame API / Audius / Siputzx |
+| `data/catalog.json` & `data/catalog-history.json` | Single Source of Truth produk, utilitas, brand, OpenGraph, banners, kategori, voucher usage limits, FAQ & 12 snapshot riwayat | Service Worker Network-First |
+| `sw.js` + `manifest.webmanifest` | Network-First code/data cache (`manifestudio-cache-v60` + pelestarian `manifestudio-ffmpeg-core-v1`) & instalasi PWA | — |
 | `CNAME` | Konfigurasi domain kustom resmi GitHub Pages (`manifestudio.my.id`) — jangan dihapus | Cloudflare DNS |
 
 ---
 
-## 3. Registri Integrasi API Eksternal (Gratis & CORS-Enabled)
+## 3. Registri Integrasi API Eksternal (Gratis, CORS-Enabled & Opsional BYOK)
 
-Semua integrasi pihak ketiga berjalan murni *client-side* tanpa API key rahasia:
+Semua integrasi berjalan murni *client-side* tanpa server backend:
 
-1. **Jadwal Sholat Indonesia**:
-   - **Primary (Presisi Koordinat Kecamatan/Kelurahan)**: `https://api.aladhan.com/v1/timings/{DD}-{MM}-{YYYY}?latitude=...&longitude=...&method=20` (Metode Kemenag RI).
-   - **Fallback (Kota/Kabupaten)**: `https://api.myquran.com/v2/sholat/kota/semua` & `/jadwal/{cityId}/{YYYY}/{MM}/{DD}` (Bimas Islam Kemenag RI).
-2. **Prakiraan Cuaca Presisi Tinggi & Geocoding**:
-   - **Cuaca**: `https://api.open-meteo.com/v1/forecast` (`current` termasuk `rain`/`showers`/`wind_gusts_10m`, `hourly`, 7-day `daily`) + pengamatan stasiun lokal (`wttr.in`).
-   - **Cari Wilayah/Kecamatan**: `https://nominatim.openstreetmap.org/search`, `https://photon.komoot.io/api/`, & `https://geocoding-api.open-meteo.com/v1/search`.
-3. **Deteksi Lokasi GPS + Reverse Geocode & Fallback IP**:
-   - **Reverse Geocode Detail**: `https://nominatim.openstreetmap.org/reverse`, `https://api-bdc.io/data/reverse-geocode-client`, & `https://photon.komoot.io/reverse`.
-   - **IP Fallback**: `https://ipwho.is/`.
-4. **Speedtest Internet**:
-   - **CDN Info**: `https://speed.cloudflare.com/cdn-cgi/trace` & `https://speed.cloudflare.com/meta`.
-   - **Bandwidth & Latency**: `https://speed.cloudflare.com/__down?bytes=...` & `https://speed.cloudflare.com/__up`.
-5. **Pemutar Musik YT Music API Komunitas Open-Source & Shuffled Viral Indonesia Full-Length**:
-   - **Open-Source Community API**: `https://api.siputzx.my.id/api/s/youtube` (mendukung ekstraksi objek durasi bersarang `{ seconds, timestamp }` & pelestarian hasil lirik/judul terjemahan YouTube), `https://api.siputzx.my.id/api/d/ummy`, & `https://api.audius.co/v1/tracks` (CORS-enabled, full-length `>= 75s`, memblokir preview singkat 30 detik).
-   - **Mesin Pemutar Hibrida Native `<audio>` + YouTube IFrame**: Memutar stream penuh di latar belakang/layar mati + fallback instan YouTube IFrame untuk video penuh.
-   - **Gambar-dalam-Gambar (PiP) & Mode Headset**: Jendela PiP mengambang dengan tombol 🎧 Mode Headset untuk menyembunyikan PiP sambil menjaga lagu tetap berputar.
-   - **Dua Tampilan Tersinkron**: Panel lengkap informatif di Menu Utilitas (`tools.html?tab=music`) dan floating dock minimalis modern (`js/music.js`).
-6. **Sosmed Media Downloader All-in-One**:
-   - **TikTok (Video No-WM/MP3/Photo Carousel)**: Failover paralel 4 node `https://backend1..4.tioo.eu.org/ttdl`, `https://www.tikwm.com/api/?url=...&hd=1`, `https://cobaltapi.cjs.nz/`, fallback `https://apis.davidcyriltech.my.id/download/tiktok`.
-   - **YouTube (Dual Video MP4 & Audio M4A/MP3/WAV)**: Paralel `https://www.youtube.com/oembed`, `https://api.siputzx.my.id/api/d/ummy` (MP4 + M4A), `https://cobaltapi.cjs.nz/` (video + audio MP3 terpisah), failover 4 node `https://backend1..4.tioo.eu.org/youtube` (+ Wave 2 audio retry & pembungkusan stream `googlevideo.com` via `https://api.vidsnap.app/proxy?u=...` yang lolos CORS serta pemblokiran redirect `sf-converter.com`), fallback ganda `https://apis.davidcyriltech.my.id/download/ytmp4` + `/ytmp3`, serta ekstraksi audio `.wav` client-side (`AudioContext`).
-   - **Facebook (HD/SD/MP3/Photo/Story)**: `https://cobaltapi.cjs.nz/`, `https://apis.davidcyriltech.my.id/facebook`, & failover 4 node `https://backend1..4.tioo.eu.org/fbdown`.
-   - **Instagram (Reels/Photo/Carousel/Story/Caption)**: Paralel **`https://api.siputzx.my.id/api/d/sssinstagram`**, **`https://api.siputzx.my.id/api/d/ummy`**, `https://cobaltapi.cjs.nz/`, & 4-node `tioo.eu.org/igdl`, dengan fallback `siputzx/fastdl`, `siputzx/igram`, dan `davidcyriltech/instagram`.
+1. **Manifest AI (`v60`) — Katalog Model Real-Time, Jalur Gratis Multi-Gateway & Multi-BYOK**:
+   - **Auto-Upgrade Model Real-Time (CORS `*`)**:
+     - `https://openrouter.ai/api/v1/models` (katalog live flagship Google Gemini, OpenAI, Anthropic Claude, DeepSeek, xAI Grok, Meta Llama, Qwen, Mistral).
+     - `https://models.dev/api.json` (registri rilis terbaru lintas vendor AI).
+     - `https://text.pollinations.ai/models` & `https://api.llm7.io/v1/models` (daftar model aktif gateway gratis).
+   - **Jalur AI Gratis Tanpa API Key (Paralel & Failover Anti-Limit)**:
+     - **Puter.js Client SDK (`https://js.puter.com/v2/`)**: Kuota gratis multi-model terpisah per browser pengguna (`puter.ai.chat` untuk Gemini, GPT, Claude, DeepSeek, Grok, Meta Llama).
+     - **Pollinations OpenAI-Compatible (`https://text.pollinations.ai/openai`)**: Dibatasi maksimal 1 permintaan per giliran dengan cooldown otomatis jika `402/429`.
+     - **LLM7 Free API (`https://api.llm7.io/v1/chat/completions`)**: Kuota token gratis per IP pengguna.
+     - **Siputzx DuckAI (`https://api.siputzx.my.id/api/ai/duckai`)**: Cadangan gratis multi-model (`gpt-4o-mini`, `claude-3-5-haiku-latest`, `Llama-4-Scout`, `Mistral-Small-24B`).
+   - **Multi-Provider BYOK Direct Endpoints (Opsional, 100% Lokal di Browser Pengguna)**:
+     - Google Gemini (`generativelanguage.googleapis.com/v1beta`), OpenAI (`api.openai.com/v1`), DeepSeek (`api.deepseek.com`), Anthropic Claude (`api.anthropic.com/v1` + `anthropic-dangerous-direct-browser-access: true`), xAI Grok (`api.x.ai/v1`), Groq (`api.groq.com/openai/v1`), OpenRouter (`openrouter.ai/api/v1`), Mistral (`api.mistral.ai/v1`), Qwen/DashScope (`dashscope-intl.aliyuncs.com/compatible-mode/v1`), dan Custom OpenAI-Compatible Base URL.
+2. **Drama China Hub (`v50–v57`)**:
+   - Katalog adaptif & mirror endpoint terkelola di `data/dracin-endpoints.json`, termasuk integrasi **SekaiDrama (`api.sansekai.my.id`)** untuk failover episode VIP-free, mirror platform short drama, dan fallback Dailymotion.
+3. **Jadwal Sholat Indonesia**:
+   - `https://api.aladhan.com/v1/timings/...?method=20` & `https://api.myquran.com/v2/sholat/...`.
+4. **Prakiraan Cuaca Presisi Tinggi & Geocoding**:
+   - `https://api.open-meteo.com/v1/forecast`, `wttr.in`, Nominatim, Photon, & Open-Meteo Geocoding.
+5. **Deteksi Lokasi GPS + Fallback IP & Speedtest Cloudflare**:
+   - Nominatim/BigDataCloud/Photon reverse geocode, `ipwho.is`, & `speed.cloudflare.com`.
+6. **YT Music API Open-Source & Sosmed Media Downloader All-in-One**:
+   - Siputzx (`youtube`, `ummy`, `sssinstagram`), Audius (`api.audius.co`), 4-node Tioo, TikWM, Cobalt, & `api.vidsnap.app/proxy`.
 
 ---
 
@@ -75,23 +77,22 @@ Semua integrasi pihak ketiga berjalan murni *client-side* tanpa API key rahasia:
 
 | Kunci Storage | Penyimpanan | Isi / Struktur |
 |---|---|---|
+| `manifestudio_ai_chats_v1` | `localStorage` | Riwayat seluruh thread percakapan **Manifest AI** (judul, pesan, metadata kontributor model, timestamp) |
+| `manifestudio_ai_byok_v1` | `localStorage` | Daftar API Key pribadi pengguna (**multi-provider BYOK**), hanya tersimpan lokal di perangkat pengguna |
+| `manifestudio_ai_models_v1` | `localStorage` | Cache katalog model flagship terbaru hasil sinkronisasi real-time (TTL auto-refresh 6 jam) |
+| `manifestudio_ai_limits_v1` | `localStorage` | Peta cooldown & reset rate-limit per pengguna di browser untuk failover otomatis |
+| `manifestudio_ai_prefs_v1` | `localStorage` | Preferensi mode (`ensemble`/`single`), provider fokus, toggle gabung BYOK+Gratis, & Puter SDK |
 | `manifestudio_cart_v1` | `localStorage` | Item keranjang aktif |
 | `manifestudio_theme_v1` | `localStorage` | `'dark'` atau `'light'` |
-| `manifestudio_used_vouchers_v1` | `localStorage` | Map jumlah pemakaian per kode voucher `{ CODE: count }` (migrasi otomatis dari array lama) |
+| `manifestudio_used_vouchers_v1` | `localStorage` | Map jumlah pemakaian per kode voucher `{ CODE: count }` |
 | `manifestudio_pending_order_v1` | `sessionStorage` + `localStorage` | Snapshot handoff menuju `order.html` |
 | `manifestudio_admin_vault_v1` | `localStorage` | Kredensial GitHub terenkripsi AES-256-GCM |
 | `manifestudio_catalog_preview_v1` | `localStorage` | Draft lokal admin sebelum publish ke GitHub |
 | `manifestudio_catalog_history_v1` | `localStorage` | Riwayat perubahan katalog terperinci (maks 12 log, auto-prune) |
-| `manifestudio_pwa_installed_v1` | `localStorage` | Flag status instalasi PWA |
-| `manifestudio_pwa_dismissed_v1` | `localStorage` | Timestamp penolakan banner PWA |
-| `manifestudio_user_location_v1` | `localStorage` | Lokasi terakhir (GPS / IP / manual) untuk Sholat & Cuaca |
-| `manifestudio_weather_cal_v1` | `localStorage` | Kalibrasi cuaca aktual lokal pengguna (auto-expire 3 jam) |
-| `manifestudio_music_library_v1` | `localStorage` | Daftar `watchLater` (Tonton Nanti) dan `playlists` pribadi pengguna |
-| `manifestudio_music_stream_cache_v2` | `localStorage` | Cache URL stream audio full-length terverifikasi (bebas preview 30 detik) |
-| `manifestudio_music_headset_v1` | `localStorage` | Status Mode Headset (`true` / `false`) untuk audio latar tanpa PiP |
-| `manifestudio_music_session_v1` | `sessionStorage` + `localStorage` | Status `explicitPaused`, `wasPlaying`, `lastTrackId`, & `currentTime` lintas halaman |
-| `manifestudio_music_clickplay_v1` | `localStorage` | Preferensi toggle Auto-Klik musik (`true` / `false`) |
-| `manifestudio_music_pos_v2` | `localStorage` | Koordinat `(x, y)` ikon musik hasil geser pengguna |
+| `manifestudio_pwa_installed_v1` / `dismissed_v1` | `localStorage` | Status instalasi & penolakan banner PWA |
+| `manifestudio_user_location_v1` / `weather_cal_v1` | `localStorage` | Lokasi terakhir & kalibrasi cuaca aktual lokal pengguna |
+| `manifestudio_music_*` | `localStorage` / `sessionStorage` | Library musik, stream cache, Mode Headset, sesi lintas halaman, & posisi FAB |
+| `manifestudio_dracin_*` | `localStorage` | Riwayat tontonan, favorit, & health mirror Drama China |
 
 ---
 
@@ -99,10 +100,10 @@ Semua integrasi pihak ketiga berjalan murni *client-side* tanpa API key rahasia:
 
 1. **Path Relatif vs OpenGraph Absolut**:
    - Seluruh aset di HTML/JS/CSS (`img`, `script`, `fetch`) **wajib** memakai path relatif `./`.
-   - Tag **OpenGraph & Canonical (`og:url`, `og:image`, `og:image:secure_url`, `twitter:image`, Schema.org)** **wajib** memakai URL absolut HTTPS lengkap menuju `https://manifestudio.my.id/...` agar pratinjau WhatsApp/Telegram tampil penuh.
+   - Tag **OpenGraph & Canonical** **wajib** memakai URL absolut HTTPS lengkap menuju `https://manifestudio.my.id/...`.
    - Jangan pernah menghapus file `CNAME` (`manifestudio.my.id`).
 2. **Cache-Busting Konsisten (`sw.js` & `?v=N`)**:
-   - Setiap kali mengubah JS/CSS/HTML, naikkan `CACHE_NAME` di `sw.js` **dan** `CURRENT_CACHE` + query `?v=N` pada seluruh HTML (`index.html`, `tools.html`, `order.html`, `admin.html`) dan import ES module terkait agar browser mobile tidak menahan cache usang.
+   - Setiap kali mengubah JS/CSS/HTML, naikkan `CACHE_NAME` di `sw.js` **dan** `CURRENT_CACHE` + query `?v=N` pada seluruh HTML (`index.html`, `tools.html`, `order.html`, `admin.html`) dan import ES module terkait.
 3. **Dokumentasi & Verifikasi Wajib Sebelum Push**:
    - Setiap pembaruan fitur wajib memperbarui `ROADMAP.md`, `README.md`, dan `BLUEPRINT.md`.
-   - Jalankan `npx --yes tsx --test InfoKatalogtMCTomyStudio/js/store.test.mjs`, `npm run build && npm run lint`, serta uji UI desktop + mobile (`playwright-cli`) bebas error dan overflow (`scrollWidth <= innerWidth`), lalu langsung push ke `origin/main`.
+   - Jalankan `npx --yes tsx --test .repos/InfoKatalogtMCTomyStudio/js/store.test.mjs`, `npm run build && npm run lint`, serta uji UI desktop + mobile (`playwright-cli`) bebas error dan overflow (`scrollWidth <= innerWidth`), lalu langsung push ke `origin/main`.

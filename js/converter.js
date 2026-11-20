@@ -10,7 +10,7 @@
  * - Archives: ZIP -> PDF, JSON, CSV, XLSX, HTML, TXT
  */
 
-import { formatBytes } from './tools-logic.js?v=59';
+import { formatBytes } from './tools-logic.js?v=60';
 import {
   captureRealVideoFrameInBrowser,
   extractPdfTextWithPdfJs,
@@ -18,7 +18,7 @@ import {
   transcodeAudioWithWebAudioAndLame,
   transcodeWithFfmpeg,
   verifyPlayableMediaBlob,
-} from './media-engine.js?v=59';
+} from './media-engine.js?v=60';
 
 export const CONVERTER_CATEGORIES = [
   {

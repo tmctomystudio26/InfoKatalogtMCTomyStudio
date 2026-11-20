@@ -30,8 +30,8 @@ import {
   processSamplesStemSeparation,
   processSamplesVoiceFx,
   volumePctToGain,
-} from './audio-editor-logic.js?v=59';
-import { transcodeWithFfmpeg } from './media-engine.js?v=59';
+} from './audio-editor-logic.js?v=60';
+import { transcodeWithFfmpeg } from './media-engine.js?v=60';
 
 let sharedAudioCtx = null;
 let lameLoaded = false;

@@ -13129,6 +13129,1274 @@ body.dracin-fs-lock {
   }
 }
 
+/* ============================================================================
+   Manifest AI — Multi-Model Chat Workspace (v60)
+   ============================================================================ */
+
+.manifestai-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 0.9rem;
+}
+
+.mai-shell {
+  position: relative;
+  display: grid;
+  grid-template-columns: 276px minmax(0, 1fr);
+  min-height: 540px;
+  height: min(74vh, 740px);
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--border);
+  background: var(--surface);
+  overflow: hidden;
+}
+
+.mai-sidebar {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  background: var(--bg-subtle);
+  border-right: 1px solid var(--border);
+}
+
+.mai-sidebar-head {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.85rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.mai-new-chat-btn {
+  flex: 1 1 auto;
+  justify-content: center;
+  min-height: 40px;
+  gap: 0.45rem;
+}
+
+.mai-drawer-close {
+  display: none;
+}
+
+.mai-sidebar-search {
+  padding: 0.65rem 0.85rem 0.5rem;
+}
+
+.mai-input,
+.mai-select {
+  width: 100%;
+  min-height: 38px;
+  padding: 0.45rem 0.72rem;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--ink);
+  font-family: var(--font-sans);
+  font-size: 0.84rem;
+  box-sizing: border-box;
+  transition: border-color 150ms var(--ease);
+}
+
+.mai-input:focus,
+.mai-select:focus {
+  outline: none;
+  border-color: var(--primary);
+}
+
+.mai-thread-list {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 0.35rem 0.6rem 0.75rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+
+.mai-thread-empty {
+  padding: 1.25rem 0.75rem;
+  text-align: center;
+  font-size: 0.8rem;
+  color: var(--ink-muted);
+}
+
+.mai-thread-item {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  border-radius: var(--radius-sm);
+  border: 1px solid transparent;
+  transition: background 140ms ease, border-color 140ms ease;
+}
+
+.mai-thread-item:hover {
+  background: var(--surface-hover);
+}
+
+.mai-thread-item.is-active {
+  background: var(--surface);
+  border-color: var(--border-strong);
+}
+
+.mai-thread-select {
+  flex: 1 1 auto;
+  min-width: 0;
+  border: 0;
+  background: transparent;
+  padding: 0.55rem 0.6rem;
+  text-align: left;
+  color: var(--ink);
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  gap: 0.16rem;
+}
+
+.mai-thread-title {
+  font-size: 0.83rem;
+  font-weight: 600;
+  color: var(--ink);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.mai-thread-meta {
+  font-size: 0.71rem;
+  color: var(--ink-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.mai-thread-actions {
+  display: flex;
+  align-items: center;
+  padding-right: 0.3rem;
+  opacity: 0.72;
+}
+
+.mai-thread-item:hover .mai-thread-actions,
+.mai-thread-item.is-active .mai-thread-actions {
+  opacity: 1;
+}
+
+.mai-thread-act-btn {
+  width: 28px;
+  height: 28px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--ink-muted);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+.mai-thread-act-btn:hover {
+  background: var(--surface-elevated);
+  color: var(--ink);
+}
+
+.mai-thread-act-btn.is-danger:hover {
+  color: var(--danger);
+}
+
+.mai-thread-rename-form {
+  display: flex;
+  gap: 0.35rem;
+  padding: 0.3rem;
+}
+
+.mai-rename-input {
+  min-height: 32px;
+  font-size: 0.8rem;
+}
+
+.mai-sidebar-foot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.4rem;
+  padding: 0.65rem 0.75rem;
+  border-top: 1px solid var(--border);
+}
+
+.mai-foot-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  min-height: 32px;
+  padding: 0.25rem 0.55rem;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--ink-secondary);
+  font-size: 0.75rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.mai-foot-btn:hover {
+  border-color: var(--border-strong);
+  color: var(--ink);
+}
+
+.mai-foot-btn.is-danger {
+  color: var(--danger);
+}
+
+.mai-main {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  background: var(--surface);
+}
+
+.mai-topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.75rem 1rem;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
+  flex-wrap: wrap;
+}
+
+.mai-topbar-left {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  min-width: 0;
+  flex: 1 1 180px;
+}
+
+.mai-icon-btn {
+  width: 38px;
+  height: 38px;
+  flex-shrink: 0;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: var(--surface-elevated);
+  color: var(--ink);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+.mai-icon-btn:hover {
+  border-color: var(--border-strong);
+}
+
+.mai-icon-btn.mai-menu-trigger,
+.mai-icon-btn.mai-drawer-close {
+  display: none;
+}
+
+.mai-topbar-title-wrap {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.mai-topbar-title {
+  font-family: var(--font-display);
+  font-size: 0.96rem;
+  font-weight: 700;
+  color: var(--ink);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.mai-topbar-sub {
+  font-size: 0.74rem;
+  color: var(--ink-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.mai-topbar-controls {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+}
+
+.mai-mode-switch {
+  display: inline-flex;
+  padding: 2px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: var(--bg-subtle);
+}
+
+.mai-mode-btn {
+  min-height: 32px;
+  padding: 0.25rem 0.65rem;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--ink-secondary);
+  font-size: 0.76rem;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.mai-mode-btn.is-active {
+  background: var(--primary);
+  color: var(--primary-ink);
+}
+
+.mai-focus-select {
+  width: auto;
+  min-width: 112px;
+  min-height: 36px;
+  padding: 0.3rem 0.6rem;
+  font-size: 0.78rem;
+}
+
+.mai-top-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.38rem;
+  min-height: 36px;
+  padding: 0.35rem 0.72rem;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: var(--surface-elevated);
+  color: var(--ink);
+  font-size: 0.78rem;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.mai-top-btn:hover {
+  border-color: var(--border-strong);
+  background: var(--surface-hover);
+}
+
+.mai-top-btn.is-accent {
+  border-color: var(--primary);
+  color: var(--primary);
+  background: var(--accent-soft);
+}
+
+.mai-messages-scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 1.25rem 1.15rem;
+}
+
+.mai-messages-inner {
+  width: 100%;
+  max-width: 780px;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 1.15rem;
+}
+
+.mai-welcome {
+  margin: auto 0;
+  padding: 0.75rem 0 0.45rem;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1.05rem;
+  text-align: center;
+}
+
+.mai-welcome-brand {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.55rem;
+  max-width: 560px;
+}
+
+.mai-welcome-logo {
+  border-radius: 14px;
+}
+
+.mai-welcome-title {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: 1.55rem;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  color: var(--ink);
+}
+
+.mai-welcome-sub {
+  margin: 0;
+  font-size: 0.9rem;
+  line-height: 1.55;
+  color: var(--ink-secondary);
+}
+
+.mai-welcome-meta {
+  margin: 0.15rem 0 0;
+  font-size: 0.76rem;
+  color: var(--ink-muted);
+  line-height: 1.45;
+}
+
+.mai-starter-grid {
+  width: 100%;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.75rem;
+}
+
+.mai-starter-card {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.28rem;
+  padding: 0.9rem 1rem;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border);
+  background: var(--bg-subtle);
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 150ms var(--ease), background 150ms var(--ease);
+}
+
+.mai-starter-card:hover {
+  border-color: var(--primary);
+  background: var(--surface-elevated);
+}
+
+.mai-starter-title {
+  font-size: 0.86rem;
+  font-weight: 700;
+  color: var(--ink);
+}
+
+.mai-starter-sub {
+  font-size: 0.76rem;
+  line-height: 1.45;
+  color: var(--ink-muted);
+}
+
+.mai-msg {
+  display: flex;
+  gap: 0.75rem;
+  min-width: 0;
+}
+
+.mai-msg-user {
+  justify-content: flex-end;
+}
+
+.mai-user-bubble {
+  max-width: min(82%, 600px);
+  padding: 0.75rem 1rem;
+  border-radius: 16px 16px 4px 16px;
+  background: var(--primary);
+  color: var(--primary-ink);
+  font-size: 0.9rem;
+  line-height: 1.55;
+  overflow-wrap: anywhere;
+}
+
+.mai-msg-assistant {
+  align-items: flex-start;
+}
+
+.mai-assistant-avatar {
+  width: 32px;
+  height: 32px;
+  flex-shrink: 0;
+  border-radius: 10px;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--border);
+  background: var(--bg-subtle);
+  margin-top: 2px;
+}
+
+.mai-assistant-body {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+}
+
+.mai-md-content {
+  font-size: 0.91rem;
+  line-height: 1.65;
+  color: var(--ink);
+  overflow-wrap: anywhere;
+}
+
+.mai-md-p {
+  margin: 0 0 0.65rem;
+}
+
+.mai-md-p:last-child {
+  margin-bottom: 0;
+}
+
+.mai-md-h {
+  margin: 0.9rem 0 0.45rem;
+  font-family: var(--font-display);
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--ink);
+}
+
+.mai-md-h:first-child {
+  margin-top: 0;
+}
+
+.mai-md-list {
+  margin: 0 0 0.65rem;
+  padding-left: 1.35rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+
+.mai-md-quote {
+  margin: 0.5rem 0;
+  padding: 0.45rem 0.85rem;
+  border-radius: 8px;
+  background: var(--bg-subtle);
+  border: 1px solid var(--border);
+  color: var(--ink-secondary);
+  font-size: 0.86rem;
+}
+
+.mai-md-link {
+  color: var(--accent);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.mai-md-content code:not(pre code) {
+  font-family: var(--font-mono);
+  font-size: 0.82em;
+  padding: 0.12rem 0.36rem;
+  border-radius: 5px;
+  background: var(--surface-elevated);
+  border: 1px solid var(--border);
+  color: var(--ink);
+}
+
+.mai-code-block {
+  margin: 0.65rem 0;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: var(--bg);
+  overflow: hidden;
+}
+
+.mai-code-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.4rem 0.75rem;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-subtle);
+}
+
+.mai-code-lang {
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--ink-muted);
+  text-transform: lowercase;
+}
+
+.mai-code-copy {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--ink-secondary);
+  font-size: 0.72rem;
+  font-weight: 600;
+  padding: 0.2rem 0.55rem;
+  cursor: pointer;
+}
+
+.mai-code-copy:hover {
+  color: var(--ink);
+  border-color: var(--border-strong);
+}
+
+.mai-code-block pre {
+  margin: 0;
+  padding: 0.8rem 0.9rem;
+  overflow-x: auto;
+  font-family: var(--font-mono);
+  font-size: 0.81rem;
+  line-height: 1.55;
+  color: var(--ink);
+}
+
+.mai-msg-footer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding-top: 0.2rem;
+}
+
+.mai-msg-meta-line {
+  font-size: 0.74rem;
+  color: var(--ink-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.mai-msg-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.mai-msg-act-btn {
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: transparent;
+  color: var(--ink-secondary);
+  font-size: 0.73rem;
+  font-weight: 600;
+  padding: 0.22rem 0.55rem;
+  cursor: pointer;
+}
+
+.mai-msg-act-btn:hover {
+  border-color: var(--border-strong);
+  color: var(--ink);
+  background: var(--surface-elevated);
+}
+
+.mai-contrib-details {
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: var(--bg-subtle);
+  padding: 0.45rem 0.7rem;
+}
+
+.mai-contrib-summary {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--ink-secondary);
+  cursor: pointer;
+  list-style: none;
+}
+
+.mai-contrib-summary::-webkit-details-marker {
+  display: none;
+}
+
+.mai-contrib-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-top: 0.55rem;
+  padding-top: 0.55rem;
+  border-top: 1px solid var(--border);
+}
+
+.mai-contrib-row {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.mai-contrib-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.4rem;
+  font-size: 0.77rem;
+}
+
+.mai-contrib-head strong {
+  color: var(--ink);
+}
+
+.mai-contrib-sub {
+  font-family: var(--font-mono);
+  font-size: 0.71rem;
+  color: var(--ink-muted);
+}
+
+.mai-contrib-excerpt {
+  margin: 0;
+  font-size: 0.76rem;
+  line-height: 1.45;
+  color: var(--ink-secondary);
+}
+
+.mai-thinking-row {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  padding: 0.7rem 0.9rem;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border);
+  background: var(--bg-subtle);
+}
+
+.mai-spinner {
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+  border-radius: 999px;
+  border: 2px solid var(--border-strong);
+  border-top-color: var(--primary);
+  animation: mai-spin 0.75s linear infinite;
+}
+
+@keyframes mai-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.mai-thinking-text {
+  font-size: 0.83rem;
+  color: var(--ink-secondary);
+}
+
+.mai-error-box {
+  padding: 0.9rem 1rem;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--danger);
+  background: var(--danger-soft);
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+}
+
+.mai-error-msg {
+  margin: 0;
+  font-size: 0.84rem;
+  line-height: 1.5;
+  color: var(--ink);
+}
+
+.mai-error-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.mai-composer-wrap {
+  padding: 0.75rem 1.15rem 0.85rem;
+  border-top: 1px solid var(--border);
+  background: var(--surface);
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+}
+
+.mai-composer-form {
+  width: 100%;
+  max-width: 780px;
+  margin: 0 auto;
+  display: flex;
+  align-items: flex-end;
+  gap: 0.55rem;
+  padding: 0.42rem 0.45rem 0.42rem 0.8rem;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-strong);
+  background: var(--bg);
+}
+
+.mai-composer-form:focus-within {
+  border-color: var(--primary);
+}
+
+.mai-composer-input {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 44px;
+  max-height: 180px;
+  padding: 0.62rem 0;
+  border: 0;
+  background: transparent;
+  color: var(--ink);
+  font-family: var(--font-sans);
+  font-size: 0.9rem;
+  line-height: 1.45;
+  resize: none;
+  outline: none;
+}
+
+.mai-send-btn {
+  min-height: 42px;
+  padding: 0.45rem 0.95rem;
+  flex-shrink: 0;
+  gap: 0.4rem;
+}
+
+.mai-status-strip {
+  width: 100%;
+  max-width: 780px;
+  margin: 0 auto;
+  font-size: 0.73rem;
+  color: var(--ink-muted);
+  text-align: center;
+  line-height: 1.4;
+}
+
+/* Modals (Live Models Registry & Multi-Provider BYOK Vault) */
+.mai-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1200;
+  background: rgba(2, 6, 23, 0.72);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+}
+
+.mai-modal {
+  width: 100%;
+  max-width: 680px;
+  max-height: min(86dvh, 760px);
+  display: flex;
+  flex-direction: column;
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--border-strong);
+  background: var(--surface);
+  color: var(--ink);
+  box-shadow: var(--shadow-float);
+  overflow: hidden;
+}
+
+.mai-modal-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 1rem 1.15rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.mai-modal-title {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: 1.08rem;
+  font-weight: 700;
+  color: var(--ink);
+}
+
+.mai-modal-sub {
+  margin: 0.25rem 0 0;
+  font-size: 0.8rem;
+  line-height: 1.45;
+  color: var(--ink-muted);
+}
+
+.mai-modal-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 1rem 1.15rem 1.2rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.mai-sync-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.85rem;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border);
+  background: var(--bg-subtle);
+}
+
+.mai-sync-info {
+  display: flex;
+  flex-direction: column;
+  gap: 0.18rem;
+  min-width: 0;
+  flex: 1 1 240px;
+}
+
+.mai-sync-info strong {
+  font-size: 0.86rem;
+  color: var(--ink);
+}
+
+.mai-sync-info span {
+  font-size: 0.77rem;
+  line-height: 1.4;
+  color: var(--ink-muted);
+}
+
+.mai-sync-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+}
+
+.mai-model-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.65rem;
+}
+
+.mai-model-row {
+  padding: 0.75rem 0.85rem;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: var(--bg-subtle);
+  display: flex;
+  flex-direction: column;
+  gap: 0.28rem;
+}
+
+.mai-model-row-top {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.4rem;
+}
+
+.mai-model-row-top strong {
+  font-size: 0.86rem;
+  color: var(--ink);
+}
+
+.mai-model-vendor {
+  font-size: 0.72rem;
+  color: var(--ink-muted);
+}
+
+.mai-model-id-line code {
+  font-family: var(--font-mono);
+  font-size: 0.76rem;
+  color: var(--accent);
+  word-break: break-all;
+}
+
+.mai-model-role {
+  margin: 0;
+  font-size: 0.74rem;
+  color: var(--ink-secondary);
+  line-height: 1.4;
+}
+
+.mai-limit-box {
+  padding: 0.8rem 0.9rem;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: var(--bg-subtle);
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+}
+
+.mai-limit-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  font-size: 0.83rem;
+}
+
+.mai-limit-ok {
+  margin: 0;
+  font-size: 0.79rem;
+  color: var(--success);
+}
+
+.mai-limit-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+
+.mai-limit-list li {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 0.4rem;
+  font-size: 0.76rem;
+  color: var(--ink-secondary);
+}
+
+/* BYOK Form & Cards */
+.mai-byok-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  padding: 0.9rem;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border);
+  background: var(--bg-subtle);
+}
+
+.mai-form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.65rem;
+}
+
+.mai-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--ink-secondary);
+}
+
+.mai-checkbox-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.8rem;
+  color: var(--ink);
+  cursor: pointer;
+}
+
+.mai-byok-form-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.65rem;
+}
+
+.mai-privacy-note {
+  font-size: 0.73rem;
+  color: var(--ink-muted);
+}
+
+.mai-byok-combine-row {
+  padding: 0.65rem 0.85rem;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: var(--surface-elevated);
+}
+
+.mai-sub-heading {
+  margin: 0 0 0.55rem;
+  font-size: 0.86rem;
+  font-weight: 700;
+  color: var(--ink);
+}
+
+.mai-empty-note {
+  margin: 0;
+  font-size: 0.8rem;
+  color: var(--ink-muted);
+}
+
+.mai-byok-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+}
+
+.mai-byok-card {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.65rem;
+  padding: 0.75rem 0.85rem;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: var(--bg-subtle);
+}
+
+.mai-byok-card.is-disabled {
+  opacity: 0.62;
+}
+
+.mai-byok-card-main {
+  display: flex;
+  flex-direction: column;
+  gap: 0.22rem;
+  min-width: 0;
+  flex: 1 1 240px;
+}
+
+.mai-byok-card-top {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.45rem;
+}
+
+.mai-byok-card-top strong {
+  font-size: 0.86rem;
+  color: var(--ink);
+}
+
+.mai-byok-provider-meta {
+  font-size: 0.74rem;
+  color: var(--ink-muted);
+}
+
+.mai-byok-model-line {
+  font-size: 0.74rem;
+  color: var(--ink-secondary);
+}
+
+.mai-byok-model-line code {
+  font-family: var(--font-mono);
+  color: var(--accent);
+}
+
+.mai-byok-feedback {
+  font-size: 0.74rem;
+  color: var(--ink-muted);
+}
+
+.mai-byok-feedback.is-ok {
+  color: var(--success);
+}
+
+.mai-byok-feedback.is-err {
+  color: var(--danger);
+}
+
+.mai-byok-card-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+.mai-mini-btn {
+  min-height: 32px;
+  padding: 0.24rem 0.6rem;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--ink);
+  font-size: 0.74rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.mai-mini-btn:hover:not(:disabled) {
+  border-color: var(--border-strong);
+  background: var(--surface-hover);
+}
+
+.mai-mini-btn.is-danger {
+  color: var(--danger);
+}
+
+.mai-drawer-backdrop {
+  display: none;
+}
+
+@media (max-width: 900px) {
+  .mai-shell {
+    grid-template-columns: minmax(0, 1fr);
+    min-height: 580px;
+    height: min(82dvh, 780px);
+  }
+
+  .mai-icon-btn.mai-menu-trigger,
+  .mai-icon-btn.mai-drawer-close {
+    display: inline-flex;
+  }
+
+  .mai-sidebar {
+    position: absolute;
+    inset: 0 auto 0 0;
+    width: min(300px, 86vw);
+    z-index: 30;
+    transform: translateX(-105%);
+    transition: transform 220ms var(--ease);
+    box-shadow: var(--shadow-float);
+  }
+
+  .mai-sidebar.is-open {
+    transform: translateX(0);
+  }
+
+  .mai-drawer-backdrop {
+    display: block;
+    position: absolute;
+    inset: 0;
+    z-index: 25;
+    background: rgba(2, 6, 23, 0.58);
+  }
+}
+
+@media (max-width: 600px) {
+  .mai-topbar {
+    padding: 0.65rem 0.75rem;
+    gap: 0.55rem;
+  }
+
+  .mai-topbar-controls {
+    width: 100%;
+    justify-content: space-between;
+  }
+
+  .mai-messages-scroll {
+    padding: 0.9rem 0.75rem;
+  }
+
+  .mai-starter-grid,
+  .mai-model-grid,
+  .mai-form-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .mai-user-bubble {
+    max-width: 92%;
+  }
+
+  .mai-composer-wrap {
+    padding: 0.65rem 0.75rem 0.75rem;
+  }
+
+  .mai-send-btn span {
+    display: none;
+  }
+
+  .mai-send-btn {
+    padding: 0.45rem 0.75rem;
+  }
+
+  .mai-modal-backdrop {
+    padding: 0.5rem;
+  }
+
+  .mai-modal-head,
+  .mai-modal-body {
+    padding: 0.85rem;
+  }
+}
+
+
 
 
 

@@ -751,6 +751,18 @@ export const DEFAULT_UTILITY_CONFIG = {
       heroDescription:
         'Edit audio langsung di browser dengan pemotong presisi, 10-Band EQ, Voice Changer, penjernih & perbaikan audio, pemisah vokal/karaoke, mixer multi-trek, editor tag resmi iTunes/MusicBrainz, serta dukungan Multi-AI (ChatGPT, Claude, Gemini, DeepSeek, Grok).',
     },
+    {
+      id: 'manifestai',
+      label: 'Manifest AI',
+      icon: './assets/icons/tool-manifestai.svg',
+      pageTitle: 'Manifest AI — Chat Multi-Model Gratis & API Key Pribadi',
+      pageSubtitle:
+        'Gabungkan Gemini, ChatGPT, DeepSeek, Claude, Grok, Meta, Qwen & Mistral secara terpadu dengan auto-update model terbaru real-time, failover anti-limit, memori konsisten, dan riwayat chat.',
+      heroKicker: 'Multi-AI Ensemble · Auto-Update Model Real-Time · Gratis & Multi-BYOK',
+      heroTitle: 'Manifest AI — Asisten Cerdas Gabungan Multi-Model',
+      heroDescription:
+        'Satukan kekuatan banyak model AI terkemuka dalam satu ruang obrolan yang konsisten memorinya, gratis tanpa API key dengan jalur failover otomatis per pengguna, atau kombinasikan beberapa API Key pribadi Anda secara paralel.',
+    },
   ],
 };
 

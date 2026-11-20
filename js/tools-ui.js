@@ -22,42 +22,43 @@ import {
   matchIndonesianCityQuery,
   planMediaCompression,
   resolveAccurateWeatherCondition,
-} from './tools-logic.js?v=59';
+} from './tools-logic.js?v=60';
 import {
   describeLocationSource,
   resolveUserLocation,
   searchCitiesOnline,
   setManualLocation,
-} from './location.js?v=59';
-import { createInteractiveGlobe } from './globe.js?v=59';
+} from './location.js?v=60';
+import { createInteractiveGlobe } from './globe.js?v=60';
 import {
   createSpeedometerGauge,
   fetchSpeedtestEnvironment,
   readClientDeviceTelemetry,
   runInternetSpeedtest,
-} from './speedtest.js?v=59';
+} from './speedtest.js?v=60';
 import {
   extractAudioFromVideoUrl,
   fetchMediaDownload,
   triggerBatchPhotoDownload,
   triggerDirectMediaSave,
-} from './downloader.js?v=59';
-import { compressMediaFile, inspectMediaFile } from './compressor.js?v=59';
+} from './downloader.js?v=60';
+import { compressMediaFile, inspectMediaFile } from './compressor.js?v=60';
 import {
   ALL_TARGET_FORMATS,
   convertAnyFile,
   detectSourceFormat,
   getAvailableTargetFormats,
-} from './converter.js?v=59';
+} from './converter.js?v=60';
 import {
   detectMediaFileKind,
   identifyMediaSongAndVideo,
-} from './song-finder.js?v=59';
-import { formatAudioTime, getLoadingProgressMeta, isTrackInWatchLater } from './music-logic.js?v=59';
-import { MUSIC_PRESET_CATEGORIES, getMusicController, initMusicPlayer } from './music.js?v=59';
-import { createDracinController } from './dracin-ui.js?v=59';
-import { createAudioEditorController } from './audio-editor-ui.js?v=59';
-import { normalizeUtilityConfig } from './store.js?v=59';
+} from './song-finder.js?v=60';
+import { formatAudioTime, getLoadingProgressMeta, isTrackInWatchLater } from './music-logic.js?v=60';
+import { MUSIC_PRESET_CATEGORIES, getMusicController, initMusicPlayer } from './music.js?v=60';
+import { createDracinController } from './dracin-ui.js?v=60';
+import { createAudioEditorController } from './audio-editor-ui.js?v=60';
+import { createManifestAiController } from './manifest-ai-ui.js?v=60';
+import { normalizeUtilityConfig } from './store.js?v=60';
 
 const PRAYER_CACHE_KEY = 'manifestudio_prayer_cache_v1';
 const MYQURAN_CITIES_KEY = 'manifestudio_myquran_cities_v1';
@@ -474,6 +475,7 @@ export function createToolsHubController({
   let musicUnsub = null;
   let dracinCtrl = null;
   let audioEditorCtrl = null;
+  let manifestAiCtrl = null;
   let isHubSeeking = false;
 
   function getUtilityItemConfig(id) {
@@ -4479,6 +4481,15 @@ export function createToolsHubController({
     `;
   }
 
+  function renderManifestAiPanel() {
+    return `
+      <section class="tool-panel manifestai-panel" aria-label="Manifest AI Chat Multi-Model">
+        ${renderSubPanelIntro('manifestai')}
+        <div id="manifestai-hub-mount"></div>
+      </section>
+    `;
+  }
+
   function bindToolEvents() {
     rootEl.querySelectorAll('[data-tool-subtab]').forEach((btn) => {
       btn.addEventListener('click', () => {
@@ -5299,6 +5310,18 @@ export function createToolsHubController({
     } else if (audioEditorCtrl) {
       audioEditorCtrl.unmount();
     }
+
+    if (toolState.activeSubTab === 'manifestai') {
+      const maiMount = rootEl.querySelector('#manifestai-hub-mount');
+      if (maiMount) {
+        if (!manifestAiCtrl) {
+          manifestAiCtrl = createManifestAiController({ onToast });
+        }
+        manifestAiCtrl.mount(maiMount);
+      }
+    } else if (manifestAiCtrl) {
+      manifestAiCtrl.unmount();
+    }
   }
 
   function renderPrayerSearchResultsHtml(subDistrictResults = [], filteredCities = []) {
@@ -5354,6 +5377,8 @@ export function createToolsHubController({
         ? renderDracinPanel()
         : toolState.activeSubTab === 'audioeditor'
         ? renderAudioEditorPanel()
+        : toolState.activeSubTab === 'manifestai'
+        ? renderManifestAiPanel()
         : renderDownloaderPanel();
 
     const subnavButtonsHtml = (toolState.utilities?.items || [])
@@ -5423,7 +5448,8 @@ export function createToolsHubController({
         subTab === 'songfinder' ||
         subTab === 'music' ||
         subTab === 'dracin' ||
-        subTab === 'audioeditor'
+        subTab === 'audioeditor' ||
+        subTab === 'manifestai'
       ) {
         toolState.activeSubTab = subTab;
       }
@@ -5469,6 +5495,9 @@ export function createToolsHubController({
       if (audioEditorCtrl) {
         audioEditorCtrl.unmount();
       }
+      if (manifestAiCtrl) {
+        manifestAiCtrl.unmount();
+      }
       stopLiveTimers();
       if (rootEl) rootEl.innerHTML = '';
     },
@@ -5476,6 +5505,7 @@ export function createToolsHubController({
       globeInstance?.redraw();
       gaugeInstance?.redraw();
       audioEditorCtrl?.redrawTheme();
+      manifestAiCtrl?.redrawTheme();
     },
   };
 }

@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64" fill="none">
+  <defs>
+    <linearGradient id="manifestAiBg" x1="6" y1="6" x2="58" y2="58" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#1d4ed8" />
+      <stop offset="55%" stop-color="#0284c7" />
+      <stop offset="100%" stop-color="#0d9488" />
+    </linearGradient>
+    <linearGradient id="manifestAiGloss" x1="10" y1="6" x2="52" y2="44" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#ffffff" stop-opacity="0.28" />
+      <stop offset="100%" stop-color="#ffffff" stop-opacity="0" />
+    </linearGradient>
+  </defs>
+  <rect x="4" y="4" width="56" height="56" rx="16" fill="url(#manifestAiBg)" />
+  <rect x="6" y="6" width="52" height="52" rx="14" fill="url(#manifestAiGloss)" />
+  <path d="M18 42V22L32 34L46 22V42" stroke="#ffffff" stroke-width="4.2" stroke-linecap="round" stroke-linejoin="round" />
+  <circle cx="18" cy="22" r="3.4" fill="#bae6fd" />
+  <circle cx="46" cy="22" r="3.4" fill="#99f6e4" />
+  <circle cx="32" cy="34" r="3.6" fill="#ffffff" />
+  <circle cx="32" cy="18" r="2.6" fill="#e0f2fe" />
+  <path d="M32 21V30" stroke="#e0f2fe" stroke-width="2" stroke-linecap="round" opacity="0.85" />
+</svg>

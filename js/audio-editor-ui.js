@@ -35,7 +35,7 @@ import {
   redoEditorHistory,
   undoEditorHistory,
   volumePctToGain,
-} from './audio-editor-logic.js?v=59';
+} from './audio-editor-logic.js?v=60';
 import {
   consultMultiAiAudioEngineer,
   createDemoStudioAudio,
@@ -45,8 +45,8 @@ import {
   getAudioContext,
   lookupOfficialAudioMetadata,
   renderProcessedAudio,
-} from './audio-editor-engine.js?v=59';
-import { formatBytes } from './tools-logic.js?v=59';
+} from './audio-editor-engine.js?v=60';
+import { formatBytes } from './tools-logic.js?v=60';
 
 const DOCK_TOOLS = [
   {

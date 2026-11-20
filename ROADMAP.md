@@ -106,21 +106,42 @@ Dokumen ini adalah panduan resmi tujuan proyek, arsitektur, pencapaian implement
   - **7 Metode & Multi-API Paralel Anti-Single-Point-of-Failure**: Menggabungkan ekstraksi tag biner (`ID3v2`, `ID3v1`, atom MP4 `©nam`/`©ART`/`©alb`, Vorbis), pembersih token nama file sosmed, **Acoustic Chromagram 12-pitch-class + Onset Autocorrelation BPM** (via WebAudio + fallback demux FFmpeg WASM), **Apple Music / iTunes Search API**, **Siputzx YouTube Music & Video API**, **Audius Open Music API**, **MusicBrainz Recording API**, **Public Free AI Disambiguator (`text.pollinations.ai`)**, serta **Database Sidik Jari Lagu Viral** untuk mengidentifikasi judul lagu, penyanyi, album, genre, tahun rilis, dan skor kemiripan (`~95%–99.8%`).
   - **Tautan Sumber Musik & Analisis Kemiripan Video Lintas Sosmed**: Menampilkan link sumber musik relevan 100% (**YouTube, Spotify, YouTube Music, Apple Music, TikTok Sound, SoundCloud/Audius**) + tombol putar langsung di **Pemutar YT Music Web**, serta khusus saat pengguna mengunggah **Video** mengekstrak **3 keyframe visual + Perceptual dHash + deteksi rasio 9:16/16:9** dan menampilkan daftar sumber video yang mirip dari **YouTube, TikTok, Instagram Reels, & Facebook Watch**.
 
+### ✅ Fase 10 — Kompresor AI Hybrid, Drama China Hub (20+ Platform & Sansekai VIP-Free) & Audio Editor Studio DAW (`v49–v59`, Selesai)
+- [x] **Kompresor Media AI Hybrid (`v49`)**: Pembaruan kompresor foto & video HD dengan dukungan Multi-AI Publik tanpa key, AVIF/WebP 2-pass, Unsharp Clarity, dan FFmpeg WASM.
+- [x] **Drama China (Dracin) Gratis Tanpa Iklan (`tools.html?tab=dracin`, `v50–v57`)**:
+  - Agregasi real-time 20+ platform (*SekaiDrama/Sansekai, DramaBox, ReelShort, ShortMax, NetShort, Melolo, PineDrama, MyDrama*, dll.) dengan dropdown pencarian platform & dropdown *Lanjutkan Menonton*.
+  - Pemutar vertikal responsif dengan mode **Layar Bersih** (fullscreen bebas ikon HUD), mempertahankan fullscreen saat scroll/pindah episode, preloading episode berikutnya tanpa menunggu buffering, subtitle Indonesia otomatis, dekripsi segmen CENC, pencocokan drama lintas-platform & klip AI, serta failover server VIP-free (`SekaiDrama / Sansekai`).
+- [x] **Audio Editor Studio AI DAW (`tools.html?tab=audioeditor`, `v58–v59`)**:
+  - Editor audio client-side lengkap dengan pemotong presisi (*Keep* & *Potong Tengah*), *10-Band Parametric EQ*, *Bass Boost & Stereo Virtualizer*, *Voice Changer*, penjernih noise & perbaikan audio, pemisah vokal/karaoke, *Multi-Track Mixer*, editor metadata ID3v2/RIFF + iTunes/MusicBrainz, Undo/Redo stack, asisten mastering Multi-AI, dan ekspor MP3/WAV/AAC/M4A/OGG/FLAC/OPUS dengan estimasi ukuran & preset kualitas.
+
+### ✅ Fase 11 — Manifest AI: Multi-Model Chat AI Gratis, Auto-Update Model Real-Time & Multi-BYOK (`tools.html?tab=manifestai`, `v60`, Selesai)
+- [x] **Multi-Model AI Ensemble Gratis Tanpa API Key (`js/manifest-ai-logic.js`, `js/manifest-ai.js`, `js/manifest-ai-ui.js`)**:
+  - Menggabungkan banyak model AI terkemuka (**Google Gemini, OpenAI ChatGPT, DeepSeek, Anthropic Claude, xAI Grok, Meta Llama, Qwen, & Mistral**) bekerja sama secara paralel dan mensintesis hasil terbaik menjadi satu jawaban koheren, lengkap dengan rincian kontributor model yang dapat dibuka (*collapsible*).
+- [x] **Auto-Update & Auto-Upgrade Model Terbaru Real-Time**:
+  - Otomatis menyinkronkan versi model flagship terbaru tiap penyedia dari registri CORS live (**OpenRouter Live Models**, **Models.dev**, **Pollinations**, & **LLM7**) agar selalu mengikuti rilis terbaru di platform aslinya tanpa perlu edit kode manual.
+- [x] **Limit & Reset Per Pengguna + Failover Otomatis Tanpa Hilang Memori**:
+  - Pelacakan cooldown rate-limit per perangkat di `localStorage` (`manifestudio_ai_limits_v1`) + dukungan kuota gratis terpisah per pengguna via **Puter.js SDK**.
+  - Ketika satu model/gateway mencapai limit atau bermasalah, permintaan dialihkan mulus ke jalur cadangan sambil membawa **ringkasan memori percakapan + sliding window riwayat penuh** agar jawaban tetap nyambung dan anti-halusinasi.
+- [x] **Multi-Provider BYOK (API Key Pribadi Paralel)**:
+  - Pengguna dapat menambahkan **1 atau banyak API Key pribadi sekaligus** dari berbagai penyedia (Gemini, OpenAI, DeepSeek, Claude, Grok, Groq, OpenRouter, Mistral, Qwen/DashScope, Custom OpenAI-Compatible), memilih model manual atau *Otomatis Model Terbaru*, menguji koneksi langsung, serta menggabungkan banyak kunci pribadi secara paralel (dengan opsi memadukannya bersama jalur AI gratis). Semua kunci tersimpan 100% lokal di browser pengguna.
+- [x] **Manajemen Riwayat Chat Lengkap & UI Dual-Theme Responsif**:
+  - Mendukung multi-thread chat (*Chat Baru*, pencarian riwayat, ubah judul, hapus satuan/semua, ekspor Markdown `.md`), rendering Markdown + blok kode siap salin, serta antarmuka desktop 2-panel & mobile slide-over drawer yang rapi di Dark Mode dan Light Mode.
+
 ---
 
 ## 🚀 Rencana Pengembangan Selanjutnya (Next Milestones)
 
-### 🔹 Fase 10 — Riwayat Transaksi Pelanggan & Pembayaran QRIS Dinamis
+### 🔹 Fase 12 — Riwayat Transaksi Pelanggan & Pembayaran QRIS Dinamis
 1. **Riwayat Pesanan Lokal Pelanggan**:
    - Simpan hingga 10 riwayat pesanan terakhir dari `order.html` ke `localStorage` agar pelanggan dapat mengunduh ulang struk atau menanyakan status ke CS kapan saja.
 2. **Modal QRIS & Rekening Bank Resmi (Dapat Diedit dari Admin)**:
    - Tampilan QRIS statis/rekening saat memilih metode *Bayar Sekarang* dengan tombol salin nomor rekening 1-klik dan pengelolaan gambar QRIS di Admin.
 
-### 🔹 Fase 11 — Analitik Lokal & Ekosistem Utilitas Lanjutan
-1. **Riwayat Speedtest & Perbandingan ISP**:
-   - Menyimpan 5 hasil pengujian Speedtest terakhir untuk membandingkan kestabilan jaringan pelanggan.
-2. **Subdomain Terpisah Opsional**:
-   - Dukungan pemisahan `tools.html` ke subdomain **`tools.manifestudio.my.id`** melalui Cloudflare Redirect Rules.
+### 🔹 Fase 13 — Peningkatan Manifest AI Multimodal & Analitik Utilitas Lokal
+1. **Dukungan Lampiran Dokumen & Gambar pada Manifest AI**:
+   - Membaca file teks/kode/PDF/gambar secara lokal untuk dianalisis langsung oleh Multi-Model Ensemble maupun BYOK Vision models.
+2. **Riwayat Speedtest & Subdomain Utilitas Opsional**:
+   - Menyimpan 5 hasil pengujian Speedtest terakhir serta opsi routing subdomain **`tools.manifestudio.my.id`** via Cloudflare Redirect Rules.
 
 ---
 
@@ -132,12 +153,13 @@ Dokumen ini adalah panduan resmi tujuan proyek, arsitektur, pencapaian implement
 # 1. Jalankan dev server lokal (port 3000)
 npm run dev
 
-# 2. Jalankan seluruh unit test logika bisnis, voucher, downloader & kompresor
-npx --yes tsx --test InfoKatalogtMCTomyStudio/js/store.test.mjs
+# 2. Jalankan seluruh unit test logika bisnis, voucher, downloader, kompresor, dracin, audio-editor & manifest-ai
+npx --yes tsx --test .repos/InfoKatalogtMCTomyStudio/js/store.test.mjs
 
 # 3. Verifikasi kompilasi & linter
 npm run build && npm run lint
 
 # 4. Sinkronisasi aman sebelum push
-git -C InfoKatalogtMCTomyStudio pull --rebase origin main
+git -C .repos/InfoKatalogtMCTomyStudio pull --rebase origin main
 ```
+
