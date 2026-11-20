@@ -47,7 +47,7 @@ import {
   scoreCrossPlatformDramaMatch,
   scoreDailymotionAutoMatch,
   unwrapHlsJsonPayload,
-} from './dracin-logic.js?v=57';
+} from './dracin-logic.js?v=58';
 
 const API_TIMEOUT_MS = 8500;
 const EPISODE_TIMEOUT_MS = 9000;

@@ -59,11 +59,11 @@
       rel="stylesheet"
     />
 
-    <link rel="stylesheet" href="./css/tokens.css?v=57" />
-    <link rel="stylesheet" href="./css/styles.css?v=57" />
+    <link rel="stylesheet" href="./css/tokens.css?v=58" />
+    <link rel="stylesheet" href="./css/styles.css?v=58" />
     <script>
       (function () {
-        var CURRENT_CACHE = 'manifestudio-cache-v56';
+        var CURRENT_CACHE = 'manifestudio-cache-v58';
         if ('caches' in window) {
           caches.keys().then(function (keys) {
             keys.forEach(function (k) {
@@ -72,7 +72,7 @@
           });
         }
         if ('serviceWorker' in navigator) {
-          navigator.serviceWorker.register('./sw.js?v=57').then(function (reg) {
+          navigator.serviceWorker.register('./sw.js?v=58').then(function (reg) {
             reg.update();
           }).catch(function () {});
         }
@@ -109,6 +109,7 @@
           <button type="button" class="header-nav-link" data-tools-nav="songfinder">Cari Lagu</button>
           <button type="button" class="header-nav-link" data-tools-nav="music">Musik YT</button>
           <button type="button" class="header-nav-link" data-tools-nav="dracin">Drama China</button>
+          <button type="button" class="header-nav-link" data-tools-nav="audioeditor">Audio Editor</button>
         </nav>
 
         <div class="header-actions">
@@ -180,6 +181,6 @@
     </footer>
 
     <div id="toast-notification" class="toast-notification" role="status" aria-live="polite" hidden></div>
-    <script type="module" src="./js/tools-page.js?v=57"></script>
+    <script type="module" src="./js/tools-page.js?v=58"></script>
   </body>
 </html>

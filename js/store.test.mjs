@@ -62,6 +62,30 @@ import {
   parseMp4Boxes,
 } from './dracin-cenc.js';
 import {
+  AUDIO_AI_ENGINES,
+  AUDIO_EQ_BANDS,
+  AUDIO_EXPORT_FORMATS,
+  AUDIO_STEM_MODES,
+  AUDIO_VOICE_PRESETS,
+  buildAudioExportFfmpegArgs,
+  buildId3v2TagBytes,
+  clampTrimRange,
+  computeAudioAcousticStats,
+  computeLocalAiMasteringPlan,
+  createDefaultAudioEditorState,
+  encodeWavWithMetadata,
+  extractWaveformPeaks,
+  formatTimecode,
+  generateSyntheticDemoStereo,
+  mixStereoTracksPure,
+  parseAiAudioEngineeringResponse,
+  parseId3v2OrWavMetadata,
+  prependId3v2ToMp3,
+  processSamplesNoiseAndRepair,
+  processSamplesStemSeparation,
+  processSamplesVoiceFx,
+} from './audio-editor-logic.js';
+import {
   DEFAULT_UTILITY_CONFIG,
   MAX_HISTORY_LOGS,
   addToCart,
@@ -1759,13 +1783,14 @@ test('normalizeYtMusicTrack supports hybrid tracks with both videoId and backgro
 test('normalizeUtilityConfig, upsertUtilityItemInCatalog, and describeCatalogChanges manage utility icons, labels, page headers, and YT Music hero card', () => {
   const base = getDefaultCatalogSnapshot();
   const util = normalizeUtilityConfig(base.utilities);
-  assert.equal(util.items.length, 10);
+  assert.equal(util.items.length, 11);
   assert.equal(util.items.some((i) => i.id === 'downloader' && i.label === 'Downloader'), true);
   assert.equal(util.items.some((i) => i.id === 'converter' && i.label === 'Konversi File'), true);
   assert.equal(util.items.some((i) => i.id === 'songfinder' && i.label === 'Cari Judul Lagu'), true);
   assert.equal(util.items.some((i) => i.id === 'dracin' && i.label === 'Drama China'), true);
+  assert.equal(util.items.some((i) => i.id === 'audioeditor' && i.label === 'Audio Editor'), true);
   assert.equal(util.musicHero.icon, './assets/icons/tool-music.svg');
-  assert.ok(DEFAULT_UTILITY_CONFIG.items.length === 10);
+  assert.ok(DEFAULT_UTILITY_CONFIG.items.length === 11);
 
   let next = upsertUtilityItemInCatalog(base, {
     id: 'downloader',
@@ -3205,9 +3230,9 @@ test('v49 AI Hybrid Super-Compressor & Ultra Perceptual AVIF/WebP planner, PSNR 
 });
 
 test('v51 Drama China (Dracin) unifies 15+ short-drama platforms, parallel APIs, free episode jump, auto-ID subtitles, history, and AI clip matcher', () => {
-  // 1. Utility registration (10 free utilities including dracin)
+  // 1. Utility registration (11 free utilities including dracin & audioeditor)
   const utilCfg = normalizeUtilityConfig();
-  assert.equal(utilCfg.items.length, 10);
+  assert.equal(utilCfg.items.length, 11);
   const dracinTool = utilCfg.items.find((it) => it.id === 'dracin');
   assert.ok(dracinTool);
   assert.equal(dracinTool.label, 'Drama China');
@@ -3943,6 +3968,149 @@ test('v57 Sansekai anti-rate-limit circuit breaker, mirror rotation, direct Seka
   assert.equal(goodEval.isStrongMatch, true);
   assert.equal(badEval.isStrongMatch, false);
 });
+
+test('Audio Editor Studio DSP, stem separator, noise repair, multi-track mixer, WAV/ID3v2 metadata roundtrip, FFmpeg args, and Multi-AI mastering planner', () => {
+  const def = createDefaultAudioEditorState();
+  assert.equal(AUDIO_EQ_BANDS.length, 10);
+  assert.equal(def.eqGains.length, 10);
+  assert.ok(AUDIO_VOICE_PRESETS.length >= 8);
+  assert.ok(AUDIO_STEM_MODES.length >= 5);
+  assert.ok(AUDIO_EXPORT_FORMATS.length >= 6);
+  assert.ok(AUDIO_AI_ENGINES.some((e) => e.id === 'consensus'));
+  assert.ok(AUDIO_AI_ENGINES.some((e) => e.id === 'chatgpt'));
+  assert.ok(AUDIO_AI_ENGINES.some((e) => e.id === 'claude'));
+  assert.ok(AUDIO_AI_ENGINES.some((e) => e.id === 'gemini'));
+  assert.ok(AUDIO_AI_ENGINES.some((e) => e.id === 'deepseek'));
+  assert.ok(AUDIO_AI_ENGINES.some((e) => e.id === 'grok'));
+
+  // 1. Trim clamp & timecode formatting
+  const clamped = clampTrimRange(9, 2, 10);
+  assert.ok(clamped.trimStart < clamped.trimEnd);
+  assert.ok(clamped.trimEnd <= 10);
+  assert.equal(formatTimecode(65.4), '01:05.4');
+
+  // 2. Synthetic stereo demo generator & acoustic stats + waveform peaks
+  const sr = 22050;
+  const demo = generateSyntheticDemoStereo(sr, 2);
+  assert.equal(demo.left.length, sr * 2);
+  assert.equal(demo.right.length, sr * 2);
+  const stats = computeAudioAcousticStats(demo.left, sr);
+  assert.ok(stats.peak > 0.1 && stats.peak <= 1.0);
+  assert.ok(Number.isFinite(stats.rmsDb) && Number.isFinite(stats.estimatedLufs));
+  const peaks = extractWaveformPeaks(demo.left, 64);
+  assert.equal(peaks.length, 64);
+  assert.ok(peaks.some((p) => p > 0.2));
+
+  // 3. Stem separation: center-only signal should be heavily attenuated by instrumental (karaoke) mode
+  const n = 2048;
+  const monoCenter = new Float32Array(n);
+  for (let i = 0; i < n; i += 1) monoCenter[i] = 0.6 * Math.sin((2 * Math.PI * 440 * i) / sr);
+  const karaokeOut = processSamplesStemSeparation(monoCenter, monoCenter, 'instrumental', 100, sr);
+  const vocalOut = processSamplesStemSeparation(monoCenter, monoCenter, 'vocal-isolate', 100, sr);
+  const karaokeEnergy = karaokeOut.left.reduce((acc, v) => acc + v * v, 0);
+  const vocalEnergy = vocalOut.left.reduce((acc, v) => acc + v * v, 0);
+  assert.ok(karaokeEnergy < vocalEnergy * 0.25, 'Instrumental karaoke mode must suppress center-panned vocal energy');
+
+  // 4. Noise & Repair (DC offset + declip + hum filter + noise reduction + clarity)
+  const dirty = new Float32Array(n);
+  for (let i = 0; i < n; i += 1) {
+    dirty[i] = Math.min(1.0, 0.22 + 0.9 * Math.sin((2 * Math.PI * 300 * i) / sr) + 0.15 * Math.sin((2 * Math.PI * 50 * i) / sr));
+  }
+  const repaired = processSamplesNoiseAndRepair(dirty, sr, {
+    repairDcOffset: true,
+    repairDeclip: true,
+    repairHumFilter: true,
+    humFreqHz: 50,
+    noiseReduction: 45,
+    noiseGateDb: -50,
+    clarityAmount: 35,
+    deEsserAmount: 25,
+  });
+  const meanAfter = Math.abs(repaired.reduce((s, v) => s + v, 0) / repaired.length);
+  assert.ok(meanAfter < 0.04, 'DC offset removal must re-center mean near zero');
+
+  // 5. Voice FX (robot + echo + reverb) produces valid finite audio
+  const fxOut = processSamplesVoiceFx(monoCenter, sr, {
+    robotEffect: true,
+    radioEffect: false,
+    reverbMix: 30,
+    echoMix: 25,
+  });
+  assert.equal(fxOut.length, n);
+  assert.ok(fxOut.every((v) => Number.isFinite(v) && Math.abs(v) <= 1.0));
+
+  // 6. Multi-track mixer: overlay & concat modes
+  const trackA = { left: new Float32Array(1000).fill(0.25), right: new Float32Array(1000).fill(0.25) };
+  const trackB = { left: new Float32Array(500).fill(0.3), right: new Float32Array(500).fill(0.3), volumePct: 100, offsetSec: 0 };
+  const overlaid = mixStereoTracksPure(trackA, [trackB], 'overlay', 1000);
+  assert.equal(overlaid.left.length, 1000);
+  assert.ok(overlaid.left[10] > 0.45 && overlaid.left[10] <= 1.0);
+  const concated = mixStereoTracksPure(trackA, [trackB], 'concat', 1000);
+  assert.equal(concated.left.length, 1500);
+  assert.ok(Math.abs(concated.left[1200] - 0.3) < 0.05);
+
+  // 7. WAV encoding + RIFF INFO metadata roundtrip
+  const metaIn = {
+    title: 'Senja Studio Master',
+    artist: 'Manifestudio Band',
+    album: 'Vol 1 Acoustic',
+    year: '2026',
+    genre: 'Acoustic',
+    track: '3',
+    comment: 'Mastered with Multi-AI DSP',
+  };
+  const wavBuf = encodeWavWithMetadata([demo.left.slice(0, 1024), demo.right.slice(0, 1024)], sr, metaIn);
+  const parsedWavMeta = parseId3v2OrWavMetadata(wavBuf);
+  assert.equal(parsedWavMeta.title, metaIn.title);
+  assert.equal(parsedWavMeta.artist, metaIn.artist);
+  assert.equal(parsedWavMeta.album, metaIn.album);
+  assert.equal(parsedWavMeta.year, metaIn.year);
+  assert.equal(parsedWavMeta.genre, metaIn.genre);
+
+  // 8. MP3 ID3v2.3 tag builder + APIC cover art + roundtrip parser
+  const fakePngBase64 = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==';
+  const id3Tag = buildId3v2TagBytes({ ...metaIn, coverDataUrl: fakePngBase64 });
+  assert.equal(String.fromCharCode(id3Tag[0], id3Tag[1], id3Tag[2]), 'ID3');
+  const mp3WithTag = prependId3v2ToMp3(new Uint8Array([0xff, 0xfb, 0x90, 0x64]), { ...metaIn, coverDataUrl: fakePngBase64 });
+  const parsedMp3Meta = parseId3v2OrWavMetadata(mp3WithTag.buffer);
+  assert.equal(parsedMp3Meta.title, metaIn.title);
+  assert.equal(parsedMp3Meta.artist, metaIn.artist);
+  assert.equal(parsedMp3Meta.album, metaIn.album);
+  assert.equal(parsedMp3Meta.track, metaIn.track);
+
+  // 9. FFmpeg export args builder for M4A & FLAC with metadata flags
+  const m4aArgs = buildAudioExportFfmpegArgs('in.wav', 'out.m4a', {
+    format: 'm4a',
+    bitrate: 256,
+    sampleRate: 48000,
+    metadata: metaIn,
+  });
+  assert.ok(m4aArgs.includes('aac') && m4aArgs.includes('256k') && m4aArgs.includes('title=Senja Studio Master'));
+  const flacArgs = buildAudioExportFfmpegArgs('in.wav', 'out.flac', { format: 'flac', sampleRate: 44100, metadata: metaIn });
+  assert.ok(flacArgs.includes('flac'));
+
+  // 10. Local AI mastering planner & remote JSON sanitizer
+  const localPlan = computeLocalAiMasteringPlan(
+    { peakDb: -0.1, rmsDb: -24, noiseFloorDb: -40, clippedSamples: 12, dcOffset: 0.03, issues: ['clipping', 'background-noise', 'dc-offset', 'low-volume'] },
+    'podcast-pro',
+    { title: 'episode_01_raw_recording', artist: '' }
+  );
+  assert.equal(localPlan.repairDeclip, true);
+  assert.equal(localPlan.repairDcOffset, true);
+  assert.ok(localPlan.noiseReduction >= 50);
+  assert.equal(localPlan.eqGains.length, 10);
+
+  const parsedAi = parseAiAudioEngineeringResponse(
+    '```json\n{"summary":"Optimal vocal clarity","volumePct":135,"normalizeEnabled":true,"targetLufs":-14,"eqGains":[0,1,2,3,4,3,2,1,0,-1],"noiseReduction":62,"noiseGateDb":-48,"clarityAmount":55,"deEsserAmount":30,"repairDeclip":true,"repairDcOffset":true,"repairHumFilter":true,"stemMode":"vocal-isolate","stemStrength":75}\n```',
+    localPlan
+  );
+  assert.equal(parsedAi.fromRemoteAi, true);
+  assert.equal(parsedAi.plan.summary, 'Optimal vocal clarity');
+  assert.equal(parsedAi.plan.volumePct, 135);
+  assert.equal(parsedAi.plan.stemMode, 'vocal-isolate');
+  assert.equal(parsedAi.plan.eqGains[4], 4);
+});
+
 
 
 

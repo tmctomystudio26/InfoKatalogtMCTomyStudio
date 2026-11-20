@@ -22,41 +22,42 @@ import {
   matchIndonesianCityQuery,
   planMediaCompression,
   resolveAccurateWeatherCondition,
-} from './tools-logic.js?v=57';
+} from './tools-logic.js?v=58';
 import {
   describeLocationSource,
   resolveUserLocation,
   searchCitiesOnline,
   setManualLocation,
-} from './location.js?v=57';
-import { createInteractiveGlobe } from './globe.js?v=57';
+} from './location.js?v=58';
+import { createInteractiveGlobe } from './globe.js?v=58';
 import {
   createSpeedometerGauge,
   fetchSpeedtestEnvironment,
   readClientDeviceTelemetry,
   runInternetSpeedtest,
-} from './speedtest.js?v=57';
+} from './speedtest.js?v=58';
 import {
   extractAudioFromVideoUrl,
   fetchMediaDownload,
   triggerBatchPhotoDownload,
   triggerDirectMediaSave,
-} from './downloader.js?v=57';
-import { compressMediaFile, inspectMediaFile } from './compressor.js?v=57';
+} from './downloader.js?v=58';
+import { compressMediaFile, inspectMediaFile } from './compressor.js?v=58';
 import {
   ALL_TARGET_FORMATS,
   convertAnyFile,
   detectSourceFormat,
   getAvailableTargetFormats,
-} from './converter.js?v=57';
+} from './converter.js?v=58';
 import {
   detectMediaFileKind,
   identifyMediaSongAndVideo,
-} from './song-finder.js?v=57';
-import { formatAudioTime, getLoadingProgressMeta, isTrackInWatchLater } from './music-logic.js?v=57';
-import { MUSIC_PRESET_CATEGORIES, getMusicController, initMusicPlayer } from './music.js?v=57';
-import { createDracinController } from './dracin-ui.js?v=57';
-import { normalizeUtilityConfig } from './store.js?v=57';
+} from './song-finder.js?v=58';
+import { formatAudioTime, getLoadingProgressMeta, isTrackInWatchLater } from './music-logic.js?v=58';
+import { MUSIC_PRESET_CATEGORIES, getMusicController, initMusicPlayer } from './music.js?v=58';
+import { createDracinController } from './dracin-ui.js?v=58';
+import { createAudioEditorController } from './audio-editor-ui.js?v=58';
+import { normalizeUtilityConfig } from './store.js?v=58';
 
 const PRAYER_CACHE_KEY = 'manifestudio_prayer_cache_v1';
 const MYQURAN_CITIES_KEY = 'manifestudio_myquran_cities_v1';
@@ -472,6 +473,7 @@ export function createToolsHubController({
   let mounted = false;
   let musicUnsub = null;
   let dracinCtrl = null;
+  let audioEditorCtrl = null;
   let isHubSeeking = false;
 
   function getUtilityItemConfig(id) {
@@ -4468,6 +4470,15 @@ export function createToolsHubController({
     `;
   }
 
+  function renderAudioEditorPanel() {
+    return `
+      <section class="tool-panel audioeditor-panel" aria-label="Audio Editor Studio AI">
+        ${renderSubPanelIntro('audioeditor')}
+        <div id="audioeditor-hub-mount"></div>
+      </section>
+    `;
+  }
+
   function bindToolEvents() {
     rootEl.querySelectorAll('[data-tool-subtab]').forEach((btn) => {
       btn.addEventListener('click', () => {
@@ -5276,6 +5287,18 @@ export function createToolsHubController({
     } else if (dracinCtrl) {
       dracinCtrl.unmount();
     }
+
+    if (toolState.activeSubTab === 'audioeditor') {
+      const aeMount = rootEl.querySelector('#audioeditor-hub-mount');
+      if (aeMount) {
+        if (!audioEditorCtrl) {
+          audioEditorCtrl = createAudioEditorController({ onToast });
+        }
+        audioEditorCtrl.mount(aeMount);
+      }
+    } else if (audioEditorCtrl) {
+      audioEditorCtrl.unmount();
+    }
   }
 
   function renderPrayerSearchResultsHtml(subDistrictResults = [], filteredCities = []) {
@@ -5329,6 +5352,8 @@ export function createToolsHubController({
         ? renderMusicPanel()
         : toolState.activeSubTab === 'dracin'
         ? renderDracinPanel()
+        : toolState.activeSubTab === 'audioeditor'
+        ? renderAudioEditorPanel()
         : renderDownloaderPanel();
 
     const subnavButtonsHtml = (toolState.utilities?.items || [])
@@ -5397,7 +5422,8 @@ export function createToolsHubController({
         subTab === 'converter' ||
         subTab === 'songfinder' ||
         subTab === 'music' ||
-        subTab === 'dracin'
+        subTab === 'dracin' ||
+        subTab === 'audioeditor'
       ) {
         toolState.activeSubTab = subTab;
       }
@@ -5440,12 +5466,16 @@ export function createToolsHubController({
       if (dracinCtrl) {
         dracinCtrl.unmount();
       }
+      if (audioEditorCtrl) {
+        audioEditorCtrl.unmount();
+      }
       stopLiveTimers();
       if (rootEl) rootEl.innerHTML = '';
     },
     redrawTheme() {
       globeInstance?.redraw();
       gaugeInstance?.redraw();
+      audioEditorCtrl?.redrawTheme();
     },
   };
 }

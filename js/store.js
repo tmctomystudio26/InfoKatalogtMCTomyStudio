@@ -739,6 +739,18 @@ export const DEFAULT_UTILITY_CONFIG = {
       heroDescription:
         'Satukan SekaiDrama (Sansekai), DramaBox, ReelShort, ShortMax, NetShort, GoodShort, DramaWave, FlickReels, FreeReels, PineDrama, MyDrama, Melolo, StardustTV, iDrama, DramaNova, StarShort, DramaBite, MoboReels, FlexTV, KalosTV & Anichin dengan auto-failover anti kunci VIP.',
     },
+    {
+      id: 'audioeditor',
+      label: 'Audio Editor',
+      icon: './assets/icons/tool-audioeditor.svg',
+      pageTitle: 'Audio Editor Studio AI — Mastering, EQ & Pisah Vokal',
+      pageSubtitle:
+        'Pangkas, naikkan volume, ubah suara, Equalizer 10-band, penstabil noise, pemisah vokal & musik, perbaikan audio, edit identitas ID3/RIFF, mix multi-trek, Multi-AI, & ekspor MP3/WAV/M4A/OGG/FLAC.',
+      heroKicker: 'Web Audio DSP · FFmpeg WASM · LAME MP3 · Multi-AI Studio',
+      heroTitle: 'Studio Editor Audio Lengkap & Asisten Mastering AI',
+      heroDescription:
+        'Edit audio langsung di browser dengan pemotong presisi, 10-Band EQ, Voice Changer, penjernih & perbaikan audio, pemisah vokal/karaoke, mixer multi-trek, editor tag resmi iTunes/MusicBrainz, serta dukungan Multi-AI (ChatGPT, Claude, Gemini, DeepSeek, Grok).',
+    },
   ],
 };
 

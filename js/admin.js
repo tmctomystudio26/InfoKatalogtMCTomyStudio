@@ -2,7 +2,7 @@ import {
   CATALOG_PREVIEW_STORAGE_KEY,
   getDefaultCatalogSnapshot,
   loadCatalogData,
-} from './data.js?v=57';
+} from './data.js?v=58';
 import {
   DEFAULT_UTILITY_CONFIG,
   MAX_HISTORY_LOGS,
@@ -37,12 +37,12 @@ import {
   upsertProductInCatalog,
   upsertSocialInCatalog,
   upsertUtilityItemInCatalog,
-} from './store.js?v=57';
+} from './store.js?v=58';
 import {
   decryptVault,
   encryptVault,
   verifyGitHubTokenAccess,
-} from './vault.js?v=57';
+} from './vault.js?v=58';
 
 const THEME_STORAGE_KEY = 'manifestudio_theme_v1';
 const ADMIN_VAULT_STORAGE_KEY = 'manifestudio_admin_vault_v1';
@@ -101,6 +101,7 @@ const UTILITY_ICON_PRESETS = [
   { value: './assets/icons/tool-songfinder.svg', label: 'Ikon Cari Judul Lagu' },
   { value: './assets/icons/tool-music.svg', label: 'Ikon Musik YT' },
   { value: './assets/icons/tool-dracin.svg', label: 'Ikon Drama China (Dracin)' },
+  { value: './assets/icons/tool-audioeditor.svg', label: 'Ikon Audio Editor Studio' },
 ];
 
 const adminState = {
