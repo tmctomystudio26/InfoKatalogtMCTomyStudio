@@ -126,6 +126,9 @@ Dokumen ini adalah panduan resmi tujuan proyek, arsitektur, pencapaian implement
   - Pengguna dapat menambahkan **1 atau banyak API Key pribadi sekaligus** dari berbagai penyedia (Gemini, OpenAI, DeepSeek, Claude, Grok, Groq, OpenRouter, Mistral, Qwen/DashScope, Custom OpenAI-Compatible), memilih model manual atau *Otomatis Model Terbaru*, menguji koneksi langsung, serta menggabungkan banyak kunci pribadi secara paralel (dengan opsi memadukannya bersama jalur AI gratis). Semua kunci tersimpan 100% lokal di browser pengguna.
 - [x] **Manajemen Riwayat Chat Lengkap & UI Dual-Theme Responsif**:
   - Mendukung multi-thread chat (*Chat Baru*, pencarian riwayat, ubah judul, hapus satuan/semua, ekspor Markdown `.md`), rendering Markdown + blok kode siap salin, serta antarmuka desktop 2-panel & mobile slide-over drawer yang rapi di Dark Mode dan Light Mode.
+- [x] **Streaming Instan Real-Time & Orkestrasi Hening (`v61`)**:
+  - Migrasi penuh ke **SSE Token Streaming real-time** (*Fastest-First Parallel Racing*) di seluruh jalur (HF Gradio SSE Spaces bebas API key, LLM7 maks 1/giliran anti-429, Puter SDK, dan semua provider BYOK) agar teks mulai mengalir instan tanpa menunggu model lain selesai.
+  - Menghapus seluruh teks orkestrasi/status teknis mentah (`"Menggabungkan..."`, rincian kontributor, error HTTP mentah) dari tampilan chat dan menggantinya dengan gelembung animasi titik halus + kursor ketik real-time ala ChatGPT/Gemini, serta sinkronisasi cache-busting penuh `manifestudio-cache-v61` (`?v=61`).
 
 ---
 

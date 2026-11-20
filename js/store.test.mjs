@@ -95,6 +95,7 @@ import {
   undoEditorHistory,
 } from './audio-editor-logic.js';
 import {
+  HF_GRADIO_FREE_SPACES,
   MANIFEST_AI_PROVIDERS,
   MANIFEST_AI_STORAGE_KEYS,
   buildConversationMemorySummary,
@@ -4333,7 +4334,8 @@ test('Manifest AI v60 maintains unified grounded conversation memory, per-user c
   assert.equal(failoverPlan.primary.some((t) => t.id === 'byok:k_gem'), false);
   assert.equal(failoverPlan.primary.some((t) => t.id === 'byok:k_oai'), true);
 
-  // 4. Free keyless mode combines multiple distinct gateways simultaneously (max 1 Pollinations per turn)
+  // 4. Free keyless mode combines multiple distinct gateways simultaneously (max 1 LLM7 per turn + HF Gradio SSE Spaces)
+  assert.ok(Array.isArray(HF_GRADIO_FREE_SPACES) && HF_GRADIO_FREE_SPACES.length >= 4);
   const freePlan = planEnsembleExecution({
     mode: 'ensemble',
     byokKeys: [],
@@ -4342,7 +4344,12 @@ test('Manifest AI v60 maintains unified grounded conversation memory, per-user c
     now,
   });
   assert.ok(freePlan.primary.length >= 2);
+  assert.ok(freePlan.primary.filter((t) => t.channel === 'free-llm7').length <= 1);
   assert.ok(freePlan.primary.filter((t) => t.channel === 'free-pollinations').length <= 1);
+  assert.ok(
+    [...freePlan.primary, ...freePlan.backups].some((t) => t.channel === 'free-hf-gradio'),
+    'Expected native-CORS HF Gradio SSE Space in free plan'
+  );
   assert.ok(freePlan.backups.length >= 1);
 
   // 5. Synthesis & Markdown safety + Chat Thread CRUD

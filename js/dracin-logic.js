@@ -888,22 +888,11 @@ export function shouldPreserveFullscreenOnEpisodeChange({
  * and merged cleanly with ./data/dracin-endpoints.json so endpoint updates never break the app).
  */
 export const DEFAULT_DRACIN_ENDPOINT_CONFIG = {
-  version: '57.0.0',
+  version: '56.0.0',
   dailymotionPlayerId: 'x8lr5',
   sansekai: {
     baseUrl: 'https://api.sansekai.my.id/api',
     webBaseUrl: 'https://drama.sansekai.my.id',
-    minRequestSpacingMs: 1400,
-    rateLimitCooldownMs: 90_000,
-    forbiddenCooldownMs: 180_000,
-    mirrors: [
-      {
-        id: 'sansekai-primary',
-        label: 'Sansekai Primary API',
-        baseUrl: 'https://api.sansekai.my.id/api',
-        priority: 1,
-      },
-    ],
     supportedPlatforms: Array.from(SANSEKAI_SUPPORTED_PLATFORMS),
   },
   mirrors: [
@@ -1128,14 +1117,6 @@ export function formatDracinUserError(err, { platformName = 'platform', episode 
   }
   if (lower.includes('failed to fetch') || lower.includes('networkerror') || lower.includes('load failed')) {
     return `Jaringan ke server ${platformName} sedang terganggu. Periksa koneksi lalu tekan Coba Muat Ulang.`;
-  }
-  if (
-    lower.includes('sansekai_cooldown') ||
-    lower.includes('http 429') ||
-    lower.includes('http 403') ||
-    lower.includes('rate limit')
-  ) {
-    return `Episode ${episode} sedang terbatas di server API gratis. Gunakan SekaiDrama Web, cari di platform lain, atau Mirror Dailymotion.`;
   }
   if (lower.includes('invalid json') || lower.includes('http 5')) {
     return `Server ${platformName} sedang sibuk sementara. Tekan Coba Muat Ulang untuk mencoba mirror lain.`;
@@ -2043,188 +2024,6 @@ export function normalizeSansekaiUrl(rawUrl = '') {
 
 export function buildSansekaiWebUrl() {
   return DEFAULT_DRACIN_ENDPOINT_CONFIG.sansekai?.webBaseUrl || 'https://drama.sansekai.my.id';
-}
-
-/**
- * Builds a clean SekaiDrama Web direct URL for a drama so users can jump straight to the
- * VIP-free web player whenever the public demo REST API hits rate-limit / 403 restrictions.
- */
-export function buildSansekaiDirectWatchUrl(drama = null, episodeNumber = 1, webBaseUrl = '') {
-  const base = String(webBaseUrl || buildSansekaiWebUrl())
-    .trim()
-    .replace(/\/+$/, '');
-  const cleanTitle = String(drama?.title || '')
-    .replace(/\[[^\]]*\]/g, ' ')
-    .replace(/【[^】]*】/g, ' ')
-    .replace(/\([^)]*\)/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim();
-  if (!cleanTitle) return base;
-  return `${base}/?q=${encodeURIComponent(cleanTitle)}`;
-}
-
-/**
- * Pure circuit-breaker helpers for Sansekai public API (10 req/min demo limit + 403/429 guard).
- * Prevents hammering a rate-limited IP and cleanly tracks remaining cooldown seconds.
- */
-export function isSansekaiCooldownActive(state = null, now = Date.now()) {
-  if (!state || typeof state !== 'object') return false;
-  return Number(state.cooldownUntil || 0) > now;
-}
-
-export function getSansekaiCooldownRemainingSec(state = null, now = Date.now()) {
-  if (!isSansekaiCooldownActive(state, now)) return 0;
-  return Math.max(1, Math.ceil((Number(state.cooldownUntil) - now) / 1000));
-}
-
-export function recordSansekaiOutcome(
-  state = null,
-  {
-    ok = true,
-    statusCode = 200,
-    now = Date.now(),
-    rateLimitCooldownMs = 90_000,
-    forbiddenCooldownMs = 180_000,
-  } = {}
-) {
-  const prev = state && typeof state === 'object' ? state : {};
-  if (ok) {
-    return {
-      failures: 0,
-      lastStatus: 200,
-      cooldownUntil: 0,
-      lastOkAt: now,
-    };
-  }
-  const code = Number(statusCode) || 0;
-  const isHardLimit = code === 403 || code === 429;
-  const failures = (Number(prev.failures) || 0) + 1;
-  const baseMs =
-    code === 403
-      ? Math.max(30_000, Number(forbiddenCooldownMs) || 180_000)
-      : code === 429
-      ? Math.max(30_000, Number(rateLimitCooldownMs) || 90_000)
-      : 25_000;
-  const multiplier = isHardLimit ? Math.min(3, Math.pow(1.5, failures - 1)) : 1;
-  const cooldownMs = Math.min(360_000, Math.round(baseMs * multiplier));
-  return {
-    failures,
-    lastStatus: code,
-    cooldownUntil: now + cooldownMs,
-    lastOkAt: Number(prev.lastOkAt) || 0,
-  };
-}
-
-/**
- * Extracts and orders healthy Sansekai-compatible API base URLs from config + optional custom mirror,
- * skipping any mirror currently in 403/429 cooldown.
- */
-export function extractSansekaiApiBaseCandidates(
-  config = DEFAULT_DRACIN_ENDPOINT_CONFIG,
-  mirrorStates = {},
-  { customBaseUrl = '', now = Date.now() } = {}
-) {
-  const sk = config?.sansekai || DEFAULT_DRACIN_ENDPOINT_CONFIG.sansekai;
-  const rawList = [];
-
-  const cleanCustom = String(customBaseUrl || '')
-    .trim()
-    .replace(/\/+$/, '');
-  if (cleanCustom && /^https?:\/\//i.test(cleanCustom)) {
-    rawList.push({ id: 'sansekai-custom', label: 'Custom Sansekai Mirror', baseUrl: cleanCustom, priority: 0 });
-  }
-
-  if (Array.isArray(sk?.mirrors) && sk.mirrors.length > 0) {
-    for (const m of sk.mirrors) {
-      if (m && m.baseUrl) {
-        rawList.push({
-          id: String(m.id || m.baseUrl),
-          label: String(m.label || 'Sansekai Mirror'),
-          baseUrl: String(m.baseUrl).trim().replace(/\/+$/, ''),
-          priority: Number.isFinite(Number(m.priority)) ? Number(m.priority) : 5,
-        });
-      }
-    }
-  } else if (sk?.baseUrl) {
-    rawList.push({
-      id: 'sansekai-primary',
-      label: 'Sansekai Primary API',
-      baseUrl: String(sk.baseUrl).trim().replace(/\/+$/, ''),
-      priority: 1,
-    });
-  }
-
-  const seen = new Set();
-  const deduped = [];
-  for (const entry of rawList) {
-    if (!entry.baseUrl || seen.has(entry.baseUrl)) continue;
-    seen.add(entry.baseUrl);
-    const st = mirrorStates?.[entry.id] || null;
-    const inCooldown = isSansekaiCooldownActive(st, now);
-    deduped.push({ ...entry, inCooldown, cooldownRemainingSec: getSansekaiCooldownRemainingSec(st, now) });
-  }
-
-  return deduped.sort((a, b) => {
-    if (a.inCooldown !== b.inCooldown) return a.inCooldown ? 1 : -1;
-    return a.priority - b.priority;
-  });
-}
-
-/**
- * High-precision scorer for automatic Dailymotion failover (prevents false-positive unrelated clips
- * while reliably auto-matching genuine Chinese short drama mirrors).
- */
-export function scoreDailymotionAutoMatch(drama = null, candidate = null, episodeNumber = 1) {
-  if (!drama?.title || !candidate?.title) return { score: 0, matchedTokens: 0, isStrongMatch: false };
-  const cleanTitle = String(drama.title)
-    .replace(/\[[^\]]*\]/g, ' ')
-    .replace(/【[^】]*】/g, ' ')
-    .replace(/\([^)]*\)/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim();
-  const titleTokens = normalizeDramaMatchText(cleanTitle);
-  if (titleTokens.length === 0) return { score: 0, matchedTokens: 0, isStrongMatch: false };
-
-  const candTitle = String(candidate.title || '').toLowerCase();
-  const candHay = `${candTitle} ${String(candidate.synopsis || candidate.description || '').toLowerCase()}`;
-  const normalizedClean = titleTokens.join(' ');
-  const exactPhrase = normalizedClean.length >= 8 && candTitle.includes(normalizedClean);
-
-  let titleHits = 0;
-  let hayHits = 0;
-  for (const tok of titleTokens) {
-    if (candTitle.includes(tok)) titleHits += 1;
-    if (candHay.includes(tok)) hayHits += 1;
-  }
-
-  const coverage = titleHits / titleTokens.length;
-  const ep = Math.max(1, Math.round(Number(episodeNumber) || 1));
-  const epMatch = new RegExp(`\\b(ep|eps|episode|part)\\s*0?${ep}\\b`, 'i').test(candHay);
-  const hasDramaCue = /\b(drama|dracin|sub\s*indo|dub\s*indo|dramabox|melolo|reelshort|shortmax|netshort|goodshort|full\s*episode)\b/i.test(
-    candHay
-  );
-  const hasOffTopicNoise = /\b(berita|news|jet\s*tempur|israel|yaman|palestina|politik|ftv\s*sctv|sinetron|musik|lagu|karaoke|podcast)\b/i.test(
-    candTitle
-  );
-
-  let score = titleHits * 4 + (hayHits - titleHits) * 1.5;
-  if (exactPhrase) score += 10;
-  if (epMatch) score += 4;
-  if (hasDramaCue) score += 3;
-  if (hasOffTopicNoise) score -= 14;
-
-  const minNeededHits = titleTokens.length <= 2 ? titleTokens.length : Math.max(2, Math.ceil(titleTokens.length * 0.6));
-  const isStrongMatch =
-    !hasOffTopicNoise &&
-    (exactPhrase || (titleHits >= minNeededHits && coverage >= 0.55 && (hasDramaCue || epMatch || titleHits >= 3)));
-
-  return {
-    score: Math.max(0, Math.round(score)),
-    matchedTokens: titleHits,
-    coverage: Number(coverage.toFixed(2)),
-    epMatch,
-    isStrongMatch,
-  };
 }
 
 function classifySansekaiStreamKind(url = '') {

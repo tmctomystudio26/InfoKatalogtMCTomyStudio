@@ -1,15 +1,13 @@
 /**
- * Manifest AI — Runtime Multi-Model Ensemble & Live Registry Engine (v60)
- * Combines free keyless CORS-enabled gateways (Puter.js per-user SDK, Pollinations,
- * LLM7, Siputzx DuckAI) AND unlimited simultaneous user BYOK API keys (Gemini,
- * OpenAI, DeepSeek, Claude, Grok, Meta/Groq, Qwen, Mistral, OpenRouter, Custom).
- * Auto-syncs live flagship models from OpenRouter, Models.dev, Pollinations & LLM7.
+ * Manifest AI — Instant Streaming Multi-Model Engine (v61)
+ * - Real-time SSE token streaming (instant ChatGPT/Gemini feel) across BYOK & keyless gateways
+ * - Fastest-first parallel race: first healthy model streams tokens immediately with zero wait stalls
+ * - Silent background failover with unified grounded conversation memory
+ * - Auto-syncs live flagship models from OpenRouter, Models.dev, Pollinations & LLM7
  */
 
 import {
   MANIFEST_AI_STORAGE_KEYS,
-  buildConversationMemorySummary,
-  buildEnsembleSynthesisMessages,
   buildUnifiedContextMessages,
   getProviderMeta,
   mergeLiveModelCatalog,
@@ -17,14 +15,12 @@ import {
   normalizeLimitMap,
   planEnsembleExecution,
   recordProviderCooldown,
-  synthesizeEnsembleResponses,
-} from './manifest-ai-logic.js?v=60';
+} from './manifest-ai-logic.js?v=61';
 
 const MODEL_SYNC_TTL_MS = 6 * 60 * 60 * 1000; // 6 hours auto-refresh
-const REQUEST_TIMEOUT_MS = 28000;
-const FREE_GATEWAY_TIMEOUT_MS = 12000;
-const ENSEMBLE_GRACE_AFTER_FIRST_MS = 4500;
-const REGISTRY_TIMEOUT_MS = 7500;
+const REQUEST_TIMEOUT_MS = 26000;
+const FREE_CONNECT_TIMEOUT_MS = 9500;
+const REGISTRY_TIMEOUT_MS = 7000;
 
 let cachedRegistry = null;
 let puterLoadPromise = null;
@@ -81,19 +77,48 @@ export function saveStoredPrefs(prefs) {
   safeWriteJson(MANIFEST_AI_STORAGE_KEYS.prefs, prefs);
 }
 
-async function fetchJsonTimeout(url, options = {}, timeoutMs = REQUEST_TIMEOUT_MS, externalSignal = null) {
+function createLinkedController(externalSignal, timeoutMs) {
   const ctrl = new AbortController();
-  const timer = setTimeout(() => ctrl.abort(), timeoutMs);
+  let timedOut = false;
+  const timer = timeoutMs > 0
+    ? setTimeout(() => {
+        timedOut = true;
+        ctrl.abort();
+      }, timeoutMs)
+    : null;
+
   const onExternalAbort = () => ctrl.abort();
   if (externalSignal) {
     if (externalSignal.aborted) {
-      clearTimeout(timer);
-      throw new Error('ABORTED');
+      if (timer) clearTimeout(timer);
+      ctrl.abort();
+    } else {
+      externalSignal.addEventListener('abort', onExternalAbort, { once: true });
     }
-    externalSignal.addEventListener('abort', onExternalAbort, { once: true });
+  }
+
+  return {
+    signal: ctrl.signal,
+    abort: () => ctrl.abort(),
+    wasTimedOut: () => timedOut,
+    clearTimer: () => {
+      if (timer) clearTimeout(timer);
+    },
+    cleanup: () => {
+      if (timer) clearTimeout(timer);
+      if (externalSignal) externalSignal.removeEventListener('abort', onExternalAbort);
+    },
+  };
+}
+
+async function fetchJsonTimeout(url, options = {}, timeoutMs = REQUEST_TIMEOUT_MS, externalSignal = null) {
+  const linked = createLinkedController(externalSignal, timeoutMs);
+  if (externalSignal?.aborted) {
+    linked.cleanup();
+    throw new Error('ABORTED');
   }
   try {
-    const res = await fetch(url, { ...options, signal: ctrl.signal });
+    const res = await fetch(url, { ...options, signal: linked.signal });
     const text = await res.text();
     let json = null;
     try {
@@ -102,9 +127,12 @@ async function fetchJsonTimeout(url, options = {}, timeoutMs = REQUEST_TIMEOUT_M
       json = null;
     }
     return { ok: res.ok, status: res.status, headers: res.headers, json, text };
+  } catch (err) {
+    if (externalSignal?.aborted) throw new Error('ABORTED');
+    if (linked.wasTimedOut()) throw new Error('TIMEOUT');
+    throw err;
   } finally {
-    clearTimeout(timer);
-    if (externalSignal) externalSignal.removeEventListener('abort', onExternalAbort);
+    linked.cleanup();
   }
 }
 
@@ -176,7 +204,6 @@ export function getCachedModelRegistry() {
 
 /**
  * Checks whether Puter.js v2 SDK is loaded AND the user has explicitly signed in.
- * Prevents unexpected browser login popups or hanging Promises during free keyless chat.
  */
 export function isPuterAiReady() {
   try {
@@ -191,9 +218,6 @@ export function isPuterAiReady() {
   }
 }
 
-/**
- * Lazy-loads Puter.js v2 SDK on demand when the user opts into Puter's per-user free tier.
- */
 export function ensurePuterSdkLoaded(timeoutMs = 6000) {
   if (typeof window === 'undefined' || typeof document === 'undefined') return Promise.resolve(false);
   if (window.puter?.ai?.chat) return Promise.resolve(true);
@@ -218,9 +242,6 @@ export function ensurePuterSdkLoaded(timeoutMs = 6000) {
   return puterLoadPromise;
 }
 
-/**
- * Explicitly activates and signs into Puter.js per-user free AI quota ONLY on user click.
- */
 export async function signInPuterSdk(timeoutMs = 7000) {
   const loaded = await ensurePuterSdkLoaded(timeoutMs);
   if (!loaded) return false;
@@ -245,6 +266,7 @@ function parseRetryAfterMs(headers, bodyText = '', status = 0) {
   if (secMatch) {
     return Math.min(3600000, Math.max(15000, Number(secMatch[1]) * 1000));
   }
+  if (/zerogpu|quota/i.test(String(bodyText || ''))) return 300000;
   if (status === 402 || status === 429) return 60000;
   return 0;
 }
@@ -253,181 +275,474 @@ function extractOpenAiContent(json) {
   const choice = json?.choices?.[0];
   if (!choice) return '';
   const msg = choice.message || choice.delta || {};
-  if (typeof msg.content === 'string' && msg.content.trim()) return msg.content.trim();
+  if (typeof msg.content === 'string' && msg.content) return msg.content;
   if (Array.isArray(msg.content)) {
     return msg.content
       .map((part) => (typeof part === 'string' ? part : part?.text || ''))
-      .join('')
-      .trim();
+      .join('');
   }
-  if (typeof choice.text === 'string') return choice.text.trim();
+  if (typeof choice.text === 'string') return choice.text;
   return '';
 }
 
-function buildCompactPromptForGetGateway(messages = []) {
-  const sys = messages.find((m) => m.role === 'system')?.content || '';
-  const turns = messages.filter((m) => m.role !== 'system').slice(-6);
-  const parts = [];
-  if (sys) {
-    const memIdx = sys.indexOf('Ringkasan Memori');
-    if (memIdx >= 0) {
-      parts.push(sys.slice(memIdx, memIdx + 500));
+function buildConversationPromptForSingleTurn(messages = []) {
+  const turns = messages.filter((m) => m.role !== 'system').slice(-8);
+  if (turns.length === 1 && turns[0].role === 'user') {
+    return turns[0].content;
+  }
+  return turns
+    .map((t) => `${t.role === 'user' ? 'Pengguna' : 'Asisten'}: ${t.content}`)
+    .join('\n\n');
+}
+
+function extractGradioText(parsed) {
+  if (typeof parsed === 'string') return parsed;
+  if (Array.isArray(parsed)) {
+    for (const item of parsed) {
+      if (typeof item === 'string' && item.trim()) return item;
+      if (Array.isArray(item) && item.length > 0) {
+        const last = item[item.length - 1];
+        if (typeof last === 'string' && last.trim()) return last;
+        if (Array.isArray(last) && typeof last[1] === 'string' && last[1].trim()) return last[1];
+        if (last && typeof last === 'object' && typeof last.content === 'string') return last.content;
+      }
+      if (item && typeof item === 'object') {
+        if (typeof item.text === 'string' && item.text.trim()) return item.text;
+        if (typeof item.content === 'string' && item.content.trim()) return item.content;
+      }
     }
   }
-  for (const t of turns) {
-    parts.push(`${t.role === 'user' ? 'User' : 'Assistant'}: ${t.content}`);
+  if (parsed && typeof parsed === 'object') {
+    if (typeof parsed.text === 'string') return parsed.text;
+    if (typeof parsed.content === 'string') return parsed.content;
   }
-  return parts.join('\n').slice(0, 1800);
+  return '';
 }
 
 /**
- * Executes a single target (either a user BYOK key or a free keyless gateway).
+ * Streams an OpenAI-compatible SSE response (`stream: true`), gracefully falling back
+ * to JSON parsing if the upstream returns a non-streamed JSON body.
  */
-export async function executeModelTarget(target, messages = [], { signal = null } = {}) {
+async function streamOpenAiCompatible(url, headers, bodyObj, { timeoutMs, signal, onDelta }) {
+  const linked = createLinkedController(signal, timeoutMs);
+  if (signal?.aborted) {
+    linked.cleanup();
+    throw new Error('ABORTED');
+  }
+  try {
+    const res = await fetch(url, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ ...bodyObj, stream: true }),
+      signal: linked.signal,
+    });
+
+    if (!res.ok) {
+      const txt = await res.text().catch(() => '');
+      let json = null;
+      try {
+        json = txt ? JSON.parse(txt) : null;
+      } catch {
+        json = null;
+      }
+      const err = new Error(json?.error?.message || json?.message || `HTTP ${res.status}`);
+      err.status = res.status;
+      err.retryAfterMs = parseRetryAfterMs(res.headers, txt, res.status);
+      throw err;
+    }
+
+    const contentType = String(res.headers.get('content-type') || '').toLowerCase();
+    if (!res.body || contentType.includes('application/json')) {
+      const txt = await res.text();
+      const json = txt ? JSON.parse(txt) : null;
+      const content = extractOpenAiContent(json).trim();
+      if (!content) throw new Error('EMPTY');
+      if (onDelta) onDelta(content);
+      return content;
+    }
+
+    // Connected! Clear connect timeout and allow smooth streaming up to total limit
+    linked.clearTimer();
+    const reader = res.body.getReader();
+    const dec = new TextDecoder();
+    let buf = '';
+    let acc = '';
+
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      buf += dec.decode(value, { stream: true });
+      const lines = buf.split('\n');
+      buf = lines.pop() || '';
+      for (const rawLine of lines) {
+        const line = rawLine.trim();
+        if (!line.startsWith('data:')) continue;
+        const payload = line.slice(5).trim();
+        if (!payload || payload === '[DONE]') continue;
+        try {
+          const parsed = JSON.parse(payload);
+          const piece = extractOpenAiContent(parsed);
+          if (piece) {
+            acc += piece;
+            if (onDelta) onDelta(acc);
+          }
+        } catch {
+          // Ignore partial or heartbeat lines
+        }
+      }
+    }
+
+    const finalText = acc.trim();
+    if (!finalText) throw new Error('EMPTY');
+    return finalText;
+  } catch (err) {
+    if (signal?.aborted) throw new Error('ABORTED');
+    if (linked.wasTimedOut()) throw new Error('TIMEOUT');
+    throw err;
+  } finally {
+    linked.cleanup();
+  }
+}
+
+/**
+ * Streams a native Google Gemini SSE response (`streamGenerateContent?alt=sse`).
+ */
+async function streamGeminiNative(endpoint, apiKey, model, messages, { timeoutMs, signal, onDelta }) {
+  const sysMsg = messages.find((m) => m.role === 'system')?.content || '';
+  const contents = messages
+    .filter((m) => m.role !== 'system')
+    .map((m) => ({
+      role: m.role === 'assistant' ? 'model' : 'user',
+      parts: [{ text: m.content }],
+    }));
+  const modelPath = model.startsWith('models/') ? model : `models/${model}`;
+  const url = `${endpoint}/${modelPath}:streamGenerateContent?alt=sse&key=${encodeURIComponent(apiKey)}`;
+  const body = {
+    contents,
+    ...(sysMsg ? { systemInstruction: { parts: [{ text: sysMsg }] } } : {}),
+    generationConfig: { temperature: 0.5 },
+  };
+
+  const linked = createLinkedController(signal, timeoutMs);
+  if (signal?.aborted) {
+    linked.cleanup();
+    throw new Error('ABORTED');
+  }
+  try {
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+      signal: linked.signal,
+    });
+    if (!res.ok) {
+      const txt = await res.text().catch(() => '');
+      let json = null;
+      try {
+        json = txt ? JSON.parse(txt) : null;
+      } catch {
+        json = null;
+      }
+      const err = new Error(json?.error?.message || `HTTP ${res.status}`);
+      err.status = res.status;
+      err.retryAfterMs = parseRetryAfterMs(res.headers, txt, res.status);
+      throw err;
+    }
+
+    linked.clearTimer();
+    const reader = res.body.getReader();
+    const dec = new TextDecoder();
+    let buf = '';
+    let acc = '';
+
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      buf += dec.decode(value, { stream: true });
+      const lines = buf.split('\n');
+      buf = lines.pop() || '';
+      for (const rawLine of lines) {
+        const line = rawLine.trim();
+        if (!line.startsWith('data:')) continue;
+        const payload = line.slice(5).trim();
+        if (!payload) continue;
+        try {
+          const parsed = JSON.parse(payload);
+          const piece = (parsed?.candidates?.[0]?.content?.parts || [])
+            .map((p) => p?.text || '')
+            .join('');
+          if (piece) {
+            acc += piece;
+            if (onDelta) onDelta(acc);
+          }
+        } catch {
+          // Ignore malformed keepalive
+        }
+      }
+    }
+
+    const finalText = acc.trim();
+    if (!finalText) throw new Error('EMPTY');
+    return finalText;
+  } catch (err) {
+    if (signal?.aborted) throw new Error('ABORTED');
+    if (linked.wasTimedOut()) throw new Error('TIMEOUT');
+    throw err;
+  } finally {
+    linked.cleanup();
+  }
+}
+
+/**
+ * Streams a native Anthropic Claude SSE response (`stream: true`).
+ */
+async function streamAnthropicNative(endpoint, apiKey, model, messages, { timeoutMs, signal, onDelta }) {
+  const sysMsg = messages.find((m) => m.role === 'system')?.content || '';
+  const anthMessages = messages
+    .filter((m) => m.role !== 'system')
+    .map((m) => ({ role: m.role, content: m.content }));
+  const url = `${endpoint}/messages`;
+
+  const linked = createLinkedController(signal, timeoutMs);
+  if (signal?.aborted) {
+    linked.cleanup();
+    throw new Error('ABORTED');
+  }
+  try {
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': apiKey,
+        'anthropic-version': '2023-06-01',
+        'anthropic-dangerous-direct-browser-access': 'true',
+      },
+      body: JSON.stringify({
+        model,
+        max_tokens: 2048,
+        stream: true,
+        ...(sysMsg ? { system: sysMsg } : {}),
+        messages: anthMessages,
+      }),
+      signal: linked.signal,
+    });
+    if (!res.ok) {
+      const txt = await res.text().catch(() => '');
+      let json = null;
+      try {
+        json = txt ? JSON.parse(txt) : null;
+      } catch {
+        json = null;
+      }
+      const err = new Error(json?.error?.message || `HTTP ${res.status}`);
+      err.status = res.status;
+      err.retryAfterMs = parseRetryAfterMs(res.headers, txt, res.status);
+      throw err;
+    }
+
+    linked.clearTimer();
+    const reader = res.body.getReader();
+    const dec = new TextDecoder();
+    let buf = '';
+    let acc = '';
+
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      buf += dec.decode(value, { stream: true });
+      const lines = buf.split('\n');
+      buf = lines.pop() || '';
+      for (const rawLine of lines) {
+        const line = rawLine.trim();
+        if (!line.startsWith('data:')) continue;
+        const payload = line.slice(5).trim();
+        if (!payload) continue;
+        try {
+          const parsed = JSON.parse(payload);
+          const piece = parsed?.delta?.text || '';
+          if (piece) {
+            acc += piece;
+            if (onDelta) onDelta(acc);
+          }
+        } catch {
+          // Ignore
+        }
+      }
+    }
+
+    const finalText = acc.trim();
+    if (!finalText) throw new Error('EMPTY');
+    return finalText;
+  } catch (err) {
+    if (signal?.aborted) throw new Error('ABORTED');
+    if (linked.wasTimedOut()) throw new Error('TIMEOUT');
+    throw err;
+  } finally {
+    linked.cleanup();
+  }
+}
+
+/**
+ * Streams from a public CORS-enabled Hugging Face Gradio Space (`/gradio_api/call/<fn>`).
+ */
+async function streamHfGradioSpace(target, messages, { timeoutMs, signal, onDelta }) {
+  const host = String(target.gradioHost || '').replace(/\/+$/, '');
+  const fn = target.gradioFn || 'generate';
+  const sysMsg = (messages.find((m) => m.role === 'system')?.content || '').slice(0, 750);
+  const prompt = buildConversationPromptForSingleTurn(messages);
+
+  let dataPayload;
+  if (target.gradioPayloadType === 'multimodal-sys') {
+    dataPayload = [{ text: prompt, files: [] }, sysMsg || 'Kamu adalah Manifest AI, asisten berbahasa Indonesia.', 768];
+  } else if (target.gradioPayloadType === 'gemma4-chat') {
+    dataPayload = [prompt, null, [], false, 768, 280, sysMsg || 'Kamu adalah Manifest AI, asisten berbahasa Indonesia.', 0.6, 0.9, 50, 1.1];
+  } else if (target.gradioPayloadType === 'llama2-sys') {
+    dataPayload = [prompt, sysMsg || 'Kamu adalah Manifest AI, asisten berbahasa Indonesia.', 768, 0.6, 0.9, 50, 1.1];
+  } else {
+    const combined = sysMsg ? `[Instruksi: ${sysMsg.slice(0, 320)}]\n\n${prompt}` : prompt;
+    dataPayload = [combined, 768, 0.6, 0.9, 50, 1.1];
+  }
+
+  const linked = createLinkedController(signal, timeoutMs);
+  if (signal?.aborted) {
+    linked.cleanup();
+    throw new Error('ABORTED');
+  }
+  try {
+    const r1 = await fetch(`${host}/gradio_api/call/${fn}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ data: dataPayload }),
+      signal: linked.signal,
+    });
+    if (!r1.ok) {
+      const err = new Error(`HTTP ${r1.status}`);
+      err.status = r1.status;
+      throw err;
+    }
+    const j1 = await r1.json();
+    if (!j1?.event_id) throw new Error('NO_EVENT_ID');
+
+    const r2 = await fetch(`${host}/gradio_api/call/${fn}/${encodeURIComponent(j1.event_id)}`, {
+      signal: linked.signal,
+    });
+    if (!r2.ok || !r2.body) {
+      const err = new Error(`HTTP ${r2.status}`);
+      err.status = r2.status;
+      throw err;
+    }
+
+    const reader = r2.body.getReader();
+    const dec = new TextDecoder();
+    let buf = '';
+    let latestText = '';
+    let currentEvent = '';
+    let gotFirstToken = false;
+
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      buf += dec.decode(value, { stream: true });
+      const lines = buf.split('\n');
+      buf = lines.pop() || '';
+      for (const rawLine of lines) {
+        const line = rawLine.trim();
+        if (line.startsWith('event:')) {
+          currentEvent = line.slice(6).trim();
+          continue;
+        }
+        if (!line.startsWith('data:')) continue;
+        const payload = line.slice(5).trim();
+        if (!payload || payload === 'null') {
+          if (currentEvent === 'error') {
+            const err = new Error('GRADIO_ERROR');
+            err.status = 503;
+            throw err;
+          }
+          continue;
+        }
+        try {
+          const parsed = JSON.parse(payload);
+          if (currentEvent === 'error' || parsed?.error) {
+            const msg = String(parsed?.error || parsed?.message || 'GRADIO_ERROR');
+            const err = new Error(msg);
+            err.status = /quota|zerogpu|limit/i.test(msg) ? 429 : 503;
+            err.retryAfterMs = parseRetryAfterMs(null, msg, err.status);
+            throw err;
+          }
+          const extracted = extractGradioText(parsed);
+          if (extracted) {
+            if (!gotFirstToken) {
+              gotFirstToken = true;
+              linked.clearTimer();
+            }
+            latestText = extracted;
+            if (onDelta) onDelta(latestText);
+          }
+        } catch (parseErr) {
+          if (parseErr?.status) throw parseErr;
+        }
+      }
+    }
+
+    const finalText = latestText.trim();
+    if (!finalText) throw new Error('EMPTY');
+    return finalText;
+  } catch (err) {
+    if (signal?.aborted) throw new Error('ABORTED');
+    if (linked.wasTimedOut()) throw new Error('TIMEOUT');
+    throw err;
+  } finally {
+    linked.cleanup();
+  }
+}
+
+/**
+ * Executes a single target with live token streaming via `onDelta(fullTextSoFar)`.
+ */
+export async function executeModelTarget(target, messages = [], { signal = null, onDelta = null } = {}) {
   const startedAt = Date.now();
 
   if (target.channel === 'byok') {
     const endpoint = String(target.customEndpoint || getProviderMeta(target.providerId).byokEndpoint).replace(/\/+$/, '');
-
-    // 1. Google Gemini Native REST API
+    let content = '';
     if (target.protocol === 'gemini') {
-      const sysMsg = messages.find((m) => m.role === 'system')?.content || '';
-      const contents = messages
-        .filter((m) => m.role !== 'system')
-        .map((m) => ({
-          role: m.role === 'assistant' ? 'model' : 'user',
-          parts: [{ text: m.content }],
-        }));
-      const modelPath = target.model.startsWith('models/') ? target.model : `models/${target.model}`;
-      const url = `${endpoint}/${modelPath}:generateContent?key=${encodeURIComponent(target.apiKey)}`;
-      const body = {
-        contents,
-        ...(sysMsg ? { systemInstruction: { parts: [{ text: sysMsg }] } } : {}),
-        generationConfig: { temperature: 0.5 },
+      content = await streamGeminiNative(endpoint, target.apiKey, target.model, messages, {
+        timeoutMs: REQUEST_TIMEOUT_MS,
+        signal,
+        onDelta,
+      });
+    } else if (target.protocol === 'anthropic') {
+      content = await streamAnthropicNative(endpoint, target.apiKey, target.model, messages, {
+        timeoutMs: REQUEST_TIMEOUT_MS,
+        signal,
+        onDelta,
+      });
+    } else {
+      const url = endpoint.endsWith('/chat/completions') ? endpoint : `${endpoint}/chat/completions`;
+      const headers = {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${target.apiKey}`,
       };
-      const res = await fetchJsonTimeout(
-        url,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(body),
-        },
-        REQUEST_TIMEOUT_MS,
-        signal
-      );
-      if (!res.ok) {
-        const errMsg = res.json?.error?.message || `HTTP ${res.status}`;
-        const err = new Error(errMsg);
-        err.status = res.status;
-        err.retryAfterMs = parseRetryAfterMs(res.headers, res.text, res.status);
-        throw err;
+      if (target.providerId === 'openrouter') {
+        headers['HTTP-Referer'] = typeof window !== 'undefined' ? window.location.origin : 'https://manifestudio.my.id';
+        headers['X-Title'] = 'Manifest AI';
       }
-      const text = (res.json?.candidates?.[0]?.content?.parts || [])
-        .map((p) => p?.text || '')
-        .join('')
-        .trim();
-      if (!text) throw new Error('Gemini mengembalikan respons kosong');
-      return {
-        ...target,
-        content: text,
-        latencyMs: Date.now() - startedAt,
-      };
-    }
-
-    // 2. Anthropic Claude Native REST API (browser direct CORS header)
-    if (target.protocol === 'anthropic') {
-      const sysMsg = messages.find((m) => m.role === 'system')?.content || '';
-      const anthMessages = messages
-        .filter((m) => m.role !== 'system')
-        .map((m) => ({ role: m.role, content: m.content }));
-      const url = `${endpoint}/messages`;
-      const res = await fetchJsonTimeout(
+      content = await streamOpenAiCompatible(
         url,
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'x-api-key': target.apiKey,
-            'anthropic-version': '2023-06-01',
-            'anthropic-dangerous-direct-browser-access': 'true',
-          },
-          body: JSON.stringify({
-            model: target.model,
-            max_tokens: 2048,
-            ...(sysMsg ? { system: sysMsg } : {}),
-            messages: anthMessages,
-          }),
-        },
-        REQUEST_TIMEOUT_MS,
-        signal
-      );
-      if (!res.ok) {
-        const errMsg = res.json?.error?.message || `HTTP ${res.status}`;
-        const err = new Error(errMsg);
-        err.status = res.status;
-        err.retryAfterMs = parseRetryAfterMs(res.headers, res.text, res.status);
-        throw err;
-      }
-      const text = (res.json?.content || [])
-        .map((b) => (b?.type === 'text' ? b.text : ''))
-        .join('')
-        .trim();
-      if (!text) throw new Error('Claude mengembalikan respons kosong');
-      return {
-        ...target,
-        content: text,
-        latencyMs: Date.now() - startedAt,
-      };
-    }
-
-    // 3. OpenAI-Compatible APIs (OpenAI, DeepSeek, xAI Grok, Groq, OpenRouter, Mistral, Qwen, Custom)
-    const url = endpoint.endsWith('/chat/completions') ? endpoint : `${endpoint}/chat/completions`;
-    const headers = {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${target.apiKey}`,
-    };
-    if (target.providerId === 'openrouter') {
-      headers['HTTP-Referer'] = typeof window !== 'undefined' ? window.location.origin : 'https://manifestudio.my.id';
-      headers['X-Title'] = 'Manifest AI';
-    }
-    const res = await fetchJsonTimeout(
-      url,
-      {
-        method: 'POST',
         headers,
-        body: JSON.stringify({
-          model: target.model,
-          messages,
-          temperature: 0.5,
-        }),
-      },
-      REQUEST_TIMEOUT_MS,
-      signal
-    );
-    if (!res.ok) {
-      const errMsg = res.json?.error?.message || res.json?.message || `HTTP ${res.status}`;
-      const err = new Error(errMsg);
-      err.status = res.status;
-      err.retryAfterMs = parseRetryAfterMs(res.headers, res.text, res.status);
-      throw err;
+        { model: target.model, messages, temperature: 0.5 },
+        { timeoutMs: REQUEST_TIMEOUT_MS, signal, onDelta }
+      );
     }
-    const text = extractOpenAiContent(res.json);
-    if (!text) throw new Error(`${target.providerName} mengembalikan respons kosong`);
-    return {
-      ...target,
-      content: text,
-      latencyMs: Date.now() - startedAt,
-    };
+    return { ...target, content, latencyMs: Date.now() - startedAt };
   }
 
-  // Free Gateway A: Puter.js Client SDK (per-user browser quota, strictly signed-in & timeout-guarded)
+  // Free Gateway A: Puter.js Client SDK (per-user browser quota, streaming when signed in)
   if (target.channel === 'free-puter') {
     if (!isPuterAiReady()) throw new Error('Puter SDK belum aktif');
     const resp = await new Promise((resolve, reject) => {
-      if (signal?.aborted) {
-        reject(new Error('ABORTED'));
-        return;
-      }
+      if (signal?.aborted) return reject(new Error('ABORTED'));
       let settled = false;
       const done = (fn, val) => {
         if (settled) return;
@@ -438,108 +753,56 @@ export async function executeModelTarget(target, messages = [], { signal = null 
       };
       const onAbort = () => done(reject, new Error('ABORTED'));
       if (signal) signal.addEventListener('abort', onAbort, { once: true });
-      const timer = setTimeout(() => done(reject, new Error('Puter AI timeout')), REQUEST_TIMEOUT_MS);
-      Promise.resolve(window.puter.ai.chat(messages, { model: target.model }))
+      const timer = setTimeout(() => done(reject, new Error('TIMEOUT')), FREE_CONNECT_TIMEOUT_MS);
+      Promise.resolve(window.puter.ai.chat(messages, { model: target.model, stream: true }))
         .then((val) => done(resolve, val))
         .catch((err) => done(reject, err));
     });
-    const text =
-      typeof resp === 'string'
-        ? resp.trim()
-        : String(resp?.message?.content || resp?.text || resp?.choices?.[0]?.message?.content || '').trim();
-    if (!text) throw new Error('Puter AI mengembalikan respons kosong');
-    return {
-      ...target,
-      content: text,
-      latencyMs: Date.now() - startedAt,
-    };
-  }
 
-  // Free Gateway B: Pollinations Text API (CORS: *, keyless browser-safe GET without Turnstile block)
-  if (target.channel === 'free-pollinations') {
-    const compact = buildCompactPromptForGetGateway(messages);
-    const sysRaw = messages.find((m) => m.role === 'system')?.content || '';
-    const sysShort = sysRaw.replace(/\s+/g, ' ').trim().slice(0, 420);
-    const params = new URLSearchParams({
-      model: target.model || 'openai',
-      seed: String(Math.floor(Math.random() * 100000)),
-    });
-    if (sysShort) params.set('system', sysShort);
-    const url = `https://text.pollinations.ai/${encodeURIComponent(compact)}?${params.toString()}`;
-    const res = await fetchJsonTimeout(url, { method: 'GET' }, FREE_GATEWAY_TIMEOUT_MS, signal);
-    if (!res.ok) {
-      const errMsg = res.json?.error?.message || (res.text ? res.text.slice(0, 140) : `HTTP ${res.status}`);
-      const err = new Error(errMsg);
-      err.status = res.status;
-      err.retryAfterMs = parseRetryAfterMs(res.headers, res.text, res.status);
-      throw err;
+    let acc = '';
+    if (resp && typeof resp[Symbol.asyncIterator] === 'function') {
+      for await (const part of resp) {
+        if (signal?.aborted) throw new Error('ABORTED');
+        const piece = typeof part === 'string' ? part : String(part?.text || part?.delta?.content || '');
+        if (piece) {
+          acc += piece;
+          if (onDelta) onDelta(acc);
+        }
+      }
+    } else {
+      acc =
+        typeof resp === 'string'
+          ? resp.trim()
+          : String(resp?.message?.content || resp?.text || resp?.choices?.[0]?.message?.content || '').trim();
+      if (acc && onDelta) onDelta(acc);
     }
-    const text = res.json ? extractOpenAiContent(res.json) : String(res.text || '').trim();
-    if (!text) throw new Error('Pollinations mengembalikan respons kosong');
-    const actualModel = res.headers?.get?.('x-model-used') || target.model;
-    return {
-      ...target,
-      model: actualModel,
-      content: text,
-      latencyMs: Date.now() - startedAt,
-    };
+    const finalText = acc.trim();
+    if (!finalText) throw new Error('EMPTY');
+    return { ...target, content: finalText, latencyMs: Date.now() - startedAt };
   }
 
-  // Free Gateway C: LLM7 OpenAI-compatible (CORS: *, per-user IP quota via Bearer unused)
+  // Free Gateway B: LLM7 OpenAI-compatible streaming (1 call per turn, per-user IP quota)
   if (target.channel === 'free-llm7') {
-    const res = await fetchJsonTimeout(
+    const content = await streamOpenAiCompatible(
       'https://api.llm7.io/v1/chat/completions',
       {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: 'Bearer unused',
-        },
-        body: JSON.stringify({
-          model: target.model || 'default',
-          messages,
-        }),
+        'Content-Type': 'application/json',
+        Authorization: 'Bearer unused',
       },
-      FREE_GATEWAY_TIMEOUT_MS,
-      signal
+      { model: target.model || 'gpt-oss:20b', messages },
+      { timeoutMs: FREE_CONNECT_TIMEOUT_MS, signal, onDelta }
     );
-    if (!res.ok) {
-      const errMsg = res.json?.error?.message || `HTTP ${res.status}`;
-      const err = new Error(errMsg);
-      err.status = res.status;
-      err.retryAfterMs = parseRetryAfterMs(res.headers, res.text, res.status);
-      throw err;
-    }
-    const text = extractOpenAiContent(res.json);
-    if (!text) throw new Error('LLM7 mengembalikan respons kosong');
-    return {
-      ...target,
-      content: text,
-      latencyMs: Date.now() - startedAt,
-    };
+    return { ...target, content, latencyMs: Date.now() - startedAt };
   }
 
-  // Free Gateway D: Siputzx DuckAI Multi-Model Gateway (CORS: *, keyless)
-  if (target.channel === 'free-duckai') {
-    const compact = buildCompactPromptForGetGateway(messages);
-    const url = `https://api.siputzx.my.id/api/ai/duckai?message=${encodeURIComponent(compact)}&model=${encodeURIComponent(
-      target.model || 'claude-3-5-haiku-latest'
-    )}`;
-    const res = await fetchJsonTimeout(url, {}, FREE_GATEWAY_TIMEOUT_MS, signal);
-    if (!res.ok || res.json?.status === false) {
-      const errMsg = res.json?.error || `HTTP ${res.status}`;
-      const err = new Error(errMsg);
-      err.status = res.status || 503;
-      err.retryAfterMs = parseRetryAfterMs(res.headers, res.text, res.status);
-      throw err;
-    }
-    const text = String(res.json?.data || res.json?.result || res.json?.response || '').trim();
-    if (!text) throw new Error('DuckAI mengembalikan respons kosong');
-    return {
-      ...target,
-      content: text,
-      latencyMs: Date.now() - startedAt,
-    };
+  // Free Gateway C: Hugging Face Official Gradio SSE Spaces (native CORS, live token streaming)
+  if (target.channel === 'free-hf-gradio') {
+    const content = await streamHfGradioSpace(target, messages, {
+      timeoutMs: FREE_CONNECT_TIMEOUT_MS,
+      signal,
+      onDelta,
+    });
+    return { ...target, content, latencyMs: Date.now() - startedAt };
   }
 
   throw new Error('Channel AI tidak dikenali');
@@ -582,11 +845,116 @@ export async function testByokKeyConnection(keyEntry, liveRegistry = null) {
 }
 
 /**
- * Sends a prompt through the Manifest AI Multi-Model Ensemble with:
- * - Unified grounded conversation memory shared across every model
- * - Parallel multi-model collaboration (BYOK multi-key and/or free multi-gateway)
- * - Automatic per-user rate-limit cooldown tracking & seamless failover to backup models
- * - Grounded synthesis pass when 2+ models respond so the user gets 1 coherent answer
+ * Races a batch of models in parallel and immediately streams the FASTEST healthy responder
+ * token-by-token (instant ChatGPT/Gemini experience, zero waiting on slower siblings).
+ */
+async function raceStreamingBatch(targets, messages, { signal, onDelta, onCooldown }) {
+  if (!targets || targets.length === 0) return { winner: null, failures: [] };
+
+  return new Promise((resolve, reject) => {
+    const controllers = new Map();
+    const failures = [];
+    let winnerId = null;
+    let settled = false;
+    let remaining = targets.length;
+
+    const abortOthers = (keepId) => {
+      for (const [id, c] of controllers.entries()) {
+        if (id !== keepId) {
+          try {
+            c.abort();
+          } catch {
+            // Ignore
+          }
+        }
+      }
+    };
+
+    const onOuterAbort = () => {
+      abortOthers(null);
+      if (!settled) {
+        settled = true;
+        reject(new Error('ABORTED'));
+      }
+    };
+
+    if (signal) {
+      if (signal.aborted) {
+        reject(new Error('ABORTED'));
+        return;
+      }
+      signal.addEventListener('abort', onOuterAbort, { once: true });
+    }
+
+    const cleanup = () => {
+      if (signal) signal.removeEventListener('abort', onOuterAbort);
+    };
+
+    for (const target of targets) {
+      const localCtrl = new AbortController();
+      controllers.set(target.id, localCtrl);
+
+      executeModelTarget(target, messages, {
+        signal: localCtrl.signal,
+        onDelta: (partialText) => {
+          if (settled || !partialText) return;
+          if (!winnerId) {
+            winnerId = target.id;
+            abortOthers(target.id);
+          }
+          if (winnerId === target.id && onDelta) {
+            onDelta(partialText);
+          }
+        },
+      })
+        .then((res) => {
+          if (settled) return;
+          if (!winnerId) {
+            winnerId = target.id;
+            abortOthers(target.id);
+          }
+          if (winnerId === target.id) {
+            settled = true;
+            cleanup();
+            resolve({ winner: res, failures });
+          }
+        })
+        .catch((err) => {
+          if (signal?.aborted) return;
+          if (winnerId && winnerId !== target.id) return;
+
+          // If the claimed winner failed mid-stream, release lock so another sibling can finish if still running
+          if (winnerId === target.id) {
+            winnerId = null;
+          }
+
+          const status = Number(err?.status) || 0;
+          const retryMs = Number(err?.retryAfterMs) || 0;
+          const msgStr = String(err?.message || '');
+          const isLimit = status === 429 || status === 402 || /rate\s*limit|quota|zerogpu|allowance|too many/i.test(msgStr);
+
+          if (isLimit || retryMs > 0) {
+            onCooldown(target.id, retryMs || 60000, 'Limit sementara');
+          } else if (status >= 500 || status === 404 || msgStr === 'TIMEOUT') {
+            onCooldown(target.id, 30000, 'Gangguan sementara');
+          }
+
+          failures.push({ target, isLimit, status });
+          remaining -= 1;
+
+          if (remaining <= 0 && !settled) {
+            settled = true;
+            cleanup();
+            resolve({ winner: null, failures });
+          }
+        });
+    }
+  });
+}
+
+/**
+ * Sends a prompt through Manifest AI with instant fastest-first streaming and
+ * silent background multi-model failover with unified grounded memory.
  */
 export async function sendManifestAiMessage({
   history = [],
@@ -597,7 +965,7 @@ export async function sendManifestAiMessage({
   combineByokWithFree = true,
   liveRegistry = null,
   signal = null,
-  onProgress = () => {},
+  onDelta = () => {},
 } = {}) {
   const registry = liveRegistry || getCachedModelRegistry();
   let limitMap = loadStoredLimitMap();
@@ -613,193 +981,58 @@ export async function sendManifestAiMessage({
     limitMap,
   });
 
-  const failedLog = [];
-  const successes = [];
-  let failoverUsed = false;
-
-  const runTarget = async (target) => {
-    try {
-      const res = await executeModelTarget(target, unifiedMessages, { signal });
-      return { ok: true, target, result: res };
-    } catch (err) {
-      if (signal?.aborted || err?.message === 'ABORTED') throw err;
-      const status = Number(err?.status) || 0;
-      const retryMs = Number(err?.retryAfterMs) || 0;
-      const isLimit = status === 429 || status === 402 || /rate\s*limit|quota|allowance|too many/i.test(String(err?.message || ''));
-      if (isLimit || retryMs > 0) {
-        limitMap = recordProviderCooldown(
-          limitMap,
-          target.id,
-          retryMs || 60000,
-          isLimit ? 'Limit sementara tercapai' : err.message
-        );
-        saveStoredLimitMap(limitMap);
-      } else if (status >= 500 || status === 404) {
-        limitMap = recordProviderCooldown(limitMap, target.id, 30000, `Server gangguan (${status})`);
-        saveStoredLimitMap(limitMap);
-      }
-      return { ok: false, target, error: String(err?.message || 'Gagal terhubung'), isLimit };
-    }
+  const recordCooldown = (targetId, ms, reason) => {
+    limitMap = recordProviderCooldown(limitMap, targetId, ms, reason);
+    saveStoredLimitMap(limitMap);
   };
 
-  onProgress({
-    stage: 'parallel',
-    label:
-      plan.primary.length > 1
-        ? `Menggabungkan ${plan.primary.length} model AI secara paralel (${plan.primary.map((t) => t.shortName).join(', ')})...`
-        : `Menghubungi ${plan.primary[0]?.providerName || 'Manifest AI'}...`,
-    targets: plan.primary.map((t) => ({ name: t.shortName, model: t.model })),
+  let winner = null;
+  let failoverUsed = false;
+  const allFailures = [];
+
+  // Phase 1: Race primary targets in parallel — first token streams immediately!
+  const primaryRes = await raceStreamingBatch(plan.primary, unifiedMessages, {
+    signal,
+    onDelta,
+    onCooldown: recordCooldown,
   });
+  winner = primaryRes.winner;
+  allFailures.push(...primaryRes.failures);
 
-  // Run primary targets in parallel, but once at least 1 model succeeds, grant slower
-  // siblings a 4.5s grace window so a hanging free node never stalls the user's answer.
-  const primaryOutcomes = await new Promise((resolve, reject) => {
-    const outcomes = [];
-    const total = plan.primary.length;
-    if (total === 0) {
-      resolve([]);
-      return;
-    }
-    let settledCount = 0;
-    let finished = false;
-    let graceTimer = null;
-
-    const finish = () => {
-      if (finished) return;
-      finished = true;
-      if (graceTimer) clearTimeout(graceTimer);
-      resolve(outcomes);
-    };
-
-    for (const target of plan.primary) {
-      runTarget(target)
-        .then((out) => {
-          if (finished) return;
-          outcomes.push(out);
-          settledCount += 1;
-          if (settledCount >= total) {
-            finish();
-          } else if (out.ok && !graceTimer) {
-            graceTimer = setTimeout(finish, ENSEMBLE_GRACE_AFTER_FIRST_MS);
-          }
-        })
-        .catch((err) => {
-          if (finished) return;
-          finished = true;
-          if (graceTimer) clearTimeout(graceTimer);
-          reject(err);
-        });
-    }
-  });
-
-  for (const o of primaryOutcomes) {
-    if (o.ok) {
-      successes.push(o.result);
-    } else {
-      failedLog.push({
-        providerName: o.target.providerName,
-        model: o.target.model,
-        error: o.error,
-        isLimit: o.isLimit,
-      });
-    }
-  }
-
-  // Seamless Failover: if primary models all failed (or ensemble got < 1 response), step through backups with identical memory!
-  if (successes.length === 0 && plan.backups.length > 0) {
+  // Phase 2: Silent background failover in parallel pairs if all primary targets failed
+  if (!winner && plan.backups.length > 0) {
     failoverUsed = true;
-    for (const backupTarget of plan.backups) {
+    for (let i = 0; i < plan.backups.length && !winner; i += 2) {
       if (signal?.aborted) throw new Error('ABORTED');
-      onProgress({
-        stage: 'failover',
-        label: `Mengalihkan otomatis ke ${backupTarget.providerName} sambil menjaga memori percakapan...`,
-        targets: [{ name: backupTarget.shortName, model: backupTarget.model }],
+      const batch = plan.backups.slice(i, i + 2);
+      const backupRes = await raceStreamingBatch(batch, unifiedMessages, {
+        signal,
+        onDelta,
+        onCooldown: recordCooldown,
       });
-      const out = await runTarget(backupTarget);
-      if (out.ok) {
-        successes.push(out.result);
-        break;
-      }
-      failedLog.push({
-        providerName: out.target.providerName,
-        model: out.target.model,
-        error: out.error,
-        isLimit: out.isLimit,
-      });
+      winner = backupRes.winner;
+      allFailures.push(...backupRes.failures);
     }
   }
 
-  if (successes.length === 0) {
-    const limitReasons = failedLog.filter((f) => f.isLimit);
-    const errText =
-      limitReasons.length > 0
-        ? 'Semua jalur AI gratis/kunci yang aktif sedang mencapai batas sementara (rate limit). Tunggu beberapa detik hingga limit reset otomatis, atau tambahkan API Key pribadi Anda (Gemini, OpenAI, DeepSeek, Grok, OpenRouter, dll.) di menu API Key Saya.'
-        : `Belum ada model AI yang berhasil merespons (${failedLog[0]?.error || 'gangguan jaringan'}). Silakan coba kirim ulang atau pasang API Key pribadi Anda.`;
+  if (!winner) {
+    const anyLimit = allFailures.some((f) => f.isLimit);
+    const errText = anyLimit
+      ? 'Batas akses gratis sementara sedang penuh di jaringan ini. Coba kirim ulang sebentar lagi, aktifkan Kuota Puter gratis, atau gunakan API Key pribadi Anda.'
+      : 'Koneksi ke layanan AI sedang sibuk sementara. Silakan coba kirim ulang sebentar lagi, aktifkan Kuota Puter gratis, atau gunakan API Key pribadi Anda.';
     const err = new Error(errText);
-    err.failedLog = failedLog;
     err.limitMap = limitMap;
     throw err;
   }
 
-  // Synthesize when 2+ models responded in parallel!
-  let finalText = '';
-  let synthesizedBy = '';
-  const merged = synthesizeEnsembleResponses(successes);
-
-  if (successes.length >= 2) {
-    onProgress({
-      stage: 'synthesizing',
-      label: `Menyatukan & memverifikasi jawaban dari ${successes.length} model AI...`,
-      targets: successes.map((s) => ({ name: s.shortName, model: s.model })),
-    });
-
-    // Prefer a BYOK responder as synthesizer so we don't hit free per-IP cooldowns right after primary call
-    const synthTarget =
-      successes.find((s) => s.channel === 'byok') ||
-      successes.find((s) => s.channel === 'free-puter') ||
-      null;
-
-    if (synthTarget) {
-      try {
-        const olderHistory = history.slice(0, Math.max(0, history.length - 8));
-        const synthMessages = buildEnsembleSynthesisMessages(
-          prompt,
-          successes,
-          buildConversationMemorySummary(olderHistory, 500)
-        );
-        const synthRes = await executeModelTarget(synthTarget, synthMessages, { signal });
-        if (synthRes?.content && synthRes.content.length >= 20) {
-          finalText = synthRes.content;
-          synthesizedBy = `${synthTarget.shortName} (${synthTarget.model})`;
-        }
-      } catch {
-        // Gracefully fall back to deterministic highest-quality consensus
-      }
-    }
-  }
-
-  if (!finalText) {
-    finalText = merged.finalText;
-  }
-
   return {
-    content: finalText,
+    content: winner.content,
     meta: {
       mode,
       failoverUsed,
-      synthesized: successes.length >= 2,
-      synthesizedBy,
-      contributors: merged.contributors.map((c) => ({
-        providerId: c.providerId,
-        providerName: c.providerName,
-        shortName: c.shortName,
-        model: c.model,
-        channel: c.channel,
-        latencyMs: c.latencyMs,
-        excerpt: c.content.length > 600 ? `${c.content.slice(0, 597)}...` : c.content,
-      })),
-      failedCount: failedLog.length,
-      failedLog,
+      providerId: winner.providerId,
+      model: winner.model,
+      latencyMs: winner.latencyMs,
     },
     limitMap,
   };

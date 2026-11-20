@@ -21,7 +21,7 @@ import {
   renderMarkdownSafe,
   upsertByokKey,
   upsertChatThread,
-} from './manifest-ai-logic.js?v=60';
+} from './manifest-ai-logic.js?v=61';
 import {
   getCachedModelRegistry,
   isPuterAiReady,
@@ -35,7 +35,7 @@ import {
   signInPuterSdk,
   syncLiveModelRegistry,
   testByokKeyConnection,
-} from './manifest-ai.js?v=60';
+} from './manifest-ai.js?v=61';
 
 const STARTER_PROMPTS = Object.freeze([
   {
@@ -170,11 +170,10 @@ export function createManifestAiController({ onToast = () => {} } = {}) {
     testingKeyId: null,
     keyTestFeedback: {},
 
-    // Composer & request state
+    // Composer & streaming state
     draft: '',
     sending: false,
-    progressLabel: '',
-    progressTargets: [],
+    streamingText: '',
     lastError: null,
     lastFailedPrompt: '',
   };
@@ -342,11 +341,26 @@ export function createManifestAiController({ onToast = () => {} } = {}) {
       activeAbort.abort();
       activeAbort = null;
     }
+    // Preserve partial streamed text if already generated
+    const partial = String(state.streamingText || '').trim();
+    if (partial) {
+      const thread = getActiveThread();
+      const partialMsg = {
+        id: `a_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+        role: 'assistant',
+        content: partial,
+        createdAt: Date.now(),
+      };
+      state.threads = upsertChatThread(state.threads, {
+        ...thread,
+        updatedAt: Date.now(),
+        messages: [...(thread.messages || []), partialMsg],
+      });
+      persistThreads();
+    }
     state.sending = false;
-    state.progressLabel = '';
-    state.progressTargets = [];
+    state.streamingText = '';
     render();
-    onToast('Generasi jawaban dihentikan.');
   }
 
   async function handleSendPrompt(overridePrompt = null, { regenerate = false } = {}) {
@@ -395,16 +409,31 @@ export function createManifestAiController({ onToast = () => {} } = {}) {
     state.activeThreadId = updatedThread.id;
     state.draft = '';
     state.sending = true;
+    state.streamingText = '';
     state.lastError = null;
     state.lastFailedPrompt = promptText;
-    state.progressLabel = 'Menyiapkan memori percakapan & model AI terbaru...';
-    state.progressTargets = [];
     persistThreads();
     render();
     scrollMessagesToBottom();
 
     const ctrl = new AbortController();
     activeAbort = ctrl;
+    let rafPending = false;
+
+    const flushStreamingDom = () => {
+      rafPending = false;
+      if (!mounted || !hostEl || !state.sending) return;
+      const liveWrap = hostEl.querySelector('#mai-stream-content');
+      if (!liveWrap) return;
+      if (state.streamingText) {
+        liveWrap.innerHTML = `${renderMarkdownSafe(state.streamingText)}<span class="mai-stream-cursor" aria-hidden="true"></span>`;
+      }
+      const stream = hostEl.querySelector('.mai-messages-scroll');
+      if (stream) {
+        const nearBottom = stream.scrollHeight - stream.scrollTop - stream.clientHeight < 140;
+        if (nearBottom) stream.scrollTop = stream.scrollHeight;
+      }
+    };
 
     try {
       const response = await sendManifestAiMessage({
@@ -416,11 +445,12 @@ export function createManifestAiController({ onToast = () => {} } = {}) {
         combineByokWithFree: state.prefs.combineByokWithFree,
         liveRegistry: state.registry,
         signal: ctrl.signal,
-        onProgress: (info) => {
-          state.progressLabel = info.label || 'Memproses...';
-          state.progressTargets = info.targets || [];
-          const labelEl = hostEl?.querySelector('#mai-progress-label');
-          if (labelEl) labelEl.textContent = state.progressLabel;
+        onDelta: (partialText) => {
+          state.streamingText = partialText;
+          if (!rafPending) {
+            rafPending = true;
+            requestAnimationFrame(flushStreamingDom);
+          }
         },
       });
 
@@ -445,13 +475,12 @@ export function createManifestAiController({ onToast = () => {} } = {}) {
     } catch (err) {
       if (err?.message !== 'ABORTED' && !ctrl.signal.aborted) {
         state.limitMap = err?.limitMap || loadStoredLimitMap();
-        state.lastError = String(err?.message || 'Gagal menerima jawaban dari model AI.');
+        state.lastError = String(err?.message || 'Koneksi ke layanan AI sedang sibuk sementara. Silakan coba lagi.');
       }
     } finally {
       if (activeAbort === ctrl) activeAbort = null;
       state.sending = false;
-      state.progressLabel = '';
-      state.progressTargets = [];
+      state.streamingText = '';
       if (mounted) {
         render();
         scrollMessagesToBottom();
@@ -648,26 +677,6 @@ export function createManifestAiController({ onToast = () => {} } = {}) {
       `;
     }
 
-    const meta = msg.meta || {};
-    const contributors = Array.isArray(meta.contributors) ? meta.contributors : [];
-    const totalLatency = contributors.reduce((max, c) => Math.max(max, Number(c.latencyMs) || 0), 0);
-
-    const summaryParts = [];
-    if (contributors.length >= 2) {
-      const names = [...new Set(contributors.map((c) => c.shortName))].join(', ');
-      summaryParts.push(`Gabungan ${contributors.length} Model (${names})`);
-      if (meta.synthesizedBy) summaryParts.push(`Disintesis ${meta.synthesizedBy}`);
-    } else if (contributors.length === 1) {
-      const c = contributors[0];
-      summaryParts.push(`${c.providerName} (${c.model})`);
-      summaryParts.push(c.channel === 'byok' ? 'API Key Pribadi' : 'Gratis');
-    } else {
-      summaryParts.push('Manifest AI');
-    }
-    if (meta.failoverUsed) summaryParts.push('Failover Otomatis · Memori Terjaga');
-    const latStr = formatLatency(totalLatency);
-    if (latStr) summaryParts.push(latStr);
-
     return `
       <article class="mai-msg mai-msg-assistant" aria-label="Jawaban Manifest AI">
         <div class="mai-assistant-avatar" aria-hidden="true">
@@ -679,7 +688,6 @@ export function createManifestAiController({ onToast = () => {} } = {}) {
           </div>
 
           <div class="mai-msg-footer">
-            <span class="mai-msg-meta-line">${escapeAiHtml(summaryParts.join(' · '))}</span>
             <div class="mai-msg-actions">
               <button type="button" class="mai-msg-act-btn" data-mai-copy-msg="${escapeAiHtml(msg.id)}">Salin</button>
               ${
@@ -689,37 +697,6 @@ export function createManifestAiController({ onToast = () => {} } = {}) {
               }
             </div>
           </div>
-
-          ${
-            contributors.length > 0
-              ? `
-                <details class="mai-contrib-details">
-                  <summary class="mai-contrib-summary">
-                    Lihat rincian ${contributors.length} model kontributor${meta.failedCount ? ` · ${meta.failedCount} jalur dilewati otomatis` : ''}
-                  </summary>
-                  <div class="mai-contrib-list">
-                    ${contributors
-                      .map(
-                        (c) => `
-                          <div class="mai-contrib-row">
-                            <div class="mai-contrib-head">
-                              <strong>${escapeAiHtml(c.providerName)}</strong>
-                              <span class="mai-contrib-sub">${escapeAiHtml(c.model)} · ${c.channel === 'byok' ? 'API Key Pribadi' : 'Jalur Gratis'}${c.latencyMs ? ` · ${escapeAiHtml(formatLatency(c.latencyMs))}` : ''}</span>
-                            </div>
-                            ${
-                              contributors.length >= 2 && c.excerpt
-                                ? `<p class="mai-contrib-excerpt">${escapeAiHtml(c.excerpt)}</p>`
-                                : ''
-                            }
-                          </div>
-                        `
-                      )
-                      .join('')}
-                  </div>
-                </details>
-              `
-              : ''
-          }
         </div>
       </article>
     `;
@@ -992,18 +969,10 @@ export function createManifestAiController({ onToast = () => {} } = {}) {
     const messages = thread.messages || [];
     const activeByokCount = state.byokKeys.filter((k) => k.enabled).length;
     const lastAssistantIdx = [...messages].map((m) => m.role).lastIndexOf('assistant');
-    const syncedProvidersCount = Object.keys(state.registry?.providers || {}).length;
-
-    const statusMetaParts = [
-      state.prefs.mode === 'ensemble'
-        ? 'Mode Gabungan Multi-AI'
-        : `Fokus: ${getProviderMeta(state.prefs.focusProviderId).shortName}`,
-      `${syncedProvidersCount} Penyedia Terbaru Tersinkron`,
+    const statusMetaText =
       activeByokCount > 0
-        ? `${activeByokCount} API Key Pribadi Aktif${state.prefs.combineByokWithFree ? ' + Gratis' : ''}`
-        : 'Gratis Tanpa API Key',
-      'Memori Terpadu Aktif',
-    ];
+        ? `Manifest AI · ${activeByokCount} API Key Pribadi Aktif`
+        : 'Manifest AI · Gratis · Model diperbarui otomatis';
 
     hostEl.innerHTML = `
       <div class="mai-shell">
@@ -1068,10 +1037,20 @@ export function createManifestAiController({ onToast = () => {} } = {}) {
               ${
                 state.sending
                   ? `
-                    <div class="mai-thinking-row" aria-live="polite">
-                      <span class="mai-spinner" aria-hidden="true"></span>
-                      <span id="mai-progress-label" class="mai-thinking-text">${escapeAiHtml(state.progressLabel || 'Menghubungkan multi-model AI...')}</span>
-                    </div>
+                    <article class="mai-msg mai-msg-assistant mai-msg-streaming" aria-label="Manifest AI sedang menjawab">
+                      <div class="mai-assistant-avatar" aria-hidden="true">
+                        <img src="./assets/icons/tool-manifestai.svg" alt="" width="28" height="28" />
+                      </div>
+                      <div class="mai-assistant-body">
+                        <div class="mai-md-content" id="mai-stream-content">
+                          ${
+                            state.streamingText
+                              ? `${renderMarkdownSafe(state.streamingText)}<span class="mai-stream-cursor" aria-hidden="true"></span>`
+                              : `<div class="mai-typing-dots" aria-label="Mengetik jawaban"><span></span><span></span><span></span></div>`
+                          }
+                        </div>
+                      </div>
+                    </article>
                   `
                   : ''
               }
@@ -1123,7 +1102,7 @@ export function createManifestAiController({ onToast = () => {} } = {}) {
                   `
               }
             </form>
-            <div class="mai-status-strip">${escapeAiHtml(statusMetaParts.join(' · '))}</div>
+            <div class="mai-status-strip">${escapeAiHtml(statusMetaText)}</div>
           </div>
         </div>
       </div>

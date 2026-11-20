@@ -251,6 +251,63 @@ export function getProviderMeta(providerId = '') {
   return MANIFEST_AI_PROVIDERS.find((p) => p.id === id) || MANIFEST_AI_PROVIDERS[0];
 }
 
+/**
+ * Verified public Hugging Face Gradio SSE Spaces with native browser CORS & zero API key.
+ * Each user's own IP gets independent quota and real-time token streaming.
+ */
+export const HF_GRADIO_FREE_SPACES = Object.freeze([
+  {
+    id: 'hf:gemma-3n-e4b',
+    host: 'https://huggingface-projects-gemma-3n-e4b-it.hf.space',
+    fn: 'generate',
+    payloadType: 'multimodal-sys',
+    providerId: 'gemini',
+    providerName: 'Google Gemma 3n',
+    shortName: 'Gemini',
+    model: 'gemma-3n-e4b-it',
+  },
+  {
+    id: 'hf:llama-3-2-3b',
+    host: 'https://huggingface-projects-llama-3-2-3b-instruct.hf.space',
+    fn: 'generate',
+    payloadType: 'simple-gen',
+    providerId: 'meta',
+    providerName: 'Meta Llama 3.2',
+    shortName: 'Meta AI',
+    model: 'llama-3.2-3b-instruct',
+  },
+  {
+    id: 'hf:gemma-4-12b',
+    host: 'https://huggingface-projects-gemma-4-12b-it.hf.space',
+    fn: 'chat',
+    payloadType: 'gemma4-chat',
+    providerId: 'gemini',
+    providerName: 'Google Gemma 4 12B',
+    shortName: 'Gemini',
+    model: 'gemma-4-12b-it',
+  },
+  {
+    id: 'hf:gemma-2-9b',
+    host: 'https://huggingface-projects-gemma-2-9b-it.hf.space',
+    fn: 'generate',
+    payloadType: 'simple-gen',
+    providerId: 'gemini',
+    providerName: 'Google Gemma 2 9B',
+    shortName: 'Gemini',
+    model: 'gemma-2-9b-it',
+  },
+  {
+    id: 'hf:llama-2-7b',
+    host: 'https://huggingface-projects-llama-2-7b-chat.hf.space',
+    fn: 'generate',
+    payloadType: 'llama2-sys',
+    providerId: 'meta',
+    providerName: 'Meta Llama 2',
+    shortName: 'Meta AI',
+    model: 'llama-2-7b-chat',
+  },
+]);
+
 const EXCLUDED_MODEL_SUBSTRINGS = [
   'embed',
   'whisper',
@@ -738,18 +795,20 @@ export function planEnsembleExecution({
     };
   });
 
-  // Free keyless gateways — each distinct gateway runs at most 1 call per turn to protect user limits
-  const rawPollModel = registry.freeGateways?.pollinations?.[0]?.id || 'openai';
-  const pollModel = rawPollModel.includes('/') ? 'openai' : rawPollModel;
+  // Free keyless streaming gateways — max 1 LLM7 request per turn (prevents IP burst 429)
+  // paired with native-CORS Hugging Face Gradio SSE Spaces for instant real-time streaming.
   const llm7Pool = Array.isArray(registry.freeGateways?.llm7) && registry.freeGateways.llm7.length > 0
     ? registry.freeGateways.llm7
-    : [{ id: 'default', tier: 'free' }];
-  const llm7Model = llm7Pool.find((m) => /gemma|gpt-oss|deepseek|mistral|codestral|default/i.test(m.id))?.id || llm7Pool[0].id || 'default';
-  const llm7SecondModel = llm7Pool.find((m) => m.id !== llm7Model && /gpt-oss|gemma|codestral|mistral|deepseek/i.test(m.id))?.id || '';
+    : [{ id: 'gpt-oss:20b', tier: 'turbo' }, { id: 'gemma-3-27b', tier: 'turbo' }, { id: 'codestral-latest', tier: 'turbo' }];
+  const llm7PreferredOrder = ['gpt-oss:20b', 'gemma-3-27b', 'codestral-latest', 'mistral-Nemo-Instruct-2407', 'default'];
+  const llm7Model =
+    llm7PreferredOrder.find((m) => llm7Pool.some((p) => p.id === m)) ||
+    llm7Pool[0]?.id ||
+    'default';
 
   const freeCandidates = [];
 
-  // 1. Puter.js per-user keyless multi-model council (when browser SDK loaded & signed in)
+  // 1. Puter.js per-user keyless multi-model council (when browser SDK explicitly signed in)
   if (puterAvailable) {
     const puterProviders =
       mode === 'single'
@@ -763,7 +822,7 @@ export function planEnsembleExecution({
         id: limitKey,
         channel: 'free-puter',
         providerId: pid,
-        providerName: `${pMeta.name} (Gratis)`,
+        providerName: pMeta.name,
         shortName: pMeta.shortName,
         model: puterModel,
         cooldownMs: getCooldownRemainingMs(limitMap, limitKey, now),
@@ -771,60 +830,32 @@ export function planEnsembleExecution({
     }
   }
 
-  // 2. LLM7 OpenAI-compatible free gateway (CORS: *, per-user IP quota, genuinely free models)
+  // 2. LLM7 OpenAI-compatible streaming gateway (strictly 1 call per turn to protect user IP quota)
   freeCandidates.push({
     id: 'free:llm7',
     channel: 'free-llm7',
     providerId: llm7Model.includes('gemma') ? 'gemini' : llm7Model.includes('gpt') ? 'openai' : llm7Model.includes('mistral') || llm7Model.includes('codestral') ? 'mistral' : 'deepseek',
-    providerName: `${llm7Model} (LLM7 Gratis)`,
-    shortName: llm7Model.includes('gemma') ? 'Gemini/Gemma' : llm7Model.includes('gpt') ? 'ChatGPT/OSS' : llm7Model.includes('mistral') || llm7Model.includes('codestral') ? 'Mistral' : 'DeepSeek',
+    providerName: 'Manifest AI',
+    shortName: llm7Model.includes('gemma') ? 'Gemini' : llm7Model.includes('gpt') ? 'ChatGPT' : llm7Model.includes('mistral') || llm7Model.includes('codestral') ? 'Mistral' : 'DeepSeek',
     model: llm7Model,
     cooldownMs: getCooldownRemainingMs(limitMap, 'free:llm7', now),
   });
 
-  if (llm7SecondModel) {
+  // 3. Hugging Face Official Gradio SSE Spaces (native CORS, zero API key, live token streaming)
+  for (const sp of HF_GRADIO_FREE_SPACES) {
     freeCandidates.push({
-      id: 'free:llm7:alt',
-      channel: 'free-llm7',
-      providerId: llm7SecondModel.includes('gemma') ? 'gemini' : llm7SecondModel.includes('gpt') ? 'openai' : 'mistral',
-      providerName: `${llm7SecondModel} (LLM7 Gratis)`,
-      shortName: llm7SecondModel.includes('gemma') ? 'Gemini/Gemma' : llm7SecondModel.includes('gpt') ? 'ChatGPT/OSS' : 'Mistral',
-      model: llm7SecondModel,
-      cooldownMs: getCooldownRemainingMs(limitMap, 'free:llm7:alt', now),
+      id: `free:${sp.id}`,
+      channel: 'free-hf-gradio',
+      providerId: sp.providerId,
+      providerName: sp.providerName,
+      shortName: sp.shortName,
+      model: sp.model,
+      gradioHost: sp.host,
+      gradioFn: sp.fn,
+      gradioPayloadType: sp.payloadType,
+      cooldownMs: getCooldownRemainingMs(limitMap, `free:${sp.id}`, now),
     });
   }
-
-  // 3. Pollinations free text gateway (CORS: *, zero key, 1 paced call per turn)
-  freeCandidates.push({
-    id: 'free:pollinations',
-    channel: 'free-pollinations',
-    providerId: 'openai',
-    providerName: 'OpenAI / GPT-OSS (Pollinations Gratis)',
-    shortName: 'ChatGPT',
-    model: pollModel,
-    cooldownMs: getCooldownRemainingMs(limitMap, 'free:pollinations', now),
-  });
-
-  // 4. Siputzx DuckAI multi-model gateway (Claude 3.5 Haiku / Llama 4 Scout / GPT-4o-mini)
-  const duckModel =
-    mode === 'single' && focusProviderId === 'meta'
-      ? 'meta-llama/Llama-4-Scout-17B-16E-Instruct'
-      : mode === 'single' && focusProviderId === 'mistral'
-      ? 'mistralai/Mistral-Small-24B-Instruct-2501'
-      : 'claude-3-5-haiku-latest';
-  freeCandidates.push({
-    id: 'free:duckai',
-    channel: 'free-duckai',
-    providerId: duckModel.includes('llama') ? 'meta' : duckModel.includes('mistral') ? 'mistral' : 'claude',
-    providerName: duckModel.includes('llama')
-      ? 'Meta Llama 4 (DuckAI Gratis)'
-      : duckModel.includes('mistral')
-      ? 'Mistral Small (DuckAI Gratis)'
-      : 'Claude 3.5 Haiku (DuckAI Gratis)',
-    shortName: duckModel.includes('llama') ? 'Meta AI' : duckModel.includes('mistral') ? 'Mistral' : 'Claude',
-    model: duckModel,
-    cooldownMs: getCooldownRemainingMs(limitMap, 'free:duckai', now),
-  });
 
   const healthyByok = byokCandidates.filter((c) => c.cooldownMs === 0);
   const healthyFree = freeCandidates.filter((c) => c.cooldownMs === 0);

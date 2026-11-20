@@ -22,42 +22,42 @@ import {
   matchIndonesianCityQuery,
   planMediaCompression,
   resolveAccurateWeatherCondition,
-} from './tools-logic.js?v=60';
+} from './tools-logic.js?v=59';
 import {
   describeLocationSource,
   resolveUserLocation,
   searchCitiesOnline,
   setManualLocation,
-} from './location.js?v=60';
-import { createInteractiveGlobe } from './globe.js?v=60';
+} from './location.js?v=59';
+import { createInteractiveGlobe } from './globe.js?v=59';
 import {
   createSpeedometerGauge,
   fetchSpeedtestEnvironment,
   readClientDeviceTelemetry,
   runInternetSpeedtest,
-} from './speedtest.js?v=60';
+} from './speedtest.js?v=59';
 import {
   extractAudioFromVideoUrl,
   fetchMediaDownload,
   triggerBatchPhotoDownload,
   triggerDirectMediaSave,
-} from './downloader.js?v=60';
-import { compressMediaFile, inspectMediaFile } from './compressor.js?v=60';
+} from './downloader.js?v=59';
+import { compressMediaFile, inspectMediaFile } from './compressor.js?v=59';
 import {
   ALL_TARGET_FORMATS,
   convertAnyFile,
   detectSourceFormat,
   getAvailableTargetFormats,
-} from './converter.js?v=60';
+} from './converter.js?v=59';
 import {
   detectMediaFileKind,
   identifyMediaSongAndVideo,
-} from './song-finder.js?v=60';
-import { formatAudioTime, getLoadingProgressMeta, isTrackInWatchLater } from './music-logic.js?v=60';
-import { MUSIC_PRESET_CATEGORIES, getMusicController, initMusicPlayer } from './music.js?v=60';
+} from './song-finder.js?v=59';
+import { formatAudioTime, getLoadingProgressMeta, isTrackInWatchLater } from './music-logic.js?v=59';
+import { MUSIC_PRESET_CATEGORIES, getMusicController, initMusicPlayer } from './music.js?v=59';
 import { createDracinController } from './dracin-ui.js?v=60';
 import { createAudioEditorController } from './audio-editor-ui.js?v=60';
-import { createManifestAiController } from './manifest-ai-ui.js?v=60';
+import { createManifestAiController } from './manifest-ai-ui.js?v=61';
 import { normalizeUtilityConfig } from './store.js?v=60';
 
 const PRAYER_CACHE_KEY = 'manifestudio_prayer_cache_v1';

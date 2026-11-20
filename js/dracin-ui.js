@@ -18,7 +18,6 @@ import {
   DRACIN_SUBTITLE_LANGS,
   buildEpisodeList,
   buildEpisodeRanges,
-  buildSansekaiDirectWatchUrl,
   clampEpisodeNumber,
   computePreloadEpisodeTargets,
   filterDracinCatalog,
@@ -34,24 +33,23 @@ import {
   shouldPreserveFullscreenOnEpisodeChange,
   toggleFavoriteDramaId,
   upsertWatchHistory,
-} from './dracin-logic.js?v=60';
+} from './dracin-logic.js?v=56';
 import {
   fetchAiDramaInsights,
   fetchDramaDetail,
   fetchUnifiedDracinCatalog,
   findCrossPlatformDramaMatches,
   getEpisodeSubtitles,
-  getSansekaiStatus,
   identifyDracinFromMedia,
   prefetchEpisodePlayback,
   resolveEpisodePlayback,
   resolveSansekaiEpisodePlayback,
   searchDailymotionEpisodeBackup,
-} from './dracin.js?v=60';
+} from './dracin.js?v=56';
 import {
   attachClearKeyEme,
   fetchAndDecryptCencMp4,
-} from './dracin-cenc.js?v=60';
+} from './dracin-cenc.js?v=56';
 
 const HISTORY_STORAGE_KEY = 'manifestudio_dracin_history_v1';
 const FAVORITES_STORAGE_KEY = 'manifestudio_dracin_favorites_v1';
@@ -65,7 +63,7 @@ function ensureHlsLibrary() {
   if (hlsScriptPromise) return hlsScriptPromise;
   hlsScriptPromise = new Promise((resolve, reject) => {
     const script = document.createElement('script');
-    script.src = './js/vendor/hls.min.js?v=60';
+    script.src = './js/vendor/hls.min.js?v=56';
     script.async = true;
     script.onload = () => resolve(window.Hls || null);
     script.onerror = () => {
@@ -499,37 +497,23 @@ export function createDracinController({ onToast = () => {} } = {}) {
       const txt = errBox.querySelector('p');
       if (txt && isError) txt.textContent = message;
       const prevErrBtn = errBox.querySelector('#dracin-error-prev-ep-btn');
-      if (prevErrBtn) {
-        prevErrBtn.hidden = state.currentEpisode <= 1;
-        prevErrBtn.textContent = `← Kembali ke Ep ${Math.max(1, state.currentEpisode - 1)}`;
-      }
-      const skStatus = getSansekaiStatus();
-      const drama = getActiveDrama();
-      const webLink = errBox.querySelector('#dracin-sansekai-web-link');
-      if (webLink && drama) {
-        webLink.setAttribute(
-          'href',
-          buildSansekaiDirectWatchUrl(drama, state.currentEpisode, skStatus.webBaseUrl)
-        );
-      }
+      if (prevErrBtn) prevErrBtn.hidden = state.currentEpisode <= 1;
       const skBtn = errBox.querySelector('#dracin-sansekai-fallback-btn');
       if (skBtn) {
         skBtn.disabled = state.searchingSansekai;
-        skBtn.textContent = state.searchingSansekai
-          ? 'Menghubungkan...'
-          : skStatus.inCooldown
-          ? 'Coba API Sansekai'
-          : 'Buka via Sansekai API';
+        skBtn.textContent = state.searchingSansekai ? 'Menghubungkan Sansekai...' : 'Buka via Sansekai API';
       }
       const dmBtn = errBox.querySelector('#dracin-search-dm-mirror-btn');
       if (dmBtn) {
         dmBtn.disabled = state.searchingBackupMirror;
-        dmBtn.textContent = state.searchingBackupMirror ? 'Mencari Mirror...' : 'Mirror Dailymotion';
+        dmBtn.textContent = state.searchingBackupMirror ? 'Mencari Mirror...' : 'Cari Mirror Dailymotion';
       }
       const crossBtn = errBox.querySelector('#dracin-find-cross-platform-btn');
       if (crossBtn) {
         crossBtn.disabled = state.crossMatchesLoading;
-        crossBtn.textContent = state.crossMatchesLoading ? 'Mencocokkan...' : 'Platform Lain';
+        crossBtn.textContent = state.crossMatchesLoading
+          ? 'Mencocokkan Platform...'
+          : 'Cari di Platform Lain';
       }
     }
   }
@@ -677,12 +661,9 @@ export function createDracinController({ onToast = () => {} } = {}) {
     }
 
     try {
-      const skRes = await resolveSansekaiEpisodePlayback(drama, state.currentEpisode, {
-        forceRefresh,
-        bypassCooldown: true,
-      });
+      const skRes = await resolveSansekaiEpisodePlayback(drama, state.currentEpisode, { forceRefresh });
+      state.searchingSansekai = false;
       if (skRes.servers && skRes.servers.length > 0) {
-        state.searchingSansekai = false;
         const merged = [
           ...skRes.servers,
           ...state.servers.filter((s) => !skRes.servers.some((n) => n.id === s.id)),
@@ -711,49 +692,25 @@ export function createDracinController({ onToast = () => {} } = {}) {
         return;
       }
 
-      // Automatic failover to strict Dailymotion HD match if Sansekai API is temporarily restricted
-      const autoDm = await searchDailymotionEpisodeBackup(drama, state.currentEpisode, { strictAuto: true }).catch(
-        () => null
-      );
-      state.searchingSansekai = false;
-      if (autoDm) {
-        state.servers = [autoDm, ...state.servers.filter((s) => s.id !== autoDm.id)];
-        state.activeServerId = autoDm.id;
-        state.triedServerIds = new Set();
-        state.streamError = '';
-        state.streamLocked = false;
-        onToast(`Beralih otomatis ke ${autoDm.label}`);
-        render();
-        attachMediaToActiveStage();
-        return;
-      }
-
-      const isLimited =
-        skRes.error?.includes('403') || skRes.error?.includes('429') || skRes.error?.includes('SANSEKAI_COOLDOWN');
-      const fallbackMsg = isLimited
-        ? `Kuota API Sansekai publik sedang penuh. Tekan "Tonton di SekaiDrama Web" (bebas limit) atau pilih Platform Lain / Mirror Dailymotion.`
-        : `Episode ${state.currentEpisode} belum tersedia di API Sansekai. Gunakan SekaiDrama Web, Platform Lain, atau Mirror Dailymotion.`;
+      const fallbackMsg = skRes.error?.includes('403') || skRes.error?.includes('429')
+        ? 'API Sansekai sedang membatasi akses sementara (rate limit). Coba lagi sebentar atau pilih platform/mirror lain.'
+        : `Episode ${state.currentEpisode} belum ditemukan di server Sansekai. Coba Cari di Platform Lain atau Mirror Dailymotion.`;
       if (state.servers.length === 0) {
         setStatusOverlay(false, fallbackMsg, true);
       } else {
         setStatusOverlay(false);
         syncPlayerEpisodeUiInPlace(drama);
-        onToast(fallbackMsg);
       }
+      onToast(fallbackMsg);
     } catch {
       state.searchingSansekai = false;
       if (state.servers.length === 0) {
-        setStatusOverlay(
-          false,
-          state.streamError ||
-            'Server API Sansekai sedang sibuk. Gunakan Tonton di SekaiDrama Web atau Mirror Dailymotion.',
-          true
-        );
+        setStatusOverlay(false, state.streamError || 'Gagal menghubungi Server Sansekai saat ini.', true);
       } else {
         setStatusOverlay(false);
         syncPlayerEpisodeUiInPlace(drama);
-        onToast('Server API Sansekai sedang sibuk — coba SekaiDrama Web');
       }
+      onToast('Gagal menghubungi Server Sansekai saat ini');
     }
   }
 
@@ -1497,9 +1454,6 @@ export function createDracinController({ onToast = () => {} } = {}) {
     if (streamRes.switchedViaSansekai && best) {
       onToast(`Episode ${safeEp} dibuka otomatis via Server Sansekai (${streamRes.sansekaiPlatformName || 'VIP-Free'})`);
       showSwipeHint(`Auto-buka via Sansekai API · Ep ${safeEp}`);
-    } else if (streamRes.switchedViaDailymotion && best) {
-      onToast(`Episode ${safeEp} dibuka otomatis via Mirror Dailymotion HD`);
-      showSwipeHint(`Mirror Dailymotion HD · Ep ${safeEp}`);
     }
 
     const needsIframe = best?.kind === 'dailymotion';
@@ -2466,36 +2420,23 @@ export function createDracinController({ onToast = () => {} } = {}) {
               <span>${escapeHtml(state.streamStatusText || 'Memuat video HD...')}</span>
             </div>
 
-            <!-- Real Stream Error / VIP Lock Overlay with SekaiDrama Web Direct Link, Sansekai Failover & Multi-Mirror Lookup -->
+            <!-- Real Stream Error / VIP Lock Overlay with Sansekai API Failover, Cross-Platform Match & Mirror Lookup -->
             <div id="dracin-media-error" class="dracin-media-error" ${state.streamError ? '' : 'hidden'}>
-              <div class="dracin-error-card">
-                <p>${escapeHtml(state.streamError || 'Gagal memuat video.')}</p>
-                <div class="dracin-error-actions">
-                  <a
-                    href="${escapeHtml(buildSansekaiDirectWatchUrl(drama, state.currentEpisode, getSansekaiStatus().webBaseUrl))}"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    class="btn btn-primary btn-xs dracin-sansekai-btn dracin-sansekai-web-cta"
-                    id="dracin-sansekai-web-link"
-                  >
-                    Tonton di SekaiDrama Web ↗
-                  </a>
-                  <div class="dracin-error-actions-grid">
-                    <button type="button" class="btn btn-secondary btn-xs" id="dracin-sansekai-fallback-btn" ${state.searchingSansekai ? 'disabled' : ''}>
-                      ${state.searchingSansekai ? 'Menghubungkan...' : getSansekaiStatus().inCooldown ? 'Coba API Sansekai' : 'Buka via Sansekai API'}
-                    </button>
-                    <button type="button" class="btn btn-secondary btn-xs" id="dracin-retry-stream-btn">Muat Ulang</button>
-                    <button type="button" class="btn btn-secondary btn-xs" id="dracin-find-cross-platform-btn" ${state.crossMatchesLoading ? 'disabled' : ''}>
-                      ${state.crossMatchesLoading ? 'Mencocokkan...' : 'Platform Lain'}
-                    </button>
-                    <button type="button" class="btn btn-secondary btn-xs" id="dracin-search-dm-mirror-btn" ${state.searchingBackupMirror ? 'disabled' : ''}>
-                      ${state.searchingBackupMirror ? 'Mencari...' : 'Mirror Dailymotion'}
-                    </button>
-                  </div>
-                  <button type="button" class="btn btn-secondary btn-xs" id="dracin-error-prev-ep-btn" ${state.currentEpisode > 1 ? '' : 'hidden'}>
-                    ← Kembali ke Ep ${Math.max(1, state.currentEpisode - 1)}
-                  </button>
-                </div>
+              <p>${escapeHtml(state.streamError || 'Gagal memuat video.')}</p>
+              <div class="dracin-error-actions">
+                <button type="button" class="btn btn-primary btn-xs dracin-sansekai-btn" id="dracin-sansekai-fallback-btn" ${state.searchingSansekai ? 'disabled' : ''}>
+                  ${state.searchingSansekai ? 'Menghubungkan Sansekai...' : 'Buka via Sansekai API'}
+                </button>
+                <button type="button" class="btn btn-secondary btn-xs" id="dracin-retry-stream-btn">Coba Muat Ulang</button>
+                <button type="button" class="btn btn-secondary btn-xs" id="dracin-find-cross-platform-btn" ${state.crossMatchesLoading ? 'disabled' : ''}>
+                  ${state.crossMatchesLoading ? 'Mencocokkan Platform...' : 'Cari di Platform Lain'}
+                </button>
+                <button type="button" class="btn btn-secondary btn-xs" id="dracin-search-dm-mirror-btn" ${state.searchingBackupMirror ? 'disabled' : ''}>
+                  ${state.searchingBackupMirror ? 'Mencari Mirror...' : 'Cari Mirror Dailymotion'}
+                </button>
+                <button type="button" class="btn btn-secondary btn-xs" id="dracin-error-prev-ep-btn" ${state.currentEpisode > 1 ? '' : 'hidden'}>
+                  ← Ep Sebelumnya
+                </button>
               </div>
             </div>
 

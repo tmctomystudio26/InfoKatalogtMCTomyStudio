@@ -14,7 +14,7 @@ Dokumen teknis terpadu bagi **Tim IT, Human Developer, maupun AI Coding Agent** 
    - **Menu Utilitas (`tools.html`)**: Halaman terpisah untuk **12 utilitas harian** (`?tab=prayer | weather | worldclock | speedtest | downloader | compressor | converter | songfinder | music | dracin | audioeditor | manifestai`) yang ditonjolkan melalui kartu aksen `#utilities-callout-card` (`assets/icons/menu-utilitas.svg`).
    - **Panel Admin (`admin.html`)**: Halaman *unlisted* (`noindex`) terenkripsi AES-256-GCM yang mempublikasikan perubahan katalog, aset upload, OpenGraph `index.html`, dan riwayat perubahan terperinci langsung via GitHub REST API.
 3. **Kualitas Pengalaman Mobile-First, Presisi Tinggi, & Ad-Free**:
-   - Semua kontrol termasuk header navigasi, grid produk, 12 menu utilitas, pemutar musik, Drama China, Audio Editor DAW, dan workspace **Manifest AI** responsif penuh di HP (`360px–430px`) maupun desktop (`1025px–1440px`) bebas overflow, menggunakan *Network-First Service Worker* (`manifestudio-cache-v60` + pelestarian `manifestudio-ffmpeg-core-v1`) + query cache-busting `?v=60`.
+   - Semua kontrol termasuk header navigasi, grid produk, 12 menu utilitas, pemutar musik, Drama China, Audio Editor DAW, dan workspace **Manifest AI** responsif penuh di HP (`360px–430px`) maupun desktop (`1025px–1440px`) bebas overflow, menggunakan *Network-First Service Worker* (`manifestudio-cache-v61` + pelestarian `manifestudio-ffmpeg-core-v1`) + query cache-busting `?v=61`.
 
 ---
 
@@ -26,7 +26,7 @@ Dokumen teknis terpadu bagi **Tim IT, Human Developer, maupun AI Coding Agent** 
 | `order.html` + `js/order.js` + `js/receipt.js` | Invoice bersih + HTML5 Canvas Struk JPEG `< 60 KB` + format WA Order (tanpa voucher invalid) | `data.js`, `store.js`, `music.js` |
 | `admin.html` + `js/admin.js` + `js/vault.js` | Gate AES-256-GCM + PBKDF2, edit produk/varian/urutan/logo/brand/tagline/biaya layanan/sosmed/FAQ/voucher limits/OpenGraph/banner, riwayat itemized + restore 12 log | `data.js`, `store.js`, `vault.js` |
 | `tools.html` + `js/tools-page.js` + `js/tools-ui.js` + `js/tools-logic.js` | Router sub-tab 12 `Menu Utilitas`, pure math & domain logic, UI bar progres, & mounting sub-controller | `location.js`, `globe.js`, `speedtest.js`, `downloader.js`, `compressor.js`, `converter.js`, `song-finder.js`, `music.js`, `dracin-ui.js`, `audio-editor-ui.js`, `manifest-ai-ui.js` |
-| `js/manifest-ai-logic.js` + `js/manifest-ai.js` + `js/manifest-ai-ui.js` | **Manifest AI (`v60`)**: Pure logic auto-upgrade model flagship real-time, grounded conversation memory builder (anti-halusinasi lintas model), per-user cooldown/limit tracker, multi-BYOK parallel planner, runtime orchestrator (free gateways + direct BYOK), sintesis multi-jawaban, dan UI Chat Workspace + riwayat chat persisten | `localStorage`, CORS AI registries & gateways |
+| `js/manifest-ai-logic.js` + `js/manifest-ai.js` + `js/manifest-ai-ui.js` | **Manifest AI (`v60–v61`)**: Pure logic auto-upgrade model flagship real-time, grounded conversation memory builder (anti-halusinasi lintas model), per-user cooldown/limit tracker, multi-BYOK parallel planner, runtime orchestrator **Fastest-First SSE Streaming** (HF Gradio SSE Spaces + LLM7 maks 1/giliran + Puter + direct BYOK streaming), dan UI Chat bersih tanpa teks orkestrasi mentah | `localStorage`, CORS AI registries & SSE gateways |
 | `js/audio-editor-logic.js` + `js/audio-editor-engine.js` + `js/audio-editor-ui.js` | **Audio Editor Studio AI (`v58–v59`)**: DSP Web Audio (Trim/Potong Tengah, 10-Band EQ, Bass Boost, Virtualizer, Voice FX, Noise Repair, Stem Separation, Multi-Track Mix), tag ID3v2/RIFF, Undo/Redo, & ekspor MP3/WAV/AAC/M4A/OGG/FLAC/OPUS | `media-engine.js`, `lame.min.js` |
 | `js/dracin-logic.js` + `js/dracin-cenc.js` + `js/dracin.js` + `js/dracin-ui.js` | **Drama China Hub (`v50–v57`)**: Katalog real-time 20+ platform short drama, pemutar vertikal fullscreen + Layar Bersih, preloading episode, pencocokan lintas platform + klip AI, & auto-failover SekaiDrama/Sansekai VIP-Free | `data/dracin-endpoints.json`, `hls.min.js` |
 | `js/location.js` | Geolocation GPS prioritas utama + reverse geocode Kelurahan/Kecamatan + fallback IP + autocomplete kota | `tools-logic.js` |
@@ -39,7 +39,7 @@ Dokumen teknis terpadu bagi **Tim IT, Human Developer, maupun AI Coding Agent** 
 | `js/song-finder.js` | Pencari Judul Lagu, Musik & Analisis Kemiripan Video Sosmed Multi-API + Whisper/AudD/AI Publik | `tools-logic.js`, `media-engine.js` |
 | `js/music.js` + `js/music-logic.js` | Floating dock draggable, YT Music API open-source, drawer 14 kategori + tren real-time, background audio anti-mati, PiP + Mode Headset | YouTube IFrame API / Audius / Siputzx |
 | `data/catalog.json` & `data/catalog-history.json` | Single Source of Truth produk, utilitas, brand, OpenGraph, banners, kategori, voucher usage limits, FAQ & 12 snapshot riwayat | Service Worker Network-First |
-| `sw.js` + `manifest.webmanifest` | Network-First code/data cache (`manifestudio-cache-v60` + pelestarian `manifestudio-ffmpeg-core-v1`) & instalasi PWA | — |
+| `sw.js` + `manifest.webmanifest` | Network-First code/data cache (`manifestudio-cache-v61` + pelestarian `manifestudio-ffmpeg-core-v1`) & instalasi PWA | — |
 | `CNAME` | Konfigurasi domain kustom resmi GitHub Pages (`manifestudio.my.id`) — jangan dihapus | Cloudflare DNS |
 
 ---
@@ -48,16 +48,15 @@ Dokumen teknis terpadu bagi **Tim IT, Human Developer, maupun AI Coding Agent** 
 
 Semua integrasi berjalan murni *client-side* tanpa server backend:
 
-1. **Manifest AI (`v60`) — Katalog Model Real-Time, Jalur Gratis Multi-Gateway & Multi-BYOK**:
+1. **Manifest AI (`v60–v61`) — Katalog Model Real-Time, Streaming Instan Multi-Gateway & Multi-BYOK**:
    - **Auto-Upgrade Model Real-Time (CORS `*`)**:
      - `https://openrouter.ai/api/v1/models` (katalog live flagship Google Gemini, OpenAI, Anthropic Claude, DeepSeek, xAI Grok, Meta Llama, Qwen, Mistral).
      - `https://models.dev/api.json` (registri rilis terbaru lintas vendor AI).
-     - `https://text.pollinations.ai/models` & `https://api.llm7.io/v1/models` (daftar model aktif gateway gratis).
-   - **Jalur AI Gratis Tanpa API Key (Paralel & Failover Anti-Limit)**:
-     - **Puter.js Client SDK (`https://js.puter.com/v2/`)**: Kuota gratis multi-model terpisah per browser pengguna (`puter.ai.chat` untuk Gemini, GPT, Claude, DeepSeek, Grok, Meta Llama).
-     - **Pollinations OpenAI-Compatible (`https://text.pollinations.ai/openai`)**: Dibatasi maksimal 1 permintaan per giliran dengan cooldown otomatis jika `402/429`.
-     - **LLM7 Free API (`https://api.llm7.io/v1/chat/completions`)**: Kuota token gratis per IP pengguna.
-     - **Siputzx DuckAI (`https://api.siputzx.my.id/api/ai/duckai`)**: Cadangan gratis multi-model (`gpt-4o-mini`, `claude-3-5-haiku-latest`, `Llama-4-Scout`, `Mistral-Small-24B`).
+     - `https://api.llm7.io/v1/models` (daftar model aktif gateway gratis terverifikasi `!usage_based_only`).
+   - **Jalur AI Gratis Tanpa API Key (Fastest-First SSE Streaming & Failover Anti-Limit)**:
+     - **Hugging Face Gradio SSE Spaces (`*.hf.space/gradio_api/call/*`)**: 5 space CORS-native bebas API key (`gemma-3n-e4b-it`, `llama-3.2-3b-instruct`, `gemma-4-12b-it`, `gemma-2-9b-it`, `llama-2-7b-chat`) dengan kuota harian ZeroGPU per IP pengguna dan streaming SSE real-time.
+     - **LLM7 Free SSE API (`https://api.llm7.io/v1/chat/completions`, `stream: true`)**: Dibatasi ketat **maks 1 permintaan per giliran** agar tidak memicu *burst 429*.
+     - **Puter.js Client SDK (`https://js.puter.com/v2/`, `stream: true`)**: Kuota gratis multi-model terpisah per akun browser pengguna (opsional 1-klik).
    - **Multi-Provider BYOK Direct Endpoints (Opsional, 100% Lokal di Browser Pengguna)**:
      - Google Gemini (`generativelanguage.googleapis.com/v1beta`), OpenAI (`api.openai.com/v1`), DeepSeek (`api.deepseek.com`), Anthropic Claude (`api.anthropic.com/v1` + `anthropic-dangerous-direct-browser-access: true`), xAI Grok (`api.x.ai/v1`), Groq (`api.groq.com/openai/v1`), OpenRouter (`openrouter.ai/api/v1`), Mistral (`api.mistral.ai/v1`), Qwen/DashScope (`dashscope-intl.aliyuncs.com/compatible-mode/v1`), dan Custom OpenAI-Compatible Base URL.
 2. **Drama China Hub (`v50–v57`)**:

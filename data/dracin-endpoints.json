@@ -1,22 +1,11 @@
 {
-  "version": "57.0.0",
-  "updatedAt": "2026-11-20T09:00:00Z",
+  "version": "56.0.0",
+  "updatedAt": "2026-11-20T06:00:00Z",
   "dailymotionPlayerId": "x8lr5",
-  "notes": "Self-updating Drama China multi-mirror API registry with Sansekai/SekaiDrama anti-rate-limit circuit breaker and automatic multi-API failover. Adding extra Sansekai-compatible mirror URLs to sansekai.mirrors automatically rotates across them without code edits.",
+  "notes": "Self-updating Drama China multi-mirror API registry with Sansekai/SekaiDrama automatic VIP failover. Updating this JSON immediately heals endpoint changes across all users without rewriting app code.",
   "sansekai": {
     "baseUrl": "https://api.sansekai.my.id/api",
     "webBaseUrl": "https://drama.sansekai.my.id",
-    "minRequestSpacingMs": 1400,
-    "rateLimitCooldownMs": 90000,
-    "forbiddenCooldownMs": 180000,
-    "mirrors": [
-      {
-        "id": "sansekai-primary",
-        "label": "Sansekai Primary API",
-        "baseUrl": "https://api.sansekai.my.id/api",
-        "priority": 1
-      }
-    ],
     "supportedPlatforms": [
       "dramabox",
       "melolo",
