@@ -224,9 +224,13 @@ test('Manifest AI v64 strictly censors leaked owner WhatsApp, phones, socials, a
   assert.ok(safe.includes('2026'));
 });
 
-test('Manifest AI v64 natural multilingual voice catalog & code-switching engine handles mixed Indonesian/English seamlessly', () => {
-  // Catalog must provide rich Male & Female voices across many languages including Indonesian
+test('Manifest AI v65 voice catalog has zero duplicates, keeps 1 consistent speaker across mixed Indo/English, and speaks conversational Indonesian', () => {
+  // 1. Catalog must have 25+ voices with 100% unique edgeVoice IDs and zero metallic pitch shifts
   assert.ok(MANIFEST_AI_VOICE_CATALOG.length >= 25);
+  const edgeVoices = MANIFEST_AI_VOICE_CATALOG.map((v) => v.edgeVoice);
+  assert.equal(new Set(edgeVoices).size, edgeVoices.length, 'Every voice profile MUST use a unique neural speaker');
+  assert.ok(MANIFEST_AI_VOICE_CATALOG.every((v) => v.defaultPitch === 0), 'Edge voices should use pitch 0 for natural timbre');
+
   const males = MANIFEST_AI_VOICE_CATALOG.filter((v) => v.gender === 'male');
   const females = MANIFEST_AI_VOICE_CATALOG.filter((v) => v.gender === 'female');
   const idVoices = MANIFEST_AI_VOICE_CATALOG.filter((v) => v.baseLang === 'id');
@@ -237,41 +241,54 @@ test('Manifest AI v64 natural multilingual voice catalog & code-switching engine
   assert.equal(getVoiceProfileById('id-gadis').edgeVoice, 'id-ID-GadisNeural - id-ID (Female)');
   assert.equal(getVoiceProfileById('id-ardi').edgeVoice, 'id-ID-ArdiNeural - id-ID (Male)');
 
-  // Exact user code-switching test case:
-  // "pak salim membeli buku The King Of Madagascar and Island di perpustakaan yang melelang buku"
+  // Legacy removed pitch-clone IDs migrate cleanly to distinct real neural voices
+  assert.equal(getVoiceProfileById('id-gadis-santai').id, 'multi-emma');
+  assert.equal(getVoiceProfileById('id-ardi-tenang').id, 'multi-andrew');
+
+  // 2. Mixed Indonesian + English stays in ONE unified segment (NEVER swapped mid-sentence!)
   const mixedSentence = 'pak salim membeli buku The King Of Madagascar and Island di perpustakaan yang melelang buku';
-  const segments = segmentMultilingualSpeech(mixedSentence, 'id', { codeSwitch: true });
-  assert.deepEqual(segments, [
-    { lang: 'id', text: 'pak salim membeli buku' },
-    { lang: 'en', text: 'The King Of Madagascar and Island' },
-    { lang: 'id', text: 'di perpustakaan yang melelang buku' },
-  ]);
+  const segments = segmentMultilingualSpeech(mixedSentence, 'multi', { codeSwitch: true, isMultilingualVoice: true });
+  assert.equal(segments.length, 1);
+  assert.equal(segments[0].lang, 'id+en');
+  assert.equal(segments[0].text, mixedSentence);
 
-  // Gender consistency across language switches:
-  // Female Indonesian voice -> English segment uses Female AvaMultilingualNeural
-  const femaleIdSeg = resolveVoiceForSegment('id-gadis', 'id', true);
-  const femaleEnSeg = resolveVoiceForSegment('id-gadis', 'en', true);
-  assert.equal(femaleIdSeg.edgeVoice, 'id-ID-GadisNeural - id-ID (Female)');
-  assert.equal(femaleEnSeg.edgeVoice, 'en-US-AvaMultilingualNeural - en-US (Female)');
-  assert.equal(femaleEnSeg.gender, 'female');
+  // Also keeps mixed Latin unified even on Latin-only native voices like id-gadis / en-sonia
+  const segmentsId = segmentMultilingualSpeech(mixedSentence, 'id', { codeSwitch: true, isMultilingualVoice: false });
+  assert.equal(segmentsId.length, 1);
+  assert.equal(segmentsId[0].text, mixedSentence);
 
-  // Male Indonesian voice -> English segment uses Male AndrewMultilingualNeural
-  const maleIdSeg = resolveVoiceForSegment('id-ardi', 'id', true);
-  const maleEnSeg = resolveVoiceForSegment('id-ardi', 'en', true);
-  assert.equal(maleIdSeg.edgeVoice, 'id-ID-ArdiNeural - id-ID (Male)');
-  assert.equal(maleEnSeg.edgeVoice, 'en-US-AndrewMultilingualNeural - en-US (Male)');
-  assert.equal(maleEnSeg.gender, 'male');
+  // 3. Switching voice model ALWAYS changes the resolved Edge speaker (never overwritten!)
+  const pickedModels = ['multi-ava', 'multi-emma', 'multi-andrew', 'id-gadis', 'id-ardi', 'en-sonia', 'ms-yasmin'];
+  const resolvedEdges = pickedModels.map((id) => resolveVoiceForSegment(id, 'id+en', true).edgeVoice);
+  assert.equal(new Set(resolvedEdges).size, pickedModels.length, 'Every selected model resolves to its own distinct speaker');
+  assert.equal(resolveVoiceForSegment('multi-emma', 'id', true).edgeVoice, 'en-US-EmmaMultilingualNeural - en-US (Female)');
+  assert.equal(resolveVoiceForSegment('multi-andrew', 'id+en', true).edgeVoice, 'en-US-AndrewMultilingualNeural - en-US (Male)');
+  assert.equal(resolveVoiceForSegment('id-gadis', 'id+en', true).edgeVoice, 'id-ID-GadisNeural - id-ID (Female)');
+  assert.equal(resolveVoiceForSegment('id-ardi', 'en', true).edgeVoice, 'id-ID-ArdiNeural - id-ID (Male)');
 
-  // Non-Latin code-switching (Indonesian + Japanese + Arabic)
-  const triSegments = segmentMultilingualSpeech('Halo teman こんにちは dunia مرحبا semuanya', 'id', { codeSwitch: true });
-  assert.ok(triSegments.some((s) => s.lang === 'id'));
+  // 4. Non-Latin handling: V2 Multilingual preserves same voice; Latin-only voices borrow matching-gender native reader
+  assert.equal(resolveVoiceForSegment('multi-ava', 'ja', true).id, 'multi-ava');
+  assert.equal(resolveVoiceForSegment('id-gadis', 'ja', true).id, 'ja-nanami');
+  assert.equal(resolveVoiceForSegment('id-ardi', 'ar', true).id, 'ar-hamed');
+
+  const triSegments = segmentMultilingualSpeech('Halo teman こんにちは dunia مرحبا semuanya', 'id', {
+    codeSwitch: true,
+    isMultilingualVoice: false,
+  });
   assert.ok(triSegments.some((s) => s.lang === 'ja' && s.text.includes('こんにちは')));
   assert.ok(triSegments.some((s) => s.lang === 'ar' && s.text.includes('مرحبا')));
 
-  // cleanTextForSpeech strips markdown & masks sensitive owner numbers cleanly before TTS
-  const spoken = cleanTextForSpeech('**Halo!** Kontak WA +62 851-2293-6027 dan ```js\nconsole.log(1)\n```', liveCatalog);
+  // 5. cleanTextForSpeech expands Rupiah, percentages, slashes, & abbreviations naturally + masks owner contacts
+  const spoken = cleanTextForSpeech(
+    '**Halo!** Paket Rp25.000 diskon 50% (gratis/berbayar), fitur editing, dll. Kontak WA +62 851-2293-6027 dan ```js\nconsole.log(1)\n```',
+    liveCatalog
+  );
   assert.equal(spoken.includes('**'), false);
   assert.equal(spoken.includes('851-2293-6027'), false);
+  assert.ok(spoken.includes('25 ribu rupiah'));
+  assert.ok(spoken.includes('50 persen'));
+  assert.ok(spoken.includes('gratis atau berbayar'));
+  assert.ok(spoken.includes('dan lain-lain'));
   assert.ok(spoken.includes('nomor yang disensor'));
   assert.ok(spoken.includes('Potongan kode tersedia di layar'));
 });

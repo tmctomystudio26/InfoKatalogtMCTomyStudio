@@ -21,11 +21,11 @@
       rel="stylesheet"
     />
 
-    <link rel="stylesheet" href="./css/tokens.css?v=64" />
-    <link rel="stylesheet" href="./css/styles.css?v=64" />
+    <link rel="stylesheet" href="./css/tokens.css?v=65" />
+    <link rel="stylesheet" href="./css/styles.css?v=65" />
     <script>
       (function () {
-        var CURRENT_CACHE = 'manifestudio-cache-v64';
+        var CURRENT_CACHE = 'manifestudio-cache-v65';
         if ('caches' in window) {
           caches.keys().then(function (keys) {
             keys.forEach(function (k) {
@@ -34,7 +34,7 @@
           });
         }
         if ('serviceWorker' in navigator) {
-          navigator.serviceWorker.register('./sw.js?v=64').then(function (reg) {
+          navigator.serviceWorker.register('./sw.js?v=65').then(function (reg) {
             reg.update();
           }).catch(function () {});
         }

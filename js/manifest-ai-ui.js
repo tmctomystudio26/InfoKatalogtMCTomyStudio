@@ -1,7 +1,7 @@
 /**
- * Manifest AI — Chat Workspace UI Controller (v64)
+ * Manifest AI — Chat Workspace UI Controller (v65)
  * Multi-Model AI Ensemble, Fullscreen Workspace Mode, Natural Multilingual &
- * Code-Switching Neural Voice Reader (Male & Female), Strict Owner Privacy Guard,
+ * Single-Speaker Voice Reader (29 Unique Male & Female Neural Voices), Strict Owner Privacy Guard,
  * Real-Time Auto-Upgrading Model Registry, Multi-Provider BYOK Vault & Persistent History.
  */
 
@@ -23,7 +23,7 @@ import {
   renderMarkdownSafe,
   upsertByokKey,
   upsertChatThread,
-} from './manifest-ai-logic.js?v=64';
+} from './manifest-ai-logic.js?v=65';
 import {
   getCachedModelRegistry,
   isPuterAiReady,
@@ -38,8 +38,8 @@ import {
   signInPuterSdk,
   syncLiveModelRegistry,
   testByokKeyConnection,
-} from './manifest-ai.js?v=64';
-import { createManifestAiVoicePlayer } from './manifest-ai-voice.js?v=64';
+} from './manifest-ai.js?v=65';
+import { createManifestAiVoicePlayer } from './manifest-ai-voice.js?v=65';
 
 const STARTER_PROMPTS = Object.freeze([
   {
@@ -173,6 +173,7 @@ export function createManifestAiController({ onToast = () => {} } = {}) {
       isLoading: false,
       isPlaying: false,
       langBadge: '',
+      voiceName: '',
       genderFilter: 'all',
       langFilter: 'all',
     },
@@ -296,6 +297,7 @@ export function createManifestAiController({ onToast = () => {} } = {}) {
     state.voice.isLoading = nextVoice.isLoading;
     state.voice.isPlaying = nextVoice.isPlaying;
     state.voice.langBadge = nextVoice.langBadge || '';
+    state.voice.voiceName = nextVoice.voiceName || '';
     if (mounted) {
       // Update speak buttons & playback bar smoothly without losing input focus!
       syncVoiceControlsInDom();
@@ -339,11 +341,12 @@ export function createManifestAiController({ onToast = () => {} } = {}) {
       bar.hidden = !showBar;
       if (showBar) {
         const vp = getVoiceProfileById(state.prefs.voiceId);
+        const speakerName = state.voice.voiceName || vp.name;
         const labelEl = bar.querySelector('[data-mai-voice-bar-label]');
         if (labelEl) {
           labelEl.textContent = state.voice.isLoading
-            ? `Menyiapkan suara ${vp.name}...`
-            : `Membacakan (${vp.name}${state.voice.langBadge ? ` · ${state.voice.langBadge}` : ''})`;
+            ? `Menyiapkan suara ${speakerName}...`
+            : `Membacakan (${speakerName}${state.voice.langBadge ? ` · ${state.voice.langBadge}` : ''})`;
         }
       }
     }
@@ -380,30 +383,30 @@ export function createManifestAiController({ onToast = () => {} } = {}) {
     }
     const vp = getVoiceProfileById(voiceId);
     const sampleByGroup = {
-      id: 'Halo! Pak Salim membeli buku The King Of Madagascar and Island di perpustakaan yang melelang buku.',
-      multi: 'Halo! Saya Manifest AI. Pak Salim membeli buku The King Of Madagascar and Island di perpustakaan.',
-      en: 'Hello! Welcome to Manifest AI. Natural voice switching works smoothly for English and Indonesian.',
-      ms: 'Helo! Selamat datang ke Manifest AI dengan gaya pertuturan semula jadi.',
+      id: `Halo! Saya ${vp.name}. Pak Salim membeli buku, The King Of Madagascar and Island, di perpustakaan yang melelang buku.`,
+      multi: `Halo! Saya ${vp.name}. Pak Salim membeli buku, The King Of Madagascar and Island, di perpustakaan yang melelang buku.`,
+      en: `Hello, I'm ${vp.name}. Pak Salim bought The King Of Madagascar and Island at a relaxed pace with natural voice flow.`,
+      ms: `Helo, saya ${vp.name}. Selamat datang ke Manifest AI dengan gaya pertuturan yang santai dan semula jadi.`,
       asia:
         vp.baseLang === 'ja'
-          ? 'こんにちは！Manifest AIへようこそ。自然な声でお話しします。'
+          ? `こんにちは、${vp.name}です。Manifest AIへようこそ。自然な声でお話しします。`
           : vp.baseLang === 'ko'
-            ? '안녕하세요! Manifest AI입니다. 자연스러운 목소리로 읽어드립니다.'
-            : '你好！欢迎使用 Manifest AI，我可以为您自然朗读回答。',
+            ? `안녕하세요, 저는 ${vp.name}입니다. Manifest AI와 함께 자연스럽게 대화해 보세요.`
+            : `你好，我是${vp.name}。欢迎使用 Manifest AI，我可以为您自然朗读回答。`,
       ar: 'مرحباً بك في مانيفست إيه آي، أقرأ لك الإجابات بصوت طبيعي وواضح.',
       eu:
         vp.baseLang === 'fr'
-          ? 'Bonjour ! Bienvenue sur Manifest AI avec une voix naturelle.'
+          ? `Bonjour, je suis ${vp.name}. Bienvenue sur Manifest AI, pak Salim membeli buku The King Of Madagascar.`
           : vp.baseLang === 'es'
-            ? '¡Hola! Bienvenido a Manifest AI con una voz muy natural.'
-            : 'Hallo! Willkommen bei Manifest AI mit einer natürlichen Stimme.',
+            ? `¡Hola! Soy ${vp.name}. Bienvenido a Manifest AI con una voz muy natural.`
+            : `Hallo, ich bin ${vp.name}. Willkommen bei Manifest AI mit einer natürlichen Stimme.`,
     };
-    const sampleText = sampleByGroup[vp.langGroup] || sampleByGroup.id;
+    const sampleText = sampleByGroup[vp.langGroup] || sampleByGroup.multi;
     voicePlayer.play({
       msgId: previewKey,
       text: sampleText,
       catalogData: state.catalogData,
-      voiceId,
+      voiceId: vp.id,
       rate: state.prefs.voiceRate,
       style: state.prefs.voiceStyle,
       codeSwitch: state.prefs.voiceCodeSwitch,
@@ -934,9 +937,9 @@ export function createManifestAiController({ onToast = () => {} } = {}) {
         <div class="mai-modal mai-voice-modal" role="dialog" aria-modal="true" aria-labelledby="mai-voice-modal-title">
           <div class="mai-modal-head">
             <div>
-              <h3 id="mai-voice-modal-title" class="mai-modal-title">Mode Suara AI Natural & Campuran Bahasa</h3>
+              <h3 id="mai-voice-modal-title" class="mai-modal-title">Mode Suara AI Natural (1 Suara Konsisten)</h3>
               <p class="mai-modal-sub">
-                Suara aktif: <strong>${escapeAiHtml(selectedProfile.label)}</strong> (${selectedProfile.gender === 'male' ? 'Pria' : 'Wanita'}) · Pelafalan alami Indonesia, Inggris & multibahasa
+                Suara aktif: <strong>${escapeAiHtml(selectedProfile.label)}</strong> · ${MANIFEST_AI_VOICE_CATALOG.length} suara neural unik Pria & Wanita
               </p>
             </div>
             <button type="button" class="mai-icon-btn" data-mai-action="close-modal" aria-label="Tutup pengaturan suara">
@@ -948,7 +951,7 @@ export function createManifestAiController({ onToast = () => {} } = {}) {
             <div class="mai-voice-settings-grid">
               <label class="mai-check-row">
                 <input type="checkbox" id="mai-voice-codeswitch" ${state.prefs.voiceCodeSwitch ? 'checked' : ''} />
-                <span><strong>Deteksi Campuran Bahasa Otomatis</strong> — kata Indonesia dilafalkan bergaya Indonesia & kata Inggris/asing otomatis dilafalkan bergaya penutur asli (gender tetap selaras).</span>
+                <span><strong>1 Suara Konsisten Campuran Bahasa</strong> — kalimat campuran Indonesia & Inggris tetap dibacakan oleh 1 suara yang sama tanpa berganti orang; aksara Arab/Jepang/Korea/Mandarin tetap dilafalkan alami.</span>
               </label>
 
               <label class="mai-check-row">
@@ -988,10 +991,10 @@ export function createManifestAiController({ onToast = () => {} } = {}) {
               </div>
 
               <select id="mai-voice-lang-filter" class="mai-select mai-voice-lang-select" aria-label="Filter bahasa suara">
-                <option value="all" ${state.voice.langFilter === 'all' ? 'selected' : ''}>Semua Bahasa</option>
+                <option value="all" ${state.voice.langFilter === 'all' ? 'selected' : ''}>Semua Bahasa (${MANIFEST_AI_VOICE_CATALOG.length})</option>
+                <option value="multi" ${state.voice.langFilter === 'multi' ? 'selected' : ''}>Multibahasa V2 (Fasih Indo & Inggris)</option>
                 <option value="id" ${state.voice.langFilter === 'id' ? 'selected' : ''}>Indonesia Asli</option>
-                <option value="multi" ${state.voice.langFilter === 'multi' ? 'selected' : ''}>Multibahasa Natural</option>
-                <option value="en" ${state.voice.langFilter === 'en' ? 'selected' : ''}>Inggris (US & UK)</option>
+                <option value="en" ${state.voice.langFilter === 'en' ? 'selected' : ''}>Inggris (US, UK & AU)</option>
                 <option value="ms" ${state.voice.langFilter === 'ms' ? 'selected' : ''}>Melayu</option>
                 <option value="asia" ${state.voice.langFilter === 'asia' ? 'selected' : ''}>Jepang, Korea & Mandarin</option>
                 <option value="ar" ${state.voice.langFilter === 'ar' ? 'selected' : ''}>Arab</option>
@@ -1392,8 +1395,8 @@ export function createManifestAiController({ onToast = () => {} } = {}) {
             <span class="mai-voice-bar-text" data-mai-voice-bar-label>
               ${
                 state.voice.isLoading
-                  ? `Menyiapkan suara ${escapeAiHtml(activeVoice.name)}...`
-                  : `Membacakan (${escapeAiHtml(activeVoice.name)}${state.voice.langBadge ? ` · ${escapeAiHtml(state.voice.langBadge)}` : ''})`
+                  ? `Menyiapkan suara ${escapeAiHtml(state.voice.voiceName || activeVoice.name)}...`
+                  : `Membacakan (${escapeAiHtml(state.voice.voiceName || activeVoice.name)}${state.voice.langBadge ? ` · ${escapeAiHtml(state.voice.langBadge)}` : ''})`
               }
             </span>
             <button type="button" class="mai-mini-btn" data-mai-action="stop-voice">Berhenti</button>
@@ -1813,9 +1816,12 @@ export function createManifestAiController({ onToast = () => {} } = {}) {
       btn.addEventListener('click', () => {
         const vid = btn.getAttribute('data-mai-select-voice');
         if (!vid) return;
-        state.prefs.voiceId = vid;
-        persistPrefs();
+        if (state.voice.isLoading || state.voice.isPlaying) {
+          stopVoicePlayback();
+        }
         const vp = getVoiceProfileById(vid);
+        state.prefs.voiceId = vp.id;
+        persistPrefs();
         render();
         onToast(`Suara diubah ke ${vp.label}.`);
       });

@@ -1697,481 +1697,590 @@ export function renderMarkdownSafe(markdown = '') {
  * Natural Human Neural Voice Catalog & Mixed-Language (Code-Switching) Engine
  * ============================================================================
  * Curated Microsoft Edge Neural TTS voices (Male & Female across Indonesian,
- * Multilingual, English US/UK/AU, Malay, Japanese, Korean, Mandarin, Arabic,
- * French, German, Spanish) + intelligent Indo/English/foreign code-switching
- * segmentation so mixed sentences are pronounced naturally per language.
+ * - 29+ 100%-unique neural human voices (Azure V2 MultilingualNeural + Indonesian Native + English + Asian + Arabic + European)
+ * - Single-speaker consistency: mixed Indonesian & English sentences ALWAYS keep the user's chosen voice
+ *   without mid-sentence speaker swaps or choppy HTTP splice pauses
+ * - Conversational spoken Indonesian normalization (Rupiah, %, abbreviations, smooth breathing punctuation)
  */
+const LEGACY_VOICE_ALIASES = Object.freeze({
+  'id-gadis-santai': 'multi-emma',
+  'id-ardi-tenang': 'multi-andrew',
+});
+
 export const MANIFEST_AI_VOICE_CATALOG = Object.freeze([
-  // Indonesian Native Neural Voices (Male & Female)
+  // Azure V2 Ultra-Natural Multilingual Neural Voices (1 single voice speaks fluent Indonesian + English + 40+ languages!)
+  {
+    id: 'multi-ava',
+    name: 'Ava V2',
+    label: 'Ava — Multibahasa Natural (Wanita)',
+    lang: 'en-US',
+    baseLang: 'multi',
+    langGroup: 'multi',
+    langLabel: 'Multibahasa (Indo + EN)',
+    gender: 'female',
+    isMultilingual: true,
+    style: 'Hangat, luwes seperti manusia asli, fasih Indo & Inggris dalam 1 suara',
+    edgeVoice: 'en-US-AvaMultilingualNeural - en-US (Female)',
+    tiktokVoice: 'en_female_emotional',
+    puterOpenAiVoice: 'coral',
+    defaultPitch: 0,
+    defaultRateDelta: 0,
+    fallbackPitch: 2,
+  },
+  {
+    id: 'multi-andrew',
+    name: 'Andrew V2',
+    label: 'Andrew — Multibahasa Natural (Pria)',
+    lang: 'en-US',
+    baseLang: 'multi',
+    langGroup: 'multi',
+    langLabel: 'Multibahasa (Indo + EN)',
+    gender: 'male',
+    isMultilingual: true,
+    style: 'Pria hangat gaya podcast modern, fasih Indo & Inggris dalam 1 suara',
+    edgeVoice: 'en-US-AndrewMultilingualNeural - en-US (Male)',
+    tiktokVoice: 'en_us_006',
+    puterOpenAiVoice: 'ash',
+    defaultPitch: 0,
+    defaultRateDelta: 0,
+    fallbackPitch: -2,
+  },
+  {
+    id: 'multi-emma',
+    name: 'Emma V2',
+    label: 'Emma — Multibahasa Lembut (Wanita)',
+    lang: 'en-US',
+    baseLang: 'multi',
+    langGroup: 'multi',
+    langLabel: 'Multibahasa (Indo + EN)',
+    gender: 'female',
+    isMultilingual: true,
+    style: 'Lembut, jernih, intonasi santai modern untuk obrolan harian',
+    edgeVoice: 'en-US-EmmaMultilingualNeural - en-US (Female)',
+    tiktokVoice: 'en_us_002',
+    puterOpenAiVoice: 'nova',
+    defaultPitch: 0,
+    defaultRateDelta: 0,
+    fallbackPitch: 3,
+  },
+  {
+    id: 'multi-brian',
+    name: 'Brian V2',
+    label: 'Brian — Multibahasa Tegas (Pria)',
+    lang: 'en-US',
+    baseLang: 'multi',
+    langGroup: 'multi',
+    langLabel: 'Multibahasa (Indo + EN)',
+    gender: 'male',
+    isMultilingual: true,
+    style: 'Mantap, jelas, gaya presenter cerdas untuk penjelasan detail',
+    edgeVoice: 'en-US-BrianMultilingualNeural - en-US (Male)',
+    tiktokVoice: 'en_us_009',
+    puterOpenAiVoice: 'echo',
+    defaultPitch: 0,
+    defaultRateDelta: 0,
+    fallbackPitch: -1,
+  },
+  {
+    id: 'multi-william',
+    name: 'William V2',
+    label: 'William — Multibahasa Santai (Pria)',
+    lang: 'en-AU',
+    baseLang: 'multi',
+    langGroup: 'multi',
+    langLabel: 'Multibahasa (Indo + EN)',
+    gender: 'male',
+    isMultilingual: true,
+    style: 'Santai berkarakter dengan sentuhan aksen Australia halus',
+    edgeVoice: 'en-AU-WilliamMultilingualNeural - en-AU (Male)',
+    tiktokVoice: 'en_au_002',
+    puterOpenAiVoice: 'fable',
+    defaultPitch: 0,
+    defaultRateDelta: 0,
+    fallbackPitch: -1,
+  },
+  {
+    id: 'multi-thalita',
+    name: 'Thalita V2',
+    label: 'Thalita — Multibahasa Cerah (Wanita)',
+    lang: 'pt-BR',
+    baseLang: 'multi',
+    langGroup: 'multi',
+    langLabel: 'Multibahasa (Indo + EN)',
+    gender: 'female',
+    isMultilingual: true,
+    style: 'Ekspresif, ramah, ritme bicara hidup dan bersahabat',
+    edgeVoice: 'pt-BR-ThalitaMultilingualNeural - pt-BR (Female)',
+    tiktokVoice: 'en_us_001',
+    puterOpenAiVoice: 'sage',
+    defaultPitch: 0,
+    defaultRateDelta: 0,
+    fallbackPitch: 2,
+  },
+  {
+    id: 'multi-giuseppe',
+    name: 'Giuseppe V2',
+    label: 'Giuseppe — Multibahasa Narator (Pria)',
+    lang: 'it-IT',
+    baseLang: 'multi',
+    langGroup: 'multi',
+    langLabel: 'Multibahasa (Indo + EN)',
+    gender: 'male',
+    isMultilingual: true,
+    style: 'Berwibawa, hangat, cocok untuk narasi & ringkasan panjang',
+    edgeVoice: 'it-IT-GiuseppeMultilingualNeural - it-IT (Male)',
+    tiktokVoice: 'en_male_narration',
+    puterOpenAiVoice: 'verse',
+    defaultPitch: 0,
+    defaultRateDelta: 0,
+    fallbackPitch: -2,
+  },
+
+  // Indonesian Native Neural Voices (100% Authentic Local Accent)
   {
     id: 'id-gadis',
     name: 'Gadis',
-    label: 'Gadis — Indonesia Natural',
+    label: 'Gadis — Indonesia Asli (Wanita)',
     lang: 'id-ID',
     baseLang: 'id',
     langGroup: 'id',
-    langLabel: 'Indonesia',
+    langLabel: 'Indonesia Asli',
     gender: 'female',
-    style: 'Hangat, luwes, pelafalan Indonesia asli',
+    isMultilingual: false,
+    style: 'Pelafalan logat Indonesia asli yang ramah & konsisten',
     edgeVoice: 'id-ID-GadisNeural - id-ID (Female)',
     tiktokVoice: 'id_001',
+    puterOpenAiVoice: 'nova',
     defaultPitch: 0,
     defaultRateDelta: 0,
+    fallbackPitch: 1,
   },
   {
     id: 'id-ardi',
     name: 'Ardi',
-    label: 'Ardi — Indonesia Natural',
+    label: 'Ardi — Indonesia Asli (Pria)',
     lang: 'id-ID',
     baseLang: 'id',
     langGroup: 'id',
-    langLabel: 'Indonesia',
+    langLabel: 'Indonesia Asli',
     gender: 'male',
-    style: 'Berwibawa, santai, pelafalan Indonesia asli',
+    isMultilingual: false,
+    style: 'Pria Indonesia berwibawa & tenang, pelafalan lokal autentik',
     edgeVoice: 'id-ID-ArdiNeural - id-ID (Male)',
     tiktokVoice: 'id_001',
+    puterOpenAiVoice: 'onyx',
     defaultPitch: 0,
     defaultRateDelta: 0,
+    fallbackPitch: -2,
   },
+
+  // English Native Neural Voices (US / UK / AU) — distinct speakers!
   {
-    id: 'id-gadis-santai',
-    name: 'Nadia',
-    label: 'Nadia — Indonesia Ramah & Cerah',
-    lang: 'id-ID',
-    baseLang: 'id',
-    langGroup: 'id',
-    langLabel: 'Indonesia',
-    gender: 'female',
-    style: 'Ceria, ekspresif, cocok untuk obrolan harian',
-    edgeVoice: 'id-ID-GadisNeural - id-ID (Female)',
-    tiktokVoice: 'id_001',
-    defaultPitch: 3,
-    defaultRateDelta: 4,
-  },
-  {
-    id: 'id-ardi-tenang',
-    name: 'Raka',
-    label: 'Raka — Indonesia Tenang & Narator',
-    lang: 'id-ID',
-    baseLang: 'id',
-    langGroup: 'id',
-    langLabel: 'Indonesia',
-    gender: 'male',
-    style: 'Dalam, tenang, cocok untuk penjelasan panjang',
-    edgeVoice: 'id-ID-ArdiNeural - id-ID (Male)',
-    tiktokVoice: 'id_001',
-    defaultPitch: -3,
-    defaultRateDelta: -3,
-  },
-  // Ultra-Natural Multilingual Neural Voices (Female & Male)
-  {
-    id: 'multi-ava',
-    name: 'Ava Multilingual',
-    label: 'Ava — Multibahasa Natural',
-    lang: 'en-US',
-    baseLang: 'multi',
-    langGroup: 'multi',
-    langLabel: 'Multibahasa',
-    gender: 'female',
-    style: 'Sangat natural seperti manusia, ekspresif lintas bahasa',
-    edgeVoice: 'en-US-AvaMultilingualNeural - en-US (Female)',
-    tiktokVoice: 'en_us_001',
-    defaultPitch: 0,
-    defaultRateDelta: 0,
-  },
-  {
-    id: 'multi-andrew',
-    name: 'Andrew Multilingual',
-    label: 'Andrew — Multibahasa Natural',
-    lang: 'en-US',
-    baseLang: 'multi',
-    langGroup: 'multi',
-    langLabel: 'Multibahasa',
-    gender: 'male',
-    style: 'Pria natural hangat, gaya podcast & percakapan',
-    edgeVoice: 'en-US-AndrewMultilingualNeural - en-US (Male)',
-    tiktokVoice: 'en_us_006',
-    defaultPitch: 0,
-    defaultRateDelta: 0,
-  },
-  {
-    id: 'multi-emma',
-    name: 'Emma Multilingual',
-    label: 'Emma — Multibahasa Lembut',
-    lang: 'en-US',
-    baseLang: 'multi',
-    langGroup: 'multi',
-    langLabel: 'Multibahasa',
-    gender: 'female',
-    style: 'Lembut, jernih, intonasi kasual modern',
-    edgeVoice: 'en-US-EmmaMultilingualNeural - en-US (Female)',
-    tiktokVoice: 'en_us_002',
-    defaultPitch: 0,
-    defaultRateDelta: 0,
-  },
-  {
-    id: 'multi-brian',
-    name: 'Brian Multilingual',
-    label: 'Brian — Multibahasa Profesional',
-    lang: 'en-US',
-    baseLang: 'multi',
-    langGroup: 'multi',
-    langLabel: 'Multibahasa',
-    gender: 'male',
-    style: 'Mantap, jelas, gaya presenter & asisten cerdas',
-    edgeVoice: 'en-US-BrianMultilingualNeural - en-US (Male)',
-    tiktokVoice: 'en_us_009',
-    defaultPitch: 0,
-    defaultRateDelta: 0,
-  },
-  {
-    id: 'multi-william',
-    name: 'William Multilingual',
-    label: 'William — Multibahasa Australia',
-    lang: 'en-AU',
-    baseLang: 'multi',
-    langGroup: 'multi',
-    langLabel: 'Multibahasa',
-    gender: 'male',
-    style: 'Santai berkarakter dengan aksen Australia halus',
-    edgeVoice: 'en-AU-WilliamMultilingualNeural - en-AU (Male)',
-    tiktokVoice: 'en_au_002',
-    defaultPitch: 0,
-    defaultRateDelta: 0,
-  },
-  // English Native Neural Voices (US / UK / AU)
-  {
-    id: 'en-jenny',
-    name: 'Jenny (US)',
-    label: 'Jenny — Inggris Amerika',
+    id: 'en-aria',
+    name: 'Aria (US)',
+    label: 'Aria — Inggris Amerika Ekspresif (Wanita)',
     lang: 'en-US',
     baseLang: 'en',
     langGroup: 'en',
     langLabel: 'Inggris (US)',
     gender: 'female',
-    style: 'Ramah, komunikatif, pelafalan US standar',
-    edgeVoice: 'en-US-JennyNeural - en-US (Female)',
-    tiktokVoice: 'en_us_001',
+    isMultilingual: false,
+    style: 'Dinamis, ekspresif, sangat komunikatif untuk obrolan cepat',
+    edgeVoice: 'en-US-AriaNeural - en-US (Female)',
+    tiktokVoice: 'en_female_emotional',
+    puterOpenAiVoice: 'coral',
     defaultPitch: 0,
     defaultRateDelta: 0,
+    fallbackPitch: 2,
+  },
+  {
+    id: 'en-jenny',
+    name: 'Jenny (US)',
+    label: 'Jenny — Inggris Amerika Natural (Wanita)',
+    lang: 'en-US',
+    baseLang: 'en',
+    langGroup: 'en',
+    langLabel: 'Inggris (US)',
+    gender: 'female',
+    isMultilingual: false,
+    style: 'Ramah, jernih, pelafalan Amerika standar yang bersahabat',
+    edgeVoice: 'en-US-JennyNeural - en-US (Female)',
+    tiktokVoice: 'en_us_001',
+    puterOpenAiVoice: 'shimmer',
+    defaultPitch: 0,
+    defaultRateDelta: 0,
+    fallbackPitch: 1,
+  },
+  {
+    id: 'en-michelle',
+    name: 'Michelle (US)',
+    label: 'Michelle — Inggris Amerika Lembut (Wanita)',
+    lang: 'en-US',
+    baseLang: 'en',
+    langGroup: 'en',
+    langLabel: 'Inggris (US)',
+    gender: 'female',
+    isMultilingual: false,
+    style: 'Lembut, profesional, cocok untuk tutorial & ulasan',
+    edgeVoice: 'en-US-MichelleNeural - en-US (Female)',
+    tiktokVoice: 'en_us_002',
+    puterOpenAiVoice: 'sage',
+    defaultPitch: 0,
+    defaultRateDelta: 0,
+    fallbackPitch: 2,
   },
   {
     id: 'en-guy',
     name: 'Guy (US)',
-    label: 'Guy — Inggris Amerika',
+    label: 'Guy — Inggris Amerika Santai (Pria)',
     lang: 'en-US',
     baseLang: 'en',
     langGroup: 'en',
     langLabel: 'Inggris (US)',
     gender: 'male',
-    style: 'Pria Amerika modern, lugas & natural',
+    isMultilingual: false,
+    style: 'Pria Amerika modern, lugas, dan kasual',
     edgeVoice: 'en-US-GuyNeural - en-US (Male)',
     tiktokVoice: 'en_us_006',
+    puterOpenAiVoice: 'echo',
     defaultPitch: 0,
     defaultRateDelta: 0,
+    fallbackPitch: -1,
+  },
+  {
+    id: 'en-christopher',
+    name: 'Christopher (US)',
+    label: 'Christopher — Inggris Amerika Dalam (Pria)',
+    lang: 'en-US',
+    baseLang: 'en',
+    langGroup: 'en',
+    langLabel: 'Inggris (US)',
+    gender: 'male',
+    isMultilingual: false,
+    style: 'Suara pria dalam dan tenang untuk penjelasan terstruktur',
+    edgeVoice: 'en-US-ChristopherNeural - en-US (Male)',
+    tiktokVoice: 'en_us_007',
+    puterOpenAiVoice: 'onyx',
+    defaultPitch: 0,
+    defaultRateDelta: 0,
+    fallbackPitch: -3,
   },
   {
     id: 'en-sonia',
     name: 'Sonia (UK)',
-    label: 'Sonia — Inggris British',
+    label: 'Sonia — Inggris British Elegan (Wanita)',
     lang: 'en-GB',
     baseLang: 'en',
     langGroup: 'en',
     langLabel: 'Inggris (UK)',
     gender: 'female',
-    style: 'Elegan dengan aksen British natural',
+    isMultilingual: false,
+    style: 'Aksen British elegan yang jelas & rapi',
     edgeVoice: 'en-GB-SoniaNeural - en-GB (Female)',
     tiktokVoice: 'en_uk_001',
+    puterOpenAiVoice: 'alloy',
     defaultPitch: 0,
     defaultRateDelta: 0,
+    fallbackPitch: 1,
   },
   {
     id: 'en-ryan',
     name: 'Ryan (UK)',
-    label: 'Ryan — Inggris British',
+    label: 'Ryan — Inggris British Hangat (Pria)',
     lang: 'en-GB',
     baseLang: 'en',
     langGroup: 'en',
     langLabel: 'Inggris (UK)',
     gender: 'male',
+    isMultilingual: false,
     style: 'Pria British hangat & artikulatif',
     edgeVoice: 'en-GB-RyanNeural - en-GB (Male)',
     tiktokVoice: 'en_uk_003',
+    puterOpenAiVoice: 'ballad',
     defaultPitch: 0,
     defaultRateDelta: 0,
+    fallbackPitch: -1,
   },
+  {
+    id: 'en-natasha',
+    name: 'Natasha (AU)',
+    label: 'Natasha — Inggris Australia (Wanita)',
+    lang: 'en-AU',
+    baseLang: 'en',
+    langGroup: 'en',
+    langLabel: 'Inggris (AU)',
+    gender: 'female',
+    isMultilingual: false,
+    style: 'Aksen Australia cerah, ramah & ringan didengar',
+    edgeVoice: 'en-AU-NatashaNeural - en-AU (Female)',
+    tiktokVoice: 'en_au_001',
+    puterOpenAiVoice: 'coral',
+    defaultPitch: 0,
+    defaultRateDelta: 0,
+    fallbackPitch: 2,
+  },
+
   // Malay (Serumpun)
   {
     id: 'ms-yasmin',
     name: 'Yasmin',
-    label: 'Yasmin — Melayu',
+    label: 'Yasmin — Melayu (Wanita)',
     lang: 'ms-MY',
     baseLang: 'ms',
     langGroup: 'ms',
     langLabel: 'Melayu',
     gender: 'female',
+    isMultilingual: false,
     style: 'Lembut dengan pelafalan Melayu natural',
     edgeVoice: 'ms-MY-YasminNeural - ms-MY (Female)',
     tiktokVoice: 'id_001',
+    puterOpenAiVoice: 'nova',
     defaultPitch: 0,
     defaultRateDelta: 0,
+    fallbackPitch: 1,
   },
   {
     id: 'ms-osman',
     name: 'Osman',
-    label: 'Osman — Melayu',
+    label: 'Osman — Melayu (Pria)',
     lang: 'ms-MY',
     baseLang: 'ms',
     langGroup: 'ms',
     langLabel: 'Melayu',
     gender: 'male',
+    isMultilingual: false,
     style: 'Pria Melayu jelas & tenang',
     edgeVoice: 'ms-MY-OsmanNeural - ms-MY (Male)',
     tiktokVoice: 'id_001',
+    puterOpenAiVoice: 'ash',
     defaultPitch: 0,
     defaultRateDelta: 0,
+    fallbackPitch: -2,
   },
+
   // Japanese, Korean, Mandarin, Arabic, European
   {
     id: 'ja-nanami',
     name: 'Nanami',
-    label: 'Nanami — Jepang',
+    label: 'Nanami — Jepang (Wanita)',
     lang: 'ja-JP',
     baseLang: 'ja',
     langGroup: 'asia',
     langLabel: 'Jepang',
     gender: 'female',
+    isMultilingual: false,
     style: 'Pelafalan Jepang alami & ekspresif',
     edgeVoice: 'ja-JP-NanamiNeural - ja-JP (Female)',
     tiktokVoice: 'jp_001',
+    puterOpenAiVoice: 'shimmer',
     defaultPitch: 0,
     defaultRateDelta: 0,
+    fallbackPitch: 2,
   },
   {
     id: 'ja-keita',
     name: 'Keita',
-    label: 'Keita — Jepang',
+    label: 'Keita — Jepang (Pria)',
     lang: 'ja-JP',
     baseLang: 'ja',
     langGroup: 'asia',
     langLabel: 'Jepang',
     gender: 'male',
+    isMultilingual: false,
     style: 'Pria Jepang natural & tenang',
     edgeVoice: 'ja-JP-KeitaNeural - ja-JP (Male)',
     tiktokVoice: 'jp_006',
+    puterOpenAiVoice: 'verse',
     defaultPitch: 0,
     defaultRateDelta: 0,
+    fallbackPitch: -1,
   },
   {
     id: 'ko-sunhi',
     name: 'SunHi',
-    label: 'SunHi — Korea',
+    label: 'SunHi — Korea (Wanita)',
     lang: 'ko-KR',
     baseLang: 'ko',
     langGroup: 'asia',
     langLabel: 'Korea',
     gender: 'female',
+    isMultilingual: false,
     style: 'Pelafalan Korea halus & natural',
     edgeVoice: 'ko-KR-SunHiNeural - ko-KR (Female)',
     tiktokVoice: 'kr_003',
+    puterOpenAiVoice: 'nova',
     defaultPitch: 0,
     defaultRateDelta: 0,
+    fallbackPitch: 2,
   },
   {
     id: 'ko-hyunsu',
-    name: 'Hyunsu',
-    label: 'Hyunsu — Korea Multibahasa',
+    name: 'Hyunsu V2',
+    label: 'Hyunsu — Korea Multibahasa (Pria)',
     lang: 'ko-KR',
     baseLang: 'ko',
     langGroup: 'asia',
-    langLabel: 'Korea',
+    langLabel: 'Korea + Multi',
     gender: 'male',
+    isMultilingual: true,
     style: 'Pria Korea natural & fasih multibahasa',
     edgeVoice: 'ko-KR-HyunsuMultilingualNeural - ko-KR (Male)',
     tiktokVoice: 'kr_002',
+    puterOpenAiVoice: 'ballad',
     defaultPitch: 0,
     defaultRateDelta: 0,
+    fallbackPitch: -1,
   },
   {
     id: 'zh-xiaoxiao',
     name: 'Xiaoxiao',
-    label: 'Xiaoxiao — Mandarin',
+    label: 'Xiaoxiao — Mandarin (Wanita)',
     lang: 'zh-CN',
     baseLang: 'zh',
     langGroup: 'asia',
     langLabel: 'Mandarin',
     gender: 'female',
+    isMultilingual: false,
     style: 'Mandarin ekspresif & hangat',
     edgeVoice: 'zh-CN-XiaoxiaoNeural - zh-CN (Female)',
     tiktokVoice: 'en_us_001',
+    puterOpenAiVoice: 'coral',
     defaultPitch: 0,
     defaultRateDelta: 0,
+    fallbackPitch: 2,
   },
   {
     id: 'zh-yunxi',
     name: 'Yunxi',
-    label: 'Yunxi — Mandarin',
+    label: 'Yunxi — Mandarin (Pria)',
     lang: 'zh-CN',
     baseLang: 'zh',
     langGroup: 'asia',
     langLabel: 'Mandarin',
     gender: 'male',
+    isMultilingual: false,
     style: 'Pria Mandarin ceria & natural',
     edgeVoice: 'zh-CN-YunxiNeural - zh-CN (Male)',
     tiktokVoice: 'en_us_006',
+    puterOpenAiVoice: 'echo',
     defaultPitch: 0,
     defaultRateDelta: 0,
+    fallbackPitch: 0,
   },
   {
     id: 'ar-zariyah',
     name: 'Zariyah',
-    label: 'Zariyah — Arab',
+    label: 'Zariyah — Arab (Wanita)',
     lang: 'ar-SA',
     baseLang: 'ar',
     langGroup: 'ar',
     langLabel: 'Arab',
     gender: 'female',
+    isMultilingual: false,
     style: 'Bahasa Arab fusha jernih & fasih',
     edgeVoice: 'ar-SA-ZariyahNeural - ar-SA (Female)',
     tiktokVoice: 'en_us_001',
+    puterOpenAiVoice: 'sage',
     defaultPitch: 0,
     defaultRateDelta: 0,
+    fallbackPitch: 1,
   },
   {
     id: 'ar-hamed',
     name: 'Hamed',
-    label: 'Hamed — Arab',
+    label: 'Hamed — Arab (Pria)',
     lang: 'ar-SA',
     baseLang: 'ar',
     langGroup: 'ar',
     langLabel: 'Arab',
     gender: 'male',
+    isMultilingual: false,
     style: 'Pria Arab fusha mantap & berwibawa',
     edgeVoice: 'ar-SA-HamedNeural - ar-SA (Male)',
     tiktokVoice: 'en_us_006',
+    puterOpenAiVoice: 'onyx',
     defaultPitch: 0,
     defaultRateDelta: 0,
+    fallbackPitch: -2,
   },
   {
     id: 'fr-vivienne',
-    name: 'Vivienne',
-    label: 'Vivienne — Prancis Multibahasa',
+    name: 'Vivienne V2',
+    label: 'Vivienne — Prancis Multibahasa (Wanita)',
     lang: 'fr-FR',
     baseLang: 'fr',
     langGroup: 'eu',
-    langLabel: 'Prancis',
+    langLabel: 'Prancis + Multi',
     gender: 'female',
-    style: 'Aksen Prancis elegan & natural',
+    isMultilingual: true,
+    style: 'Aksen Prancis elegan & fasih multibahasa',
     edgeVoice: 'fr-FR-VivienneMultilingualNeural - fr-FR (Female)',
     tiktokVoice: 'fr_001',
+    puterOpenAiVoice: 'shimmer',
     defaultPitch: 0,
     defaultRateDelta: 0,
+    fallbackPitch: 1,
   },
   {
     id: 'fr-remy',
-    name: 'Remy',
-    label: 'Remy — Prancis Multibahasa',
+    name: 'Remy V2',
+    label: 'Remy — Prancis Multibahasa (Pria)',
     lang: 'fr-FR',
     baseLang: 'fr',
     langGroup: 'eu',
-    langLabel: 'Prancis',
+    langLabel: 'Prancis + Multi',
     gender: 'male',
-    style: 'Pria Prancis ekspresif & multibahasa',
+    isMultilingual: true,
+    style: 'Pria Prancis ekspresif & fasih multibahasa',
     edgeVoice: 'fr-FR-RemyMultilingualNeural - fr-FR (Male)',
     tiktokVoice: 'fr_002',
+    puterOpenAiVoice: 'fable',
     defaultPitch: 0,
     defaultRateDelta: 0,
+    fallbackPitch: -1,
   },
   {
     id: 'es-elvira',
     name: 'Elvira',
-    label: 'Elvira — Spanyol',
+    label: 'Elvira — Spanyol (Wanita)',
     lang: 'es-ES',
     baseLang: 'es',
     langGroup: 'eu',
     langLabel: 'Spanyol',
     gender: 'female',
+    isMultilingual: false,
     style: 'Pelafalan Spanyol natural & jelas',
     edgeVoice: 'es-ES-ElviraNeural - es-ES (Female)',
     tiktokVoice: 'es_002',
+    puterOpenAiVoice: 'coral',
     defaultPitch: 0,
     defaultRateDelta: 0,
+    fallbackPitch: 1,
   },
   {
     id: 'de-conrad',
     name: 'Conrad',
-    label: 'Conrad — Jerman',
+    label: 'Conrad — Jerman (Pria)',
     lang: 'de-DE',
     baseLang: 'de',
     langGroup: 'eu',
     langLabel: 'Jerman',
     gender: 'male',
+    isMultilingual: false,
     style: 'Pria Jerman jernih & natural',
     edgeVoice: 'de-DE-ConradNeural - de-DE (Male)',
     tiktokVoice: 'de_002',
+    puterOpenAiVoice: 'ash',
     defaultPitch: 0,
     defaultRateDelta: 0,
+    fallbackPitch: -2,
   },
 ]);
 
-export function getVoiceProfileById(voiceId = 'id-gadis') {
-  return MANIFEST_AI_VOICE_CATALOG.find((v) => v.id === voiceId) || MANIFEST_AI_VOICE_CATALOG[0];
+export function getVoiceProfileById(voiceId = 'multi-ava') {
+  const mapped = LEGACY_VOICE_ALIASES[voiceId] || voiceId;
+  return MANIFEST_AI_VOICE_CATALOG.find((v) => v.id === mapped) || MANIFEST_AI_VOICE_CATALOG[0];
 }
-
-// High-precision English & Indonesian word sets for natural code-switching detection
-const EN_STRONG_WORDS = new Set([
-  'the', 'of', 'and', 'in', 'to', 'for', 'with', 'on', 'at', 'by', 'from', 'about', 'into', 'over', 'after',
-  'is', 'are', 'was', 'were', 'be', 'been', 'being', 'have', 'has', 'had', 'do', 'does', 'did', 'will', 'would',
-  'should', 'could', 'can', 'may', 'might', 'must', 'not', 'no', 'yes', 'this', 'that', 'these', 'those',
-  'you', 'your', 'yours', 'we', 'our', 'they', 'their', 'he', 'his', 'she', 'her', 'it', 'its', 'my', 'me',
-  'what', 'which', 'who', 'whom', 'where', 'when', 'why', 'how', 'all', 'each', 'every', 'both', 'few', 'more',
-  'most', 'other', 'some', 'such', 'only', 'own', 'same', 'than', 'too', 'very', 'just', 'also', 'now', 'here',
-  'there', 'then', 'once', 'again', 'still', 'back', 'even', 'well', 'much', 'many', 'between', 'through',
-  'king', 'queen', 'prince', 'princess', 'island', 'islands', 'world', 'land', 'kingdom', 'empire', 'city',
-  'story', 'book', 'books', 'movie', 'film', 'music', 'song', 'album', 'game', 'games', 'play', 'player',
-  'love', 'life', 'time', 'day', 'night', 'star', 'stars', 'sun', 'moon', 'fire', 'water', 'earth', 'sky',
-  'dark', 'light', 'black', 'white', 'red', 'blue', 'green', 'gold', 'golden', 'silver', 'magic', 'legend',
-  'secret', 'mystery', 'adventure', 'journey', 'quest', 'battle', 'war', 'peace', 'dream', 'dreams', 'shadow',
-  'heart', 'soul', 'mind', 'power', 'force', 'spirit', 'hero', 'knight', 'dragon', 'angel', 'ghost', 'monster',
-  'house', 'home', 'castle', 'forest', 'mountain', 'river', 'ocean', 'sea', 'road', 'street', 'bridge', 'tower',
-  'good', 'great', 'best', 'better', 'new', 'old', 'first', 'last', 'next', 'big', 'small', 'little', 'long',
-  'short', 'high', 'low', 'fast', 'slow', 'free', 'open', 'full', 'real', 'true', 'right', 'left', 'top',
-  'hello', 'welcome', 'please', 'thank', 'thanks', 'sorry', 'make', 'made', 'take', 'give', 'get', 'got',
-  'find', 'found', 'know', 'think', 'want', 'need', 'use', 'used', 'work', 'help', 'start', 'stop', 'keep',
-  'machine', 'learning', 'deep', 'neural', 'network', 'artificial', 'intelligence', 'model', 'cloud', 'server',
-  'client', 'browser', 'code', 'coding', 'script', 'function', 'framework', 'library', 'database', 'query',
-  'design', 'system', 'platform', 'service', 'feature', 'update', 'upgrade', 'version', 'streaming', 'download',
-  'upload', 'backup', 'security', 'privacy', 'account', 'premium', 'content', 'creator', 'marketing', 'business',
-  'strategy', 'project', 'workflow', 'performance', 'speed', 'quality', 'voice', 'speech', 'audio', 'video',
-  'image', 'photo', 'search', 'engine', 'smart', 'auto', 'natural', 'human', 'language', 'english', 'global',
-  'madagascar', 'paradise', 'wonderland', 'chronicles', 'forever', 'beyond', 'rising', 'return', 'returns',
-  'revenge', 'destiny', 'future', 'legacy', 'genesis', 'horizon', 'odyssey', 'phantom', 'eclipse', 'infinity',
-]);
-
-const ID_STRONG_WORDS = new Set([
-  'yang', 'di', 'ke', 'dari', 'dan', 'atau', 'dengan', 'untuk', 'pada', 'dalam', 'adalah', 'ialah', 'yaitu',
-  'ini', 'itu', 'tersebut', 'saya', 'aku', 'kamu', 'anda', 'kami', 'kita', 'mereka', 'dia', 'beliau', 'nya',
-  'tidak', 'tak', 'bukan', 'belum', 'jangan', 'sudah', 'telah', 'sedang', 'akan', 'bisa', 'dapat', 'boleh',
-  'harus', 'wajib', 'perlu', 'ingin', 'mau', 'suka', 'ada', 'tiada', 'jadi', 'menjadi', 'buat', 'membuat',
-  'pak', 'bu', 'ibu', 'bapak', 'mas', 'mbak', 'bang', 'kak', 'adik', 'tuan', 'nyonya', 'orang', 'anak',
-  'membeli', 'beli', 'menjual', 'jual', 'melelang', 'lelang', 'membaca', 'baca', 'menulis', 'tulis', 'buku',
-  'perpustakaan', 'sekolah', 'kampus', 'rumah', 'kantor', 'toko', 'pasar', 'jalan', 'kota', 'desa', 'negara',
-  'hari', 'pagi', 'siang', 'sore', 'malam', 'kemarin', 'besok', 'sekarang', 'nanti', 'tadi', 'lalu', 'kemudian',
-  'sangat', 'sekali', 'banget', 'lebih', 'paling', 'hanya', 'cuma', 'saja', 'juga', 'pun', 'lagi', 'masih',
-  'karena', 'sebab', 'jika', 'kalau', 'bila', 'ketika', 'saat', 'waktu', 'sebelum', 'sesudah', 'setelah',
-  'sambil', 'hingga', 'sampai', 'supaya', 'agar', 'meski', 'walau', 'namun', 'tetapi', 'tapi', 'melainkan',
-  'halo', 'hai', 'selamat', 'terima', 'kasih', 'maaf', 'tolong', 'silakan', 'mohon', 'baik', 'bagus', 'keren',
-  'murah', 'mahal', 'gratis', 'resmi', 'lengkap', 'cepat', 'mudah', 'aman', 'nyaman', 'baru', 'lama', 'besar',
-  'kecil', 'banyak', 'sedikit', 'semua', 'seluruh', 'setiap', 'beberapa', 'salah', 'benar', 'tepat', 'jelas',
-  'cara', 'langkah', 'tips', 'ide', 'contoh', 'daftar', 'menu', 'fitur', 'layanan', 'produk', 'harga', 'diskon',
-  'akun', 'pengguna', 'pemilik', 'pengelola', 'bantuan', 'jawaban', 'pertanyaan', 'suara', 'bahasa', 'gaya',
-  'pengucapan', 'pelafalan', 'layar', 'penuh', 'tombol', 'halaman', 'bagian', 'bawah', 'atas', 'kiri', 'kanan',
-  'kopi', 'air', 'panas', 'dingin', 'makan', 'minum', 'tidur', 'pergi', 'datang', 'pulang', 'lihat', 'dengar',
-  'bicara', 'tanya', 'jawab', 'cari', 'temukan', 'pilih', 'simpan', 'hapus', 'ubah', 'tambah', 'kurang',
-  'seperti', 'misalnya', 'contohnya', 'yaitu', 'yakni', 'antara', 'tentang', 'mengenai', 'terhadap', 'melalui',
-  'tanpa', 'secara', 'langsung', 'otomatis', 'sementara', 'terlebih', 'dahulu', 'berikut', 'dibawah', 'diatas',
-  'indo', 'indonesia', 'inggris', 'jepang', 'korea', 'arab', 'melayu',
-]);
 
 function detectNonLatinScript(word = '') {
   if (/[\u0600-\u06FF\u0750-\u077F]/.test(word)) return 'ar';
@@ -2181,113 +2290,135 @@ function detectNonLatinScript(word = '') {
   return null;
 }
 
-function classifyLatinWord(rawWord = '') {
-  const clean = String(rawWord || '').toLowerCase().replace(/^[^a-z']+|[^a-z']+$/g, '');
-  if (!clean || clean.length <= 1) return 'neutral';
-
-  if (ID_STRONG_WORDS.has(clean)) return 'id';
-  if (EN_STRONG_WORDS.has(clean)) return 'en';
-
-  // Strong Indonesian morphological markers
-  if (
-    /^(?:meng|meny|mem|men|me|ber|ter|per|pen|pem|peng|peny|se|ke)[a-z]{3,}(?:kan|an|i|nya)?$/.test(clean) &&
-    !/(?:tion|sion|ment|ness|able|ible|ship|hood|ward|ing|ed|ly|th|sh|ch|wh|ck|qu|ph)/.test(clean)
-  ) {
-    if (/(?:nya|kan|lah|kah|pun)$/.test(clean) || /^(?:mele|memb|mend|meng|meny|perp|berb|terd|kebe|dise|dipe)/.test(clean)) {
-      return 'id';
-    }
+function formatRupiahSpoken(rawDigits = '') {
+  const num = Number(String(rawDigits || '').replace(/[^0-9]/g, ''));
+  if (!Number.isFinite(num) || num <= 0) return 'rupiah';
+  if (num >= 1_000_000_000) {
+    const m = (num / 1_000_000_000).toFixed(num % 1_000_000_000 === 0 ? 0 : 1).replace('.', ',');
+    return `${m} miliar rupiah`;
   }
-  if (/(?:nya|lah|kah)$/.test(clean) && clean.length >= 5) return 'id';
-
-  // Strong English orthographic & suffix markers
-  if (
-    /'(?:s|t|re|ve|ll|d|m)$/.test(clean) ||
-    /(?:tion|sion|ment|ness|ship|ight|ough|ould|ance|ence|ical|ious|eous|able|ible|ful|less|ward|wise|ing)$/.test(clean) ||
-    /(?:^th|th$|sh|ch|wh|ck|qu|ph|ee|oo|ea|oa|wr|kn)/.test(clean) ||
-    /[xqvz]/.test(clean)
-  ) {
-    // Guard common Indonesian loanwords containing sh/ch/ng/etc.
-    if (/^(?:sholat|shalat|syarat|syukur|khas|khusus|akhir|waktu|zakat|zaman|izin|video|musik|fokus|teks|ekspor)$/.test(clean)) {
-      return 'id';
-    }
-    return 'en';
+  if (num >= 1_000_000) {
+    const jt = (num / 1_000_000).toFixed(num % 1_000_000 === 0 ? 0 : 1).replace('.', ',');
+    return `${jt} juta rupiah`;
   }
-
-  return 'neutral';
+  if (num >= 1000 && num % 1000 === 0) {
+    return `${num / 1000} ribu rupiah`;
+  }
+  return `${num} rupiah`;
 }
 
 /**
- * Strips Markdown formatting and masks sensitive owner info so TTS reads naturally like a human.
+ * Normalizes Markdown, currency, abbreviations, symbols, and sensitive owner info
+ * so TTS voices sound like relaxed, conversational human speech instead of a rigid screen reader.
  */
 export function cleanTextForSpeech(markdown = '', catalogData = null) {
   let text = redactSensitiveOwnerData(String(markdown || ''), catalogData);
-  // Replace fenced code blocks with a polite spoken cue instead of reading ugly syntax
+  // Replace fenced code blocks with a polite spoken cue instead of reading raw syntax
   text = text.replace(/```[\s\S]*?```/g, '. Potongan kode tersedia di layar. ');
   // Convert Markdown links `[Label](https://...)` to just `Label`
   text = text.replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g, '$1');
-  // Remove bare URLs except short domain names
+  // Remove bare URLs except readable domain names
   text = text.replace(/https?:\/\/(?:www\.)?([a-zA-Z0-9.-]+)(?:\/[^\s)]*)?/g, '$1');
   // Strip inline code backticks, headings, bold/italic markers, blockquotes, list bullets
   text = text
     .replace(/`([^`]+)`/g, '$1')
     .replace(/^\s{0,3}#{1,6}\s+/gm, '')
     .replace(/^\s*>\s?/gm, '')
-    .replace(/^\s*[-*•]\s+/gm, '')
+    .replace(/^\s*(?:[-*•]+|\d+[.)])\s+/gm, '')
     .replace(/\*\*\*([^*]+)\*\*\*/g, '$1')
     .replace(/\*\*([^*]+)\*\*/g, '$1')
     .replace(/\*([^*\n]+)\*/g, '$1')
     .replace(/_{1,2}([^_\n]+)_{1,2}/g, '$1')
     .replace(/~~([^~]+)~~/g, '$1');
+
   // Make masked owner placeholders sound natural instead of reading "x x x x x"
   text = text.replace(/62x{5,}/gi, 'nomor yang disensor');
   text = text.replace(/@[a-z]\*{4,}[a-z]/gi, 'akun yang disensor');
-  // Normalize whitespace & newlines into smooth pauses
+
+  // Convert Indonesian Rupiah pricing into natural conversational speech ("Rp25.000" -> "25 ribu rupiah")
+  text = text.replace(/Rp\.?\s*([0-9][0-9.]*)/gi, (_, digits) => formatRupiahSpoken(digits));
+
+  // Expand stiff symbols & common Indonesian abbreviations that make neural voices stumble
   text = text
+    .replace(/(\d+)\s*%/g, '$1 persen')
+    .replace(/\b([A-Za-zÀ-ÿ0-9-]+)\s*\/\s*([A-Za-zÀ-ÿ0-9-]+)\b/g, '$1 atau $2')
+    .replace(/\s+&\s+/g, ' dan ')
+    .replace(/\bdll\.?(?=\s|$|[,.)])/gi, 'dan lain-lain')
+    .replace(/\bdsb\.?(?=\s|$|[,.)])/gi, 'dan sebagainya')
+    .replace(/\bdst\.?(?=\s|$|[,.)])/gi, 'dan seterusnya')
+    .replace(/\bdkk\.?(?=\s|$|[,.)])/gi, 'dan kawan-kawan')
+    .replace(/\bspt\.?(?=\s|$)/gi, 'seperti')
+    .replace(/\byg\b/gi, 'yang')
+    .replace(/\butk\b/gi, 'untuk')
+    .replace(/\bdgn\b/gi, 'dengan')
+    .replace(/\btsb\b/gi, 'tersebut')
+    .replace(/\bsbg\b/gi, 'sebagai');
+
+  // Remove decorative emojis / pictographs that cause awkward pauses or weird pronunciations
+  text = text.replace(/[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}\uFE0F]/gu, '');
+
+  // Smooth whitespace, line breaks, colons, and parentheses into natural human breathing pauses
+  text = text
+    .replace(/:\s+/g, ', ')
+    .replace(/\s+[—–-]\s+/g, ', ')
     .replace(/\r?\n{2,}/g, '. ')
     .replace(/\r?\n/g, ', ')
     .replace(/[·•|]/g, ', ')
     .replace(/\s{2,}/g, ' ')
     .replace(/\.\s*\./g, '.')
+    .replace(/,\s*,+/g, ',')
     .trim();
   return text;
 }
 
 /**
- * Splits a text into natural language-tagged segments (`id`, `en`, `ja`, `ko`, `zh`, `ar`, etc.)
- * so mixed-language sentences (code-switching) switch smoothly to native pronunciation per span.
+ * Chunks speech cleanly WITHOUT splitting mixed Latin sentences (e.g., Indonesian + English)
+ * across different speakers.
  *
- * Example:
- * "pak salim membeli buku The King Of Madagascar and Island di perpustakaan yang melelang buku"
- * -> [
- *      { lang: 'id', text: 'pak salim membeli buku' },
- *      { lang: 'en', text: 'The King Of Madagascar and Island' },
- *      { lang: 'id', text: 'di perpustakaan yang melelang buku' },
- *    ]
+ * All Latin sentences (including mixed Indonesian + English like
+ * "pak salim membeli buku The King Of Madagascar and Island di perpustakaan yang melelang buku")
+ * stay inside ONE unified span spoken by ONE consistent human voice!
+ * Non-Latin scripts (Arabic, Japanese, Korean, Mandarin) are only separated as needed when the
+ * selected voice is not natively multilingual.
  */
-export function segmentMultilingualSpeech(rawText = '', primaryLang = 'id', { maxSegmentChars = 220, codeSwitch = true } = {}) {
+export function segmentMultilingualSpeech(
+  rawText = '',
+  primaryLang = 'multi',
+  { maxSegmentChars = 340, codeSwitch = true, isMultilingualVoice = false } = {}
+) {
   const clean = String(rawText || '').trim();
   if (!clean) return [];
 
   const baseLang = primaryLang === 'multi' ? 'id' : String(primaryLang || 'id').toLowerCase().split('-')[0];
 
-  const splitLongChunks = (str, lang) => {
+  const detectMixedLatinTag = (str) => {
+    const hasIndo = /\b(?:yang|dan|di|ke|dari|untuk|dengan|buku|membeli|melelang|perpustakaan|halo|saya|anda|ini|itu)\b/i.test(str);
+    const hasEng = /\b(?:the|of|and|in|island|king|book|hello|welcome|library|studio|market|model|voice|english)\b/i.test(str);
+    if (hasIndo && hasEng) return 'id+en';
+    if (hasEng && !hasIndo && baseLang !== 'id') return 'en';
+    return baseLang === 'en' ? 'en' : 'id';
+  };
+
+  const splitLongChunks = (str, explicitLang = null) => {
     const trimmed = str.trim();
     if (!trimmed) return [];
-    if (trimmed.length <= maxSegmentChars) return [{ lang, text: trimmed }];
+    const tag = explicitLang || detectMixedLatinTag(trimmed);
+    if (trimmed.length <= maxSegmentChars) return [{ lang: tag, text: trimmed }];
+
     const parts = [];
     const sentences = trimmed.split(/(?<=[.!?。！？])\s+/);
     let current = '';
     for (const s of sentences) {
       if (!s.trim()) continue;
       if (current && current.length + s.length + 1 > maxSegmentChars) {
-        parts.push({ lang, text: current.trim() });
+        parts.push({ lang: explicitLang || detectMixedLatinTag(current), text: current.trim() });
         current = s;
       } else {
         current = current ? `${current} ${s}` : s;
       }
     }
-    if (current.trim()) parts.push({ lang, text: current.trim() });
-    // Secondary split on commas if any single sentence is still huge
+    if (current.trim()) parts.push({ lang: explicitLang || detectMixedLatinTag(current), text: current.trim() });
+
     const finalParts = [];
     for (const p of parts) {
       if (p.text.length <= maxSegmentChars) {
@@ -2297,155 +2428,70 @@ export function segmentMultilingualSpeech(rawText = '', primaryLang = 'id', { ma
         let acc = '';
         for (const piece of sub) {
           if (acc && acc.length + piece.length + 1 > maxSegmentChars) {
-            finalParts.push({ lang, text: acc.trim() });
+            finalParts.push({ lang: explicitLang || detectMixedLatinTag(acc), text: acc.trim() });
             acc = piece;
           } else {
             acc = acc ? `${acc} ${piece}` : piece;
           }
         }
-        if (acc.trim()) finalParts.push({ lang, text: acc.trim() });
+        if (acc.trim()) finalParts.push({ lang: explicitLang || detectMixedLatinTag(acc), text: acc.trim() });
       }
     }
     return finalParts;
   };
 
-  if (!codeSwitch) {
-    return splitLongChunks(clean, baseLang);
+  // Keep mixed Latin text ALWAYS unified! Only split off non-Latin runs when voice is Latin-only & codeSwitch is enabled
+  const hasNonLatin = /[\u0600-\u06FF\u0750-\u077F\u3040-\u309F\u30A0-\u30FF\uAC00-\uD7AF\u1100-\u11FF\u4E00-\u9FFF]/.test(clean);
+  if (!hasNonLatin || !codeSwitch || isMultilingualVoice) {
+    return splitLongChunks(clean);
   }
 
-  // Tokenize by whitespace while keeping punctuation attached to tokens
+  // Split ONLY at non-Latin script boundaries while keeping surrounding Latin text unified
   const tokens = clean.split(/\s+/).filter(Boolean);
-  if (tokens.length === 0) return [];
-
-  // Step 1: Initial per-token language classification
-  const tagged = tokens.map((tok) => {
-    const nonLatin = detectNonLatinScript(tok);
-    if (nonLatin) return { tok, lang: nonLatin, strong: true };
-    if (/^[0-9.,:%+-]+$/.test(tok)) return { tok, lang: 'neutral', strong: false };
-    const cls = classifyLatinWord(tok);
-    return {
-      tok,
-      lang: cls,
-      strong: cls !== 'neutral',
-      isTitleCase: /^[A-Z][a-z]+/.test(tok),
-    };
-  });
-
-  // Detect overall dominant Latin language of this text (default to baseLang when tied)
-  let idCount = 0;
-  let enCount = 0;
-  for (const t of tagged) {
-    if (t.lang === 'id') idCount += 1;
-    else if (t.lang === 'en') enCount += 1;
-  }
-  const dominantLang = enCount > idCount * 1.4 && enCount >= 3 ? 'en' : idCount > 0 ? 'id' : baseLang;
-
-  // Step 2: Bridge neutral proper nouns / short connectors inside foreign phrases
-  // e.g. "The King Of Madagascar and Island" -> Madagascar (neutral) sits between "Of" (en) and "and" (en) -> becomes 'en'!
-  for (let i = 0; i < tagged.length; i += 1) {
-    if (tagged[i].lang !== 'neutral') continue;
-    // Find nearest strong left and right within window of 2
-    let leftLang = null;
-    for (let l = i - 1; l >= Math.max(0, i - 2); l -= 1) {
-      if (tagged[l].lang !== 'neutral') {
-        leftLang = tagged[l].lang;
-        break;
-      }
-    }
-    let rightLang = null;
-    for (let r = i + 1; r <= Math.min(tagged.length - 1, i + 2); r += 1) {
-      if (tagged[r].lang !== 'neutral') {
-        rightLang = tagged[r].lang;
-        break;
-      }
-    }
-
-    if (leftLang && rightLang && leftLang === rightLang) {
-      tagged[i].lang = leftLang;
-    } else if (tagged[i].isTitleCase && (leftLang === 'en' || rightLang === 'en') && leftLang !== 'id') {
-      tagged[i].lang = 'en';
-    } else if (leftLang && !rightLang) {
-      tagged[i].lang = leftLang;
-    } else if (!leftLang && rightLang) {
-      tagged[i].lang = rightLang;
+  const runs = [];
+  for (const tok of tokens) {
+    const script = detectNonLatinScript(tok) || 'latin';
+    const last = runs[runs.length - 1];
+    if (last && last.script === script) {
+      last.text = `${last.text} ${tok}`;
     } else {
-      tagged[i].lang = dominantLang;
+      runs.push({ script, text: tok });
     }
   }
 
-  // Step 3: Prevent choppy 1-word accidental micro-flips for weak ambiguous Latin words,
-  // while preserving genuine single English words with clear English phonetics or non-Latin scripts.
-  for (let i = 0; i < tagged.length; i += 1) {
-    const prev = i > 0 ? tagged[i - 1].lang : null;
-    const next = i < tagged.length - 1 ? tagged[i + 1].lang : null;
-    if (prev && next && prev === next && tagged[i].lang !== prev) {
-      const isNonLatin = Boolean(detectNonLatinScript(tagged[i].tok));
-      const cleanTok = tagged[i].tok.toLowerCase().replace(/[^a-z']/g, '');
-      const clearEnglishLoan =
-        tagged[i].lang === 'en' &&
-        (EN_STRONG_WORDS.has(cleanTok) || /(?:tion|sion|ing|ight|ough|th|sh|ch|ee|oo|ea)/.test(cleanTok));
-      if (!isNonLatin && !clearEnglishLoan && cleanTok.length <= 4) {
-        tagged[i].lang = prev;
-      }
-    }
+  const out = [];
+  for (const r of runs) {
+    out.push(...splitLongChunks(r.text, r.script === 'latin' ? null : r.script));
   }
-
-  // Step 4: Merge consecutive tokens of the same language into fluent spans
-  const merged = [];
-  for (const item of tagged) {
-    const last = merged[merged.length - 1];
-    if (last && last.lang === item.lang) {
-      last.text = `${last.text} ${item.tok}`;
-    } else {
-      merged.push({ lang: item.lang, text: item.tok });
-    }
-  }
-
-  // Step 5: Split any overly long spans at natural punctuation boundaries
-  const result = [];
-  for (const seg of merged) {
-    result.push(...splitLongChunks(seg.text, seg.lang));
-  }
-  return result;
+  return out;
 }
 
 /**
- * Resolves the exact natural voice profile to speak a given language segment while
- * preserving the user's chosen gender (Female stays Female, Male stays Male) and
- * ensuring Indonesian words use authentic Indonesian pronunciation while English/foreign
- * words switch to authentic native pronunciation!
+ * Resolves which voice profile speaks a given segment.
+ * - ALWAYS preserves the user's selected speaker for ALL Latin text (Indonesian, English, mixed, Malay, French, etc.)
+ *   so switching voice models in the UI ALWAYS changes the actual voice heard, and mixed sentences NEVER swap speakers mid-way!
+ * - If the chosen voice is Azure V2 MultilingualNeural (`isMultilingual: true`), it ALSO handles non-Latin scripts in 1 voice.
+ * - Only borrows a matching-gender native voice when a Latin-only voice encounters non-Latin text (Japanese, Korean, Mandarin, Arabic).
  */
-export function resolveVoiceForSegment(selectedVoiceId = 'id-gadis', segmentLang = 'id', codeSwitch = true) {
+export function resolveVoiceForSegment(selectedVoiceId = 'multi-ava', segmentLang = 'id', codeSwitch = true) {
   const base = getVoiceProfileById(selectedVoiceId);
-  const targetLang = String(segmentLang || 'id').toLowerCase().split('-')[0];
+  const targetLang = String(segmentLang || 'id').toLowerCase().split(/[-+]/)[0];
+  const isNonLatin = ['ar', 'ja', 'ko', 'zh'].includes(targetLang);
 
-  if (!codeSwitch) return base;
+  // Always preserve user's chosen speaker for Latin languages OR when speaker is natively Multilingual V2
+  if (!codeSwitch || !isNonLatin || base.isMultilingual || base.baseLang === targetLang) {
+    return base;
+  }
 
-  // If selected voice is already native for this exact segment language, keep it!
-  if (base.baseLang === targetLang) return base;
-
-  // Pick native voice matching the user's chosen gender!
+  // Non-Latin fallback when user picked a Latin-only voice (e.g. Gadis / Ardi)
   const gender = base.gender === 'male' ? 'male' : 'female';
-  const langPreferredMap = {
-    id: gender === 'male' ? 'id-ardi' : 'id-gadis',
-    en: gender === 'male' ? 'multi-andrew' : 'multi-ava',
-    ms: gender === 'male' ? 'ms-osman' : 'ms-yasmin',
+  const nonLatinMap = {
     ja: gender === 'male' ? 'ja-keita' : 'ja-nanami',
     ko: gender === 'male' ? 'ko-hyunsu' : 'ko-sunhi',
     zh: gender === 'male' ? 'zh-yunxi' : 'zh-xiaoxiao',
     ar: gender === 'male' ? 'ar-hamed' : 'ar-zariyah',
-    fr: gender === 'male' ? 'fr-remy' : 'fr-vivienne',
-    es: 'es-elvira',
-    de: 'de-conrad',
   };
 
-  // If user specifically picked a Multilingual voice (e.g. Ava / Andrew / Emma / Brian / William):
-  // - For English spans, keep their chosen Multilingual voice (native US/AU English!).
-  // - For Indonesian spans, switch to native Indonesian Gadis/Ardi so Indonesian pronunciation is 100% authentic!
-  if (base.baseLang === 'multi' && targetLang === 'en') {
-    return base;
-  }
-
-  const mappedId = langPreferredMap[targetLang];
+  const mappedId = nonLatinMap[targetLang];
   return mappedId ? getVoiceProfileById(mappedId) : base;
 }

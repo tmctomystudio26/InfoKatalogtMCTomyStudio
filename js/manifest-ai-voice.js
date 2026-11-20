@@ -1,10 +1,9 @@
 /**
- * Manifest AI — Natural Multilingual & Code-Switching Voice Engine (v64)
- * - Studio-grade human neural voices via Microsoft Edge Neural TTS (319 voices, cpu-basic)
- * - Automatic mixed-language (code-switching) pronunciation: Indonesian spans use native
- *   Indonesian voices while English / Japanese / Korean / Mandarin / Arabic spans seamlessly
- *   switch to matching-gender native neural voices with lookahead pre-fetching.
- * - 3-layer zero-failure playback: Edge Neural TTS -> TikTok Neural TTS -> Web Speech API.
+ * Manifest AI — Single-Speaker Consistent Multilingual Neural Voice Engine (v65)
+ * - Layer 0 (if signed into Puter): OpenAI gpt-4o-mini-tts via Puter.js for expressive human speech
+ * - Layer 1 (Primary Keyless): Microsoft Edge Neural TTS V2 (`cpu-basic`, 319 neural voices, 3x auto-retry)
+ *   keeping ONE consistent selected speaker across mixed Indonesian & English without speaker swaps
+ * - Layer 2/3 Zero-Failure Backups: TikTok Neural TTS -> Browser Web Speech API
  */
 
 import {
@@ -12,17 +11,27 @@ import {
   getVoiceProfileById,
   resolveVoiceForSegment,
   segmentMultilingualSpeech,
-} from './manifest-ai-logic.js?v=64';
+} from './manifest-ai-logic.js?v=65';
 
 const EDGE_TTS_HOST = 'https://innoai-edge-tts-text-to-speech.hf.space';
 const TIKTOK_TTS_URL = 'https://tiktok-tts.weilnet.workers.dev/api/generation';
-const TTS_TIMEOUT_MS = 11000;
+const TTS_TIMEOUT_MS = 18000;
+const EDGE_MAX_ATTEMPTS = 3;
 const MAX_AUDIO_CACHE = 40;
 
 const STYLE_PROSODY = Object.freeze({
-  natural: { rateOffset: 0, pitchOffset: 0 },
-  ekspresif: { rateOffset: 4, pitchOffset: 3 },
-  tenang: { rateOffset: -6, pitchOffset: -2 },
+  natural: { rateOffset: 2, pitchOffset: 0 },
+  ekspresif: { rateOffset: 5, pitchOffset: 2 },
+  tenang: { rateOffset: -5, pitchOffset: -1 },
+});
+
+const PUTER_STYLE_INSTRUCTIONS = Object.freeze({
+  natural:
+    'Speak warmly like a friendly, relaxed Indonesian-English human conversational partner with natural breathing pauses and smooth inflection.',
+  ekspresif:
+    'Speak enthusiastically, warmly, and expressively like an engaging human presenter who naturally switches between Indonesian and English words.',
+  tenang:
+    'Speak calmly, clearly, and warmly at an unhurried human storytelling pace with gentle intonation.',
 });
 
 function base64ToBlobUrl(b64, mime = 'audio/mpeg') {
@@ -36,6 +45,21 @@ function base64ToBlobUrl(b64, mime = 'audio/mpeg') {
 
 function clamp(val, min, max) {
   return Math.max(min, Math.min(max, val));
+}
+
+function delayMs(ms, signal = null) {
+  return new Promise((resolve, reject) => {
+    if (signal?.aborted) return reject(new Error('ABORTED'));
+    const timer = setTimeout(() => {
+      if (signal) signal.removeEventListener('abort', onAbort);
+      resolve();
+    }, ms);
+    const onAbort = () => {
+      clearTimeout(timer);
+      reject(new Error('ABORTED'));
+    };
+    if (signal) signal.addEventListener('abort', onAbort, { once: true });
+  });
 }
 
 function createAbortWithTimeout(parentSignal, timeoutMs) {
@@ -60,9 +84,34 @@ function createAbortWithTimeout(parentSignal, timeoutMs) {
 }
 
 /**
- * Fetches an MP3 audio URL from Microsoft Edge Neural TTS Space (`cpu-basic`, zero GPU limits).
+ * Layer 0: If user has signed into free Puter account, synthesize expressive human speech via gpt-4o-mini-tts.
  */
-async function synthesizeEdgeNeuralTts(text, voiceProfile, { ratePct = 0, pitchHz = 0, signal = null } = {}) {
+async function synthesizePuterHumanTts(text, voiceProfile, { style = 'natural', signal = null } = {}) {
+  if (typeof window === 'undefined' || typeof window.puter?.ai?.txt2speech !== 'function') {
+    throw new Error('PUTER_TTS_UNAVAILABLE');
+  }
+  if (!window.puter?.auth?.isSignedIn?.()) {
+    throw new Error('PUTER_NOT_SIGNED_IN');
+  }
+  if (signal?.aborted) throw new Error('ABORTED');
+
+  const instructions = PUTER_STYLE_INSTRUCTIONS[style] || PUTER_STYLE_INSTRUCTIONS.natural;
+  const result = await window.puter.ai.txt2speech(text, {
+    provider: 'openai',
+    model: 'gpt-4o-mini-tts',
+    voice: voiceProfile.puterOpenAiVoice || (voiceProfile.gender === 'male' ? 'ash' : 'coral'),
+    instructions,
+  });
+  if (signal?.aborted) throw new Error('ABORTED');
+  const src = result?.src || (typeof result === 'string' ? result : '');
+  if (!src) throw new Error('PUTER_TTS_EMPTY');
+  return src;
+}
+
+/**
+ * Single attempt against Microsoft Edge Neural TTS Space (`cpu-basic`, zero GPU limits).
+ */
+async function synthesizeEdgeNeuralOnce(text, voiceProfile, { ratePct = 0, pitchHz = 0, signal = null } = {}) {
   const linked = createAbortWithTimeout(signal, TTS_TIMEOUT_MS);
   try {
     const r1 = await fetch(`${EDGE_TTS_HOST}/gradio_api/call/tts_interface`, {
@@ -88,7 +137,6 @@ async function synthesizeEdgeNeuralTts(text, voiceProfile, { ratePct = 0, pitchH
     if (!r2.ok) throw new Error(`EDGE_SSE_${r2.status}`);
     const sse = await r2.text();
 
-    // Parse Gradio SSE complete event for FileData URL
     let audioUrl = '';
     const lines = sse.split('\n');
     for (const rawLine of lines) {
@@ -111,7 +159,6 @@ async function synthesizeEdgeNeuralTts(text, voiceProfile, { ratePct = 0, pitchH
 
     if (!audioUrl) throw new Error('EDGE_NO_AUDIO_URL');
 
-    // Fetch MP3 bytes into a local Blob URL so playback is gapless and replayable without network hiccups
     const ar = await fetch(audioUrl, { signal: linked.signal });
     if (!ar.ok) throw new Error(`EDGE_MP3_${ar.status}`);
     const blob = await ar.blob();
@@ -123,11 +170,32 @@ async function synthesizeEdgeNeuralTts(text, voiceProfile, { ratePct = 0, pitchH
 }
 
 /**
+ * Fetches Edge Neural TTS with automatic retries so transient Space hiccups NEVER
+ * silently drop the user's chosen voice down to a generic fallback speaker.
+ */
+async function synthesizeEdgeNeuralTts(text, voiceProfile, { ratePct = 0, pitchHz = 0, signal = null } = {}) {
+  let lastErr = null;
+  for (let attempt = 1; attempt <= EDGE_MAX_ATTEMPTS; attempt += 1) {
+    if (signal?.aborted) throw new Error('ABORTED');
+    try {
+      return await synthesizeEdgeNeuralOnce(text, voiceProfile, { ratePct, pitchHz, signal });
+    } catch (err) {
+      lastErr = err;
+      if (signal?.aborted) throw new Error('ABORTED');
+      if (attempt < EDGE_MAX_ATTEMPTS) {
+        await delayMs(250 * attempt, signal);
+      }
+    }
+  }
+  throw lastErr || new Error('EDGE_TTS_FAILED');
+}
+
+/**
  * Backup Neural TTS via TikTok Workers (`CORS: *`, fast base64 MP3).
  */
 async function synthesizeTikTokTts(text, voiceProfile, { signal = null } = {}) {
   const voiceCode = voiceProfile.tiktokVoice || 'id_001';
-  const linked = createAbortWithTimeout(signal, 7000);
+  const linked = createAbortWithTimeout(signal, 8000);
   try {
     const r = await fetch(TIKTOK_TTS_URL, {
       method: 'POST',
@@ -158,8 +226,8 @@ function pickBrowserVoice(langCode = 'id-ID', gender = 'female') {
 
   const genderHintRe =
     gender === 'male'
-      ? /\b(ardi|male|pria|andrew|brian|guy|ryan|david|daniel|thomas|mark|keita|yunxi|hamed|conrad|osman|remy)\b/i
-      : /\b(gadis|female|wanita|ava|emma|jenny|sonia|aria|samantha|zira|nanami|sunhi|xiaoxiao|zariyah|yasmin|vivienne|elvira)\b/i;
+      ? /\b(ardi|male|pria|andrew|brian|guy|ryan|william|giuseppe|christopher|david|daniel|thomas|mark|keita|yunxi|hamed|conrad|osman|remy|alvaro)\b/i
+      : /\b(gadis|female|wanita|ava|emma|jenny|sonia|aria|michelle|natasha|thalita|samantha|zira|nanami|sunhi|xiaoxiao|zariyah|yasmin|vivienne|elvira)\b/i;
 
   const naturalRe = /\b(natural|neural|online|google|enhanced|premium)\b/i;
 
@@ -196,7 +264,8 @@ function speakBrowserFallback(text, voiceProfile, { rate = 1.0, style = 'natural
     if (picked) utt.voice = picked;
     const prosody = STYLE_PROSODY[style] || STYLE_PROSODY.natural;
     utt.rate = clamp(Number(rate || 1.0) + prosody.rateOffset * 0.008, 0.75, 1.45);
-    utt.pitch = clamp(1.0 + ((voiceProfile.defaultPitch || 0) + prosody.pitchOffset) * 0.025, 0.8, 1.25);
+    const fbPitch = Number(voiceProfile.fallbackPitch || 0);
+    utt.pitch = clamp(1.0 + (fbPitch + prosody.pitchOffset) * 0.03, 0.78, 1.25);
 
     const onAbort = () => {
       try {
@@ -243,6 +312,7 @@ export function createManifestAiVoicePlayer() {
   let isLoading = false;
   let isPlaying = false;
   let activeLangBadge = '';
+  let activeVoiceName = '';
   const audioCache = new Map(); // cacheKey -> objectUrl
 
   const ensureAudioElement = () => {
@@ -256,7 +326,7 @@ export function createManifestAiVoicePlayer() {
   };
 
   const cachePut = (key, blobUrl) => {
-    if (audioCache.has(key)) return;
+    if (audioCache.has(key) || !String(blobUrl || '').startsWith('blob:')) return;
     if (audioCache.size >= MAX_AUDIO_CACHE) {
       const oldestKey = audioCache.keys().next().value;
       const oldUrl = audioCache.get(oldestKey);
@@ -273,14 +343,22 @@ export function createManifestAiVoicePlayer() {
   const fetchSegmentAudioUrl = async (segment, voiceProfile, { rate, style, signal }) => {
     const prosody = STYLE_PROSODY[style] || STYLE_PROSODY.natural;
     const ratePct = Math.round((Number(rate || 1.0) - 1.0) * 100) + (voiceProfile.defaultRateDelta || 0) + prosody.rateOffset;
-    const pitchHz = (voiceProfile.defaultPitch || 0) + prosody.pitchOffset;
+    const pitchHz = prosody.pitchOffset;
 
-    const cacheKey = `${voiceProfile.id}|${ratePct}|${pitchHz}|${segment.text}`;
+    const cacheKey = `${voiceProfile.id}|${style}|${ratePct}|${pitchHz}|${segment.text}`;
     if (audioCache.has(cacheKey)) {
       return { url: audioCache.get(cacheKey), engine: 'edge-cache' };
     }
 
-    // Layer 1: Microsoft Edge Neural TTS (highest human naturalness, 319 voices)
+    // Layer 0 (Optional Puter Account): Ultra-human expressive GPT-4o-mini-tts
+    try {
+      const url = await synthesizePuterHumanTts(segment.text, voiceProfile, { style, signal });
+      return { url, engine: 'puter-human' };
+    } catch (err) {
+      if (signal?.aborted) throw err;
+    }
+
+    // Layer 1: Microsoft Edge Neural TTS V2 (319 distinct neural voices, 3x automatic retry)
     try {
       const url = await synthesizeEdgeNeuralTts(segment.text, voiceProfile, { ratePct, pitchHz, signal });
       cachePut(cacheKey, url);
@@ -289,15 +367,13 @@ export function createManifestAiVoicePlayer() {
       if (signal?.aborted) throw err;
     }
 
-    // Layer 2: TikTok Neural TTS backup (for supported Latin/Asian languages)
-    if (['id', 'en', 'ja', 'ko', 'fr', 'de', 'es'].includes(segment.lang)) {
-      try {
-        const url = await synthesizeTikTokTts(segment.text, voiceProfile, { signal });
-        cachePut(cacheKey, url);
-        return { url, engine: 'tiktok-neural' };
-      } catch (err) {
-        if (signal?.aborted) throw err;
-      }
+    // Layer 2: TikTok Neural TTS backup (only if Edge Neural failed 3 times)
+    try {
+      const url = await synthesizeTikTokTts(segment.text, voiceProfile, { signal });
+      cachePut(cacheKey, url);
+      return { url, engine: 'tiktok-neural' };
+    } catch (err) {
+      if (signal?.aborted) throw err;
     }
 
     // Layer 3: Fallback signal for native Web Speech API
@@ -379,19 +455,20 @@ export function createManifestAiVoicePlayer() {
     isLoading = false;
     isPlaying = false;
     activeLangBadge = '';
+    activeVoiceName = '';
     if (onStateChange) {
-      onStateChange({ msgId: null, isLoading: false, isPlaying: false, langBadge: '' });
+      onStateChange({ msgId: null, isLoading: false, isPlaying: false, langBadge: '', voiceName: '' });
     }
   };
 
   /**
-   * Speaks a message naturally with mixed-language code-switching and gapless lookahead prefetching.
+   * Speaks a message naturally with a single consistent speaker voice across mixed Indonesian & English.
    */
   const play = async ({
     msgId,
     text,
     catalogData = null,
-    voiceId = 'id-gadis',
+    voiceId = 'multi-ava',
     rate = 1.0,
     style = 'natural',
     codeSwitch = true,
@@ -412,30 +489,35 @@ export function createManifestAiVoicePlayer() {
 
     const baseProfile = getVoiceProfileById(voiceId);
     const segments = segmentMultilingualSpeech(cleanSpeech, baseProfile.baseLang, {
-      maxSegmentChars: 220,
+      maxSegmentChars: 340,
       codeSwitch,
+      isMultilingualVoice: Boolean(baseProfile.isMultilingual),
     });
     if (segments.length === 0) {
       stop(onStateChange);
       return;
     }
 
-    // Unlock audio element synchronously on click gesture for mobile browsers
     ensureAudioElement();
 
     isLoading = true;
     isPlaying = false;
     activeLangBadge = String(segments[0].lang || 'id').toUpperCase();
-    onStateChange({ msgId, isLoading: true, isPlaying: false, langBadge: activeLangBadge });
+    activeVoiceName = baseProfile.name;
+    onStateChange({
+      msgId,
+      isLoading: true,
+      isPlaying: false,
+      langBadge: activeLangBadge,
+      voiceName: activeVoiceName,
+    });
 
     try {
-      // Pre-resolve voice profile for every segment (matching gender + authentic native pronunciation!)
       const jobs = segments.map((seg) => ({
         segment: seg,
         voiceProfile: resolveVoiceForSegment(voiceId, seg.lang, codeSwitch),
       }));
 
-      // Start fetching segment 0 immediately; prefetch segment i+1 while segment i plays!
       let nextFetchPromise = fetchSegmentAudioUrl(jobs[0].segment, jobs[0].voiceProfile, {
         rate,
         style,
@@ -449,7 +531,6 @@ export function createManifestAiVoicePlayer() {
         const fetched = await nextFetchPromise;
         if (mySession !== activeSessionId || ctrl.signal.aborted) return;
 
-        // Immediately kick off lookahead prefetch for the NEXT segment while this one plays!
         if (i + 1 < jobs.length) {
           nextFetchPromise = fetchSegmentAudioUrl(jobs[i + 1].segment, jobs[i + 1].voiceProfile, {
             rate,
@@ -461,17 +542,22 @@ export function createManifestAiVoicePlayer() {
         isLoading = false;
         isPlaying = true;
         activeLangBadge = String(currentJob.segment.lang || 'id').toUpperCase();
-        onStateChange({ msgId, isLoading: false, isPlaying: true, langBadge: activeLangBadge });
+        activeVoiceName = currentJob.voiceProfile.name;
+        onStateChange({
+          msgId,
+          isLoading: false,
+          isPlaying: true,
+          langBadge: activeLangBadge,
+          voiceName: activeVoiceName,
+          engine: fetched.engine,
+        });
 
         if (fetched.url) {
           try {
-            // Note: Edge neural TTS already baked ratePct into audio; keep playbackRate 1.0 for Edge,
-            // and apply user rate smoothly if TikTok backup was used.
-            const htmlRate = fetched.engine === 'tiktok-neural' ? rate : 1.0;
+            const htmlRate = fetched.engine === 'tiktok-neural' || fetched.engine === 'puter-human' ? rate : 1.0;
             await playBlobUrl(fetched.url, htmlRate, ctrl.signal);
           } catch (playErr) {
             if (ctrl.signal.aborted || mySession !== activeSessionId) return;
-            // Graceful fallback to browser speech if HTMLAudio playback blocked/failed
             await speakBrowserFallback(currentJob.segment.text, currentJob.voiceProfile, {
               rate,
               style,
@@ -523,6 +609,7 @@ export function createManifestAiVoicePlayer() {
       isLoading,
       isPlaying,
       langBadge: activeLangBadge,
+      voiceName: activeVoiceName,
     }),
   };
 }

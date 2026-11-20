@@ -1,4 +1,4 @@
-import { createToolsHubController } from './tools-ui.js?v=64';
+import { createToolsHubController } from './tools-ui.js?v=65';
 import { initMusicPlayer } from './music.js?v=59';
 import { loadCatalogData } from './data.js?v=59';
 import { normalizeBrandConfig, normalizeUtilityConfig } from './store.js?v=59';

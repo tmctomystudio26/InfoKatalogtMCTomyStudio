@@ -1,5 +1,5 @@
 /**
- * Manifest AI — Instant Streaming Multi-Model Engine (v64)
+ * Manifest AI — Instant Streaming Multi-Model Engine (v65)
  * - 4 independent keyless CORS streaming networks: LLM7 + Pollinations (45s reset) + OVHcloud (14+ flagship models) + HF Spaces
  * - Real-time SSE token streaming (instant ChatGPT/Gemini feel) across BYOK, Puter & keyless gateways
  * - Live Manifestudio catalog.json grounding (knows Tomy, products & 12 utilities — zero hallucination)
@@ -13,13 +13,14 @@ import {
   buildUnifiedContextMessages,
   getCooldownRemainingMs,
   getProviderMeta,
+  getVoiceProfileById,
   mergeLiveModelCatalog,
   normalizeByokKeys,
   normalizeLimitMap,
   planEnsembleExecution,
   recordProviderCooldown,
   redactSensitiveOwnerData,
-} from './manifest-ai-logic.js?v=64';
+} from './manifest-ai-logic.js?v=65';
 
 const MODEL_SYNC_TTL_MS = 6 * 60 * 60 * 1000; // 6 hours auto-refresh
 const REQUEST_TIMEOUT_MS = 26000;
@@ -98,12 +99,13 @@ export function loadStoredPrefs() {
   const raw = safeReadJson(MANIFEST_AI_STORAGE_KEYS.prefs, {});
   const validRate = Number(raw?.voiceRate);
   const voiceStyle = ['natural', 'ekspresif', 'tenang'].includes(raw?.voiceStyle) ? raw.voiceStyle : 'natural';
+  const resolvedVoice = getVoiceProfileById(String(raw?.voiceId || 'multi-ava'));
   return {
     mode: raw?.mode === 'single' ? 'single' : 'ensemble',
     focusProviderId: String(raw?.focusProviderId || 'gemini'),
     combineByokWithFree: raw?.combineByokWithFree !== false,
     usePuterFreeSdk: raw?.usePuterFreeSdk !== false,
-    voiceId: String(raw?.voiceId || 'id-gadis'),
+    voiceId: resolvedVoice.id,
     voiceRate: Number.isFinite(validRate) ? Math.max(0.8, Math.min(1.35, validRate)) : 1.0,
     voiceStyle,
     voiceCodeSwitch: raw?.voiceCodeSwitch !== false,
@@ -1242,7 +1244,7 @@ export async function sendManifestAiMessage({
           mode,
           failoverUsed: true,
           providerId: 'manifestudio-local',
-          model: 'manifestudio-catalog-v64',
+          model: 'manifestudio-catalog-v65',
           latencyMs: 20,
         },
         limitMap,
