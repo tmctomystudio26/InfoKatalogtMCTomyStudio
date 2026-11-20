@@ -10,7 +10,7 @@ export const MANIFEST_AI_STORAGE_KEYS = Object.freeze({
   chats: 'manifestudio_ai_chats_v1',
   byok: 'manifestudio_ai_byok_v1',
   models: 'manifestudio_ai_models_v1',
-  limits: 'manifestudio_ai_limits_v1',
+  limits: 'manifestudio_ai_limits_v2',
   prefs: 'manifestudio_ai_prefs_v1',
 });
 
@@ -402,8 +402,30 @@ export function getProviderMeta(providerId = '') {
 }
 
 /**
+ * Verified OVHcloud AI Endpoints (`oai.endpoints.kepler.ai.cloud.ovh.net`) anonymous CORS chat models.
+ * Each model has an independent free bucket — rolling across models delivers 14+ instant (~300ms)
+ * streaming flagship replies even when LLM7 or HF ZeroGPU are rate-limited on shared 4G CGNAT IPs.
+ */
+export const OVH_FREE_DEFAULT_MODELS = Object.freeze([
+  'DeepSeek-V4.1-Flash-1017',
+  'gemma-4-26b-a4b',
+  'Qwen3.8-27B',
+  'Mistral-Small-3.2-24B-Instruct-2506',
+  'Qwen3.5-9B',
+  'Qwen3.6-35b-a3b',
+  'Qwen3.6-27B',
+  'Meta-Llama-3_3-70B-Instruct',
+  'gpt-oss-120b',
+  'gpt-oss-20b',
+  'Qwen3.5-397B-A17B',
+  'Qwen2.5-VL-72B-Instruct',
+  'nemotron3-nano-30b',
+  'nemotron3-omni-30b',
+]);
+
+/**
  * Verified public Hugging Face Gradio SSE Spaces with native browser CORS & zero API key.
- * Each user's own IP gets independent quota and real-time token streaming.
+ * Broken/500 legacy spaces removed so ZeroGPU fallback stays fast and clean.
  */
 export const HF_GRADIO_FREE_SPACES = Object.freeze([
   {
@@ -427,39 +449,6 @@ export const HF_GRADIO_FREE_SPACES = Object.freeze([
     providerName: 'Google Gemma 4 12B',
     shortName: 'Gemini',
     model: 'gemma-4-12b-it',
-  },
-  {
-    id: 'hf:gemma-2-9b',
-    quotaBucket: 'free:hf-zerogpu',
-    host: 'https://huggingface-projects-gemma-2-9b-it.hf.space',
-    fn: 'generate',
-    payloadType: 'simple-gen',
-    providerId: 'gemini',
-    providerName: 'Google Gemma 2 9B',
-    shortName: 'Gemini',
-    model: 'gemma-2-9b-it',
-  },
-  {
-    id: 'hf:llama-3-2-3b',
-    quotaBucket: 'free:hf-zerogpu',
-    host: 'https://huggingface-projects-llama-3-2-3b-instruct.hf.space',
-    fn: 'generate',
-    payloadType: 'simple-gen',
-    providerId: 'meta',
-    providerName: 'Meta Llama 3.2',
-    shortName: 'Meta AI',
-    model: 'llama-3.2-3b-instruct',
-  },
-  {
-    id: 'hf:llama-2-7b',
-    quotaBucket: 'free:hf-zerogpu',
-    host: 'https://huggingface-projects-llama-2-7b-chat.hf.space',
-    fn: 'generate',
-    payloadType: 'llama2-sys',
-    providerId: 'meta',
-    providerName: 'Meta Llama 2',
-    shortName: 'Meta AI',
-    model: 'llama-2-7b-chat',
   },
 ]);
 
@@ -577,6 +566,7 @@ export function mergeLiveModelCatalog({
   pollinationsModels = [],
   genPollinationsModels = [],
   llm7Models = [],
+  ovhModels = [],
   syncedAt = Date.now(),
 } = {}) {
   const providers = {};
@@ -690,6 +680,12 @@ export function mergeLiveModelCatalog({
       tier: String(m.tier || 'free'),
     }));
 
+  const OVH_NON_CHAT_RE = /(?:tts|whisper|embed|bge-|guard|diffusion|solaria|clef|summarise|translate|laguna|olala)/i;
+  const freeOvhModels = (Array.isArray(ovhModels) ? ovhModels : [])
+    .map((m) => String(typeof m === 'string' ? m : m?.id || '').trim())
+    .filter((id) => id && !OVH_NON_CHAT_RE.test(id))
+    .map((id) => ({ id, tier: 'anonymous' }));
+
   const syncedSources = [];
   if (Array.isArray(openRouterModels) && openRouterModels.length > 0) syncedSources.push('OpenRouter');
   if (modelsDevJson && typeof modelsDevJson === 'object' && Object.keys(modelsDevJson).length > 0) {
@@ -699,15 +695,17 @@ export function mergeLiveModelCatalog({
     syncedSources.push('Pollinations');
   }
   if (freeLlm7Models.length > 0) syncedSources.push('LLM7');
+  if (freeOvhModels.length > 0) syncedSources.push('OVHcloud');
 
   return {
-    version: 60,
+    version: 63,
     syncedAt,
     syncedSources,
     providers,
     freeGateways: {
-      pollinations: freePollinationsModels.length > 0 ? freePollinationsModels : [{ id: 'openai-fast', label: 'GPT-OSS Reasoning', tier: 'anonymous', aliases: ['openai'] }],
+      pollinations: freePollinationsModels.length > 0 ? freePollinationsModels : [{ id: 'openai', label: 'Pollinations OpenAI', tier: 'anonymous', aliases: ['openai-fast'] }],
       llm7: freeLlm7Models.length > 0 ? freeLlm7Models : [{ id: 'default', tier: 'free' }],
+      ovh: freeOvhModels.length > 0 ? freeOvhModels : OVH_FREE_DEFAULT_MODELS.map((id) => ({ id, tier: 'anonymous' })),
     },
   };
 }
@@ -939,9 +937,8 @@ export function buildUnifiedContextMessages(
 /**
  * Per-user cooldown & rate-limit tracker helpers (client-side localStorage state).
  */
-export function normalizeLimitMap(raw = {}) {
+export function normalizeLimitMap(raw = {}, now = Date.now()) {
   if (!raw || typeof raw !== 'object') return {};
-  const now = Date.now();
   const out = {};
   for (const [k, v] of Object.entries(raw)) {
     if (!v || typeof v !== 'object') continue;
@@ -958,11 +955,12 @@ export function normalizeLimitMap(raw = {}) {
 }
 
 export function recordProviderCooldown(limitMap = {}, targetKey = '', cooldownMs = 60000, reason = 'Rate limit sementara', now = Date.now()) {
-  const next = normalizeLimitMap(limitMap);
+  const next = normalizeLimitMap(limitMap, now);
   const key = String(targetKey || '').trim();
   if (!key) return next;
   const prevHits = Number(next[key]?.hits || 0);
-  const safeMs = Math.max(5000, Math.min(3600000, Number(cooldownMs) || 60000));
+  const maxCapMs = key.startsWith('free:ovh:') ? 12 * 60 * 60 * 1000 : 3600000;
+  const safeMs = Math.max(5000, Math.min(maxCapMs, Number(cooldownMs) || 60000));
   next[key] = {
     resetAt: now + safeMs,
     reason: String(reason || 'Rate limit sementara'),
@@ -1164,7 +1162,53 @@ export function planEnsembleExecution({
     cooldownMs: getCooldownRemainingMs(limitMap, 'free:llm7', now),
   };
 
-  // Shared ZeroGPU bucket cooldown prevents wasting 4 consecutive doomed requests once ZeroGPU IP quota cools down
+  // Pollinations Classic OpenAI: resets every 45 seconds per IP (infinite daily free backup!)
+  const pollinationsCandidate = {
+    id: 'free:pollinations',
+    quotaBucket: 'free:pollinations',
+    channel: 'free-pollinations',
+    providerId: 'openai',
+    providerName: 'Pollinations AI',
+    shortName: 'ChatGPT',
+    model: 'openai',
+    cooldownMs: getCooldownRemainingMs(limitMap, 'free:pollinations', now),
+  };
+
+  // OVHcloud AI Endpoints: 14+ distinct flagship models, EACH with its OWN independent anonymous bucket!
+  const ovhPoolIds =
+    Array.isArray(registry.freeGateways?.ovh) && registry.freeGateways.ovh.length > 0
+      ? registry.freeGateways.ovh.map((m) => String(m?.id || m || '').trim()).filter(Boolean)
+      : [...OVH_FREE_DEFAULT_MODELS];
+  const ovhOrderedIds = [
+    ...OVH_FREE_DEFAULT_MODELS.filter((id) => ovhPoolIds.includes(id)),
+    ...ovhPoolIds.filter((id) => !OVH_FREE_DEFAULT_MODELS.includes(id)),
+  ];
+  const inferOvhProvider = (mid) => {
+    const low = mid.toLowerCase();
+    if (low.includes('deepseek')) return { providerId: 'deepseek', shortName: 'DeepSeek' };
+    if (low.includes('gemma')) return { providerId: 'gemini', shortName: 'Gemini' };
+    if (low.includes('qwen')) return { providerId: 'qwen', shortName: 'Qwen' };
+    if (low.includes('mistral')) return { providerId: 'mistral', shortName: 'Mistral' };
+    if (low.includes('llama')) return { providerId: 'meta', shortName: 'Meta AI' };
+    if (low.includes('gpt')) return { providerId: 'openai', shortName: 'ChatGPT' };
+    return { providerId: 'deepseek', shortName: 'Manifest AI' };
+  };
+  const ovhCandidates = ovhOrderedIds.map((mid) => {
+    const meta = inferOvhProvider(mid);
+    const key = `free:ovh:${mid}`;
+    return {
+      id: key,
+      quotaBucket: key,
+      channel: 'free-ovh',
+      providerId: meta.providerId,
+      providerName: `OVHcloud ${mid}`,
+      shortName: meta.shortName,
+      model: mid,
+      cooldownMs: getCooldownRemainingMs(limitMap, key, now),
+    };
+  });
+
+  // Shared ZeroGPU bucket cooldown prevents wasting consecutive doomed requests once ZeroGPU IP quota cools down
   const sharedZeroGpuCooldown = getCooldownRemainingMs(limitMap, 'free:hf-zerogpu', now);
   const hfCandidates = HF_GRADIO_FREE_SPACES.map((sp) => {
     const ownCd = getCooldownRemainingMs(limitMap, `free:${sp.id}`, now);
@@ -1183,14 +1227,25 @@ export function planEnsembleExecution({
     };
   });
 
-  // Rotate independent free buckets across turns so neither LLM7 nor HF ZeroGPU gets hammered consecutively!
+  // Rotate across 4 INDEPENDENT free networks (LLM7, Pollinations 45s-reset, OVH 14-model pool, HF)
+  // so no single IP bucket gets exhausted quickly — even on crowded 4G CGNAT networks!
   const safeTurn = Math.max(0, Number(turnIndex) || 0);
+  const firstFreshOvh = ovhCandidates.find((c) => c.cooldownMs === 0) || ovhCandidates[0];
+  const restOvh = ovhCandidates.filter((c) => c.id !== firstFreshOvh?.id);
+
+  let rotatedNoKeyFree;
+  if (safeTurn % 3 === 1) {
+    rotatedNoKeyFree = [pollinationsCandidate, llm7Candidate, firstFreshOvh, ...restOvh, ...hfCandidates].filter(Boolean);
+  } else if (safeTurn % 3 === 2) {
+    rotatedNoKeyFree = [firstFreshOvh, llm7Candidate, pollinationsCandidate, ...restOvh, ...hfCandidates].filter(Boolean);
+  } else {
+    rotatedNoKeyFree = [llm7Candidate, pollinationsCandidate, firstFreshOvh, ...restOvh, ...hfCandidates].filter(Boolean);
+  }
+
   const freeCandidates =
     puterCandidates.length > 0
-      ? [...puterCandidates, llm7Candidate, ...hfCandidates]
-      : safeTurn % 2 === 1
-        ? [hfCandidates[0], llm7Candidate, ...hfCandidates.slice(1)]
-        : [llm7Candidate, ...hfCandidates];
+      ? [...puterCandidates, ...rotatedNoKeyFree]
+      : rotatedNoKeyFree;
 
   const healthyByok = byokCandidates.filter((c) => c.cooldownMs === 0);
   const healthyFree = freeCandidates.filter((c) => c.cooldownMs === 0);

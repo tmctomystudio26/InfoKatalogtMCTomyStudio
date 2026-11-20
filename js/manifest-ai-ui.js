@@ -21,7 +21,7 @@ import {
   renderMarkdownSafe,
   upsertByokKey,
   upsertChatThread,
-} from './manifest-ai-logic.js?v=62';
+} from './manifest-ai-logic.js?v=63';
 import {
   getCachedModelRegistry,
   isPuterAiReady,
@@ -36,7 +36,7 @@ import {
   signInPuterSdk,
   syncLiveModelRegistry,
   testByokKeyConnection,
-} from './manifest-ai.js?v=62';
+} from './manifest-ai.js?v=63';
 
 const STARTER_PROMPTS = Object.freeze([
   {
@@ -721,7 +721,7 @@ export function createManifestAiController({ onToast = () => {} } = {}) {
             <div>
               <h3 id="mai-models-modal-title" class="mai-modal-title">Katalog Model Real-Time & Status Limit</h3>
               <p class="mai-modal-sub">
-                Disinkronkan otomatis dari OpenRouter, Models.dev & LLM7 · Terakhir: ${escapeAiHtml(formatSyncTime(reg.syncedAt))}
+                Disinkronkan otomatis dari OpenRouter, Models.dev, LLM7 & OVHcloud · Terakhir: ${escapeAiHtml(formatSyncTime(reg.syncedAt))}
               </p>
             </div>
             <button type="button" class="mai-icon-btn" data-mai-action="close-modal" aria-label="Tutup modal">
@@ -736,8 +736,8 @@ export function createManifestAiController({ onToast = () => {} } = {}) {
                 <span>
                   ${
                     state.puterReady
-                      ? 'Puter Multi-AI SDK aktif (kuota gratis terpisah per akun pengguna) + LLM7 + Hugging Face SSE Spaces.'
-                      : 'LLM7 + Hugging Face SSE Spaces aktif dengan rotasi hemat kuota. Aktifkan Kuota Puter (Gratis) untuk batas jauh lebih lega per akun Anda.'
+                      ? 'Puter Multi-AI SDK aktif (kuota gratis terpisah per akun) + LLM7 + Pollinations (reset 45 dtk) + OVHcloud AI (14+ model) + HF Spaces.'
+                      : '4 jaringan gratis independen aktif (LLM7, Pollinations reset 45 dtk, OVHcloud AI 14+ model flagship, HF Spaces). Aktifkan Kuota Puter (Gratis) untuk batas unlimited per akun Anda.'
                   }
                 </span>
               </div>

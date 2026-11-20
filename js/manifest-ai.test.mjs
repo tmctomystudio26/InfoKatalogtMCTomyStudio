@@ -5,11 +5,13 @@ import {
   DEFAULT_MANIFESTUDIO_PROFILE,
   HF_GRADIO_FREE_SPACES,
   MANIFEST_AI_SYSTEM_PROMPT,
+  OVH_FREE_DEFAULT_MODELS,
   buildLocalManifestudioFallback,
   buildManifestudioKnowledgeBlock,
   buildUnifiedContextMessages,
   detectTopicShift,
   isManifestudioQuery,
+  mergeLiveModelCatalog,
   planEnsembleExecution,
   recordProviderCooldown,
   renderMarkdownSafe,
@@ -102,50 +104,70 @@ test('Manifest AI v62 isolates new topics cleanly while preserving memory on fol
   assert.equal(detectTopicShift(multiTopicHistory, 'Kembali ke takaran kopi espresso tadi').shifted, false);
 });
 
-test('Manifest AI v62 conserves free quota via distinct bucket selection, turn rotation, and shared ZeroGPU cooldown', () => {
+test('Manifest AI v63 rotates across 4 independent free networks and survives full LLM7 + HF ZeroGPU CGNAT block', () => {
   const now = 1_760_000_000_000;
-  assert.ok(HF_GRADIO_FREE_SPACES.length >= 4);
+  assert.ok(HF_GRADIO_FREE_SPACES.length >= 2);
+  assert.ok(OVH_FREE_DEFAULT_MODELS.length >= 14);
 
-  // Turn 0 starts with LLM7 + 1 HF Space (2 distinct quota buckets, NOT 3 simultaneous calls!)
-  const plan0 = planEnsembleExecution({
-    mode: 'ensemble',
-    byokKeys: [],
-    puterAvailable: false,
-    limitMap: {},
-    turnIndex: 0,
-    now,
+  // Live OVH catalog filter keeps real chat LLMs and drops TTS/Whisper/Embedding/Guard utility models
+  const merged = mergeLiveModelCatalog({
+    ovhModels: [
+      { id: 'nvr-tts-en-us' },
+      { id: 'whisper-large-v3' },
+      { id: 'bge-m3' },
+      { id: 'Qwen3Guard-Gen-8B' },
+      { id: 'DeepSeek-V4.1-Flash-1017' },
+      { id: 'gemma-4-26b-a4b' },
+      { id: 'Qwen3.8-27B' },
+    ],
   });
-  assert.equal(plan0.primary.length, 2);
+  assert.deepEqual(
+    merged.freeGateways.ovh.map((m) => m.id),
+    ['DeepSeek-V4.1-Flash-1017', 'gemma-4-26b-a4b', 'Qwen3.8-27B']
+  );
+
+  // Turn 0, 1, 2 rotate across LLM7 -> Pollinations -> OVHcloud (3 distinct independent networks!)
+  const plan0 = planEnsembleExecution({ mode: 'ensemble', byokKeys: [], puterAvailable: false, limitMap: {}, turnIndex: 0, now });
+  const plan1 = planEnsembleExecution({ mode: 'ensemble', byokKeys: [], puterAvailable: false, limitMap: {}, turnIndex: 1, now });
+  const plan2 = planEnsembleExecution({ mode: 'ensemble', byokKeys: [], puterAvailable: false, limitMap: {}, turnIndex: 2, now });
+
   assert.equal(plan0.primary[0].channel, 'free-llm7');
-  assert.equal(plan0.primary[1].channel, 'free-hf-gradio');
-  assert.notEqual(plan0.primary[0].quotaBucket, plan0.primary[1].quotaBucket);
-  assert.notEqual(plan0.primary[0].model, 'gpt-oss:20b', 'Prefers token-efficient chat model over heavy reasoning model');
-
-  // Turn 1 rotates to HF Space first, then LLM7 — spreading load evenly!
-  const plan1 = planEnsembleExecution({
-    mode: 'ensemble',
-    byokKeys: [],
-    puterAvailable: false,
-    limitMap: {},
-    turnIndex: 1,
-    now,
-  });
-  assert.equal(plan1.primary[0].channel, 'free-hf-gradio');
+  assert.equal(plan0.primary[1].channel, 'free-pollinations');
+  assert.equal(plan1.primary[0].channel, 'free-pollinations');
   assert.equal(plan1.primary[1].channel, 'free-llm7');
+  assert.equal(plan2.primary[0].channel, 'free-ovh');
+  assert.notEqual(plan0.primary[0].quotaBucket, plan0.primary[1].quotaBucket);
 
-  // Shared ZeroGPU bucket cooldown skips ALL 5 ZeroGPU spaces cleanly instead of wasting 4 doomed calls
-  const cooledZeroGpu = recordProviderCooldown({}, 'free:hf-zerogpu', 300000, 'ZeroGPU quota', now);
-  const afterZeroGpu = planEnsembleExecution({
+  // 4G CGNAT scenario: BOTH LLM7 AND HF ZeroGPU are 100% rate-limited!
+  // Manifest AI MUST still have Pollinations + all 14 OVHcloud flagship models healthy & ready!
+  let cgnatLimits = recordProviderCooldown({}, 'free:llm7', 120000, 'Limit LLM7', now);
+  cgnatLimits = recordProviderCooldown(cgnatLimits, 'free:hf-zerogpu', 300000, 'ZeroGPU quota', now);
+  const cgnatPlan = planEnsembleExecution({
     mode: 'ensemble',
     byokKeys: [],
     puterAvailable: false,
-    limitMap: cooledZeroGpu,
-    turnIndex: 1,
-    now: now + 5000,
+    limitMap: cgnatLimits,
+    turnIndex: 0,
+    now: now + 3000,
   });
-  assert.equal(afterZeroGpu.primary.length, 1);
-  assert.equal(afterZeroGpu.primary[0].channel, 'free-llm7');
-  assert.equal(afterZeroGpu.backups.length, 0);
+  assert.equal(cgnatPlan.primary.length, 2);
+  assert.equal(cgnatPlan.primary[0].channel, 'free-pollinations');
+  assert.equal(cgnatPlan.primary[1].channel, 'free-ovh');
+  assert.ok(cgnatPlan.backups.length >= 13, 'Still has 13+ independent fresh OVHcloud flagship models as backups');
+
+  // Cooling down 1 OVH model ONLY cools down that model — the next OVH model immediately takes over!
+  const firstOvhId = cgnatPlan.primary[1].id;
+  const afterFirstOvh = recordProviderCooldown(cgnatLimits, firstOvhId, 12 * 60 * 60 * 1000, 'OVH model used', now + 5000);
+  const nextOvhPlan = planEnsembleExecution({
+    mode: 'ensemble',
+    byokKeys: [],
+    puterAvailable: false,
+    limitMap: afterFirstOvh,
+    turnIndex: 2,
+    now: now + 6000,
+  });
+  assert.equal(nextOvhPlan.primary[0].channel, 'free-ovh');
+  assert.notEqual(nextOvhPlan.primary[0].id, firstOvhId);
 
   // Markdown XSS safety still holds
   const html = renderMarkdownSafe('**Manifestudio** <script>alert(1)</script>');

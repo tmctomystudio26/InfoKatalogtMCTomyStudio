@@ -1,28 +1,32 @@
 /**
- * Manifest AI — Instant Streaming Multi-Model Engine (v62)
- * - Real-time SSE token streaming (instant ChatGPT/Gemini feel) across BYOK & keyless gateways
+ * Manifest AI — Instant Streaming Multi-Model Engine (v63)
+ * - 4 independent keyless CORS streaming networks: LLM7 + Pollinations (45s reset) + OVHcloud (14+ flagship models) + HF Spaces
+ * - Real-time SSE token streaming (instant ChatGPT/Gemini feel) across BYOK, Puter & keyless gateways
  * - Live Manifestudio catalog.json grounding (knows Tomy, products & 12 utilities — zero hallucination)
- * - Smart Staggered Hedging: sends ONLY 1 free request first (cuts quota burn 3x) & hedges only if slow/failing
- * - Shared ZeroGPU quota-bucket awareness & round-robin turn rotation across independent free buckets
- * - Silent background failover with topic-shift aware conversation memory
+ * - Smart Staggered Hedging: sends ONLY 1 free request first & hedges only if slow/failing
+ * - Per-model OVH buckets, 45s Pollinations auto-wait fallback & shared ZeroGPU bucket awareness
  */
 
 import {
   MANIFEST_AI_STORAGE_KEYS,
   buildLocalManifestudioFallback,
   buildUnifiedContextMessages,
+  getCooldownRemainingMs,
   getProviderMeta,
   mergeLiveModelCatalog,
   normalizeByokKeys,
   normalizeLimitMap,
   planEnsembleExecution,
   recordProviderCooldown,
-} from './manifest-ai-logic.js?v=62';
+} from './manifest-ai-logic.js?v=63';
 
 const MODEL_SYNC_TTL_MS = 6 * 60 * 60 * 1000; // 6 hours auto-refresh
 const REQUEST_TIMEOUT_MS = 26000;
 const FREE_CONNECT_TIMEOUT_MS = 10500;
 const FREE_HEDGE_DELAY_MS = 3400; // Only launch 2nd free provider if 1st fails or stalls >3.4s (saves 3x quota!)
+const POLLINATIONS_RESET_MS = 46000; // Pollinations Classic resets every 45s per IP
+const POLLINATIONS_AUTO_WAIT_MAX_MS = 22000; // Smoothly wait up to 22s for Pollinations reset instead of throwing limit error
+const OVH_PER_MODEL_COOLDOWN_MS = 12 * 60 * 60 * 1000; // OVH anonymous allows 1 call per model — roll cleanly to next model!
 const REGISTRY_TIMEOUT_MS = 7000;
 
 let cachedRegistry = null;
@@ -180,11 +184,12 @@ export async function syncLiveModelRegistry({ force = false } = {}) {
     }
   }
 
-  const [orRes, mdRes, genPollRes, llm7Res] = await Promise.allSettled([
+  const [orRes, mdRes, genPollRes, llm7Res, ovhRes] = await Promise.allSettled([
     fetchJsonTimeout('https://openrouter.ai/api/v1/models', {}, REGISTRY_TIMEOUT_MS),
     fetchJsonTimeout('https://models.dev/api.json', {}, REGISTRY_TIMEOUT_MS),
     fetchJsonTimeout('https://gen.pollinations.ai/text/models', {}, REGISTRY_TIMEOUT_MS),
     fetchJsonTimeout('https://api.llm7.io/v1/models', {}, REGISTRY_TIMEOUT_MS),
+    fetchJsonTimeout('https://oai.endpoints.kepler.ai.cloud.ovh.net/v1/models', {}, REGISTRY_TIMEOUT_MS),
   ]);
 
   const openRouterModels =
@@ -203,6 +208,10 @@ export async function syncLiveModelRegistry({ force = false } = {}) {
     llm7Res.status === 'fulfilled' && llm7Res.value.ok && Array.isArray(llm7Res.value.json?.data)
       ? llm7Res.value.json.data
       : [];
+  const ovhModels =
+    ovhRes.status === 'fulfilled' && ovhRes.value.ok && Array.isArray(ovhRes.value.json?.data)
+      ? ovhRes.value.json.data
+      : [];
 
   const merged = mergeLiveModelCatalog({
     openRouterModels,
@@ -210,6 +219,7 @@ export async function syncLiveModelRegistry({ force = false } = {}) {
     pollinationsModels: genPollinationsModels,
     genPollinationsModels,
     llm7Models,
+    ovhModels,
     syncedAt: Date.now(),
   });
 
@@ -839,7 +849,33 @@ export async function executeModelTarget(target, messages = [], { signal = null,
     return { ...target, content, latencyMs: Date.now() - startedAt };
   }
 
-  // Free Gateway C: Hugging Face Official Gradio SSE Spaces (native CORS, live token streaming)
+  // Free Gateway C: Pollinations Classic OpenAI streaming (CORS: *, resets every 45s per IP — never locks out all day!)
+  if (target.channel === 'free-pollinations') {
+    const content = await streamOpenAiCompatible(
+      'https://text.pollinations.ai/openai',
+      {
+        'Content-Type': 'application/json',
+      },
+      { model: target.model || 'openai', messages, temperature: 0.55 },
+      { timeoutMs: FREE_CONNECT_TIMEOUT_MS + 3500, signal, onDelta }
+    );
+    return { ...target, content, latencyMs: Date.now() - startedAt };
+  }
+
+  // Free Gateway D: OVHcloud AI Endpoints streaming (CORS: *, 14+ distinct flagship models with independent per-model buckets!)
+  if (target.channel === 'free-ovh') {
+    const content = await streamOpenAiCompatible(
+      'https://oai.endpoints.kepler.ai.cloud.ovh.net/v1/chat/completions',
+      {
+        'Content-Type': 'application/json',
+      },
+      { model: target.model || 'DeepSeek-V4.1-Flash-1017', messages, max_tokens: 768, temperature: 0.55 },
+      { timeoutMs: FREE_CONNECT_TIMEOUT_MS, signal, onDelta }
+    );
+    return { ...target, content, latencyMs: Date.now() - startedAt };
+  }
+
+  // Free Gateway E: Hugging Face Official Gradio SSE Spaces (native CORS, live token streaming)
   if (target.channel === 'free-hf-gradio') {
     const content = await streamHfGradioSpace(target, messages, {
       timeoutMs: FREE_CONNECT_TIMEOUT_MS,
@@ -999,8 +1035,17 @@ async function raceStreamingBatch(targets, messages, { signal, onDelta, onCooldo
           const isLimit = status === 429 || status === 402 || /rate\s*limit|quota|zerogpu|allowance|too many/i.test(msgStr);
 
           if (isZeroGpuQuota && target.quotaBucket === 'free:hf-zerogpu') {
-            // Cool down the shared HF ZeroGPU bucket once instead of wasting 4 more doomed ZeroGPU calls
+            // Cool down the shared HF ZeroGPU bucket once instead of wasting consecutive ZeroGPU calls
             onCooldown('free:hf-zerogpu', retryMs || 300000, 'Kuota ZeroGPU sementara penuh');
+          } else if (target.channel === 'free-pollinations' && (isLimit || status === 402 || status === 429)) {
+            // Pollinations Classic always resets in 45s per IP — keep cooldown crisp at 46s!
+            onCooldown('free:pollinations', POLLINATIONS_RESET_MS, 'Jeda 45 dtk Pollinations');
+          } else if (target.channel === 'free-ovh' && (isLimit || status === 429)) {
+            // Each OVH model has an independent free trial bucket — cool down ONLY this model so the next 13+ models stay ready!
+            onCooldown(target.id, OVH_PER_MODEL_COOLDOWN_MS, 'Kuota model OVH terpakai');
+          } else if (target.channel === 'free-llm7' && (isLimit || retryMs > 0)) {
+            // Keep LLM7 cooldown reasonable (65s–3m) so RPM bursts recover quickly
+            onCooldown('free:llm7', Math.min(retryMs || 65000, 180000), 'Limit sementara LLM7');
           } else if (isLimit || retryMs > 0) {
             onCooldown(target.id, retryMs || 45000, 'Limit sementara');
           } else if (status >= 500 || status === 404 || msgStr === 'TIMEOUT') {
@@ -1114,9 +1159,10 @@ export async function sendManifestAiMessage({
     failoverUsed = true;
     for (const backupTarget of plan.backups) {
       if (signal?.aborted) throw new Error('ABORTED');
-      // Skip targets whose bucket just cooled down during Phase 1 (e.g. shared ZeroGPU IP quota)
+      // Skip targets whose own ID or shared bucket just cooled down during Phase 1
+      const ownCd = limitMap?.[backupTarget.id]?.resetAt || 0;
       const bucketCd = backupTarget.quotaBucket ? limitMap?.[backupTarget.quotaBucket]?.resetAt || 0 : 0;
-      if (bucketCd > Date.now()) continue;
+      if (ownCd > Date.now() || bucketCd > Date.now()) continue;
 
       const backupRes = await raceStreamingBatch([backupTarget], unifiedMessages, {
         signal,
@@ -1127,6 +1173,46 @@ export async function sendManifestAiMessage({
       winner = backupRes.winner;
       allFailures.push(...backupRes.failures);
       if (winner) break;
+    }
+  }
+
+  // Phase 2.5: If all other free networks are cooling down, smoothly wait up to 22s for Pollinations'
+  // 45-second IP reset (cancellable via Stop) so the user keeps chatting without hitting a red error!
+  if (!winner && !signal?.aborted) {
+    const pollWaitMs = getCooldownRemainingMs(limitMap, 'free:pollinations', Date.now());
+    const alreadyTriedPoll = allFailures.some((f) => f.target?.channel === 'free-pollinations');
+    if (pollWaitMs > 0 && pollWaitMs <= POLLINATIONS_AUTO_WAIT_MAX_MS && !alreadyTriedPoll) {
+      await new Promise((resolve, reject) => {
+        const timer = setTimeout(() => {
+          if (signal) signal.removeEventListener('abort', onAbort);
+          resolve();
+        }, pollWaitMs + 500);
+        const onAbort = () => {
+          clearTimeout(timer);
+          reject(new Error('ABORTED'));
+        };
+        if (signal) signal.addEventListener('abort', onAbort, { once: true });
+      });
+      if (!signal?.aborted) {
+        const pollTarget = {
+          id: 'free:pollinations',
+          quotaBucket: 'free:pollinations',
+          channel: 'free-pollinations',
+          providerId: 'openai',
+          providerName: 'Pollinations AI',
+          shortName: 'ChatGPT',
+          model: 'openai',
+          cooldownMs: 0,
+        };
+        const pollRes = await raceStreamingBatch([pollTarget], unifiedMessages, {
+          signal,
+          onDelta,
+          onCooldown: recordCooldown,
+          staggerMs: 0,
+        });
+        winner = pollRes.winner;
+        allFailures.push(...pollRes.failures);
+      }
     }
   }
 
@@ -1141,7 +1227,7 @@ export async function sendManifestAiMessage({
           mode,
           failoverUsed: true,
           providerId: 'manifestudio-local',
-          model: 'manifestudio-catalog-v62',
+          model: 'manifestudio-catalog-v63',
           latencyMs: 20,
         },
         limitMap,
@@ -1155,6 +1241,14 @@ export async function sendManifestAiMessage({
     const err = new Error(errText);
     err.limitMap = limitMap;
     throw err;
+  }
+
+  // Record smart post-success cooldowns for known per-window / per-model free buckets so the NEXT
+  // message immediately routes to a fresh model/network with ZERO wasted 402/429 round-trips!
+  if (winner.channel === 'free-pollinations') {
+    recordCooldown('free:pollinations', POLLINATIONS_RESET_MS, 'Jeda 45 dtk Pollinations');
+  } else if (winner.channel === 'free-ovh') {
+    recordCooldown(winner.id, OVH_PER_MODEL_COOLDOWN_MS, 'Kuota model OVH terpakai');
   }
 
   return {

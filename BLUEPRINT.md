@@ -14,7 +14,7 @@ Dokumen teknis terpadu bagi **Tim IT, Human Developer, maupun AI Coding Agent** 
    - **Menu Utilitas (`tools.html`)**: Halaman terpisah untuk **12 utilitas harian** (`?tab=prayer | weather | worldclock | speedtest | downloader | compressor | converter | songfinder | music | dracin | audioeditor | manifestai`) yang ditonjolkan melalui kartu aksen `#utilities-callout-card` (`assets/icons/menu-utilitas.svg`).
    - **Panel Admin (`admin.html`)**: Halaman *unlisted* (`noindex`) terenkripsi AES-256-GCM yang mempublikasikan perubahan katalog, aset upload, OpenGraph `index.html`, dan riwayat perubahan terperinci langsung via GitHub REST API.
 3. **Kualitas Pengalaman Mobile-First, Presisi Tinggi, & Ad-Free**:
-   - Semua kontrol termasuk header navigasi, grid produk, 12 menu utilitas, pemutar musik, Drama China, Audio Editor DAW, dan workspace **Manifest AI** responsif penuh di HP (`360px–430px`) maupun desktop (`1025px–1440px`) bebas overflow, menggunakan *Network-First Service Worker* (`manifestudio-cache-v62` + pelestarian `manifestudio-ffmpeg-core-v1`) + query cache-busting `?v=62`.
+   - Semua kontrol termasuk header navigasi, grid produk, 12 menu utilitas, pemutar musik, Drama China, Audio Editor DAW, dan workspace **Manifest AI** responsif penuh di HP (`360px–430px`) maupun desktop (`1025px–1440px`) bebas overflow, menggunakan *Network-First Service Worker* (`manifestudio-cache-v63` + pelestarian `manifestudio-ffmpeg-core-v1`) + query cache-busting `?v=63`.
 
 ---
 
@@ -39,7 +39,7 @@ Dokumen teknis terpadu bagi **Tim IT, Human Developer, maupun AI Coding Agent** 
 | `js/song-finder.js` | Pencari Judul Lagu, Musik & Analisis Kemiripan Video Sosmed Multi-API + Whisper/AudD/AI Publik | `tools-logic.js`, `media-engine.js` |
 | `js/music.js` + `js/music-logic.js` | Floating dock draggable, YT Music API open-source, drawer 14 kategori + tren real-time, background audio anti-mati, PiP + Mode Headset | YouTube IFrame API / Audius / Siputzx |
 | `data/catalog.json` & `data/catalog-history.json` | Single Source of Truth produk, utilitas, brand, OpenGraph, banners, kategori, voucher usage limits, FAQ & 12 snapshot riwayat | Service Worker Network-First |
-| `sw.js` + `manifest.webmanifest` | Network-First code/data cache (`manifestudio-cache-v62` + pelestarian `manifestudio-ffmpeg-core-v1`) & instalasi PWA | — |
+| `sw.js` + `manifest.webmanifest` | Network-First code/data cache (`manifestudio-cache-v63` + pelestarian `manifestudio-ffmpeg-core-v1`) & instalasi PWA | — |
 | `CNAME` | Konfigurasi domain kustom resmi GitHub Pages (`manifestudio.my.id`) — jangan dihapus | Cloudflare DNS |
 
 ---
