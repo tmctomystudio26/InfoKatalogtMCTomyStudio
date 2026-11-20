@@ -1,9 +1,9 @@
 /**
- * Manifest AI — Pure Logic Module (v60)
+ * Manifest AI — Pure Logic Module (v62)
  * Multi-model ensemble planning, real-time latest-model catalog auto-upgrader,
- * grounded conversation memory builder (anti-hallucination across model switches),
- * per-user limit/cooldown tracker, multi-BYOK key vault helpers, chat history store,
- * and safe Markdown renderer.
+ * Manifestudio live-catalog grounding (anti-hallucination), topic-shift aware
+ * conversation memory, per-user quota-bucket cooldown tracker, multi-BYOK vault,
+ * chat history store, and safe Markdown renderer.
  */
 
 export const MANIFEST_AI_STORAGE_KEYS = Object.freeze({
@@ -14,14 +14,164 @@ export const MANIFEST_AI_STORAGE_KEYS = Object.freeze({
   prefs: 'manifestudio_ai_prefs_v1',
 });
 
+export const DEFAULT_MANIFESTUDIO_PROFILE = Object.freeze({
+  brandName: 'Manifestudio',
+  creator: 'Tomy',
+  website: 'https://manifestudio.my.id/',
+  whatsapp: '+62 851-2293-6027',
+  whatsappUrl: 'https://wa.me/6285122936027',
+  tiktok: '@tmctomystudio',
+  instagram: '@tmctomystudio',
+  summary:
+    'Platform web katalog akun premium & layanan digital murah bergaransi sekaligus Menu Utilitas 12 fitur gratis tanpa iklan, dibuat dan dikelola oleh Tomy (@tmctomystudio).',
+  utilities: [
+    'Jadwal Sholat & Imsakiyah (resmi Kemenag RI + GPS)',
+    'Prakiraan Cuaca Real-Time (curah hujan, UV, 7 hari)',
+    'Jam Dunia UTC & Bola Dunia 3D (WIB/WITA/WIT)',
+    'Speedtest Internet (Cloudflare Edge)',
+    'Downloader Sosmed All-in-One (TikTok, IG, YouTube, FB: video HD, foto, carousel, story, caption)',
+    'Kompresor Foto & Video HD (anti-pecah sosmed, AVIF/WebP/FFmpeg WASM)',
+    'Konversi Semua File (85+ format: DOCX, Excel, PDF, foto, video, audio, ZIP)',
+    'Cari Judul Lagu, Musik & Sumber Video (AudD, Whisper lirik AI, kemiripan video)',
+    'YT Music Player (gratis tanpa iklan)',
+    'Drama China / Dracin (20+ platform short drama gratis tanpa iklan, sub Indo, anti-VIP)',
+    'Audio Editor Studio AI (potong audio, 10-Band EQ, Voice Changer, pisah vokal/karaoke, mixer multi-trek, tag ID3, ekspor MP3/WAV/M4A/OGG/FLAC)',
+    'Manifest AI (chat AI multi-model gratis tanpa API key & dukungan multi-API key pribadi)',
+  ],
+  sampleProducts: [
+    'CapCut Pro (mulai Rp14.500)',
+    'Netflix Premium (mulai Rp25.000)',
+    'Canva Pro (mulai Rp4.000)',
+    'YouTube Premium (mulai Rp15.000)',
+    'Spotify Premium (mulai Rp15.000)',
+    'Viu Premium (mulai Rp7.000)',
+    'Vidio Premier Platinum (mulai Rp15.000)',
+    'Alight Motion Premium (mulai Rp15.000)',
+    'WeTV (mulai Rp8.500)',
+    'Prime Video (mulai Rp8.000)',
+    'Cek Turnitin (mulai Rp17.000)',
+    'Zoom Pro (mulai Rp10.000)',
+    'Cek AI GPTZero',
+    'Bstation (mulai Rp20.000)',
+    'Picsart (mulai Rp10.000)',
+    'Wink (mulai Rp8.000)',
+    'Remini (mulai Rp7.000)',
+    'Gemini AI (mulai Rp25.000)',
+    'Request & Custom Produk',
+  ],
+});
+
 export const MANIFEST_AI_SYSTEM_PROMPT = [
-  'Kamu adalah Manifest AI, asisten kecerdasan buatan terpadu milik Manifestudio.',
-  'Aturan utama:',
-  '1. Jawab dalam bahasa yang sama dengan pengguna (utamakan Bahasa Indonesia yang natural, jelas, rapi, dan langsung ke inti bila pengguna berbahasa Indonesia).',
-  '2. Jaga konsistensi penuh dengan seluruh riwayat percakapan dan ringkasan memori yang diberikan. Jangan pernah mengarang fakta, angka, tautan, atau kejadian yang tidak ada di riwayat maupun pengetahuan terverifikasi.',
-  '3. Jika suatu informasi tidak pasti atau membutuhkan data terbaru di luar konteks, nyatakan dengan jujur secara singkat.',
-  '4. Gunakan struktur Markdown yang bersih (daftar, tabel, atau blok kode dengan nama bahasa) hanya bila benar-benar membantu keterbacaan.',
+  'Kamu adalah Manifest AI, asisten AI resmi milik Manifestudio (https://manifestudio.my.id/) yang dibuat dan dikelola oleh Tomy (@tmctomystudio).',
+  'Identitas resmi Manifestudio: Platform katalog akun premium & layanan digital murah bergaransi (seperti CapCut Pro, Netflix, Canva Pro, YouTube Premium, Spotify, Viu, Vidio, Alight Motion, WeTV, Prime Video, Cek Turnitin, Zoom Pro, Bstation, Picsart, Wink, Remini, Gemini AI) sekaligus Menu Utilitas berisi 12 fitur gratis tanpa iklan (Jadwal Sholat, Cuaca, Jam Dunia 3D, Speedtest, Downloader Sosmed, Kompresor HD, Konversi File, Cari Judul Lagu, YT Music, Drama China/Dracin, Audio Editor Studio AI, dan Manifest AI). Kontak resmi: WhatsApp Admin +62 851-2293-6027, TikTok & Instagram @tmctomystudio.',
+  'Aturan WAJIB:',
+  '1. Selalu jawab PESAN TERAKHIR pengguna secara langsung. Jika pengguna mengganti topik ke hal baru, segera ikuti topik baru dan JANGAN memaksa kembali ke topik lama.',
+  '2. Jika pengguna mengirim sapaan singkat (seperti "P", "Halo", "Hai", "Tes"), balas singkat dan ramah menanyakan apa yang bisa dibantu.',
+  '3. Anti-halusinasi: JANGAN pernah mengarang bahwa Manifestudio membuat game, AR/VR, animasi, atau agensi seni digital. Gunakan hanya fakta resmi Manifestudio di atas.',
+  '4. Jawab dalam bahasa yang sama dengan pengguna (utamakan Bahasa Indonesia yang natural, akurat, ringkas, dan rapi dengan Markdown bila perlu).',
 ].join('\n');
+
+const MANIFESTUDIO_QUERY_RE =
+  /\b(man[ie]f[eu]s?t?studio|manifest\s*studio|manifest\s*ai|tomy|tmctomystudio|tuan|pemilik|pembuat|pencipta|siapa\s+(kamu|anda|pembuat|pemilik|tuan)|kamu\s+siapa|anda\s+siapa|katalog|akun\s+premium|menu\s+utilitas|fitur\s+di\s+sini|kontak\s+admin|whatsapp\s+admin|wa\s+admin|cara\s+order|cara\s+pesan|bayar\s+nanti|bayar\s+belakangan|capcut|netflix|canva|turnitin|dracin|drama\s+china|audio\s+editor)\b/i;
+
+export function isManifestudioQuery(text = '') {
+  return MANIFESTUDIO_QUERY_RE.test(String(text || ''));
+}
+
+function formatIdrSimple(n) {
+  const num = Number(n);
+  if (!Number.isFinite(num) || num <= 0) return '';
+  return `Rp${Math.round(num).toLocaleString('id-ID')}`;
+}
+
+/**
+ * Builds a concise, 100% factual Manifestudio knowledge block directly from live
+ * `data/catalog.json` (with safe defaults) so Manifest AI NEVER hallucinates products or services.
+ */
+export function buildManifestudioKnowledgeBlock(catalogData = null) {
+  const brand = catalogData?.brand || {};
+  const name = String(brand.name || DEFAULT_MANIFESTUDIO_PROFILE.brandName);
+  const tagline = String(brand.tagline || 'by Tomy');
+  const waNum = String(brand.whatsappNumber || '6285122936027');
+  const waFormatted = waNum.startsWith('62') ? `+${waNum}` : waNum;
+  const ig = String(brand.instagramHandle || DEFAULT_MANIFESTUDIO_PROFILE.instagram);
+  const tt = String(brand.tiktokHandle || DEFAULT_MANIFESTUDIO_PROFILE.tiktok);
+
+  const liveProducts = Array.isArray(catalogData?.products) && catalogData.products.length > 0
+    ? catalogData.products
+        .filter((p) => p && p.name)
+        .map((p) => {
+          const prices = (Array.isArray(p.variants) ? p.variants : [])
+            .map((v) => Number(v?.price))
+            .filter((x) => Number.isFinite(x) && x > 0);
+          const minPrice = prices.length > 0 ? Math.min(...prices) : 0;
+          return minPrice > 0 ? `${p.name} (mulai ${formatIdrSimple(minPrice)})` : p.name;
+        })
+    : DEFAULT_MANIFESTUDIO_PROFILE.sampleProducts;
+
+  const liveUtilities = Array.isArray(catalogData?.utilities?.items) && catalogData.utilities.items.length > 0
+    ? catalogData.utilities.items.map((u) => u.label).filter(Boolean)
+    : DEFAULT_MANIFESTUDIO_PROFILE.utilities;
+
+  const threshold = Number(brand.discountThreshold) || 50000;
+  const discAmt = Number(brand.discountAmount) || 2000;
+
+  return [
+    `[DATA RESMI TERVERIFIKASI ${name.toUpperCase()} (${tagline}) — WAJIB DIJADIKAN ACUAN UTAMA]`,
+    `- Nama Platform: ${name} (${tagline}) · Situs resmi: https://manifestudio.my.id/`,
+    `- Pemilik / Pengelola / Tuan: Tomy (${tt} / ${ig})`,
+    `- Kontak Resmi: WhatsApp Admin ${waFormatted} (https://wa.me/${waNum}), TikTok ${tt}, Instagram ${ig}`,
+    `- Promo & Pembayaran: Potongan otomatis ${formatIdrSimple(discAmt)} mulai belanja ${formatIdrSimple(threshold)}, dukungan kode voucher, opsi Bayar Sekarang (0%) atau Bayar Belakangan, struk otomatis & konfirmasi via WhatsApp.`,
+    `- Daftar Katalog Layanan Digital (${liveProducts.length} produk): ${liveProducts.join(', ')}.`,
+    `- Daftar Menu Utilitas Gratis Tanpa Iklan (${liveUtilities.length} fitur di tools.html): ${liveUtilities.join('; ')}.`,
+    `- LARANGAN KERAS: Jangan pernah menyebut atau mengarang layanan di luar daftar resmi ini (seperti pembuatan game, AR/VR, animasi, atau agensi seni digital).`,
+  ].join('\n');
+}
+
+/**
+ * Generates an accurate, verified Indonesian response directly from live Manifestudio data
+ * when external free gateways are temporarily cooling down and the user asks about
+ * Manifestudio, its creator Tomy, products, utilities, or sends a quick greeting.
+ */
+export function buildLocalManifestudioFallback(prompt = '', catalogData = null) {
+  const raw = String(prompt || '').trim();
+  const lower = raw.toLowerCase();
+  if (!raw) return '';
+
+  // Casual Indonesian pings/greetings ("P", "Halo", "Hai", "Tes")
+  if (/^(p+|ping|halo+|hai+|hi+|hey+|tes+|test+|assalamualaikum|selamat\s+(pagi|siang|sore|malam))[\s!?.]*$/i.test(lower)) {
+    return 'Halo! Saya **Manifest AI** dari **Manifestudio** (*by Tomy*). Ada yang bisa saya bantu hari ini?';
+  }
+
+  // Identity / creator / "what is Manifestudio" / "what's in Manifestudio"
+  const asksAboutManifestudio =
+    /\b(man[ie]f[eu]s?t?studio|manifest\s*studio|manifest\s*ai)\b/i.test(lower) ||
+    /\b(siapa\s+(kamu|anda|pembuat|pemilik|tuan|pengelola)|kamu\s+siapa|anda\s+siapa|tuan\s+kamu|pemilik\s+web)\b/i.test(lower);
+
+  if (!asksAboutManifestudio) return '';
+
+  const brand = catalogData?.brand || {};
+  const waNum = String(brand.whatsappNumber || '6285122936027');
+  const ig = String(brand.instagramHandle || '@tmctomystudio');
+  const tt = String(brand.tiktokHandle || '@tmctomystudio');
+  const products = Array.isArray(catalogData?.products) && catalogData.products.length > 0
+    ? catalogData.products.slice(0, 12).map((p) => p.name)
+    : ['CapCut Pro', 'Netflix Premium', 'Canva Pro', 'YouTube Premium', 'Spotify Premium', 'Viu', 'Vidio', 'Alight Motion', 'WeTV', 'Prime Video', 'Cek Turnitin', 'Zoom Pro', 'Gemini AI'];
+  const utilities = Array.isArray(catalogData?.utilities?.items) && catalogData.utilities.items.length > 0
+    ? catalogData.utilities.items.map((u) => u.label)
+    : ['Jadwal Sholat', 'Prakiraan Cuaca', 'Jam Dunia & Globe', 'Speedtest', 'Downloader', 'Kompresor HD', 'Konversi File', 'Cari Judul Lagu', 'YT Music', 'Drama China', 'Audio Editor', 'Manifest AI'];
+
+  return [
+    'Halo! Saya **Manifest AI**, asisten resmi milik **Manifestudio** (*by Tomy*) di [manifestudio.my.id](https://manifestudio.my.id/).',
+    '',
+    '**Manifestudio** adalah platform web yang dikelola oleh **Tomy** (`@tmctomystudio`) yang menyediakan dua layanan utama:',
+    '',
+    `1. **Katalog Akun Premium & Layanan Digital Bergaransi**: ${products.join(', ')}, dan lainnya (dilengkapi diskon otomatis mulai Rp50.000, kode voucher, struk otomatis, serta opsi Bayar Sekarang / Bayar Belakangan).`,
+    `2. **Menu Utilitas (${utilities.length} Fitur Gratis Tanpa Iklan)**: ${utilities.join(', ')}.`,
+    '',
+    `**Kontak Resmi Manifestudio**: WhatsApp Admin [wa.me/${waNum}](https://wa.me/${waNum}) · TikTok ${tt} · Instagram ${ig}.`,
+  ].join('\n');
+}
 
 export const MANIFEST_AI_PROVIDERS = Object.freeze([
   {
@@ -258,6 +408,7 @@ export function getProviderMeta(providerId = '') {
 export const HF_GRADIO_FREE_SPACES = Object.freeze([
   {
     id: 'hf:gemma-3n-e4b',
+    quotaBucket: 'free:hf-zerogpu',
     host: 'https://huggingface-projects-gemma-3n-e4b-it.hf.space',
     fn: 'generate',
     payloadType: 'multimodal-sys',
@@ -267,17 +418,8 @@ export const HF_GRADIO_FREE_SPACES = Object.freeze([
     model: 'gemma-3n-e4b-it',
   },
   {
-    id: 'hf:llama-3-2-3b',
-    host: 'https://huggingface-projects-llama-3-2-3b-instruct.hf.space',
-    fn: 'generate',
-    payloadType: 'simple-gen',
-    providerId: 'meta',
-    providerName: 'Meta Llama 3.2',
-    shortName: 'Meta AI',
-    model: 'llama-3.2-3b-instruct',
-  },
-  {
     id: 'hf:gemma-4-12b',
+    quotaBucket: 'free:hf-zerogpu',
     host: 'https://huggingface-projects-gemma-4-12b-it.hf.space',
     fn: 'chat',
     payloadType: 'gemma4-chat',
@@ -288,6 +430,7 @@ export const HF_GRADIO_FREE_SPACES = Object.freeze([
   },
   {
     id: 'hf:gemma-2-9b',
+    quotaBucket: 'free:hf-zerogpu',
     host: 'https://huggingface-projects-gemma-2-9b-it.hf.space',
     fn: 'generate',
     payloadType: 'simple-gen',
@@ -297,7 +440,19 @@ export const HF_GRADIO_FREE_SPACES = Object.freeze([
     model: 'gemma-2-9b-it',
   },
   {
+    id: 'hf:llama-3-2-3b',
+    quotaBucket: 'free:hf-zerogpu',
+    host: 'https://huggingface-projects-llama-3-2-3b-instruct.hf.space',
+    fn: 'generate',
+    payloadType: 'simple-gen',
+    providerId: 'meta',
+    providerName: 'Meta Llama 3.2',
+    shortName: 'Meta AI',
+    model: 'llama-3.2-3b-instruct',
+  },
+  {
     id: 'hf:llama-2-7b',
+    quotaBucket: 'free:hf-zerogpu',
     host: 'https://huggingface-projects-llama-2-7b-chat.hf.space',
     fn: 'generate',
     payloadType: 'llama2-sys',
@@ -585,48 +740,192 @@ export function buildConversationMemorySummary(olderMessages = [], maxChars = 90
   return summary;
 }
 
+const TOPIC_STOPWORDS = new Set([
+  'yang', 'dan', 'atau', 'di', 'ke', 'dari', 'pada', 'untuk', 'dengan', 'ini', 'itu', 'ada', 'apa',
+  'aja', 'saja', 'si', 'sih', 'dong', 'deh', 'ya', 'yah', 'kah', 'kok', 'kan', 'tuh', 'nih', 'nya',
+  'aku', 'saya', 'gue', 'gw', 'kamu', 'anda', 'lu', 'lo', 'kita', 'kami', 'mereka', 'dia',
+  'bisa', 'boleh', 'tolong', 'coba', 'mau', 'ingin', 'bantu', 'buat', 'buatkan', 'bikin', 'kasih',
+  'cara', 'bagaimana', 'gimana', 'kenapa', 'mengapa', 'kapan', 'dimana', 'siapa', 'berapa',
+  'adalah', 'ialah', 'merupakan', 'tentang', 'soal', 'juga', 'lagi', 'sudah', 'udah', 'belum',
+  'tidak', 'gak', 'ga', 'enggak', 'nggak', 'bukan', 'sangat', 'lebih', 'paling', 'semua', 'banyak',
+  'the', 'and', 'for', 'with', 'that', 'this', 'what', 'how', 'why', 'who', 'can', 'you', 'please',
+]);
+
+function extractTopicKeywords(text = '') {
+  const words = String(text || '')
+    .toLowerCase()
+    .replace(/[^a-z0-9\u00c0-\u024f\s]/g, ' ')
+    .split(/\s+/)
+    .filter((w) => w.length >= 3 && !TOPIC_STOPWORDS.has(w));
+  return new Set(words);
+}
+
 /**
- * Builds the unified, anti-hallucination message array sent to EVERY participating model
- * (and any failover model) so every AI shares the exact same conversation history & memory.
+ * Detects when the user switches to a completely new topic (or sends a fresh greeting/identity
+ * question) so smaller models NEVER obsessively cling to an unrelated earlier topic (e.g. coffee).
  */
-export function buildUnifiedContextMessages(
-  history = [],
-  currentUserPrompt = '',
-  {
-    maxVerbatimTurns = 12,
-    maxTotalChars = 16000,
-    customSystemPrompt = '',
-  } = {}
-) {
-  const cleanHistory = (Array.isArray(history) ? history : [])
+export function detectTopicShift(history = [], currentPrompt = '') {
+  const cleanPrompt = String(currentPrompt || '').trim();
+  const lower = cleanPrompt.toLowerCase();
+  if (!cleanPrompt || !Array.isArray(history) || history.length === 0) {
+    return { shifted: false, reason: 'no-history' };
+  }
+
+  // Explicit topic reset / correction / fresh greeting / identity / Manifestudio switch
+  if (
+    /\b(bukan\s+(nanya|tanya|bahas|itu|soal)|ganti\s+topik|topik\s+(baru|lain)|lupakan\s+(tadi|sebelumnya))\b/i.test(lower) ||
+    /^(p+|ping|halo+|hai+|hi+|hey+|tes+|test+)[\s!?.]*$/i.test(lower) ||
+    /^(halo|hai|hi)?[\s,!]*(kamu\s+siapa|siapa\s+kamu|anda\s+siapa|siapa\s+anda)\b/i.test(lower)
+  ) {
+    return { shifted: true, reason: 'explicit-reset-or-greeting' };
+  }
+
+  // Explicit continuation / back-reference cues -> ALWAYS keep conversation history!
+  if (
+    /\b(lanjut|lanjutkan|teruskan|tadi|sebelumnya|yang\s+tadi|barusan|maksudnya|maksudku|jelaskan\s+lebih|lebih\s+(detail|lanjut|jelas|lengkap)|contohnya|langkah\s+selanjutnya|selain\s+itu|nomor\s*\d+|no\s*\d+|opsi\s*\d+|pilihan\s*\d+|yang\s+(pertama|kedua|ketiga|terakhir)|kok\s+gitu|kenapa\s+(begitu|gitu)|bagaimana\s+caranya|resepnya|kodenya|hasilnya|versi\s+lain|ubah\s+jadi|perbaiki)\b/i.test(
+      lower
+    )
+  ) {
+    return { shifted: false, reason: 'explicit-continuation' };
+  }
+
+  // Very short follow-up replies (e.g., "espresso", "1", "iya", "boleh") usually answer the AI's question
+  const wordCount = cleanPrompt.split(/\s+/).filter(Boolean).length;
+  if (wordCount <= 2 && !isManifestudioQuery(cleanPrompt)) {
+    return { shifted: false, reason: 'short-reply' };
+  }
+
+  // Check keyword overlap against the last 4 messages (2 exchanges)
+  const promptKeywords = extractTopicKeywords(cleanPrompt);
+  if (promptKeywords.size === 0) {
+    return { shifted: false, reason: 'no-keywords' };
+  }
+
+  const recentSlice = history.slice(-4);
+  const recentKeywords = new Set();
+  for (const m of recentSlice) {
+    for (const kw of extractTopicKeywords(m?.content || '')) {
+      recentKeywords.add(kw);
+    }
+  }
+
+  let overlap = 0;
+  for (const kw of promptKeywords) {
+    if (recentKeywords.has(kw)) overlap += 1;
+  }
+
+  // Check if user is returning to an OLDER topic from earlier in the same thread
+  if (overlap === 0 && history.length > 4) {
+    const olderSlice = history.slice(0, -4);
+    for (const m of olderSlice) {
+      const olderKws = extractTopicKeywords(m?.content || '');
+      for (const kw of promptKeywords) {
+        if (olderKws.has(kw)) {
+          return { shifted: false, reason: 'returned-to-earlier-topic' };
+        }
+      }
+    }
+  }
+
+  if (overlap === 0) {
+    return { shifted: true, reason: 'unrelated-new-topic' };
+  }
+
+  return { shifted: false, reason: 'same-topic-overlap' };
+}
+
+/**
+ * Sanitizes raw chat history by removing orphaned unanswered user turns (e.g. from prior
+ * rate-limit errors) so user/assistant alternation stays clean for every LLM API.
+ */
+export function sanitizeConversationHistory(history = []) {
+  const valid = (Array.isArray(history) ? history : [])
     .filter((m) => m && (m.role === 'user' || m.role === 'assistant') && typeof m.content === 'string' && m.content.trim())
     .map((m) => ({
       role: m.role,
       content: m.content.trim(),
     }));
 
+  const normalized = [];
+  for (const msg of valid) {
+    const prev = normalized[normalized.length - 1];
+    if (prev && prev.role === 'user' && msg.role === 'user') {
+      // Replace orphaned unanswered user message with the newer user message
+      normalized[normalized.length - 1] = msg;
+    } else if (!prev && msg.role === 'assistant') {
+      // Skip leading orphan assistant message
+      continue;
+    } else {
+      normalized.push(msg);
+    }
+  }
+
+  // Drop trailing unanswered user turn before appending the fresh current prompt
+  if (normalized.length > 0 && normalized[normalized.length - 1].role === 'user') {
+    normalized.pop();
+  }
+
+  return normalized;
+}
+
+/**
+ * Builds the unified, anti-hallucination, topic-shift-aware message array sent to EVERY
+ * participating model (and any failover model).
+ * - Keeps full memory when continuing or revisiting a topic.
+ * - Isolates cleanly when the user switches to a brand-new topic so models NEVER cling to old topics.
+ * - Injects live verified Manifestudio catalog data on demand.
+ */
+export function buildUnifiedContextMessages(
+  history = [],
+  currentUserPrompt = '',
+  {
+    maxVerbatimTurns = 8,
+    maxTotalChars = 9000,
+    customSystemPrompt = '',
+    catalogData = null,
+  } = {}
+) {
+  const promptClean = String(currentUserPrompt || '').trim();
+  const cleanHistory = sanitizeConversationHistory(history);
+  const shift = detectTopicShift(cleanHistory, promptClean);
+
+  const systemParts = [customSystemPrompt || MANIFEST_AI_SYSTEM_PROMPT];
+  if (isManifestudioQuery(promptClean)) {
+    systemParts.push(buildManifestudioKnowledgeBlock(catalogData));
+  }
+
+  // When user clearly switched to an unrelated new topic, keep context laser-focused on the new topic!
+  if (shift.shifted) {
+    systemParts.push(
+      'Catatan konteks: Pengguna baru saja beralih ke topik baru. Fokus 100% menjawab pesan terbaru ini secara akurat tanpa mengungkit topik obrolan lama.'
+    );
+    const messages = [{ role: 'system', content: systemParts.join('\n\n') }];
+    if (promptClean) {
+      messages.push({ role: 'user', content: promptClean });
+    }
+    return messages;
+  }
+
   const cutoff = Math.max(0, cleanHistory.length - maxVerbatimTurns);
   const older = cleanHistory.slice(0, cutoff);
   let recent = cleanHistory.slice(cutoff);
 
-  // Respect total character budget by folding excess recent messages into memory summary
+  // Respect total character budget by folding excess recent messages into compact memory summary
   const charCount = (arr) => arr.reduce((sum, m) => sum + m.content.length, 0);
   const foldedOlder = [...older];
   while (recent.length > 2 && charCount(recent) > maxTotalChars) {
     foldedOlder.push(recent.shift());
   }
 
-  const memorySummary = buildConversationMemorySummary(foldedOlder);
-  const systemParts = [customSystemPrompt || MANIFEST_AI_SYSTEM_PROMPT];
+  const memorySummary = buildConversationMemorySummary(foldedOlder, 700);
   if (memorySummary) {
     systemParts.push(
-      `Ringkasan Memori Percakapan Sebelumnya (WAJIB dijadikan acuan agar jawaban tetap nyambung dan bebas halusinasi):\n${memorySummary}`
+      `Ringkasan Memori Percakapan Sebelumnya (gunakan hanya jika relevan dengan pesan terbaru pengguna):\n${memorySummary}`
     );
   }
 
   const messages = [{ role: 'system', content: systemParts.join('\n\n') }, ...recent];
 
-  const promptClean = String(currentUserPrompt || '').trim();
   if (promptClean) {
     const last = messages[messages.length - 1];
     if (!(last && last.role === 'user' && last.content === promptClean)) {
@@ -766,6 +1065,7 @@ export function planEnsembleExecution({
   puterAvailable = false,
   liveRegistry = null,
   limitMap = {},
+  turnIndex = 0,
   now = Date.now(),
 } = {}) {
   const activeKeys = normalizeByokKeys(byokKeys).filter((k) => k.enabled);
@@ -782,6 +1082,7 @@ export function planEnsembleExecution({
     const limitKey = `byok:${k.id}`;
     return {
       id: limitKey,
+      quotaBucket: limitKey,
       channel: 'byok',
       keyId: k.id,
       providerId: k.providerId,
@@ -795,20 +1096,29 @@ export function planEnsembleExecution({
     };
   });
 
-  // Free keyless streaming gateways — max 1 LLM7 request per turn (prevents IP burst 429)
-  // paired with native-CORS Hugging Face Gradio SSE Spaces for instant real-time streaming.
+  // Token-efficient LLM7 model order: fast chat models first (preserves hourly token allowance 3x-4x longer
+  // compared to heavy chain-of-thought reasoning models that burn hidden reasoning tokens).
   const llm7Pool = Array.isArray(registry.freeGateways?.llm7) && registry.freeGateways.llm7.length > 0
     ? registry.freeGateways.llm7
-    : [{ id: 'gpt-oss:20b', tier: 'turbo' }, { id: 'gemma-3-27b', tier: 'turbo' }, { id: 'codestral-latest', tier: 'turbo' }];
-  const llm7PreferredOrder = ['gpt-oss:20b', 'gemma-3-27b', 'codestral-latest', 'mistral-Nemo-Instruct-2407', 'default'];
+    : [
+        { id: 'gemma-3-27b', tier: 'turbo' },
+        { id: 'mistral-Nemo-Instruct-2407', tier: 'turbo' },
+        { id: 'default', tier: 'free' },
+        { id: 'gpt-oss:20b', tier: 'turbo' },
+      ];
+  const llm7PreferredOrder = [
+    'gemma-3-27b',
+    'mistral-Nemo-Instruct-2407',
+    'default',
+    'codestral-latest',
+    'gpt-oss:20b',
+  ];
   const llm7Model =
     llm7PreferredOrder.find((m) => llm7Pool.some((p) => p.id === m)) ||
     llm7Pool[0]?.id ||
     'default';
 
-  const freeCandidates = [];
-
-  // 1. Puter.js per-user keyless multi-model council (when browser SDK explicitly signed in)
+  const puterCandidates = [];
   if (puterAvailable) {
     const puterProviders =
       mode === 'single'
@@ -818,8 +1128,9 @@ export function planEnsembleExecution({
       const pMeta = getProviderMeta(pid);
       const puterModel = pMeta.puterPreferred?.[0] || resolveModelForProvider(pid, 'auto');
       const limitKey = `free:puter:${pid}`;
-      freeCandidates.push({
+      puterCandidates.push({
         id: limitKey,
+        quotaBucket: limitKey,
         channel: 'free-puter',
         providerId: pid,
         providerName: pMeta.name,
@@ -830,21 +1141,36 @@ export function planEnsembleExecution({
     }
   }
 
-  // 2. LLM7 OpenAI-compatible streaming gateway (strictly 1 call per turn to protect user IP quota)
-  freeCandidates.push({
+  const llm7Candidate = {
     id: 'free:llm7',
+    quotaBucket: 'free:llm7',
     channel: 'free-llm7',
-    providerId: llm7Model.includes('gemma') ? 'gemini' : llm7Model.includes('gpt') ? 'openai' : llm7Model.includes('mistral') || llm7Model.includes('codestral') ? 'mistral' : 'deepseek',
+    providerId: llm7Model.includes('gemma')
+      ? 'gemini'
+      : llm7Model.includes('gpt')
+        ? 'openai'
+        : llm7Model.includes('mistral') || llm7Model.includes('codestral')
+          ? 'mistral'
+          : 'deepseek',
     providerName: 'Manifest AI',
-    shortName: llm7Model.includes('gemma') ? 'Gemini' : llm7Model.includes('gpt') ? 'ChatGPT' : llm7Model.includes('mistral') || llm7Model.includes('codestral') ? 'Mistral' : 'DeepSeek',
+    shortName: llm7Model.includes('gemma')
+      ? 'Gemini'
+      : llm7Model.includes('gpt')
+        ? 'ChatGPT'
+        : llm7Model.includes('mistral') || llm7Model.includes('codestral')
+          ? 'Mistral'
+          : 'DeepSeek',
     model: llm7Model,
     cooldownMs: getCooldownRemainingMs(limitMap, 'free:llm7', now),
-  });
+  };
 
-  // 3. Hugging Face Official Gradio SSE Spaces (native CORS, zero API key, live token streaming)
-  for (const sp of HF_GRADIO_FREE_SPACES) {
-    freeCandidates.push({
+  // Shared ZeroGPU bucket cooldown prevents wasting 4 consecutive doomed requests once ZeroGPU IP quota cools down
+  const sharedZeroGpuCooldown = getCooldownRemainingMs(limitMap, 'free:hf-zerogpu', now);
+  const hfCandidates = HF_GRADIO_FREE_SPACES.map((sp) => {
+    const ownCd = getCooldownRemainingMs(limitMap, `free:${sp.id}`, now);
+    return {
       id: `free:${sp.id}`,
+      quotaBucket: sp.quotaBucket || 'free:hf-zerogpu',
       channel: 'free-hf-gradio',
       providerId: sp.providerId,
       providerName: sp.providerName,
@@ -853,9 +1179,18 @@ export function planEnsembleExecution({
       gradioHost: sp.host,
       gradioFn: sp.fn,
       gradioPayloadType: sp.payloadType,
-      cooldownMs: getCooldownRemainingMs(limitMap, `free:${sp.id}`, now),
-    });
-  }
+      cooldownMs: Math.max(ownCd, sharedZeroGpuCooldown),
+    };
+  });
+
+  // Rotate independent free buckets across turns so neither LLM7 nor HF ZeroGPU gets hammered consecutively!
+  const safeTurn = Math.max(0, Number(turnIndex) || 0);
+  const freeCandidates =
+    puterCandidates.length > 0
+      ? [...puterCandidates, llm7Candidate, ...hfCandidates]
+      : safeTurn % 2 === 1
+        ? [hfCandidates[0], llm7Candidate, ...hfCandidates.slice(1)]
+        : [llm7Candidate, ...hfCandidates];
 
   const healthyByok = byokCandidates.filter((c) => c.cooldownMs === 0);
   const healthyFree = freeCandidates.filter((c) => c.cooldownMs === 0);
@@ -876,15 +1211,12 @@ export function planEnsembleExecution({
       primary = [matchingFree];
       backups = healthyFree.filter((c) => c.id !== matchingFree.id);
     } else {
-      // Everyone cooling down: pick the shortest remaining cooldown so user isn't hard-blocked
       const allSorted = [...byokCandidates, ...freeCandidates].sort((a, b) => a.cooldownMs - b.cooldownMs);
       primary = allSorted.slice(0, 1);
       backups = allSorted.slice(1);
     }
   } else {
-    // Ensemble Mode: combine MULTIPLE models simultaneously!
     if (healthyByok.length >= 2) {
-      // User has 2+ active personal API keys -> combine ALL active keys in parallel (up to 4)
       primary = healthyByok.slice(0, 4);
       backups = [
         ...healthyByok.slice(4),
@@ -892,17 +1224,31 @@ export function planEnsembleExecution({
       ];
     } else if (healthyByok.length === 1) {
       if (combineByokWithFree && healthyFree.length > 0) {
-        // Combine user's personal key WITH free keyless models so they collaborate!
-        primary = [healthyByok[0], ...healthyFree.slice(0, 2)];
-        backups = healthyFree.slice(2);
+        primary = [healthyByok[0], healthyFree[0]];
+        backups = healthyFree.slice(1);
       } else {
         primary = [healthyByok[0]];
         backups = healthyFree;
       }
     } else if (healthyFree.length > 0) {
-      // 100% Free Multi-Gateway Ensemble (runs up to 3 distinct healthy providers in parallel)
-      primary = healthyFree.slice(0, 3);
-      backups = healthyFree.slice(3);
+      // Pick up to 2 targets from DISTINCT quota buckets (staggered hedging burns ONLY 1 request on normal fast replies!)
+      const picked = [];
+      const seenBuckets = new Set();
+      for (const c of healthyFree) {
+        if (picked.length >= 2) break;
+        if (!seenBuckets.has(c.quotaBucket)) {
+          picked.push(c);
+          seenBuckets.add(c.quotaBucket);
+        }
+      }
+      if (picked.length < 2) {
+        for (const c of healthyFree) {
+          if (picked.length >= 2) break;
+          if (!picked.some((p) => p.id === c.id)) picked.push(c);
+        }
+      }
+      primary = picked;
+      backups = healthyFree.filter((c) => !picked.some((p) => p.id === c.id));
     } else {
       const allSorted = [...byokCandidates, ...freeCandidates].sort((a, b) => a.cooldownMs - b.cooldownMs);
       primary = allSorted.slice(0, 2);

@@ -57,7 +57,7 @@ import { formatAudioTime, getLoadingProgressMeta, isTrackInWatchLater } from './
 import { MUSIC_PRESET_CATEGORIES, getMusicController, initMusicPlayer } from './music.js?v=59';
 import { createDracinController } from './dracin-ui.js?v=60';
 import { createAudioEditorController } from './audio-editor-ui.js?v=60';
-import { createManifestAiController } from './manifest-ai-ui.js?v=61';
+import { createManifestAiController } from './manifest-ai-ui.js?v=62';
 import { normalizeUtilityConfig } from './store.js?v=60';
 
 const PRAYER_CACHE_KEY = 'manifestudio_prayer_cache_v1';

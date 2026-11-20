@@ -1,13 +1,15 @@
 /**
- * Manifest AI — Instant Streaming Multi-Model Engine (v61)
+ * Manifest AI — Instant Streaming Multi-Model Engine (v62)
  * - Real-time SSE token streaming (instant ChatGPT/Gemini feel) across BYOK & keyless gateways
- * - Fastest-first parallel race: first healthy model streams tokens immediately with zero wait stalls
- * - Silent background failover with unified grounded conversation memory
- * - Auto-syncs live flagship models from OpenRouter, Models.dev, Pollinations & LLM7
+ * - Live Manifestudio catalog.json grounding (knows Tomy, products & 12 utilities — zero hallucination)
+ * - Smart Staggered Hedging: sends ONLY 1 free request first (cuts quota burn 3x) & hedges only if slow/failing
+ * - Shared ZeroGPU quota-bucket awareness & round-robin turn rotation across independent free buckets
+ * - Silent background failover with topic-shift aware conversation memory
  */
 
 import {
   MANIFEST_AI_STORAGE_KEYS,
+  buildLocalManifestudioFallback,
   buildUnifiedContextMessages,
   getProviderMeta,
   mergeLiveModelCatalog,
@@ -15,15 +17,39 @@ import {
   normalizeLimitMap,
   planEnsembleExecution,
   recordProviderCooldown,
-} from './manifest-ai-logic.js?v=61';
+} from './manifest-ai-logic.js?v=62';
 
 const MODEL_SYNC_TTL_MS = 6 * 60 * 60 * 1000; // 6 hours auto-refresh
 const REQUEST_TIMEOUT_MS = 26000;
-const FREE_CONNECT_TIMEOUT_MS = 9500;
+const FREE_CONNECT_TIMEOUT_MS = 10500;
+const FREE_HEDGE_DELAY_MS = 3400; // Only launch 2nd free provider if 1st fails or stalls >3.4s (saves 3x quota!)
 const REGISTRY_TIMEOUT_MS = 7000;
 
 let cachedRegistry = null;
+let cachedCatalogData = null;
+let catalogLoadPromise = null;
 let puterLoadPromise = null;
+let freeTurnCounter = 0;
+
+/**
+ * Loads live Manifestudio catalog.json once so Manifest AI always knows real products,
+ * prices, utilities, and creator Tomy's contact info with zero hallucination.
+ */
+export async function loadManifestudioCatalogData() {
+  if (cachedCatalogData) return cachedCatalogData;
+  if (typeof fetch !== 'function') return null;
+  if (catalogLoadPromise) return catalogLoadPromise;
+
+  catalogLoadPromise = fetch('./data/catalog.json', { cache: 'no-cache' })
+    .then((r) => (r.ok ? r.json() : null))
+    .then((json) => {
+      if (json && typeof json === 'object') cachedCatalogData = json;
+      return cachedCatalogData;
+    })
+    .catch(() => null);
+
+  return catalogLoadPromise;
+}
 
 function safeReadJson(key, fallback) {
   try {
@@ -286,13 +312,26 @@ function extractOpenAiContent(json) {
 }
 
 function buildConversationPromptForSingleTurn(messages = []) {
-  const turns = messages.filter((m) => m.role !== 'system').slice(-8);
+  const turns = messages.filter((m) => m.role !== 'system').slice(-6);
+  if (turns.length === 0) return '';
   if (turns.length === 1 && turns[0].role === 'user') {
     return turns[0].content;
   }
-  return turns
-    .map((t) => `${t.role === 'user' ? 'Pengguna' : 'Asisten'}: ${t.content}`)
-    .join('\n\n');
+  const latest = turns[turns.length - 1];
+  const prior = turns.slice(0, -1).slice(-4);
+  const priorBlock = prior
+    .map((t) => {
+      const clipped = t.content.length > 260 ? `${t.content.slice(0, 257)}...` : t.content;
+      return `${t.role === 'user' ? 'Pengguna' : 'Manifest AI'}: ${clipped}`;
+    })
+    .join('\n');
+  return [
+    '[Riwayat singkat topik ini — hanya sebagai referensi]:',
+    priorBlock,
+    '',
+    '[Pesan terbaru pengguna yang WAJIB dijawab langsung sekarang]:',
+    latest.content,
+  ].join('\n');
 }
 
 function extractGradioText(parsed) {
@@ -588,19 +627,20 @@ async function streamAnthropicNative(endpoint, apiKey, model, messages, { timeou
 async function streamHfGradioSpace(target, messages, { timeoutMs, signal, onDelta }) {
   const host = String(target.gradioHost || '').replace(/\/+$/, '');
   const fn = target.gradioFn || 'generate';
-  const sysMsg = (messages.find((m) => m.role === 'system')?.content || '').slice(0, 750);
+  // Keep full Manifestudio identity & live catalog grounding intact (never chop at 320 chars!)
+  const sysMsg = (messages.find((m) => m.role === 'system')?.content || '').slice(0, 3000);
   const prompt = buildConversationPromptForSingleTurn(messages);
 
   let dataPayload;
   if (target.gradioPayloadType === 'multimodal-sys') {
-    dataPayload = [{ text: prompt, files: [] }, sysMsg || 'Kamu adalah Manifest AI, asisten berbahasa Indonesia.', 768];
+    dataPayload = [{ text: prompt, files: [] }, sysMsg || 'Kamu adalah Manifest AI milik Manifestudio by Tomy.', 768];
   } else if (target.gradioPayloadType === 'gemma4-chat') {
-    dataPayload = [prompt, null, [], false, 768, 280, sysMsg || 'Kamu adalah Manifest AI, asisten berbahasa Indonesia.', 0.6, 0.9, 50, 1.1];
+    dataPayload = [prompt, null, [], false, 768, 0, sysMsg || 'Kamu adalah Manifest AI milik Manifestudio by Tomy.', 0.55, 0.9, 50, 1.1];
   } else if (target.gradioPayloadType === 'llama2-sys') {
-    dataPayload = [prompt, sysMsg || 'Kamu adalah Manifest AI, asisten berbahasa Indonesia.', 768, 0.6, 0.9, 50, 1.1];
+    dataPayload = [prompt, sysMsg || 'Kamu adalah Manifest AI milik Manifestudio by Tomy.', 768, 0.55, 0.9, 50, 1.1];
   } else {
-    const combined = sysMsg ? `[Instruksi: ${sysMsg.slice(0, 320)}]\n\n${prompt}` : prompt;
-    dataPayload = [combined, 768, 0.6, 0.9, 50, 1.1];
+    const combined = sysMsg ? `[Instruksi Sistem:\n${sysMsg}\n]\n\n${prompt}` : prompt;
+    dataPayload = [combined, 768, 0.55, 0.9, 50, 1.1];
   }
 
   const linked = createLinkedController(signal, timeoutMs);
@@ -616,8 +656,10 @@ async function streamHfGradioSpace(target, messages, { timeoutMs, signal, onDelt
       signal: linked.signal,
     });
     if (!r1.ok) {
-      const err = new Error(`HTTP ${r1.status}`);
+      const errTxt = await r1.text().catch(() => '');
+      const err = new Error(errTxt ? `HTTP ${r1.status}: ${errTxt.slice(0, 160)}` : `HTTP ${r1.status}`);
       err.status = r1.status;
+      err.retryAfterMs = parseRetryAfterMs(r1.headers, errTxt, r1.status);
       throw err;
     }
     const j1 = await r1.json();
@@ -627,8 +669,10 @@ async function streamHfGradioSpace(target, messages, { timeoutMs, signal, onDelt
       signal: linked.signal,
     });
     if (!r2.ok || !r2.body) {
-      const err = new Error(`HTTP ${r2.status}`);
+      const errTxt = await r2.text().catch(() => '');
+      const err = new Error(errTxt ? `HTTP ${r2.status}: ${errTxt.slice(0, 160)}` : `HTTP ${r2.status}`);
       err.status = r2.status;
+      err.retryAfterMs = parseRetryAfterMs(r2.headers, errTxt, r2.status);
       throw err;
     }
 
@@ -781,7 +825,7 @@ export async function executeModelTarget(target, messages = [], { signal = null,
     return { ...target, content: finalText, latencyMs: Date.now() - startedAt };
   }
 
-  // Free Gateway B: LLM7 OpenAI-compatible streaming (1 call per turn, per-user IP quota)
+  // Free Gateway B: LLM7 OpenAI-compatible streaming (1 call per turn, token-efficient max_tokens)
   if (target.channel === 'free-llm7') {
     const content = await streamOpenAiCompatible(
       'https://api.llm7.io/v1/chat/completions',
@@ -789,7 +833,7 @@ export async function executeModelTarget(target, messages = [], { signal = null,
         'Content-Type': 'application/json',
         Authorization: 'Bearer unused',
       },
-      { model: target.model || 'gpt-oss:20b', messages },
+      { model: target.model || 'gemma-3-27b', messages, max_tokens: 768, temperature: 0.55 },
       { timeoutMs: FREE_CONNECT_TIMEOUT_MS, signal, onDelta }
     );
     return { ...target, content, latencyMs: Date.now() - startedAt };
@@ -845,20 +889,32 @@ export async function testByokKeyConnection(keyEntry, liveRegistry = null) {
 }
 
 /**
- * Races a batch of models in parallel and immediately streams the FASTEST healthy responder
- * token-by-token (instant ChatGPT/Gemini experience, zero waiting on slower siblings).
+ * Executes a batch of models with Smart Staggered Hedging:
+ * - When `staggerMs > 0` (free keyless mode): starts Target #1 ONLY so normal fast replies
+ *   consume ONLY 1 quota call (3x quota savings!). Launches Target #2 only if Target #1 fails
+ *   OR takes longer than `staggerMs` without emitting its first token.
+ * - When `staggerMs === 0` (BYOK multi-key): races targets in parallel for instant TTFT.
  */
-async function raceStreamingBatch(targets, messages, { signal, onDelta, onCooldown }) {
+async function raceStreamingBatch(targets, messages, { signal, onDelta, onCooldown, staggerMs = 0 }) {
   if (!targets || targets.length === 0) return { winner: null, failures: [] };
 
   return new Promise((resolve, reject) => {
     const controllers = new Map();
+    const hedgeTimers = [];
     const failures = [];
     let winnerId = null;
     let settled = false;
-    let remaining = targets.length;
+    let launchedCount = 0;
+    let completedCount = 0;
+
+    const clearHedgeTimers = () => {
+      while (hedgeTimers.length > 0) {
+        clearTimeout(hedgeTimers.pop());
+      }
+    };
 
     const abortOthers = (keepId) => {
+      clearHedgeTimers();
       for (const [id, c] of controllers.entries()) {
         if (id !== keepId) {
           try {
@@ -870,10 +926,16 @@ async function raceStreamingBatch(targets, messages, { signal, onDelta, onCooldo
       }
     };
 
+    const cleanup = () => {
+      clearHedgeTimers();
+      if (signal) signal.removeEventListener('abort', onOuterAbort);
+    };
+
     const onOuterAbort = () => {
       abortOthers(null);
       if (!settled) {
         settled = true;
+        cleanup();
         reject(new Error('ABORTED'));
       }
     };
@@ -886,13 +948,14 @@ async function raceStreamingBatch(targets, messages, { signal, onDelta, onCooldo
       signal.addEventListener('abort', onOuterAbort, { once: true });
     }
 
-    const cleanup = () => {
-      if (signal) signal.removeEventListener('abort', onOuterAbort);
-    };
+    const launchTarget = (idx) => {
+      if (settled || winnerId || idx >= targets.length) return;
+      const target = targets[idx];
+      if (controllers.has(target.id)) return;
 
-    for (const target of targets) {
       const localCtrl = new AbortController();
       controllers.set(target.id, localCtrl);
+      launchedCount += 1;
 
       executeModelTarget(target, messages, {
         signal: localCtrl.signal,
@@ -923,7 +986,6 @@ async function raceStreamingBatch(targets, messages, { signal, onDelta, onCooldo
           if (signal?.aborted) return;
           if (winnerId && winnerId !== target.id) return;
 
-          // If the claimed winner failed mid-stream, release lock so another sibling can finish if still running
           if (winnerId === target.id) {
             winnerId = null;
           }
@@ -931,30 +993,67 @@ async function raceStreamingBatch(targets, messages, { signal, onDelta, onCooldo
           const status = Number(err?.status) || 0;
           const retryMs = Number(err?.retryAfterMs) || 0;
           const msgStr = String(err?.message || '');
+          const isZeroGpuQuota =
+            (target.quotaBucket === 'free:hf-zerogpu' && status === 429) ||
+            /zerogpu|gpu\s*quota/i.test(msgStr);
           const isLimit = status === 429 || status === 402 || /rate\s*limit|quota|zerogpu|allowance|too many/i.test(msgStr);
 
-          if (isLimit || retryMs > 0) {
-            onCooldown(target.id, retryMs || 60000, 'Limit sementara');
+          if (isZeroGpuQuota && target.quotaBucket === 'free:hf-zerogpu') {
+            // Cool down the shared HF ZeroGPU bucket once instead of wasting 4 more doomed ZeroGPU calls
+            onCooldown('free:hf-zerogpu', retryMs || 300000, 'Kuota ZeroGPU sementara penuh');
+          } else if (isLimit || retryMs > 0) {
+            onCooldown(target.id, retryMs || 45000, 'Limit sementara');
           } else if (status >= 500 || status === 404 || msgStr === 'TIMEOUT') {
-            onCooldown(target.id, 30000, 'Gangguan sementara');
+            onCooldown(target.id, 25000, 'Gangguan sementara');
           }
 
-          failures.push({ target, isLimit, status });
-          remaining -= 1;
+          failures.push({ target, isLimit, isZeroGpuQuota, status });
+          completedCount += 1;
 
-          if (remaining <= 0 && !settled) {
+          // If Target #1 failed early before hedge timer fired, launch next target IMMEDIATELY!
+          if (!settled && !winnerId && launchedCount < targets.length) {
+            const nextIdx = launchedCount;
+            const nextTarget = targets[nextIdx];
+            // Skip remaining ZeroGPU spaces in this batch if the shared ZeroGPU bucket just hit quota
+            if (isZeroGpuQuota && nextTarget?.quotaBucket === 'free:hf-zerogpu') {
+              completedCount += targets.length - launchedCount;
+              launchedCount = targets.length;
+            } else {
+              launchTarget(nextIdx);
+              return;
+            }
+          }
+
+          if (completedCount >= targets.length && !settled) {
             settled = true;
             cleanup();
             resolve({ winner: null, failures });
           }
         });
+    };
+
+    if (staggerMs > 0 && targets.length > 1) {
+      // Launch ONLY Target #1 at t=0; schedule Target #2 as slow-path hedge
+      launchTarget(0);
+      for (let i = 1; i < targets.length; i += 1) {
+        const timer = setTimeout(() => {
+          if (!settled && !winnerId) {
+            launchTarget(i);
+          }
+        }, staggerMs * i);
+        hedgeTimers.push(timer);
+      }
+    } else {
+      for (let i = 0; i < targets.length; i += 1) {
+        launchTarget(i);
+      }
     }
   });
 }
 
 /**
- * Sends a prompt through Manifest AI with instant fastest-first streaming and
- * silent background multi-model failover with unified grounded memory.
+ * Sends a prompt through Manifest AI with instant streaming, live Manifestudio catalog grounding,
+ * topic-shift isolation, quota-saving staggered hedging, and silent background failover.
  */
 export async function sendManifestAiMessage({
   history = [],
@@ -964,12 +1063,19 @@ export async function sendManifestAiMessage({
   byokKeys = [],
   combineByokWithFree = true,
   liveRegistry = null,
+  catalogData = null,
   signal = null,
   onDelta = () => {},
 } = {}) {
   const registry = liveRegistry || getCachedModelRegistry();
+  const liveCatalog = catalogData || (await loadManifestudioCatalogData());
   let limitMap = loadStoredLimitMap();
-  const unifiedMessages = buildUnifiedContextMessages(history, prompt);
+  const unifiedMessages = buildUnifiedContextMessages(history, prompt, {
+    catalogData: liveCatalog,
+  });
+
+  const turnIndex = freeTurnCounter;
+  freeTurnCounter += 1;
 
   const plan = planEnsembleExecution({
     mode,
@@ -979,6 +1085,7 @@ export async function sendManifestAiMessage({
     puterAvailable: isPuterAiReady(),
     liveRegistry: registry,
     limitMap,
+    turnIndex,
   });
 
   const recordCooldown = (targetId, ms, reason) => {
@@ -990,35 +1097,60 @@ export async function sendManifestAiMessage({
   let failoverUsed = false;
   const allFailures = [];
 
-  // Phase 1: Race primary targets in parallel — first token streams immediately!
+  // Stagger free primary calls (burns 1 request on normal replies instead of 3x!); race BYOK keys directly
+  const isFreeOnlyPrimary = plan.primary.every((t) => t.channel !== 'byok');
+
   const primaryRes = await raceStreamingBatch(plan.primary, unifiedMessages, {
     signal,
     onDelta,
     onCooldown: recordCooldown,
+    staggerMs: isFreeOnlyPrimary ? FREE_HEDGE_DELAY_MS : 0,
   });
   winner = primaryRes.winner;
   allFailures.push(...primaryRes.failures);
 
-  // Phase 2: Silent background failover in parallel pairs if all primary targets failed
+  // Phase 2: Silent background sequential failover through remaining healthy backups
   if (!winner && plan.backups.length > 0) {
     failoverUsed = true;
-    for (let i = 0; i < plan.backups.length && !winner; i += 2) {
+    for (const backupTarget of plan.backups) {
       if (signal?.aborted) throw new Error('ABORTED');
-      const batch = plan.backups.slice(i, i + 2);
-      const backupRes = await raceStreamingBatch(batch, unifiedMessages, {
+      // Skip targets whose bucket just cooled down during Phase 1 (e.g. shared ZeroGPU IP quota)
+      const bucketCd = backupTarget.quotaBucket ? limitMap?.[backupTarget.quotaBucket]?.resetAt || 0 : 0;
+      if (bucketCd > Date.now()) continue;
+
+      const backupRes = await raceStreamingBatch([backupTarget], unifiedMessages, {
         signal,
         onDelta,
         onCooldown: recordCooldown,
+        staggerMs: 0,
       });
       winner = backupRes.winner;
       allFailures.push(...backupRes.failures);
+      if (winner) break;
     }
   }
 
+  // Phase 3: Verified zero-token local grounding fallback for greetings or Manifestudio/Tomy questions
   if (!winner) {
+    const localReply = buildLocalManifestudioFallback(prompt, liveCatalog);
+    if (localReply) {
+      if (onDelta) onDelta(localReply);
+      return {
+        content: localReply,
+        meta: {
+          mode,
+          failoverUsed: true,
+          providerId: 'manifestudio-local',
+          model: 'manifestudio-catalog-v62',
+          latencyMs: 20,
+        },
+        limitMap,
+      };
+    }
+
     const anyLimit = allFailures.some((f) => f.isLimit);
     const errText = anyLimit
-      ? 'Batas akses gratis sementara sedang penuh di jaringan ini. Coba kirim ulang sebentar lagi, aktifkan Kuota Puter gratis, atau gunakan API Key pribadi Anda.'
+      ? 'Batas akses gratis sementara sedang penuh di jaringan ini. Coba kirim ulang sebentar lagi, aktifkan Kuota Puter gratis (unlimited per akun), atau gunakan API Key pribadi Anda.'
       : 'Koneksi ke layanan AI sedang sibuk sementara. Silakan coba kirim ulang sebentar lagi, aktifkan Kuota Puter gratis, atau gunakan API Key pribadi Anda.';
     const err = new Error(errText);
     err.limitMap = limitMap;

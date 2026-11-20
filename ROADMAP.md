@@ -129,6 +129,10 @@ Dokumen ini adalah panduan resmi tujuan proyek, arsitektur, pencapaian implement
 - [x] **Streaming Instan Real-Time & Orkestrasi Hening (`v61`)**:
   - Migrasi penuh ke **SSE Token Streaming real-time** (*Fastest-First Parallel Racing*) di seluruh jalur (HF Gradio SSE Spaces bebas API key, LLM7 maks 1/giliran anti-429, Puter SDK, dan semua provider BYOK) agar teks mulai mengalir instan tanpa menunggu model lain selesai.
   - Menghapus seluruh teks orkestrasi/status teknis mentah (`"Menggabungkan..."`, rincian kontributor, error HTTP mentah) dari tampilan chat dan menggantinya dengan gelembung animasi titik halus + kursor ketik real-time ala ChatGPT/Gemini, serta sinkronisasi cache-busting penuh `manifestudio-cache-v61` (`?v=61`).
+- [x] **Grounding Identitas Manifestudio, Deteksi Pindah Topik, & Hemat Kuota 3× (`v62`)**:
+  - **Kenal Tuan & Katalog Live**: Menyuntikkan profil resmi **Manifestudio by Tomy (`@tmctomystudio`)** + data langsung dari `data/catalog.json` (19 produk akun premium & 12 fitur Menu Utilitas) dengan larangan keras mengarang layanan fiktif, ditambah fallback terverifikasi lokal untuk pertanyaan seputar Manifestudio & sapaan singkat (`"P"`, `"Halo"`).
+  - **Deteksi Pindah Topik & Sanitasi Riwayat**: Mendeteksi otomatis perpindahan topik (`detectTopicShift`) dan membersihkan giliran gagal bertumpuk (`sanitizeConversationHistory`) agar model tidak lagi terjebak mengulang topik lama saat pengguna beralih topik, namun tetap nyambung penuh saat melanjutkan atau kembali ke topik sebelumnya.
+  - **Smart Staggered Hedging & Rotasi Bucket Kuota (Hemat 3×–4×)**: Menjalankan hanya **1 jalur gratis** terlebih dahulu (alih-alih memboroskan 3 permintaan serentak tiap chat), merotasi bucket `LLM7` ↔ `HF ZeroGPU`, memilih model chat hemat token (`max_tokens: 768`), serta menandai cooldown bucket ZeroGPU terpadu agar tidak membuang kuota IP secara sia-sia (`manifestudio-cache-v62`).
 
 ---
 

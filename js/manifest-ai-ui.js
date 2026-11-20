@@ -21,10 +21,11 @@ import {
   renderMarkdownSafe,
   upsertByokKey,
   upsertChatThread,
-} from './manifest-ai-logic.js?v=61';
+} from './manifest-ai-logic.js?v=62';
 import {
   getCachedModelRegistry,
   isPuterAiReady,
+  loadManifestudioCatalogData,
   loadStoredByokKeys,
   loadStoredLimitMap,
   loadStoredPrefs,
@@ -35,7 +36,7 @@ import {
   signInPuterSdk,
   syncLiveModelRegistry,
   testByokKeyConnection,
-} from './manifest-ai.js?v=61';
+} from './manifest-ai.js?v=62';
 
 const STARTER_PROMPTS = Object.freeze([
   {
@@ -720,7 +721,7 @@ export function createManifestAiController({ onToast = () => {} } = {}) {
             <div>
               <h3 id="mai-models-modal-title" class="mai-modal-title">Katalog Model Real-Time & Status Limit</h3>
               <p class="mai-modal-sub">
-                Disinkronkan otomatis dari OpenRouter, Models.dev, Pollinations & LLM7 · Terakhir: ${escapeAiHtml(formatSyncTime(reg.syncedAt))}
+                Disinkronkan otomatis dari OpenRouter, Models.dev & LLM7 · Terakhir: ${escapeAiHtml(formatSyncTime(reg.syncedAt))}
               </p>
             </div>
             <button type="button" class="mai-icon-btn" data-mai-action="close-modal" aria-label="Tutup modal">
@@ -735,8 +736,8 @@ export function createManifestAiController({ onToast = () => {} } = {}) {
                 <span>
                   ${
                     state.puterReady
-                      ? 'Puter Multi-AI SDK aktif (kuota terpisah per browser pengguna) + Pollinations + LLM7 + DuckAI.'
-                      : 'Pollinations + LLM7 + DuckAI aktif. Aktifkan Puter SDK untuk kuota gratis terpisah per pengguna.'
+                      ? 'Puter Multi-AI SDK aktif (kuota gratis terpisah per akun pengguna) + LLM7 + Hugging Face SSE Spaces.'
+                      : 'LLM7 + Hugging Face SSE Spaces aktif dengan rotasi hemat kuota. Aktifkan Kuota Puter (Gratis) untuk batas jauh lebih lega per akun Anda.'
                   }
                 </span>
               </div>
@@ -1402,8 +1403,9 @@ export function createManifestAiController({ onToast = () => {} } = {}) {
       document.addEventListener('keydown', handleGlobalKeydown);
       render();
       scrollMessagesToBottom();
-      // Background auto-upgrade of flagship models across all providers
+      // Background auto-upgrade of flagship models & live Manifestudio catalog grounding
       refreshRegistry(false);
+      loadManifestudioCatalogData();
     },
     unmount() {
       mounted = false;
