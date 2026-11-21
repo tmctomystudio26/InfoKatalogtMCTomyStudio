@@ -1,6 +1,6 @@
 # Architectural Blueprint & Developer Onboarding — Manifestudio
 
-Dokumen teknis terpadu bagi **Tim IT, Human Developer, maupun AI Coding Agent** untuk memahami, mengelola, memelihara, menguji, dan mengembangkan ekosistem **Manifestudio** (*Static Storefront + Admin Brankas Terenkripsi + 12-Feature Utility Hub termasuk Manifest AI, Audio Editor Studio DAW, Drama China Hub, & Full-Length Smart Music*).
+Dokumen teknis terpadu bagi **Tim IT, Human Developer, maupun AI Coding Agent** untuk memahami, mengelola, memelihara, menguji, dan mengembangkan ekosistem **Manifestudio** (*Static Storefront + Admin Brankas Terenkripsi + 13-Feature Utility Hub termasuk Cek Plagiarisme Terpadu, Manifest AI, Audio Editor Studio DAW, Drama China Hub, & Full-Length Smart Music*).
 
 ---
 
@@ -11,10 +11,10 @@ Dokumen teknis terpadu bagi **Tim IT, Human Developer, maupun AI Coding Agent** 
 2. **Pemisahan Halaman Clean & Modular**:
    - **Storefront (`index.html`)**: Fokus pada pencarian, filter kategori dinamis, banner carousel yang dapat diatur Admin, belanja cepat, & validasi voucher ketat berkuota.
    - **Order Konfirmasi (`order.html`)**: Halaman invoice terpisah + HTML5 Canvas struk JPEG `< 60 KB` + WhatsApp handoff bebas catatan palsu.
-   - **Menu Utilitas (`tools.html`)**: Halaman terpisah untuk **12 utilitas harian** (`?tab=prayer | weather | worldclock | speedtest | downloader | compressor | converter | songfinder | music | dracin | audioeditor | manifestai`) yang ditonjolkan melalui kartu aksen `#utilities-callout-card` (`assets/icons/menu-utilitas.svg`).
+   - **Menu Utilitas (`tools.html`)**: Halaman terpisah untuk **13 utilitas harian** (`?tab=prayer | weather | worldclock | speedtest | downloader | compressor | converter | songfinder | music | dracin | audioeditor | manifestai | plagiarism`) yang ditonjolkan melalui kartu aksen `#utilities-callout-card` (`assets/icons/menu-utilitas.svg`).
    - **Panel Admin (`admin.html`)**: Halaman *unlisted* (`noindex`) terenkripsi AES-256-GCM yang mempublikasikan perubahan katalog, aset upload, OpenGraph `index.html`, dan riwayat perubahan terperinci langsung via GitHub REST API.
 3. **Kualitas Pengalaman Mobile-First, Presisi Tinggi, & Ad-Free**:
-   - Semua kontrol termasuk header navigasi, grid produk, 12 menu utilitas, pemutar musik, Drama China, Audio Editor DAW, dan workspace **Manifest AI** (termasuk mode Layar Penuh, Suara Neural Cepat & Tabel Markdown) responsif penuh di HP (`360px–430px`) maupun desktop (`1025px–1440px`) bebas overflow, menggunakan *Network-First Service Worker* (`manifestudio-cache-v66` + pelestarian `manifestudio-ffmpeg-core-v1`) + query cache-busting `?v=66`.
+   - Semua kontrol termasuk header navigasi, grid produk, 13 menu utilitas, pemutar musik, Drama China, Audio Editor DAW (anti-offside Gen Z), workspace **Manifest AI** (mode Layar Penuh, Suara Neural Cepat & Tabel Markdown), serta **Cek Plagiarisme Terpadu** (format laporan Turnitin terbaru) responsif penuh di HP (`360px–430px`) maupun desktop (`1025px–1440px`) bebas overflow, menggunakan *Network-First Service Worker* (`manifestudio-cache-v67` + pelestarian `manifestudio-ffmpeg-core-v1`) + query cache-busting `?v=67`.
 
 ---
 
@@ -25,9 +25,10 @@ Dokumen teknis terpadu bagi **Tim IT, Human Developer, maupun AI Coding Agent** 
 | `index.html` + `js/app.js` | Storefront katalog, carousel banner dinamis, kategori dinamis, modal varian, drawer checkout, voucher tracking | `data.js`, `store.js`, `pwa.js`, `music.js` |
 | `order.html` + `js/order.js` + `js/receipt.js` | Invoice bersih + HTML5 Canvas Struk JPEG `< 60 KB` + format WA Order (tanpa voucher invalid) | `data.js`, `store.js`, `music.js` |
 | `admin.html` + `js/admin.js` + `js/vault.js` | Gate AES-256-GCM + PBKDF2, edit produk/varian/urutan/logo/brand/tagline/biaya layanan/sosmed/FAQ/voucher limits/OpenGraph/banner, riwayat itemized + restore 12 log | `data.js`, `store.js`, `vault.js` |
-| `tools.html` + `js/tools-page.js` + `js/tools-ui.js` + `js/tools-logic.js` | Router sub-tab 12 `Menu Utilitas`, pure math & domain logic, UI bar progres, & mounting sub-controller | `location.js`, `globe.js`, `speedtest.js`, `downloader.js`, `compressor.js`, `converter.js`, `song-finder.js`, `music.js`, `dracin-ui.js`, `audio-editor-ui.js`, `manifest-ai-ui.js` |
+| `tools.html` + `js/tools-page.js` + `js/tools-ui.js` + `js/tools-logic.js` | Router sub-tab 13 `Menu Utilitas`, pure math & domain logic, UI bar progres, & mounting sub-controller | `location.js`, `globe.js`, `speedtest.js`, `downloader.js`, `compressor.js`, `converter.js`, `song-finder.js`, `music.js`, `dracin-ui.js`, `audio-editor-ui.js`, `manifest-ai-ui.js`, `plagiarism-ui.js` |
+| `js/plagiarism-logic.js` + `js/plagiarism-engine.js` + `js/plagiarism-report.js` + `js/plagiarism-ui.js` | **Cek Plagiarisme Terpadu (`v67`)**: Ekstraksi universal semua file (`PDF`, `DOCX/DOC`, `PPTX`, `XLSX/CSV`, `ODT/ODP/ODS`, `EPUB`, `RTF`, `HTML/XML`, `TXT/MD/Code`, gambar via OCR, fallback biner) + Paste Teks, fusi paralel **OpenAlex + Crossref + DOAJ + Wikipedia ID/EN + Winnowing K-Gram/Stylometric AI + Multi-AI Ensemble + Turnitin Core API opsional**, bar progres real-time & batal, filter Turnitin langsung, serta unduh laporan **PDF vektor multi-halaman**, **HTML interaktif siap cetak**, & **JSON audit** ala Turnitin terbaru | `manifest-ai.js`, `pdfjs-dist`, `jszip`, `tesseract.js`, `localStorage` |
 | `js/manifest-ai-logic.js` + `js/manifest-ai-voice.js` + `js/manifest-ai.js` + `js/manifest-ai-ui.js` | **Manifest AI (`v60–v66`)**: Auto-upgrade model real-time lintas 4 jaringan gratis (LLM7, Pollinations, OVHcloud 14+ model, HF Spaces) + Puter + BYOK, **riset web real-time anti-halusinasi** (Wikipedia ID/EN, Wikivoyage, DuckDuckGo), grounding live `catalog.json` dengan **perisai privasi owner 4-lapis** (`62xxxxxxxxxx` / footer), **topic-shift isolation**, **tabel Markdown responsif**, **Layar Penuh**, dan **Mode Suara Neural Cepat 1-Suara Konsisten** (31 suara unik, klausa pertama cepat & *progressive audio streaming*) | `localStorage`, `data/catalog.json`, CORS AI SSE, Wikipedia/Wikivoyage & Edge Neural TTS |
-| `js/audio-editor-logic.js` + `js/audio-editor-engine.js` + `js/audio-editor-ui.js` | **Audio Editor Studio AI (`v58–v59`)**: DSP Web Audio (Trim/Potong Tengah, 10-Band EQ, Bass Boost, Virtualizer, Voice FX, Noise Repair, Stem Separation, Multi-Track Mix), tag ID3v2/RIFF, Undo/Redo, & ekspor MP3/WAV/AAC/M4A/OGG/FLAC/OPUS | `media-engine.js`, `lame.min.js` |
+| `js/audio-editor-logic.js` + `js/audio-editor-engine.js` + `js/audio-editor-ui.js` | **Audio Editor Studio AI (`v58–v67`)**: DSP Web Audio (Trim/Potong Tengah, 10-Band EQ, Bass Boost, Virtualizer, Voice FX, Noise Repair, Stem Separation, Multi-Track Mix), tag ID3v2/RIFF, Undo/Redo, ekspor MP3/WAV/AAC/M4A/OGG/FLAC/OPUS, serta pemolesan UI Gen Z anti-offside mobile (header 1-baris, stepper simetris, canvas empty-state terbungkus, & gradien waveform) | `media-engine.js`, `lame.min.js` |
 | `js/dracin-logic.js` + `js/dracin-cenc.js` + `js/dracin.js` + `js/dracin-ui.js` | **Drama China Hub (`v50–v57`)**: Katalog real-time 20+ platform short drama, pemutar vertikal fullscreen + Layar Bersih, preloading episode, pencocokan lintas platform + klip AI, & auto-failover SekaiDrama/Sansekai VIP-Free | `data/dracin-endpoints.json`, `hls.min.js` |
 | `js/location.js` | Geolocation GPS prioritas utama + reverse geocode Kelurahan/Kecamatan + fallback IP + autocomplete kota | `tools-logic.js` |
 | `js/globe.js` | Canvas 2D orthographic rotatable 3D globe + klik target negara + auto-rotate | `tools-logic.js` |
@@ -39,7 +40,7 @@ Dokumen teknis terpadu bagi **Tim IT, Human Developer, maupun AI Coding Agent** 
 | `js/song-finder.js` | Pencari Judul Lagu, Musik & Analisis Kemiripan Video Sosmed Multi-API + Whisper/AudD/AI Publik | `tools-logic.js`, `media-engine.js` |
 | `js/music.js` + `js/music-logic.js` | Floating dock draggable, YT Music API open-source, drawer 14 kategori + tren real-time, background audio anti-mati, PiP + Mode Headset | YouTube IFrame API / Audius / Siputzx |
 | `data/catalog.json` & `data/catalog-history.json` | Single Source of Truth produk, utilitas, brand, OpenGraph, banners, kategori, voucher usage limits, FAQ & 12 snapshot riwayat | Service Worker Network-First |
-| `sw.js` + `manifest.webmanifest` | Network-First code/data cache (`manifestudio-cache-v66` + pelestarian `manifestudio-ffmpeg-core-v1`) & instalasi PWA | — |
+| `sw.js` + `manifest.webmanifest` | Network-First code/data cache (`manifestudio-cache-v67` + pelestarian `manifestudio-ffmpeg-core-v1`) & instalasi PWA | — |
 | `CNAME` | Konfigurasi domain kustom resmi GitHub Pages (`manifestudio.my.id`) — jangan dihapus | Cloudflare DNS |
 
 ---
@@ -69,6 +70,9 @@ Semua integrasi berjalan murni *client-side* tanpa server backend:
    - Nominatim/BigDataCloud/Photon reverse geocode, `ipwho.is`, & `speed.cloudflare.com`.
 6. **YT Music API Open-Source & Sosmed Media Downloader All-in-One**:
    - Siputzx (`youtube`, `ummy`, `sssinstagram`), Audius (`api.audius.co`), 4-node Tioo, TikWM, Cobalt, & `api.vidsnap.app/proxy`.
+7. **Cek Plagiarisme Terpadu Multi-Mesin (`v67`)**:
+   - **Korpus Akademik & Publikasi Terbuka (CORS `*`)**: **OpenAlex** (`api.openalex.org/works`, 250M+ karya ilmiah dengan polite `mailto`), **Crossref** (`api.crossref.org/works?filter=has-abstract:true`, 150M+ DOI), **DOAJ** (`doaj.org/api/search/articles`), serta **Wikipedia ID & EN** (`id/en.wikipedia.org/w/api.php` dengan `prop=extracts&exintro=1&exlimit=max`).
+   - **Analisis Semantik & AI Writing**: **Multi-AI Semantic Ensemble** melalui `js/manifest-ai.js` (Gemini, ChatGPT, Claude, DeepSeek, Grok, Llama, dll.) digabungkan secara serentak bersama **Winnowing K-Gram + Cosine/Jaccard + Self-Duplication + Stylometric Burstiness/Entropy**, serta konektor opsional **Turnitin Core API / Institutional** (Base URL & API Key lokal browser).
 
 ---
 
@@ -92,6 +96,8 @@ Semua integrasi berjalan murni *client-side* tanpa server backend:
 | `manifestudio_user_location_v1` / `weather_cal_v1` | `localStorage` | Lokasi terakhir & kalibrasi cuaca aktual lokal pengguna |
 | `manifestudio_music_*` | `localStorage` / `sessionStorage` | Library musik, stream cache, Mode Headset, sesi lintas halaman, & posisi FAB |
 | `manifestudio_dracin_*` | `localStorage` | Riwayat tontonan, favorit, & health mirror Drama China |
+| `manifestudio_plagiarism_history_v1` | `localStorage` | Riwayat laporan pengecekan plagiarisme (skor kemiripan, sumber teratas, segmen berlabel, timestamp) |
+| `manifestudio_plagiarism_turnitin_v1` | `localStorage` | Konfigurasi opsional konektor Turnitin Core API / Institutional (Base URL & API Key lokal browser) |
 
 ---
 
@@ -105,4 +111,4 @@ Semua integrasi berjalan murni *client-side* tanpa server backend:
    - Setiap kali mengubah JS/CSS/HTML, naikkan `CACHE_NAME` di `sw.js` **dan** `CURRENT_CACHE` + query `?v=N` pada seluruh HTML (`index.html`, `tools.html`, `order.html`, `admin.html`) dan import ES module terkait.
 3. **Dokumentasi & Verifikasi Wajib Sebelum Push**:
    - Setiap pembaruan fitur wajib memperbarui `ROADMAP.md`, `README.md`, dan `BLUEPRINT.md`.
-   - Jalankan `npx --yes tsx --test .repos/InfoKatalogtMCTomyStudio/js/store.test.mjs`, `npm run build && npm run lint`, serta uji UI desktop + mobile (`playwright-cli`) bebas error dan overflow (`scrollWidth <= innerWidth`), lalu langsung push ke `origin/main`.
+   - Jalankan `npx --yes tsx --test .repos/InfoKatalogtMCTomyStudio/js/plagiarism.test.mjs .repos/InfoKatalogtMCTomyStudio/js/manifest-ai.test.mjs`, `npm run build && npm run lint`, serta uji UI desktop + mobile (`playwright-cli`) bebas error dan overflow (`scrollWidth <= innerWidth`), lalu langsung push ke `origin/main`.

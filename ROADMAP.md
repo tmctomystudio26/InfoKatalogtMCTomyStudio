@@ -146,6 +146,12 @@ Dokumen ini adalah panduan resmi tujuan proyek, arsitektur, pencapaian implement
   - **Perisai Privasi Owner 4-Lapis (Anti-Blunder & Anti-Unicode Bypass)**: Menutup celah kebocoran nomor kontak dengan spasi/tanda hubung Unicode (`\u202F`, `\u2011`, `\u2013`), pemindai *digit-stream*, penghapusan frasa kontradiktif otomatis, pembersihan riwayat lama di `localStorage`, serta jawaban deterministik instan khusus pertanyaan kontak owner/admin menuju footer website.
   - **Pembacaan Suara 3×–4.5× Lebih Cepat**: Pemecahan klausa pertama singkat (`<= 90` karakter), pemutaran *progressive audio streaming* langsung dari URL audio (tanpa unduh blob MP3 berulang), serta *parallel prefetch* segmen berikutnya sambil tetap menjaga **1 suara konsisten** tanpa ganti orang.
   - **Riset Web Real-Time Anti-Halusinasi & Tabel Markdown Responsif**: Melakukan riset web otomatis senyap via CORS (Wikipedia ID/EN, Wikivoyage EN/ID, & DuckDuckGo) untuk pertanyaan faktual/kuliner/daerah sebelum model menjawab agar akurat dan bebas halusinasi, serta merender tabel Markdown (`|---|---|`) secara rapi dan responsif di desktop & mobile (`manifestudio-cache-v66`).
+- [x] **Audio Editor Gen Z Anti-Offside & Menu Cek Plagiarisme Terpadu Multi-Mesin Format Turnitin Terbaru (`tools.html?tab=plagiarism`, `v67`)**:
+  - **Audio Editor Gen Z Anti-Offside Mobile (`js/audio-editor-ui.js` & `css/styles.css`)**: Merapikan seluruh elemen offside di layar HP (`390px`) — header 1-baris anti-wrap, 2 kolom tombol sumber seimbang, stepper waktu 0-overflow dengan baris `Total` terpisah, pill mode Pangkas/Potong Tengah penuh lebar + zoom terpusat, teks kosong kanvas terbungkus rapi dengan *ghost studio waveform*, serta gradien waveform Gen Z di Mode Terang & Gelap.
+  - **Cek Plagiarisme Terpadu Multi-Mesin (`js/plagiarism-logic.js`, `js/plagiarism-engine.js`, `js/plagiarism-report.js`, `js/plagiarism-ui.js`)**:
+    - Mendukung **Upload Semua Jenis File** (`PDF`, `DOCX/DOC`, `PPTX`, `XLSX/CSV`, `ODT/ODP/ODS`, `EPUB`, `RTF`, `HTML/XML`, `TXT/MD/Code`, gambar via OCR, & fallback biner) serta **Editor Paste Tulisan**.
+    - Menjalankan seluruh mesin secara **paralel dan terpadu** ke dalam 1 laporan kohesif: **OpenAlex Academic (250M+)**, **Crossref DOI (150M+)**, **DOAJ Open-Access**, **Wikipedia ID & EN**, **Winnowing K-Gram + Cosine/Jaccard + Self-Duplication + Stylometric AI Detector**, **Multi-AI Semantic Ensemble (`manifest-ai.js`)**, serta konektor opsional **Turnitin Core API / Institutional**.
+    - Dilengkapi **bar progres real-time 0%–100%**, status tahapan, timer, kartu status per mesin, tombol **Batal (`AbortController`)**, ruang kerja laporan interaktif ala Turnitin terbaru (sorotan warna `[1]`, `[2]`, inspektor kalimat klik-untuk-detail + saran parafrase, filter pengecualian Kutipan/Daftar Pustaka/Sumber Kecil real-time, riwayat pengecekan), serta unduh langsung laporan **PDF vektor multi-halaman**, **HTML interaktif siap cetak**, dan **JSON audit** (`manifestudio-cache-v67`).
 
 ---
 
@@ -173,8 +179,8 @@ Dokumen ini adalah panduan resmi tujuan proyek, arsitektur, pencapaian implement
 # 1. Jalankan dev server lokal (port 3000)
 npm run dev
 
-# 2. Jalankan seluruh unit test logika bisnis, voucher, downloader, kompresor, dracin, audio-editor & manifest-ai
-npx --yes tsx --test .repos/InfoKatalogtMCTomyStudio/js/store.test.mjs
+# 2. Jalankan unit test plagiarisme, registrasi 13 utilitas, & manifest-ai
+npx --yes tsx --test .repos/InfoKatalogtMCTomyStudio/js/plagiarism.test.mjs .repos/InfoKatalogtMCTomyStudio/js/manifest-ai.test.mjs
 
 # 3. Verifikasi kompilasi & linter
 npm run build && npm run lint
