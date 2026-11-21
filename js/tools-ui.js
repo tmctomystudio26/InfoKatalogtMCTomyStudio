@@ -58,7 +58,7 @@ import { MUSIC_PRESET_CATEGORIES, getMusicController, initMusicPlayer } from './
 import { createDracinController } from './dracin-ui.js?v=60';
 import { createAudioEditorController } from './audio-editor-ui.js?v=67';
 import { createManifestAiController } from './manifest-ai-ui.js?v=67';
-import { createPlagiarismController } from './plagiarism-ui.js?v=68';
+import { createPlagiarismController } from './plagiarism-ui.js?v=69';
 import { normalizeUtilityConfig } from './store.js?v=67';
 
 const PRAYER_CACHE_KEY = 'manifestudio_prayer_cache_v1';

@@ -11,6 +11,7 @@ import {
   detectInternalSelfDuplication,
   extractReadableTextFromBinaryBytes,
   fusePlagiarismReport,
+  mapAnnotatedSentencesToPageHighlights,
   parseAiPlagiarismAuditJson,
   reconstructOpenAlexAbstract,
   scoreSentenceAgainstSource,
@@ -19,6 +20,7 @@ import {
   stripRtfToPlainText,
 } from './plagiarism-logic.js';
 import {
+  annotateBlockTextSegments,
   buildTurnitinPdfBytes,
   generateTurnitinHtmlReport,
   generateTurnitinJsonReport,
@@ -180,7 +182,7 @@ test('Turnitin PDF, HTML, and JSON exporters produce valid standards-compliant &
   const html = generateTurnitinHtmlReport(report);
   assert.ok(!html.includes('<script>alert(1)</script>'), 'HTML report must escape script tags');
   assert.ok(!html.includes('<img src=x onerror=alert(1)>'), 'HTML report must escape malicious source titles');
-  assert.ok(html.includes('Similarity Index'), 'HTML report must contain Turnitin Similarity Index header');
+  assert.ok(html.includes('Overall Similarity'), 'HTML report must contain Turnitin Overall Similarity header');
 
   const jsonParsed = JSON.parse(generateTurnitinJsonReport(report));
   assert.equal(jsonParsed.submissionId, report.submissionId);
@@ -251,5 +253,127 @@ test('Strict NO REPOSITORY policy is enforced across fused report, PDF, HTML, an
   assert.equal(jsonParsed.repositoryMode, 'no-repository');
   assert.ok(/No Repository/i.test(jsonParsed.repositoryLabel));
 });
+
+test('mapAnnotatedSentencesToPageHighlights maps PDF/OCR spans into merged line highlight bands and non-overlapping badges (v69)', () => {
+  const wordsLine1 = ['Kecerdasan', 'buatan', 'adalah', 'kemampuan', 'sistem', 'komputasi'];
+  const wordsLine2 = ['untuk', 'melaksanakan', 'tugas', 'kecerdasan', 'manusia', 'modern.'];
+  const spans = [
+    ...wordsLine1.map((text, i) => ({ text, x: 0.1 + i * 0.12, y: 0.2, w: 0.1, h: 0.018 })),
+    ...wordsLine2.map((text, i) => ({ text, x: 0.1 + i * 0.12, y: 0.23, w: 0.1, h: 0.018 })),
+    // Slightly noisy OCR second sentence right below
+    { text: 'Sistem', x: 0.1, y: 0.24, w: 0.09, h: 0.018 },
+    { text: 'informasi', x: 0.21, y: 0.24, w: 0.12, h: 0.018 },
+    { text: 'akademk', x: 0.35, y: 0.24, w: 0.11, h: 0.018 }, // 1-char OCR typo
+    { text: 'universitas', x: 0.48, y: 0.24, w: 0.13, h: 0.018 },
+  ];
+
+  const pagesLayout = [{ pageNumber: 1, widthPt: 595, heightPt: 842, spans }];
+  const annotatedSentences = [
+    {
+      index: 0,
+      text: 'Kecerdasan buatan adalah kemampuan sistem komputasi untuk melaksanakan tugas kecerdasan manusia modern.',
+      activeSourceRank: 1,
+      activeColorHex: '#e11d48',
+      activeColorSoft: 'rgba(225, 29, 72, 0.16)',
+      activeColorRgb: [225, 29, 72],
+      activeColorBgRgb: [253, 230, 236],
+      excludedReason: null,
+    },
+    {
+      index: 1,
+      text: 'Sistem informasi akademik universitas',
+      activeSourceRank: 2,
+      activeColorHex: '#7c3aed',
+      activeColorSoft: 'rgba(124, 58, 237, 0.16)',
+      activeColorRgb: [124, 58, 237],
+      activeColorBgRgb: [243, 232, 255],
+      excludedReason: null,
+    },
+  ];
+
+  const mapped = mapAnnotatedSentencesToPageHighlights(pagesLayout, annotatedSentences);
+  const pg1 = mapped.get(1);
+  assert.ok(pg1, 'Page 1 highlight bucket must exist');
+  assert.ok(pg1.rects.length >= 2, `Should merge into line-level rects, got ${pg1.rects.length}`);
+  assert.equal(pg1.badges.length, 2, 'Should place 2 left-margin badges for rank 1 and rank 2');
+  assert.ok(pg1.badges[1].y - pg1.badges[0].y >= 0.025, 'Left-margin circular badges must be vertically spaced without overlapping');
+
+  // Verify identical sentence repeated on Page 1 and Page 2 highlights BOTH pages independently
+  const dupPages = [
+    {
+      pageNumber: 1,
+      spans: [
+        { text: 'Arsitektur', x: 0.1, y: 0.4, w: 0.12, h: 0.018 },
+        { text: 'hibrida', x: 0.23, y: 0.4, w: 0.09, h: 0.018 },
+        { text: 'memadukan', x: 0.33, y: 0.4, w: 0.12, h: 0.018 },
+        { text: 'analisis', x: 0.46, y: 0.4, w: 0.09, h: 0.018 },
+        { text: 'stilometri', x: 0.56, y: 0.4, w: 0.11, h: 0.018 },
+      ],
+    },
+    {
+      pageNumber: 2,
+      spans: [
+        { text: 'Arsitektur', x: 0.1, y: 0.2, w: 0.12, h: 0.018 },
+        { text: 'hibrida', x: 0.23, y: 0.2, w: 0.09, h: 0.018 },
+        { text: 'memadukan', x: 0.33, y: 0.2, w: 0.12, h: 0.018 },
+        { text: 'analisis', x: 0.46, y: 0.2, w: 0.09, h: 0.018 },
+        { text: 'stilometri', x: 0.56, y: 0.2, w: 0.11, h: 0.018 },
+      ],
+    },
+  ];
+  const dupMapped = mapAnnotatedSentencesToPageHighlights(dupPages, [
+    { index: 0, text: 'Arsitektur hibrida memadukan analisis stilometri.', activeSourceRank: 1, activeColorHex: '#e11d48', activeColorRgb: [225, 29, 72] },
+    { index: 1, text: 'Arsitektur hibrida memadukan analisis stilometri.', activeSourceRank: 1, activeColorHex: '#e11d48', activeColorRgb: [225, 29, 72] },
+  ]);
+  assert.equal(dupMapped.get(1).rects.length, 1, 'Page 1 must highlight first occurrence');
+  assert.equal(dupMapped.get(2).rects.length, 1, 'Page 2 must highlight second occurrence rather than stacking on Page 1');
+});
+
+test('annotateBlockTextSegments and applyReportFilters keep originalSource & live pageHighlights in sync (v69)', () => {
+  const sampleText =
+    'Kecerdasan buatan adalah kemampuan sistem komputasi untuk melaksanakan tugas manusia secara adaptif dan otomatis. ' +
+    '"Kutipan resmi pendidikan tinggi Indonesia tahun 2026 wajib mencantumkan sumber." ' +
+    'Analisis lapangan penulis membuktikan peningkatan efektivitas kelas secara nyata.';
+
+  const spans = sampleText.split(/\s+/).map((w, i) => ({
+    text: w,
+    x: 0.1 + (i % 6) * 0.13,
+    y: 0.15 + Math.floor(i / 6) * 0.04,
+    w: 0.11,
+    h: 0.018,
+  }));
+
+  const report = fusePlagiarismReport({
+    text: sampleText,
+    fileName: 'Dokumen_Asli_UNSIL.pdf',
+    fileFormat: 'PDF',
+    originalSource: {
+      kind: 'pdf',
+      pageCount: 1,
+      pages: [{ pageNumber: 1, widthPt: 595, heightPt: 842, spans }],
+    },
+    candidates: [
+      {
+        title: 'Kecerdasan Buatan — Referensi Web',
+        url: 'https://id.wikipedia.org/wiki/Kecerdasan_buatan',
+        category: 'internet',
+        engine: 'Wikipedia ID',
+        content: 'Kecerdasan buatan adalah kemampuan sistem komputasi untuk melaksanakan tugas manusia secara adaptif dan otomatis.',
+      },
+    ],
+  });
+
+  assert.ok(report.pageHighlights && report.pageHighlights[1], 'fusePlagiarismReport must populate pageHighlights when originalSource has spans');
+  assert.ok(report.pageHighlights[1].rects.length >= 1, 'Matched sentence must generate highlight rects on page 1');
+
+  const segs = annotateBlockTextSegments(sampleText, report.annotatedSentences);
+  assert.ok(segs.some((s) => s.matched && s.rank === 1), 'annotateBlockTextSegments must mark matched sentence inside original block');
+
+  const pdfStr = new TextDecoder('latin1').decode(buildTurnitinPdfBytes(report));
+  assert.ok(pdfStr.includes('Cover Page'), 'Minimalist PDF must include Cover Page header');
+  assert.ok(pdfStr.includes('Integrity Overview'), 'Minimalist PDF must include Integrity Overview header');
+  assert.ok(pdfStr.includes('Integrity Submission'), 'Minimalist PDF must include Integrity Submission header');
+});
+
 
 

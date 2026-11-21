@@ -1,9 +1,12 @@
 /**
- * Manifestudio Integrated Plagiarism Engine (v68 — Strict No Repository Mode)
- * 1. Universal All-File Extractor (PDF Text Layer + Auto Scanned-PDF Multi-Page OCR, DOCX+Tables, PPTX, ODT/ODP/ODS, EPUB, XLSX/CSV, RTF, HTML/XML, TXT/MD/Code, DOC, Images OCR, Any File)
- *    with strict alien/binary gibberish quality gating so corrupted streams NEVER leak into the manuscript.
- * 2. Parallel Integrated Multi-Engine Scanner (OpenAlex + Crossref + DOAJ + Wikipedia ID/EN + Multi-AI Ensemble + Optional Turnitin Core API w/ No-Repository)
- *    All engines execute concurrently in a single fused pipeline with real-time 0–100% progress & live status updates.
+ * Manifestudio Integrated Plagiarism Engine (v69 — Authentic Original-Document & No Repository Mode)
+ * 1. Universal All-File Extractor preserving 100% ORIGINAL document pages/layout:
+ *    - PDF (Text Layer + Auto Multi-Page OCR Scan): keeps raw `pdfBytes` + crisp page preview images + normalized word bboxes
+ *    - Images (PNG/JPG/WEBP): keeps original image + OCR word bboxes
+ *    - DOCX: parses OOXML paragraphs, headings, bold/italic/underline, alignment, tables, & embedded media images
+ *    - PPTX, ODT, EPUB, XLSX, RTF, HTML, TXT/MD/Code: clean paginated A4 sheets
+ * 2. Unified On-Click Pipeline: zero wait on file selection; extraction + OCR + 6-engine parallel scan
+ *    run together under one live 0-100% cancellable progress bar.
  */
 
 import {
@@ -15,7 +18,8 @@ import {
 import {
   extractPdfDetailedWithPdfJs,
   renderPdfPagesToBlobs,
-} from './media-engine.js?v=68';
+  renderPdfPagesToPreviewImages,
+} from './media-engine.js?v=69';
 import {
   executeModelTarget,
   getCachedModelRegistry,
@@ -30,6 +34,7 @@ import {
   buildPlagiarismSearchQueries,
   countWords,
   detectDocumentLanguage,
+  escapePlagHtml,
   extractReadableTextFromBinaryBytes,
   fusePlagiarismReport,
   normalizePlainText,
@@ -38,7 +43,7 @@ import {
   segmentDocumentSentences,
   stripHtmlOrXmlToPlainText,
   stripRtfToPlainText,
-} from './plagiarism-logic.js?v=68';
+} from './plagiarism-logic.js?v=69';
 
 const API_TIMEOUT_MS = 9000;
 const AI_AUDIT_TIMEOUT_MS = 18000;
@@ -174,58 +179,333 @@ async function ensureTesseractLoaded(onProgress = () => {}) {
   }
 }
 
-async function runImageOcrFallback(file, onProgress = () => {}) {
-  const tesseract = await ensureTesseractLoaded(onProgress);
-  if (!tesseract || typeof tesseract.recognize !== 'function') return '';
+function normalizeOcrWordsToSpans(words = [], width = 1000, height = 1414) {
+  const safeW = Math.max(1, Number(width) || 1000);
+  const safeH = Math.max(1, Number(height) || 1414);
+  const spans = [];
+  for (const w of Array.isArray(words) ? words : []) {
+    const text = String(w?.text || '').trim();
+    const bbox = w?.bbox;
+    if (!text || !bbox) continue;
+    const x0 = Math.max(0, Number(bbox.x0) || 0);
+    const y0 = Math.max(0, Number(bbox.y0) || 0);
+    const x1 = Math.max(x0 + 2, Number(bbox.x1) || x0 + 10);
+    const y1 = Math.max(y0 + 2, Number(bbox.y1) || y0 + 10);
+    spans.push({
+      text,
+      x: Math.min(0.99, x0 / safeW),
+      y: Math.min(0.99, y0 / safeH),
+      w: Math.max(0.005, Math.min(1, (x1 - x0) / safeW)),
+      h: Math.max(0.008, Math.min(0.12, (y1 - y0) / safeH)),
+    });
+  }
+  return spans;
+}
+
+function readFileAsDataUrl(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result || ''));
+    reader.onerror = () => reject(new Error('Gagal membaca data gambar.'));
+    reader.readAsDataURL(file);
+  });
+}
+
+function measureImageDataUrl(dataUrl) {
+  return new Promise((resolve) => {
+    if (typeof Image === 'undefined') {
+      resolve({ width: 1000, height: 1414 });
+      return;
+    }
+    const img = new Image();
+    img.onload = () => resolve({ width: img.naturalWidth || 1000, height: img.naturalHeight || 1414 });
+    img.onerror = () => resolve({ width: 1000, height: 1414 });
+    img.src = dataUrl;
+  });
+}
+
+function uint8ToBase64(u8) {
+  let binary = '';
+  const chunk = 0x8000;
+  for (let i = 0; i < u8.length; i += chunk) {
+    binary += String.fromCharCode(...u8.subarray(i, i + chunk));
+  }
+  return btoa(binary);
+}
+
+function paginateBlocksToA4Pages(blocks = [], wordsPerPage = 380) {
+  const pages = [];
+  let curBlocks = [];
+  let curWords = 0;
+  for (const b of blocks) {
+    const bw = Math.max(1, Number(b.wordCount) || countWords(b.plain || ''));
+    if (curBlocks.length > 0 && curWords + bw > wordsPerPage) {
+      pages.push({
+        pageNumber: pages.length + 1,
+        widthPt: 595,
+        heightPt: 842,
+        blocks: curBlocks,
+      });
+      curBlocks = [];
+      curWords = 0;
+    }
+    curBlocks.push(b);
+    curWords += bw;
+  }
+  if (curBlocks.length > 0) {
+    pages.push({
+      pageNumber: pages.length + 1,
+      widthPt: 595,
+      heightPt: 842,
+      blocks: curBlocks,
+    });
+  }
+  return pages;
+}
+
+/**
+ * Builds clean A4 document sheets for Paste / TXT / RTF / HTML so documents always
+ * render page-by-page like real printed pages (never a raw flat text dump).
+ */
+export function buildDocumentSheetsOriginalSource(text = '') {
+  const paras = normalizePlainText(text)
+    .split(/\n{2,}/)
+    .map((p) => p.trim())
+    .filter(Boolean);
+  const blocks = paras.map((p) => {
+    const isHeading = p.length <= 92 && !/[.?!]$/.test(p) && p.split(/\s+/).length <= 12;
+    return {
+      type: isHeading ? 'heading' : 'paragraph',
+      level: isHeading ? 2 : 0,
+      align: 'justify',
+      plain: p,
+      wordCount: countWords(p),
+    };
+  });
+  const pages = paginateBlocksToA4Pages(blocks, 360);
+  return {
+    kind: 'document-sheets',
+    pageCount: Math.max(1, pages.length),
+    pages,
+  };
+}
+
+/**
+ * Parses a DOCX archive directly (word/document.xml + rels + word/media/*) into structured
+ * A4 pages preserving original headings, bold/italic/underline, alignment, tables, and images!
+ */
+async function buildRichDocxOriginalSource(rawBuffer, fallbackText = '') {
+  if (typeof DOMParser === 'undefined') {
+    return buildDocumentSheetsOriginalSource(fallbackText);
+  }
   try {
-    onProgress({ percent: 65, label: 'Membaca teks dari gambar (OCR ID + EN, 100% lokal)...' });
-    const res = await tesseract.recognize(file, 'ind+eng');
-    return normalizePlainText(res?.data?.text || '');
+    const entriesRaw = await extractZipEntries(rawBuffer);
+    const entriesMap =
+      entriesRaw instanceof Map
+        ? entriesRaw
+        : new Map((Array.isArray(entriesRaw) ? entriesRaw : []).map((e) => [e.name, e.data]));
+
+    const docBytes = entriesMap.get('word/document.xml');
+    if (!docBytes) return buildDocumentSheetsOriginalSource(fallbackText);
+
+    const decoder = new TextDecoder('utf-8', { fatal: false });
+    const parser = new DOMParser();
+    const docXml = parser.parseFromString(decoder.decode(docBytes), 'application/xml');
+
+    // Resolve embedded images via word/_rels/document.xml.rels
+    const relMediaMap = new Map();
+    const relsBytes = entriesMap.get('word/_rels/document.xml.rels');
+    if (relsBytes) {
+      const relsXml = parser.parseFromString(decoder.decode(relsBytes), 'application/xml');
+      const relEls = relsXml.getElementsByTagName('Relationship');
+      for (const rel of relEls) {
+        const id = rel.getAttribute('Id') || '';
+        const target = String(rel.getAttribute('Target') || '').replace(/^\/+/, '');
+        const fullKey = target.startsWith('word/') ? target : `word/${target.replace(/^\.\.\//, '')}`;
+        const mediaBytes = entriesMap.get(fullKey);
+        if (id && mediaBytes && mediaBytes.length > 0 && mediaBytes.length <= 2_500_000) {
+          const ext = fullKey.split('.').pop()?.toLowerCase() || 'png';
+          const mime = ext === 'jpg' || ext === 'jpeg' ? 'image/jpeg' : ext === 'webp' ? 'image/webp' : ext === 'gif' ? 'image/gif' : 'image/png';
+          relMediaMap.set(id, `data:${mime};base64,${uint8ToBase64(mediaBytes)}`);
+        }
+      }
+    }
+
+    const body = docXml.getElementsByTagNameNS('*', 'body')[0] || docXml.getElementsByTagName('w:body')[0];
+    if (!body) return buildDocumentSheetsOriginalSource(fallbackText);
+
+    const parseRuns = (pEl) => {
+      const runs = [];
+      let plainParts = [];
+      const childNodes = Array.from(pEl.childNodes || []);
+      for (const node of childNodes) {
+        const local = node.localName || node.nodeName?.replace(/^.*:/, '');
+        if (local === 'r' || local === 'hyperlink') {
+          const rNodes = local === 'hyperlink' ? Array.from(node.getElementsByTagNameNS('*', 'r')) : [node];
+          for (const r of rNodes) {
+            const rPr = r.getElementsByTagNameNS('*', 'rPr')[0];
+            const bold = Boolean(rPr?.getElementsByTagNameNS('*', 'b')[0]);
+            const italic = Boolean(rPr?.getElementsByTagNameNS('*', 'i')[0]);
+            const underline = Boolean(rPr?.getElementsByTagNameNS('*', 'u')[0]);
+            const blip = r.getElementsByTagNameNS('*', 'blip')[0];
+            if (blip) {
+              const embedId = blip.getAttribute('r:embed') || blip.getAttributeNS('http://schemas.openxmlformats.org/officeDocument/2006/relationships', 'embed');
+              if (embedId && relMediaMap.has(embedId)) {
+                runs.push({ type: 'image', src: relMediaMap.get(embedId) });
+              }
+            }
+            const tNodes = Array.from(r.getElementsByTagNameNS('*', 't'));
+            const txt = tNodes.map((t) => t.textContent || '').join('');
+            if (txt) {
+              runs.push({ type: 'text', text: txt, bold, italic, underline });
+              plainParts.push(txt);
+            }
+          }
+        }
+      }
+      return { runs, plain: normalizePlainText(plainParts.join('')) };
+    };
+
+    const blocks = [];
+    for (const child of Array.from(body.childNodes || [])) {
+      const local = child.localName || child.nodeName?.replace(/^.*:/, '');
+      if (local === 'p') {
+        const pPr = child.getElementsByTagNameNS('*', 'pPr')[0];
+        const pStyle = pPr?.getElementsByTagNameNS('*', 'pStyle')[0]?.getAttribute('w:val') || pPr?.getElementsByTagNameNS('*', 'pStyle')[0]?.getAttribute('val') || '';
+        const jc = pPr?.getElementsByTagNameNS('*', 'jc')[0]?.getAttribute('w:val') || pPr?.getElementsByTagNameNS('*', 'jc')[0]?.getAttribute('val') || '';
+        const isList = Boolean(pPr?.getElementsByTagNameNS('*', 'numPr')[0]);
+        const { runs, plain } = parseRuns(child);
+        const hasImage = runs.some((r) => r.type === 'image');
+        if (!plain && !hasImage) continue;
+
+        let level = 0;
+        if (/heading\s*1|title/i.test(pStyle)) level = 1;
+        else if (/heading\s*2|subtitle/i.test(pStyle)) level = 2;
+        else if (/heading\s*[3-6]/i.test(pStyle)) level = 3;
+
+        blocks.push({
+          type: level > 0 ? 'heading' : isList ? 'list-item' : 'paragraph',
+          level,
+          align: jc === 'center' ? 'center' : jc === 'right' ? 'right' : jc === 'both' ? 'justify' : 'left',
+          runs,
+          plain,
+          wordCount: Math.max(hasImage ? 25 : 1, countWords(plain)),
+        });
+      } else if (local === 'tbl') {
+        const rows = [];
+        let tblWords = 0;
+        const trNodes = Array.from(child.getElementsByTagNameNS('*', 'tr'));
+        for (const tr of trNodes) {
+          const cells = [];
+          const tcNodes = Array.from(tr.getElementsByTagNameNS('*', 'tc'));
+          for (const tc of tcNodes) {
+            const cellParas = Array.from(tc.getElementsByTagNameNS('*', 'p'))
+              .map((p) => parseRuns(p).plain)
+              .filter(Boolean);
+            const cellText = cellParas.join(' ');
+            tblWords += countWords(cellText);
+            cells.push(cellText);
+          }
+          if (cells.length > 0) rows.push(cells);
+        }
+        if (rows.length > 0) {
+          blocks.push({
+            type: 'table',
+            rows,
+            plain: rows.map((r) => r.join(' · ')).join('\n'),
+            wordCount: Math.max(20, tblWords),
+          });
+        }
+      }
+    }
+
+    if (blocks.length === 0) return buildDocumentSheetsOriginalSource(fallbackText);
+    const pages = paginateBlocksToA4Pages(blocks, 360);
+    return {
+      kind: 'docx-rich',
+      pageCount: Math.max(1, pages.length),
+      pages,
+    };
   } catch {
-    return '';
+    return buildDocumentSheetsOriginalSource(fallbackText);
   }
 }
 
-async function runScannedPdfOcr(rawBuffer, onProgress = () => {}) {
-  if (typeof window === 'undefined') return { text: '', pagesOcrd: 0, numPages: 0 };
-  onProgress({ percent: 38, label: 'PDF hasil scan terdeteksi — merender halaman untuk OCR lokal...' });
+async function runImageOcrFallback(file, onProgress = () => {}, signal = null) {
+  if (signal?.aborted) throw new Error('ABORTED');
+  const imageDataUrl = await readFileAsDataUrl(file);
+  const dims = await measureImageDataUrl(imageDataUrl);
+  const tesseract = await ensureTesseractLoaded(onProgress);
+  if (!tesseract || typeof tesseract.recognize !== 'function') {
+    return { text: '', spans: [], imageDataUrl, width: dims.width, height: dims.height };
+  }
+  try {
+    onProgress({ percent: 65, label: 'Membaca teks & koordinat kata dari gambar (OCR ID + EN, 100% lokal)...' });
+    const res = await tesseract.recognize(file, 'ind+eng');
+    if (signal?.aborted) throw new Error('ABORTED');
+    const text = normalizePlainText(res?.data?.text || '');
+    const spans = normalizeOcrWordsToSpans(res?.data?.words || [], dims.width, dims.height);
+    return { text, spans, imageDataUrl, width: dims.width, height: dims.height };
+  } catch (err) {
+    if (err?.message === 'ABORTED') throw err;
+    return { text: '', spans: [], imageDataUrl, width: dims.width, height: dims.height };
+  }
+}
+
+async function runScannedPdfOcr(rawBuffer, onProgress = () => {}, signal = null) {
+  if (typeof window === 'undefined') return { text: '', pagesOcrd: 0, numPages: 0, pages: [] };
+  if (signal?.aborted) throw new Error('ABORTED');
+  onProgress({ percent: 34, label: 'PDF hasil scan terdeteksi — menyiapkan halaman asli untuk OCR lokal...' });
   const rendered = await renderPdfPagesToBlobs(rawBuffer, {
-    maxPages: 8,
-    scale: 1.75,
+    maxPages: 12,
+    scale: 1.65,
     onPage: ({ page, total }) => {
       onProgress({
-        percent: 38 + Math.round((page / Math.max(1, total)) * 18),
-        label: `Menyiapkan halaman scan PDF ${page}/${total} untuk OCR...`,
+        percent: 34 + Math.round((page / Math.max(1, total)) * 18),
+        label: `Merender halaman asli PDF ${page}/${total} untuk OCR...`,
       });
     },
   });
+  if (signal?.aborted) throw new Error('ABORTED');
   if (!rendered.blobs || rendered.blobs.length === 0) {
-    return { text: '', pagesOcrd: 0, numPages: rendered.numPages || 0 };
+    return { text: '', pagesOcrd: 0, numPages: rendered.numPages || 0, pages: [] };
   }
 
   const tesseract = await ensureTesseractLoaded(onProgress);
   if (!tesseract) {
-    return { text: '', pagesOcrd: 0, numPages: rendered.numPages || 0 };
+    return { text: '', pagesOcrd: 0, numPages: rendered.numPages || 0, pages: [] };
   }
 
   const ocrParts = [];
+  const pages = [];
   let worker = null;
   try {
     if (typeof tesseract.createWorker === 'function') {
-      onProgress({ percent: 58, label: 'Menginisialisasi model bahasa OCR Indonesia + Inggris...' });
+      onProgress({ percent: 54, label: 'Menginisialisasi model bahasa OCR Indonesia + Inggris...' });
       worker = await tesseract.createWorker('ind+eng');
     }
     for (let i = 0; i < rendered.blobs.length; i += 1) {
-      const { page, blob } = rendered.blobs[i];
+      if (signal?.aborted) throw new Error('ABORTED');
+      const { page, blob, jpegDataUrl, width, height, widthPt, heightPt } = rendered.blobs[i];
       onProgress({
-        percent: 60 + Math.round(((i + 1) / rendered.blobs.length) * 35),
-        label: `Membaca teks halaman scan ${page}/${rendered.blobs.length} dengan OCR...`,
+        percent: 56 + Math.round(((i + 1) / rendered.blobs.length) * 38),
+        label: `Membaca teks & posisi kata halaman scan ${page}/${rendered.blobs.length} (OCR)...`,
       });
       const res = worker ? await worker.recognize(blob) : await tesseract.recognize(blob, 'ind+eng');
       const pageTxt = normalizePlainText(res?.data?.text || '');
+      const spans = normalizeOcrWordsToSpans(res?.data?.words || [], width, height);
       if (pageTxt) ocrParts.push(pageTxt);
+      pages.push({
+        pageNumber: page,
+        widthPt: widthPt || 595,
+        heightPt: heightPt || 842,
+        imageDataUrl: jpegDataUrl,
+        spans,
+        text: pageTxt,
+      });
     }
-  } catch {
+  } catch (err) {
+    if (err?.message === 'ABORTED') throw err;
     // Keep any pages already recognized
   } finally {
     if (worker && typeof worker.terminate === 'function') {
@@ -241,6 +521,7 @@ async function runScannedPdfOcr(rawBuffer, onProgress = () => {}) {
     text: normalizePlainText(ocrParts.join('\n\n')),
     pagesOcrd: rendered.blobs.length,
     numPages: rendered.numPages || rendered.blobs.length,
+    pages,
   };
 }
 
@@ -299,40 +580,59 @@ async function tryDecompressedPdfFallback(rawBuffer) {
 }
 
 /**
- * Universal All-File Text Extractor (supports all document, code, and image types).
- * Extracts clean prose from PDF (text layer + automatic scanned-PDF OCR), DOCX (paragraphs + tables),
- * PPTX, ODT/ODP/ODS, EPUB, XLSX/XLS/CSV, RTF, HTML/XML, TXT/MD/TeX/JSON/Code, legacy .doc, & Images (OCR).
- * Strictly rejects alien/binary gibberish.
+ * Universal All-File Text + Original-Document Extractor.
+ * Preserves original PDF bytes/pages, original Images + OCR coordinates, rich DOCX OOXML layout,
+ * and paginated A4 sheets so neither the web viewer nor downloaded PDF ever rebuilds plain text.
  */
-export async function extractTextFromAnyFile(file, onProgress = () => {}) {
+export async function extractTextFromAnyFile(file, onProgress = () => {}, signal = null) {
   if (!file) throw new Error('Berkas tidak ditemukan.');
+  if (signal?.aborted) throw new Error('ABORTED');
   const ext = getFileExtension(file.name);
   const mime = String(file.type || '').toLowerCase();
-  onProgress({ percent: 12, label: `Membaca berkas "${file.name}" secara lokal (No Repository)...` });
+  onProgress({ percent: 10, label: `Membaca berkas asli "${file.name}" secara lokal (No Repository)...` });
 
-  // 1. Images -> OCR
+  // 1. Images -> OCR + preserve original image page
   if (mime.startsWith('image/') || ['png', 'jpg', 'jpeg', 'webp', 'bmp', 'gif'].includes(ext)) {
-    const ocrText = await runImageOcrFallback(file, onProgress);
-    if (ocrText && assessExtractedTextQuality(ocrText).isReadable && countWords(ocrText) >= 3) {
+    const ocrRes = await runImageOcrFallback(file, onProgress, signal);
+    if (ocrRes.text && assessExtractedTextQuality(ocrRes.text).isReadable && countWords(ocrRes.text) >= 3) {
+      const aspect = ocrRes.height / Math.max(1, ocrRes.width);
+      const widthPt = 595;
+      const heightPt = Math.round(595 * aspect);
       return {
-        text: ocrText,
+        text: ocrRes.text,
         fileName: file.name,
         fileFormat: `${(ext || 'IMG').toUpperCase()} (OCR)`,
         fileSize: file.size || 0,
-        note: 'Teks diekstrak lokal dari gambar menggunakan OCR (No Repository).',
+        pageCount: 1,
+        note: 'Gambar asli dipertahankan · teks dibaca lokal dengan OCR (No Repository).',
+        originalSource: {
+          kind: 'image',
+          pageCount: 1,
+          pages: [
+            {
+              pageNumber: 1,
+              widthPt,
+              heightPt,
+              imageDataUrl: ocrRes.imageDataUrl,
+              spans: ocrRes.spans,
+              text: ocrRes.text,
+            },
+          ],
+        },
       };
     }
     throw new Error('Tidak ditemukan teks terbaca pada gambar ini (pastikan gambar tajam/tidak buram).');
   }
 
   const rawBuffer = await file.arrayBuffer();
+  if (signal?.aborted) throw new Error('ABORTED');
   const bytes = new Uint8Array(rawBuffer);
   const isPdfMagic = bytes.length >= 4 && bytes[0] === 0x25 && bytes[1] === 0x50 && bytes[2] === 0x44 && bytes[3] === 0x46;
   const isZipMagic = bytes.length >= 4 && bytes[0] === 0x50 && bytes[1] === 0x4b && bytes[2] === 0x03 && bytes[3] === 0x04;
 
-  // 2. PDF (Stage 1: PDF.js w/ Blob Worker & CMap -> Stage 2: Auto Multi-Page OCR for scanned PDF -> Stage 3: Pure FlateDecode)
+  // 2. PDF (Stage 1: PDF.js text layer + original page previews -> Stage 2: Scanned-PDF OCR -> Stage 3: FlateDecode)
   if (ext === 'pdf' || mime.includes('pdf') || isPdfMagic) {
-    onProgress({ percent: 26, label: 'Mengekstrak lapisan teks dokumen PDF (PDF.js)...' });
+    onProgress({ percent: 20, label: 'Mengekstrak teks & koordinat kata dari dokumen PDF asli...' });
     let pdfDetail = null;
     if (typeof window !== 'undefined') {
       try {
@@ -340,8 +640,8 @@ export async function extractTextFromAnyFile(file, onProgress = () => {}) {
           maxPages: 40,
           onProgress: ({ page, total }) => {
             onProgress({
-              percent: 26 + Math.round((page / Math.max(1, total)) * 22),
-              label: `Membaca teks PDF halaman ${page}/${total}...`,
+              percent: 20 + Math.round((page / Math.max(1, total)) * 22),
+              label: `Membaca teks & posisi halaman PDF ${page}/${total}...`,
             });
           },
         });
@@ -349,41 +649,87 @@ export async function extractTextFromAnyFile(file, onProgress = () => {}) {
         pdfDetail = null;
       }
     }
+    if (signal?.aborted) throw new Error('ABORTED');
 
     const pdfText = normalizePlainText(pdfDetail?.text || '');
     const pdfQuality = assessExtractedTextQuality(pdfText);
     if (pdfText && pdfQuality.isReadable && countWords(pdfText) >= 12) {
+      let previewPages = [];
+      if (typeof window !== 'undefined') {
+        try {
+          const renderedPreviews = await renderPdfPagesToPreviewImages(rawBuffer, {
+            maxPages: 30,
+            scale: 1.45,
+            onPage: ({ page, total }) => {
+              onProgress({
+                percent: 44 + Math.round((page / Math.max(1, total)) * 46),
+                label: `Menyiapkan tampilan halaman asli PDF ${page}/${total}...`,
+              });
+            },
+          });
+          previewPages = renderedPreviews.pages || [];
+        } catch {
+          previewPages = [];
+        }
+      }
+      if (signal?.aborted) throw new Error('ABORTED');
+
+      const layoutByPage = new Map((pdfDetail?.pagesLayout || []).map((p) => [p.pageNumber, p]));
+      const mergedPages = (previewPages.length > 0 ? previewPages : pdfDetail?.pagesLayout || []).map((pg) => {
+        const lay = layoutByPage.get(pg.pageNumber) || {};
+        return {
+          pageNumber: pg.pageNumber,
+          widthPt: pg.widthPt || lay.widthPt || 595,
+          heightPt: pg.heightPt || lay.heightPt || 842,
+          imageDataUrl: pg.imageDataUrl || '',
+          spans: lay.spans || [],
+          text: lay.text || '',
+        };
+      });
+
       return {
         text: pdfText,
         fileName: file.name,
         fileFormat: 'PDF',
         fileSize: file.size || bytes.length,
-        pageCount: pdfDetail?.numPages || 1,
-        note: `Teks bersih diekstrak dari ${pdfDetail?.numPages || 1} halaman PDF (100% lokal).`,
+        pageCount: pdfDetail?.numPages || mergedPages.length || 1,
+        note: `Halaman asli PDF (${pdfDetail?.numPages || 1} hal) dipertahankan 100% lokal.`,
+        originalSource: {
+          kind: 'pdf',
+          pdfBytes: new Uint8Array(bytes),
+          pageCount: pdfDetail?.numPages || mergedPages.length || 1,
+          pages: mergedPages,
+        },
       };
     }
 
-    // Stage 2: Scanned/image-only PDF -> Automatic multi-page Canvas + Tesseract OCR
+    // Stage 2: Scanned/image-only PDF -> Automatic multi-page Canvas + Tesseract OCR with word bboxes
     if (typeof window !== 'undefined') {
-      const ocrRes = await runScannedPdfOcr(rawBuffer, onProgress);
+      const ocrRes = await runScannedPdfOcr(rawBuffer, onProgress, signal);
       const ocrQuality = assessExtractedTextQuality(ocrRes.text);
       if (ocrRes.text && ocrQuality.isReadable && countWords(ocrRes.text) >= 8) {
         const extraNote =
           ocrRes.numPages > ocrRes.pagesOcrd
-            ? ` (${ocrRes.pagesOcrd} dari ${ocrRes.numPages} halaman pertama)`
-            : ` (${ocrRes.pagesOcrd} halaman)`;
+            ? ` (${ocrRes.pagesOcrd} dari ${ocrRes.numPages} hal dipindai OCR; seluruh halaman asli dipertahankan di PDF)`
+            : ` (${ocrRes.pagesOcrd} halaman asli dipertahankan)`;
         return {
           text: ocrRes.text,
           fileName: file.name,
           fileFormat: 'PDF (OCR Scan)',
           fileSize: file.size || bytes.length,
           pageCount: ocrRes.numPages || ocrRes.pagesOcrd,
-          note: `PDF scan berhasil dibaca dengan OCR lokal${extraNote}.`,
+          note: `PDF scan dibaca lokal dengan OCR${extraNote}.`,
+          originalSource: {
+            kind: 'pdf-scan',
+            pdfBytes: new Uint8Array(bytes),
+            pageCount: ocrRes.numPages || ocrRes.pagesOcrd || 1,
+            pages: ocrRes.pages,
+          },
         };
       }
     }
 
-    // Stage 3: Offline pure-JS FlateDecode text-stream fallback (strictly quality-gated)
+    // Stage 3: Offline pure-JS FlateDecode text-stream fallback (still preserves raw pdfBytes!)
     const fallbackText = await tryDecompressedPdfFallback(rawBuffer);
     if (fallbackText && countWords(fallbackText) >= 10) {
       return {
@@ -391,7 +737,14 @@ export async function extractTextFromAnyFile(file, onProgress = () => {}) {
         fileName: file.name,
         fileFormat: 'PDF',
         fileSize: file.size || bytes.length,
-        note: 'Diekstrak dari aliran teks PDF (mode lokal).',
+        pageCount: 1,
+        note: 'PDF asli dipertahankan (ekstraksi teks lokal).',
+        originalSource: {
+          kind: 'pdf',
+          pdfBytes: new Uint8Array(bytes),
+          pageCount: 1,
+          pages: [],
+        },
       };
     }
 
@@ -400,9 +753,9 @@ export async function extractTextFromAnyFile(file, onProgress = () => {}) {
     );
   }
 
-  // 3. DOCX (paragraphs + tables preserved cleanly)
+  // 3. DOCX (rich OOXML structure: headings, bold/italic, alignment, tables, embedded images preserved!)
   if (ext === 'docx' || mime.includes('wordprocessingml')) {
-    onProgress({ percent: 48, label: 'Membongkar struktur dokumen Word (.docx)...' });
+    onProgress({ percent: 45, label: 'Membaca tata letak asli dokumen Word (.docx)...' });
     const parsed = await parseDocxBuffer(rawBuffer);
     const paras = (parsed?.paragraphs || []).map((p) => (typeof p === 'string' ? p : p.text || '')).filter(Boolean);
     const tableLines = (parsed?.tables || [])
@@ -410,12 +763,15 @@ export async function extractTextFromAnyFile(file, onProgress = () => {}) {
       .filter(Boolean);
     const text = normalizePlainText([...paras, ...tableLines].join('\n\n'));
     if (text && assessExtractedTextQuality(text).isReadable && countWords(text) >= 2) {
+      const originalSource = await buildRichDocxOriginalSource(rawBuffer, text);
       return {
         text,
         fileName: file.name,
         fileFormat: 'DOCX',
         fileSize: file.size || bytes.length,
-        note: 'Teks & tabel diekstrak dari Microsoft Word (.docx).',
+        pageCount: originalSource.pageCount || 1,
+        note: 'Tata letak, tabel & gambar asli Word (.docx) dipertahankan.',
+        originalSource,
       };
     }
   }
@@ -428,12 +784,15 @@ export async function extractTextFromAnyFile(file, onProgress = () => {}) {
       const rows = (parsed?.rows || []).map((r) => (Array.isArray(r) ? r.filter(Boolean).join(' · ') : String(r || ''))).filter(Boolean);
       const text = normalizePlainText(rows.join('\n'));
       if (text && assessExtractedTextQuality(text).isReadable) {
+        const originalSource = buildDocumentSheetsOriginalSource(text);
         return {
           text,
           fileName: file.name,
           fileFormat: ext.toUpperCase() || 'XLSX',
           fileSize: file.size || bytes.length,
+          pageCount: originalSource.pageCount,
           note: 'Diekstrak dari lembar kerja spreadsheet.',
+          originalSource,
         };
       }
     } catch {
@@ -442,7 +801,6 @@ export async function extractTextFromAnyFile(file, onProgress = () => {}) {
   }
 
   // 5. ZIP-based office & e-book formats: PPTX, ODT, ODP, ODS, EPUB, or generic DOCX fallback
-  // Note: extractZipEntries returns a Map<string, Uint8Array>
   if (isZipMagic || ['pptx', 'odt', 'odp', 'epub', 'docx'].includes(ext)) {
     onProgress({ percent: 55, label: `Membaca konten arsip dokumen .${(ext || 'zip').toUpperCase()}...` });
     try {
@@ -477,12 +835,15 @@ export async function extractTextFromAnyFile(file, onProgress = () => {}) {
 
       const text = normalizePlainText(textParts.join('\n\n'));
       if (text && assessExtractedTextQuality(text).isReadable && countWords(text) >= 2) {
+        const originalSource = ext === 'docx' ? await buildRichDocxOriginalSource(rawBuffer, text) : buildDocumentSheetsOriginalSource(text);
         return {
           text,
           fileName: file.name,
           fileFormat: (ext || 'ARCHIVE').toUpperCase(),
           fileSize: file.size || bytes.length,
-          note: `Berhasil mengekstrak ${relevant.length} bagian teks dari berkas .${(ext || 'zip').toUpperCase()}.`,
+          pageCount: originalSource.pageCount,
+          note: `Berhasil membaca ${relevant.length} bagian dari berkas .${(ext || 'zip').toUpperCase()}.`,
+          originalSource,
         };
       }
     } catch {
@@ -499,12 +860,15 @@ export async function extractTextFromAnyFile(file, onProgress = () => {}) {
     if (!text || !assessExtractedTextQuality(text).isReadable) {
       throw new Error('Dokumen RTF ini tidak mengandung teks terbaca.');
     }
+    const originalSource = buildDocumentSheetsOriginalSource(text);
     return {
       text,
       fileName: file.name,
       fileFormat: 'RTF',
       fileSize: file.size || bytes.length,
+      pageCount: originalSource.pageCount,
       note: 'Diekstrak dari dokumen Rich Text (.rtf).',
+      originalSource,
     };
   }
 
@@ -516,12 +880,15 @@ export async function extractTextFromAnyFile(file, onProgress = () => {}) {
     if (!text || !assessExtractedTextQuality(text).isReadable) {
       throw new Error('Berkas HTML/XML ini tidak mengandung paragraf teks terbaca.');
     }
+    const originalSource = buildDocumentSheetsOriginalSource(text);
     return {
       text,
       fileName: file.name,
       fileFormat: (ext || 'HTML').toUpperCase(),
       fileSize: file.size || bytes.length,
+      pageCount: originalSource.pageCount,
       note: 'Diekstrak dari dokumen web/markup.',
+      originalSource,
     };
   }
 
@@ -533,12 +900,15 @@ export async function extractTextFromAnyFile(file, onProgress = () => {}) {
       `Berkas "${file.name}" tidak memiliki lapisan teks terbaca atau berformat biner terkompresi. Gunakan PDF, DOCX, TXT, HTML, atau gambar jelas (OCR).`
     );
   }
+  const originalSource = buildDocumentSheetsOriginalSource(text);
   return {
     text,
     fileName: file.name,
     fileFormat: (ext || 'FILE').toUpperCase(),
     fileSize: file.size || bytes.length,
+    pageCount: originalSource.pageCount,
     note: ext === 'doc' ? 'Diekstrak dari dokumen Word klasik (.doc).' : `Diekstrak dari berkas .${(ext || 'txt').toUpperCase()}.`,
+    originalSource,
   };
 }
 
@@ -970,29 +1340,31 @@ async function probeTurnitinCoreApi(text = '', fileName = '', apiConfig = {}, si
 }
 
 /**
- * Main Integrated Multi-Engine Orchestrator.
- * Runs ALL plagiarism engines together concurrently and fuses every signal into ONE Turnitin-style report.
+ * Main Integrated Multi-Engine Orchestrator (v69).
+ * Accepts EITHER a raw `file` (extracted + rendered inside the unified progress bar so uploading
+ * requires 0ms waiting!) OR plain `text`, runs ALL plagiarism engines concurrently, preserves
+ * the 100% original document layout, and maps matched highlights onto real original pages.
  */
 export async function runIntegratedPlagiarismCheck({
+  file = null,
   text = '',
   fileName = 'Naskah_Tempel_Langsung.txt',
   fileFormat = 'TEXT',
   fileSize = 0,
+  originalSource = null,
   options = {},
   apiConfig = null,
   signal = null,
   onProgress = () => {},
 } = {}) {
   const startedAt = Date.now();
-  const cleanText = normalizePlainText(text);
-  const words = countWords(cleanText);
-  if (words < 10) {
-    throw new Error('Masukkan minimal 10 kata agar mesin pengecekan plagiarisme dapat menganalisis secara akurat.');
-  }
-
   const effectiveApi = apiConfig || loadPlagiarismApiConfig();
+
   const engineState = [
-    { id: 'local', name: 'Winnowing K-Gram & Stylometry', status: 'running', found: 0, note: 'Menganalisis struktur & sidik jari kalimat...' },
+    ...(file
+      ? [{ id: 'extract', name: 'Pembaca Dokumen Asli & OCR Lokal', status: 'running', found: 0, note: `Membaca "${file.name}"...` }]
+      : []),
+    { id: 'local', name: 'Winnowing K-Gram & Stylometry', status: 'pending', found: 0, note: 'Menunggu teks siap...' },
     { id: 'openalex', name: 'OpenAlex Academic (250M+)', status: 'pending', found: 0, note: 'Menunggu antrean paralel...' },
     { id: 'crossref', name: 'Crossref Publications (150M+)', status: 'pending', found: 0, note: 'Menunggu antrean paralel...' },
     { id: 'doaj', name: 'DOAJ Open-Access Journals', status: 'pending', found: 0, note: 'Menunggu antrean paralel...' },
@@ -1025,8 +1397,52 @@ export async function runIntegratedPlagiarismCheck({
     }
   };
 
-  // PHASE 1: Segmentation & Fingerprinting (0% -> 18%)
-  emit(8, 'Menormalisasi naskah, mendeteksi kutipan, daftar pustaka & bahasa...', 'prepare');
+  // PHASE 0 (when File uploaded): Extract text + preserve original document pages/bytes (2% -> 34%)
+  let workingText = text;
+  let workingFileName = fileName;
+  let workingFileFormat = fileFormat;
+  let workingFileSize = fileSize;
+  let workingOriginal = originalSource;
+
+  if (file) {
+    emit(4, `Membaca berkas asli "${file.name}" secara lokal (No Repository)...`, 'extract');
+    const extracted = await extractTextFromAnyFile(
+      file,
+      (p) => {
+        const mappedPct = 4 + Math.round(((Number(p?.percent) || 10) / 100) * 30);
+        updateEngine('extract', { status: 'running', note: p?.label || `Membaca "${file.name}"...` });
+        emit(mappedPct, p?.label || `Membaca "${file.name}"...`, 'extract');
+      },
+      signal
+    );
+    workingText = extracted.text;
+    workingFileName = extracted.fileName;
+    workingFileFormat = extracted.fileFormat;
+    workingFileSize = extracted.fileSize;
+    workingOriginal = extracted.originalSource || null;
+    updateEngine('extract', {
+      status: 'done',
+      found: extracted.pageCount || 1,
+      note: extracted.note || `${extracted.pageCount || 1} halaman asli siap`,
+    });
+  }
+
+  if (signal?.aborted) throw new Error('ABORTED');
+
+  const cleanText = normalizePlainText(workingText);
+  const words = countWords(cleanText);
+  if (words < 10) {
+    throw new Error('Dokumen memiliki kurang dari 10 kata terbaca. Pastikan file berisi teks atau tempel minimal 10 kata.');
+  }
+
+  if (!workingOriginal) {
+    workingOriginal = buildDocumentSheetsOriginalSource(cleanText);
+  }
+
+  // PHASE 1: Segmentation & Fingerprinting (34% -> 42%)
+  const basePct = file ? 36 : 10;
+  updateEngine('local', { status: 'running', note: 'Menganalisis struktur & sidik jari k-gram...' });
+  emit(basePct, 'Menormalisasi naskah, mendeteksi kutipan, daftar pustaka & bahasa...', 'prepare');
   const sentences = segmentDocumentSentences(cleanText);
   const lang = options.language && options.language !== 'auto' ? options.language : detectDocumentLanguage(cleanText).code;
   const maxQueries = options.mode === 'deep' ? 7 : 5;
@@ -1037,16 +1453,18 @@ export async function runIntegratedPlagiarismCheck({
     found: sentences.length,
     note: `${sentences.length} kalimat & ${queries.length} sidik jari k-gram siap`,
   });
-  emit(18, 'Meluncurkan pemindaian paralel terpadu lintas publikasi, web & Multi-AI...', 'parallel');
+  const parallelStartPct = file ? 42 : 18;
+  const parallelSpan = file ? 44 : 60;
+  emit(parallelStartPct, 'Meluncurkan pemindaian paralel terpadu lintas publikasi, web & Multi-AI...', 'parallel');
 
   if (signal?.aborted) throw new Error('ABORTED');
 
-  // PHASE 2: Parallel Integrated Multi-API Scan (18% -> 78%)
+  // PHASE 2: Parallel Integrated Multi-API Scan
   let completedCount = 0;
   const totalParallel = 6;
   const bumpProgress = (engineLabel) => {
     completedCount += 1;
-    const pct = 18 + Math.round((completedCount / totalParallel) * 60);
+    const pct = parallelStartPct + Math.round((completedCount / totalParallel) * parallelSpan);
     emit(pct, `Mesin terpadu selesai: ${engineLabel} (${completedCount}/${totalParallel})...`, 'parallel');
   };
 
@@ -1058,7 +1476,7 @@ export async function runIntegratedPlagiarismCheck({
   if (effectiveApi.turnitinEndpoint && effectiveApi.turnitinApiKey) {
     updateEngine('turnitin', { status: 'running', note: 'Memindai repositori Turnitin Core API...' });
   }
-  emit(22, 'Semua mesin (OpenAlex, Crossref, DOAJ, Wikipedia, Multi-AI & Turnitin API) berjalan serentak...', 'parallel');
+  emit(parallelStartPct + 3, 'Semua mesin (OpenAlex, Crossref, DOAJ, Wikipedia, Multi-AI & Turnitin API) berjalan serentak...', 'parallel');
 
   const [oaRes, crRes, doajRes, wikiRes, aiRes, turnitinRes] = await Promise.all([
     probeOpenAlex(queries, signal).then((r) => {
@@ -1093,7 +1511,7 @@ export async function runIntegratedPlagiarismCheck({
       bumpProgress('Multi-AI Ensemble');
       return r;
     }),
-    probeTurnitinCoreApi(cleanText, fileName, effectiveApi, signal).then((r) => {
+    probeTurnitinCoreApi(cleanText, workingFileName, effectiveApi, signal).then((r) => {
       updateEngine('turnitin', { status: r.status, found: r.found, latencyMs: r.latencyMs, note: r.note });
       bumpProgress('Turnitin Connector');
       return r;
@@ -1102,8 +1520,8 @@ export async function runIntegratedPlagiarismCheck({
 
   if (signal?.aborted) throw new Error('ABORTED');
 
-  // PHASE 3: Cross-Engine Fusion & Alignment (78% -> 94%)
-  emit(84, 'Menyelaraskan seluruh hasil mesin, menghitung Winnowing k-gram & bobot Turnitin...', 'fusion');
+  // PHASE 3: Cross-Engine Fusion & Original-Page Highlight Mapping (86% -> 96%)
+  emit(90, 'Menyelaraskan seluruh hasil mesin & memetakan sorotan warna ke halaman dokumen asli...', 'fusion');
 
   const allCandidates = [
     ...(wikiRes.candidates || []),
@@ -1114,19 +1532,20 @@ export async function runIntegratedPlagiarismCheck({
 
   const report = fusePlagiarismReport({
     text: cleanText,
-    fileName,
-    fileFormat,
-    fileSize,
+    fileName: workingFileName,
+    fileFormat: workingFileFormat,
+    fileSize: workingFileSize,
     candidates: allCandidates,
     aiAudits: aiRes.audits || [],
     turnitinResult: turnitinRes.result,
     engineStatuses: engineState.map((e) => ({ ...e })),
     options,
     durationMs: Date.now() - startedAt,
+    originalSource: workingOriginal,
   });
 
-  // PHASE 4: Finalization (94% -> 100%)
-  emit(96, 'Menyusun Standar Report terpadu (No Repository)...', 'finalize');
+  // PHASE 4: Finalization (96% -> 100%)
+  emit(96, 'Menyusun Standar Report dengan dokumen asli teranotasi (No Repository)...', 'finalize');
   savePlagiarismHistoryEntry(report);
   emit(100, `Pengecekan selesai — Indeks Kemiripan ${report.similarityPct}% (${report.primarySources.length} sumber teridentifikasi).`, 'complete');
 

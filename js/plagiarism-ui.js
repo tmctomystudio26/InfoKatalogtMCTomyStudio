@@ -1,10 +1,14 @@
 /**
- * Manifestudio Integrated Plagiarism Checker UI Controller (v68 — Strict No Repository Mode)
- * - Clean Mode Switcher: Upload File (hides text editor completely!) vs Paste Text
- * - Universal All-File Upload (PDF + Auto OCR Scan, DOCX, DOC, PPTX, XLSX, ODT, EPUB, RTF, HTML, TXT, MD, Code, Images OCR)
- * - Real-time Progress Bar (0–100%), live status text, elapsed timer, Cancel button & per-engine live telemetry
- * - Interactive Color-Coded Annotated Manuscript + Click-to-Inspect Match Details & Paraphrase Suggestions
- * - Direct Downloads prefixed with "Report_": Multi-Page Vector PDF (Standar Report), Interactive HTML, & JSON Audit
+ * Manifestudio Integrated Plagiarism Checker UI Controller (v69 — Authentic Original-Document & Fullscreen Studio)
+ * - Instant File Upload (0ms pre-scan waiting!): selecting/dropping ANY file immediately enables
+ *   "Cek Plagiarisme Sekarang" — extraction, OCR, and 6-engine parallel scan run inside ONE progress bar.
+ * - Upload File mode hides the text editor completely.
+ * - Real Original Document Multi-Page Viewer (replaces plain-text "Naskah Teranotasi"):
+ *   - Displays actual original PDF / Scanned PDF / Image / Rich DOCX A4 pages preserving exact letterhead,
+ *     tables, fonts, images & layout, scrollable page-by-page with Zoom & Layar Penuh (Fullscreen) mode.
+ *   - Translucent color-coded plagiarism highlights & left-margin circular numbered badges (1, 2, ...).
+ * - Direct Downloads prefixed with "Report_": Authentic Original-Document PDF (`Unduh PDF (Standar Report)`),
+ *   Interactive HTML, & JSON Audit. Strict NO REPOSITORY mode.
  */
 
 import {
@@ -14,21 +18,22 @@ import {
   countWords,
   detectDocumentLanguage,
   escapePlagHtml,
+  mapAnnotatedSentencesToPageHighlights,
   segmentDocumentSentences,
-} from './plagiarism-logic.js?v=68';
+} from './plagiarism-logic.js?v=69';
 import {
   clearPlagiarismHistory,
-  extractTextFromAnyFile,
   loadPlagiarismApiConfig,
   loadPlagiarismHistory,
   runIntegratedPlagiarismCheck,
   savePlagiarismApiConfig,
-} from './plagiarism-engine.js?v=68';
+} from './plagiarism-engine.js?v=69';
 import {
+  annotateBlockTextSegments,
   generateTurnitinHtmlReport,
   generateTurnitinJsonReport,
-  generateTurnitinPdfBlob,
-} from './plagiarism-report.js?v=68';
+  generateTurnitinPdfBlobAsync,
+} from './plagiarism-report.js?v=69';
 import { loadStoredByokKeys } from './manifest-ai.js?v=67';
 
 function triggerBlobDownload(blob, filename) {
@@ -67,32 +72,40 @@ function formatShortDate(iso = '') {
   }
 }
 
+function detectQuickFileFormat(file) {
+  const name = String(file?.name || '');
+  const idx = name.lastIndexOf('.');
+  const ext = idx !== -1 ? name.slice(idx + 1).toUpperCase() : '';
+  if (ext) return ext;
+  const mime = String(file?.type || '').toLowerCase();
+  if (mime.includes('pdf')) return 'PDF';
+  if (mime.includes('word')) return 'DOCX';
+  if (mime.startsWith('image/')) return 'IMAGE';
+  return 'FILE';
+}
+
 export function createPlagiarismController({ onToast = () => {} } = {}) {
   let hostEl = null;
   let mounted = false;
 
-  // Input state
-  let inputMode = 'upload'; // 'upload' | 'paste' (when 'upload', text input area is completely hidden!)
+  // Input state (ZERO pre-scan wait: pendingFile is held directly until user clicks "Cek Plagiarisme Sekarang")
+  let inputMode = 'upload'; // 'upload' | 'paste'
+  let pendingFile = null;
   let inputText = '';
   let fileName = 'Naskah_Tempel_Langsung.txt';
   let fileFormat = 'TEXT';
   let fileSize = 0;
-  let uploadedFileNote = '';
-  let hasUploadedFile = false;
-  let extractingFile = false;
-  let extractLabel = '';
-  let extractPct = 0;
 
   // Scan options
   let scanOptions = {
     language: 'auto',
-    mode: 'standard', // 'standard' | 'deep'
+    mode: 'standard',
     excludeQuotes: false,
     excludeBibliography: true,
     excludeSmallWords: 0,
   };
 
-  // Scanning progress state
+  // Unified scanning progress state
   let scanning = false;
   let progressPct = 0;
   let progressLabel = '';
@@ -101,11 +114,15 @@ export function createPlagiarismController({ onToast = () => {} } = {}) {
   let elapsedTimer = null;
   let activeAbort = null;
 
-  // Report & inspection state
+  // Report & Original-Document Viewer state
   let activeReport = null;
   let inspectorTab = 'sources'; // 'sources' | 'ai' | 'filters' | 'history'
-  let selectedSourceRank = null; // null = highlight all, number = focus source rank
+  let selectedSourceRank = null;
   let selectedSentenceIdx = null;
+  let viewerFullscreen = false;
+  let viewerZoom = 100; // 75..150 (%)
+  let currentVisiblePage = 1;
+  let generatingPdf = false;
   let historyList = loadPlagiarismHistory();
 
   // API Settings modal state
@@ -116,6 +133,19 @@ export function createPlagiarismController({ onToast = () => {} } = {}) {
     if (elapsedTimer) {
       clearInterval(elapsedTimer);
       elapsedTimer = null;
+    }
+  }
+
+  function syncFullscreenBodyLock() {
+    if (typeof document === 'undefined') return;
+    document.body.classList.toggle('plg-fs-lock', Boolean(viewerFullscreen && activeReport));
+  }
+
+  function handleGlobalKeydown(e) {
+    if (e.key === 'Escape' && viewerFullscreen) {
+      viewerFullscreen = false;
+      syncFullscreenBodyLock();
+      render();
     }
   }
 
@@ -150,7 +180,7 @@ export function createPlagiarismController({ onToast = () => {} } = {}) {
           eng.status === 'done'
             ? 'Terpadu'
             : eng.status === 'running'
-            ? 'Memindai...'
+            ? 'Berjalan...'
             : eng.status === 'standby'
             ? 'Siap API'
             : eng.status === 'fallback'
@@ -169,60 +199,54 @@ export function createPlagiarismController({ onToast = () => {} } = {}) {
       .join('');
   }
 
-  async function handleFileSelect(file) {
+  /**
+   * INSTANT file selection (0ms wait — just like Turnitin!):
+   * Stores the File object and immediately enables "Cek Plagiarisme Sekarang".
+   */
+  function handleFileSelect(file) {
     if (!file || scanning) return;
     inputMode = 'upload';
-    extractingFile = true;
-    extractPct = 10;
-    extractLabel = `Mengekstrak "${file.name}"...`;
+    pendingFile = file;
+    fileName = file.name || 'Dokumen_Unggahan';
+    fileFormat = detectQuickFileFormat(file);
+    fileSize = Number(file.size) || 0;
+    activeReport = null;
+    selectedSourceRank = null;
+    selectedSentenceIdx = null;
+    viewerFullscreen = false;
+    currentVisiblePage = 1;
+    syncFullscreenBodyLock();
     render();
-    try {
-      const extracted = await extractTextFromAnyFile(file, (p) => {
-        extractLabel = p?.label || extractLabel;
-        extractPct = p?.percent ?? extractPct;
-        const el = hostEl?.querySelector('#plg-extract-label');
-        if (el) el.textContent = extractLabel;
-        const bar = hostEl?.querySelector('#plg-extract-bar');
-        if (bar) bar.style.width = `${Math.min(100, Math.max(5, extractPct))}%`;
-      });
-      inputText = extracted.text;
-      fileName = extracted.fileName;
-      fileFormat = extracted.fileFormat;
-      fileSize = extracted.fileSize;
-      uploadedFileNote = extracted.note || '';
-      hasUploadedFile = true;
-      extractingFile = false;
-      extractPct = 100;
-      activeReport = null;
-      selectedSourceRank = null;
-      selectedSentenceIdx = null;
-      render();
-      onToast(`Berkas "${file.name}" siap dicek (${countWords(inputText)} kata · No Repository).`);
-    } catch (err) {
-      extractingFile = false;
-      extractPct = 0;
-      hasUploadedFile = false;
-      inputText = '';
-      uploadedFileNote = '';
-      render();
-      onToast(err?.message || 'Gagal membaca berkas. Pastikan dokumen berisi teks yang jelas.');
-    }
+    onToast(`Berkas "${fileName}" siap — langsung klik "Cek Plagiarisme Sekarang" (No Repository).`);
   }
 
   async function handleStartCheck() {
     if (scanning) return;
-    const words = countWords(inputText);
-    if (words < 10) {
-      onToast('Masukkan minimal 10 kata atau klik "Contoh Naskah Uji" untuk memulai pengecekan.');
-      return;
+    if (inputMode === 'upload') {
+      if (!pendingFile) {
+        onToast('Pilih berkas dokumen terlebih dahulu untuk memulai pengecekan.');
+        return;
+      }
+    } else {
+      const words = countWords(inputText);
+      if (words < 10) {
+        onToast('Masukkan minimal 10 kata atau klik "Contoh Naskah Uji" untuk memulai pengecekan.');
+        return;
+      }
     }
 
     scanning = true;
-    progressPct = 4;
-    progressLabel = 'Menginisialisasi mesin deteksi plagiarisme terpadu...';
+    progressPct = 3;
+    progressLabel =
+      inputMode === 'upload' && pendingFile
+        ? `Membaca berkas asli "${pendingFile.name}" & meluncurkan pengecekan terpadu...`
+        : 'Menginisialisasi mesin deteksi plagiarisme terpadu...';
     progressEngines = [];
     selectedSourceRank = null;
     selectedSentenceIdx = null;
+    viewerFullscreen = false;
+    currentVisiblePage = 1;
+    syncFullscreenBodyLock();
     scanStartedAt = Date.now();
     activeAbort = new AbortController();
     render();
@@ -238,7 +262,8 @@ export function createPlagiarismController({ onToast = () => {} } = {}) {
 
     try {
       const report = await runIntegratedPlagiarismCheck({
-        text: inputText,
+        file: inputMode === 'upload' ? pendingFile : null,
+        text: inputMode === 'paste' ? inputText : '',
         fileName,
         fileFormat,
         fileSize: fileSize || inputText.length,
@@ -258,6 +283,7 @@ export function createPlagiarismController({ onToast = () => {} } = {}) {
       activeReport = report;
       historyList = loadPlagiarismHistory();
       inspectorTab = 'sources';
+      currentVisiblePage = 1;
       render();
       onToast(`Pengecekan selesai! Indeks Kemiripan ${report.similarityPct}% (${report.primarySources.length} sumber).`);
       hostEl?.querySelector('#plg-report-anchor')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -284,15 +310,25 @@ export function createPlagiarismController({ onToast = () => {} } = {}) {
     }
   }
 
-  function handleDownloadPdf() {
-    if (!activeReport) return;
+  async function handleDownloadPdf() {
+    if (!activeReport || generatingPdf) return;
+    generatingPdf = true;
+    const btn = hostEl?.querySelector('#plg-dl-pdf-btn');
+    if (btn) {
+      btn.disabled = true;
+      const span = btn.querySelector('span');
+      if (span) span.textContent = 'Menyusun PDF Dokumen Asli...';
+    }
     try {
-      const blob = generateTurnitinPdfBlob(activeReport);
+      const blob = await generateTurnitinPdfBlobAsync(activeReport);
       const outName = buildPlagiarismDownloadFilename(activeReport.fileName, activeReport.similarityPct, 'pdf');
       triggerBlobDownload(blob, outName);
       onToast(`PDF Standar Report berhasil diunduh (${outName}).`);
     } catch {
       onToast('Gagal membuat PDF. Coba unduh versi Laporan HTML.');
+    } finally {
+      generatingPdf = false;
+      render();
     }
   }
 
@@ -362,7 +398,7 @@ export function createPlagiarismController({ onToast = () => {} } = {}) {
       : null;
 
     return `
-      <div class="plg-sentence-detail" role="region" aria-label="Detail kalimat terpilih">
+      <div class="plg-sentence-detail" role="region" aria-label="Detail kecocokan terpilih">
         <div class="plg-detail-head">
           <div class="plg-detail-title">
             ${
@@ -370,9 +406,9 @@ export function createPlagiarismController({ onToast = () => {} } = {}) {
                 ? `<span class="plg-rank-sq" style="background:${escapePlagHtml(src.colorHex)}">${src.rank}</span>`
                 : ''
             }
-            <strong>${src ? escapePlagHtml(src.title) : 'Kalimat Orisinal / Dikecualikan'}</strong>
+            <strong>${src ? escapePlagHtml(src.title) : 'Bagian Orisinal / Dikecualikan'}</strong>
           </div>
-          <button type="button" class="plg-close-mini" id="plg-close-sent-detail" aria-label="Tutup detail kalimat">×</button>
+          <button type="button" class="plg-close-mini" id="plg-close-sent-detail" aria-label="Tutup detail kecocokan">×</button>
         </div>
         <p class="plg-detail-quote">"${escapePlagHtml(sent.text)}"</p>
         ${
@@ -397,36 +433,175 @@ export function createPlagiarismController({ onToast = () => {} } = {}) {
               }`
             : `<p class="plg-detail-reason">${
                 sent.excludedReason === 'bibliography'
-                  ? 'Bagian ini masuk daftar pustaka dan dikecualikan oleh filter Turnitin.'
+                  ? 'Bagian ini masuk daftar pustaka dan dikecualikan oleh filter.'
                   : sent.excludedReason === 'quote'
                   ? 'Kalimat ini terdeteksi sebagai kutipan langsung dan dikecualikan oleh filter.'
-                  : 'Kalimat ini dinilai unik dan tidak ditemukan salinan identik pada seluruh indeks.'
+                  : 'Bagian ini dinilai unik dan tidak ditemukan salinan identik pada seluruh indeks.'
               }</p>`
         }
       </div>
     `;
   }
 
+  /**
+   * Renders the REAL Original Document Multi-Page Viewer (PDF/Scan images with highlight overlays
+   * & left-margin circular badges, OR formatted DOCX/A4 pages with headings, tables & images).
+   */
+  function renderOriginalDocumentPages(report) {
+    const orig = report.originalSource || null;
+    const pages = Array.isArray(orig?.pages) ? orig.pages : [];
+    const totalPages = orig?.pageCount || pages.length || 1;
+    const hasImagePages = pages.some((p) => p.imageDataUrl);
+    const zoomScale = viewerZoom / 100;
+
+    if (hasImagePages) {
+      let hlByPage = report.pageHighlights || null;
+      if (!hlByPage && pages.some((p) => Array.isArray(p.spans) && p.spans.length > 0)) {
+        hlByPage = Object.fromEntries(mapAnnotatedSentencesToPageHighlights(pages, report.annotatedSentences || []).entries());
+      }
+      hlByPage = hlByPage || {};
+
+      return pages
+        .map((pg) => {
+          const hl = hlByPage[pg.pageNumber] || hlByPage[String(pg.pageNumber)] || { rects: [], badges: [] };
+          const rectsHtml = (hl.rects || [])
+            .map((rect) => {
+              const isDimmed = selectedSourceRank !== null && rect.rank !== selectedSourceRank;
+              const isSelected = selectedSentenceIdx === rect.sentenceIndex;
+              return `<button
+                type="button"
+                class="plg-hl-rect ${isDimmed ? 'is-dimmed' : ''} ${isSelected ? 'is-selected' : ''}"
+                data-plg-sent-idx="${rect.sentenceIndex}"
+                data-plg-hl-rank="${rect.rank}"
+                aria-label="Sumber nomor ${rect.rank} halaman ${pg.pageNumber}"
+                style="left:${(rect.x * 100).toFixed(3)}%;top:${(rect.y * 100).toFixed(3)}%;width:${(rect.w * 100).toFixed(3)}%;height:${(rect.h * 100).toFixed(3)}%;--hl-color:${escapePlagHtml(rect.colorHex)}"
+              ></button>`;
+            })
+            .join('');
+
+          const badgesHtml = (hl.badges || [])
+            .map((b) => {
+              const isDimmed = selectedSourceRank !== null && b.rank !== selectedSourceRank;
+              const isSelected = selectedSentenceIdx === b.sentenceIndex;
+              return `<button
+                type="button"
+                class="plg-margin-badge ${isDimmed ? 'is-dimmed' : ''} ${isSelected ? 'is-selected' : ''}"
+                data-plg-sent-idx="${b.sentenceIndex}"
+                data-plg-hl-rank="${b.rank}"
+                aria-label="Inspeksi sumber ${b.rank} di halaman ${pg.pageNumber}"
+                style="top:${(b.y * 100).toFixed(2)}%;background:${escapePlagHtml(b.colorHex)}"
+              >${b.rank}</button>`;
+            })
+            .join('');
+
+          return `
+            <article class="plg-orig-page-card" data-plg-page="${pg.pageNumber}" style="--plg-zoom:${zoomScale.toFixed(2)}">
+              <div class="plg-orig-page-head">
+                <span class="plg-mono">Halaman ${pg.pageNumber} / ${totalPages}</span>
+                <span>Dokumen Asli · Tata Letak Dipertahankan</span>
+              </div>
+              <div class="plg-orig-page-body">
+                <div class="plg-orig-page-gutter" aria-label="Nomor sumber margin kiri halaman ${pg.pageNumber}">
+                  ${badgesHtml}
+                </div>
+                <div class="plg-orig-page-canvas-wrap">
+                  <img
+                    class="plg-orig-page-img"
+                    src="${pg.imageDataUrl}"
+                    alt="Halaman asli ${pg.pageNumber} dari ${escapePlagHtml(report.fileName)}"
+                    loading="lazy"
+                  />
+                  <div class="plg-orig-hl-layer">
+                    ${rectsHtml}
+                  </div>
+                </div>
+              </div>
+            </article>
+          `;
+        })
+        .join('');
+    }
+
+    // Rich DOCX / Paginated A4 Document Sheets (never a raw flat text box)
+    const sheetPages =
+      pages.length > 0
+        ? pages
+        : [{ pageNumber: 1, blocks: (report.annotatedSentences || []).map((s) => ({ type: 'paragraph', plain: s.text })) }];
+
+    return sheetPages
+      .map((pg) => {
+        const blocksHtml = (pg.blocks || [])
+          .map((block) => {
+            if (block.type === 'table' && Array.isArray(block.rows)) {
+              const rowsHtml = block.rows
+                .map(
+                  (row, ri) =>
+                    `<tr>${row
+                      .map((cell) => {
+                        const cellSegs = annotateBlockTextSegments(cell || '', report.annotatedSentences || []);
+                        const cellInner = cellSegs
+                          .map((sg) => {
+                            if (!sg.matched) return escapePlagHtml(sg.text);
+                            const isDim = selectedSourceRank !== null && sg.rank !== selectedSourceRank;
+                            const isSel = selectedSentenceIdx === sg.sentenceIndex;
+                            return `<button type="button" class="plg-rich-hl ${isDim ? 'is-dimmed' : ''} ${isSel ? 'is-selected' : ''}" data-plg-sent-idx="${sg.sentenceIndex}" data-plg-hl-rank="${sg.rank}" style="--hl-color:${escapePlagHtml(sg.colorHex)};--hl-soft:${escapePlagHtml(sg.colorSoft)}"><span class="plg-rich-pill" style="background:${escapePlagHtml(sg.colorHex)}">${sg.rank}</span>${escapePlagHtml(sg.text)}</button>`;
+                          })
+                          .join('');
+                        return ri === 0 ? `<th>${cellInner}</th>` : `<td>${cellInner}</td>`;
+                      })
+                      .join('')}</tr>`
+                )
+                .join('');
+              return `<div class="plg-rich-tbl-wrap"><table class="plg-rich-tbl">${rowsHtml}</table></div>`;
+            }
+
+            const imgsHtml = (block.runs || [])
+              .filter((r) => r.type === 'image' && r.src)
+              .map((r) => `<img class="plg-rich-img" src="${r.src}" alt="Gambar dokumen asli" loading="lazy" />`)
+              .join('');
+
+            const segs = annotateBlockTextSegments(block.plain || '', report.annotatedSentences || []);
+            const inner = segs
+              .map((sg) => {
+                if (!sg.matched) return escapePlagHtml(sg.text);
+                const isDim = selectedSourceRank !== null && sg.rank !== selectedSourceRank;
+                const isSel = selectedSentenceIdx === sg.sentenceIndex;
+                return `<button type="button" class="plg-rich-hl ${isDim ? 'is-dimmed' : ''} ${isSel ? 'is-selected' : ''}" data-plg-sent-idx="${sg.sentenceIndex}" data-plg-hl-rank="${sg.rank}" style="--hl-color:${escapePlagHtml(sg.colorHex)};--hl-soft:${escapePlagHtml(sg.colorSoft)}"><span class="plg-rich-pill" style="background:${escapePlagHtml(sg.colorHex)}">${sg.rank}</span>${escapePlagHtml(sg.text)}</button>`;
+              })
+              .join('');
+
+            const alignStyle = block.align ? ` style="text-align:${escapePlagHtml(block.align)}"` : '';
+            if (block.type === 'heading') {
+              const tag = block.level === 1 ? 'h4' : 'h5';
+              return `${imgsHtml}<${tag} class="plg-rich-h is-lvl-${block.level || 2}"${alignStyle}>${inner}</${tag}>`;
+            }
+            if (block.type === 'list-item') {
+              return `${imgsHtml}<p class="plg-rich-li"${alignStyle}>• ${inner}</p>`;
+            }
+            return `${imgsHtml}<p class="plg-rich-p"${alignStyle}>${inner}</p>`;
+          })
+          .join('');
+
+        return `
+          <article class="plg-orig-page-card" data-plg-page="${pg.pageNumber}" style="--plg-zoom:${zoomScale.toFixed(2)}">
+            <div class="plg-orig-page-head">
+              <span class="plg-mono">Halaman ${pg.pageNumber} / ${sheetPages.length}</span>
+              <span>${orig?.kind === 'docx-rich' ? 'Dokumen Word Asli · Format Dipertahankan' : 'Lembar Dokumen A4'}</span>
+            </div>
+            <div class="plg-rich-a4-page">
+              ${blocksHtml}
+            </div>
+          </article>
+        `;
+      })
+      .join('');
+  }
+
   function renderReportSection() {
     if (!activeReport) return '';
     const r = activeReport;
     const sources = r.primarySources || [];
-
-    const manuscriptHtml = (r.annotatedSentences || [])
-      .map((s) => {
-        const isMatched = Boolean(s.activeSourceRank && s.activeColorHex);
-        const isDimmed = selectedSourceRank !== null && s.activeSourceRank !== selectedSourceRank;
-        const isSelected = selectedSentenceIdx === s.index;
-
-        if (isMatched) {
-          return `<button type="button" class="plg-sent-hl ${isDimmed ? 'is-dimmed' : ''} ${isSelected ? 'is-selected' : ''}" data-plg-sent-idx="${s.index}" style="--hl-color:${escapePlagHtml(s.activeColorHex)};--hl-soft:${escapePlagHtml(s.activeColorSoft)}"><sup class="plg-inline-rank" style="background:${escapePlagHtml(s.activeColorHex)}">${s.activeSourceRank}</sup>${escapePlagHtml(s.text)}</button> `;
-        }
-        if (s.excludedReason) {
-          return `<button type="button" class="plg-sent-plain is-excluded ${isSelected ? 'is-selected' : ''}" data-plg-sent-idx="${s.index}" title="Dikecualikan filter (${escapePlagHtml(s.excludedReason)})">${escapePlagHtml(s.text)}</button> `;
-        }
-        return `<button type="button" class="plg-sent-plain ${isSelected ? 'is-selected' : ''}" data-plg-sent-idx="${s.index}">${escapePlagHtml(s.text)}</button> `;
-      })
-      .join('');
+    const totalPages = r.originalSource?.pageCount || r.originalSource?.pages?.length || 1;
 
     const sidebarTabHtml =
       inspectorTab === 'sources'
@@ -477,7 +652,7 @@ export function createPlagiarismController({ onToast = () => {} } = {}) {
           <div class="plg-ai-panel">
             <div class="plg-ai-score-banner">
               <div>
-                <span class="plg-kicker-sm">Turnitin-Style AI Writing Indicator</span>
+                <span class="plg-kicker-sm">AI Writing Indicator</span>
                 <strong class="plg-ai-big plg-mono">${r.aiAnalysis?.aiWritingPct || 0}%</strong>
               </div>
               <p>${escapePlagHtml(r.aiAnalysis?.stylometric?.verdict || '')}</p>
@@ -519,7 +694,7 @@ export function createPlagiarismController({ onToast = () => {} } = {}) {
         : inspectorTab === 'filters'
         ? `
           <div class="plg-filters-panel">
-            <p class="plg-filter-intro">Atur pengecualian layaknya panel <strong>Turnitin Filters &amp; Settings</strong>. Persentase kemiripan otomatis dihitung ulang secara instan.</p>
+            <p class="plg-filter-intro">Atur pengecualian laporan. Persentase kemiripan &amp; sorotan warna pada halaman dokumen asli otomatis diperbarui instan.</p>
 
             <label class="plg-toggle-card">
               <input type="checkbox" id="plg-flt-quotes" ${r.filters?.excludeQuotes ? 'checked' : ''} />
@@ -581,12 +756,14 @@ export function createPlagiarismController({ onToast = () => {} } = {}) {
         `;
 
     return `
-      <section class="plg-report-shell" id="plg-report-anchor" aria-label="Laporan Hasil Cek Plagiarisme">
+      <section class="plg-report-shell ${viewerFullscreen ? 'is-fullscreen' : ''}" id="plg-report-anchor" aria-label="Laporan Hasil Cek Plagiarisme">
         <div class="plg-report-topbar">
           <div class="plg-report-title-block">
             <span class="plg-kicker-sm">Standar Similarity Report · No Repository · ${escapePlagHtml(r.submissionId)}</span>
             <h3>${escapePlagHtml(r.fileName)}</h3>
             <div class="plg-meta-inline">
+              <span>${totalPages} hal</span>
+              <span aria-hidden="true">·</span>
               <span>${r.totalWords.toLocaleString('id-ID')} kata</span>
               <span aria-hidden="true">·</span>
               <span>${r.totalChars.toLocaleString('id-ID')} karakter</span>
@@ -598,56 +775,83 @@ export function createPlagiarismController({ onToast = () => {} } = {}) {
           </div>
 
           <div class="plg-download-bar">
-            <button type="button" class="plg-dl-btn is-primary" id="plg-dl-pdf-btn">
+            <button type="button" class="plg-dl-btn is-primary" id="plg-dl-pdf-btn" ${generatingPdf ? 'disabled' : ''}>
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-              <span>Unduh PDF (Standar Report)</span>
+              <span>${generatingPdf ? 'Menyusun PDF Dokumen Asli...' : 'Unduh PDF (Standar Report)'}</span>
             </button>
             <button type="button" class="plg-dl-btn" id="plg-dl-html-btn">Laporan HTML</button>
             <button type="button" class="plg-dl-btn" id="plg-dl-json-btn">JSON</button>
+            ${
+              viewerFullscreen
+                ? `<button type="button" class="plg-dl-btn is-fs-exit" id="plg-fs-top-exit">Keluar Full</button>`
+                : ''
+            }
           </div>
         </div>
 
-        <div class="plg-kpi-strip">
-          <div class="plg-kpi-hero">
-            ${renderSimilarityGauge(r.similarityPct, r.riskLevel)}
-            <div class="plg-kpi-verdict">
-              <span class="plg-risk-label is-${escapePlagHtml(r.riskLevel)}">${escapePlagHtml(r.riskLabel)}</span>
-              <p>Orisinalitas Naskah: <strong class="plg-mono">${r.uniquePct}%</strong> (${Math.max(0, r.eligibleWords - r.matchedWords)} dari ${r.eligibleWords} kata dinilai unik)</p>
-            </div>
-          </div>
-          <div class="plg-kpi-cells">
-            <div class="plg-kpi-cell">
-              <strong class="plg-mono is-ocean">${r.internetPct}%</strong>
-              <span>Internet Sources</span>
-            </div>
-            <div class="plg-kpi-cell">
-              <strong class="plg-mono is-violet">${r.publicationsPct}%</strong>
-              <span>Publications</span>
-            </div>
-            <div class="plg-kpi-cell">
-              <strong class="plg-mono is-emerald">${r.studentPapersPct}%</strong>
-              <span>Internal Check</span>
-            </div>
-            <div class="plg-kpi-cell">
-              <strong class="plg-mono is-amber">${r.aiAnalysis?.aiWritingPct || 0}%</strong>
-              <span>AI Indicator</span>
-            </div>
-          </div>
-        </div>
+        ${
+          viewerFullscreen
+            ? ''
+            : `<div class="plg-kpi-strip">
+                <div class="plg-kpi-hero">
+                  ${renderSimilarityGauge(r.similarityPct, r.riskLevel)}
+                  <div class="plg-kpi-verdict">
+                    <span class="plg-risk-label is-${escapePlagHtml(r.riskLevel)}">${escapePlagHtml(r.riskLabel)}</span>
+                    <p>Orisinalitas Naskah: <strong class="plg-mono">${r.uniquePct}%</strong> (${Math.max(0, r.eligibleWords - r.matchedWords)} dari ${r.eligibleWords} kata dinilai unik)</p>
+                  </div>
+                </div>
+                <div class="plg-kpi-cells">
+                  <div class="plg-kpi-cell">
+                    <strong class="plg-mono is-ocean">${r.internetPct}%</strong>
+                    <span>Internet Sources</span>
+                  </div>
+                  <div class="plg-kpi-cell">
+                    <strong class="plg-mono is-violet">${r.publicationsPct}%</strong>
+                    <span>Publications</span>
+                  </div>
+                  <div class="plg-kpi-cell">
+                    <strong class="plg-mono is-emerald">${r.studentPapersPct}%</strong>
+                    <span>Internal Check</span>
+                  </div>
+                  <div class="plg-kpi-cell">
+                    <strong class="plg-mono is-amber">${r.aiAnalysis?.aiWritingPct || 0}%</strong>
+                    <span>AI Indicator</span>
+                  </div>
+                </div>
+              </div>`
+        }
 
         <div class="plg-split-workspace">
-          <div class="plg-doc-pane">
-            <div class="plg-pane-head">
-              <strong>Naskah Teranotasi</strong>
-              <span>Klik kalimat berwarna untuk melihat sumber &amp; saran parafrase</span>
+          <div class="plg-doc-viewer" aria-label="Penampil Dokumen Asli Beranotasi">
+            <div class="plg-viewer-bar">
+              <div class="plg-viewer-title">
+                <strong>Dokumen Asli Beranotasi</strong>
+                <span class="plg-page-counter plg-mono" id="plg-page-counter">Hal ${Math.min(currentVisiblePage, totalPages)} / ${totalPages}</span>
+              </div>
+              <div class="plg-viewer-controls">
+                <div class="plg-zoom-group" role="group" aria-label="Zoom halaman dokumen">
+                  <button type="button" class="plg-vbtn" id="plg-zoom-out" aria-label="Perkecil tampilan" ${viewerZoom <= 75 ? 'disabled' : ''}>−</button>
+                  <span class="plg-zoom-val plg-mono">${viewerZoom}%</span>
+                  <button type="button" class="plg-vbtn" id="plg-zoom-in" aria-label="Perbesar tampilan" ${viewerZoom >= 150 ? 'disabled' : ''}>+</button>
+                </div>
+                <button type="button" class="plg-vbtn is-fs-btn" id="plg-fullscreen-btn" aria-pressed="${viewerFullscreen}">
+                  ${
+                    viewerFullscreen
+                      ? `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><polyline points="4 14 10 14 10 20"/><polyline points="20 10 14 10 14 4"/><line x1="14" y1="10" x2="21" y2="3"/><line x1="3" y1="21" x2="10" y2="14"/></svg><span>Keluar Full</span>`
+                      : `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/></svg><span>Layar Penuh</span>`
+                  }
+                </button>
+              </div>
             </div>
+
             ${renderSelectedSentenceCard()}
-            <div class="plg-manuscript-view" id="plg-manuscript-view">
-              ${manuscriptHtml}
+
+            <div class="plg-pages-stage" id="plg-pages-stage" tabindex="0" aria-label="Halaman dokumen asli yang dapat digulir">
+              ${renderOriginalDocumentPages(r)}
             </div>
           </div>
 
-          <aside class="plg-inspector-pane" aria-label="Panel Inspektor Sumber & Filter Turnitin">
+          <aside class="plg-inspector-pane" aria-label="Panel Inspektor Sumber & Filter">
             <div class="plg-inspector-tabs" role="tablist">
               <button type="button" role="tab" class="plg-itab ${inspectorTab === 'sources' ? 'is-active' : ''}" data-plg-itab="sources" aria-selected="${inspectorTab === 'sources'}">Sumber (${sources.length})</button>
               <button type="button" role="tab" class="plg-itab ${inspectorTab === 'ai' ? 'is-active' : ''}" data-plg-itab="ai" aria-selected="${inspectorTab === 'ai'}">AI &amp; Saran</button>
@@ -661,7 +865,7 @@ export function createPlagiarismController({ onToast = () => {} } = {}) {
         </div>
 
         ${
-          (r.engineStatuses || []).length > 0
+          !viewerFullscreen && (r.engineStatuses || []).length > 0
             ? `<div class="plg-engines-footer">
                 <div class="plg-pane-head">
                   <strong>Status Integrasi Multi-Mesin pada Laporan Ini</strong>
@@ -687,7 +891,7 @@ export function createPlagiarismController({ onToast = () => {} } = {}) {
           </div>
           <p class="plg-modal-desc">
             Secara bawaan, seluruh mesin gratis terpadu (<strong>OpenAlex 250M+</strong>, <strong>Crossref 150M+</strong>, <strong>DOAJ</strong>, <strong>Wikipedia ID/EN</strong>, <strong>Winnowing Lokal</strong>, dan <strong>Multi-AI Ensemble ChatGPT/Gemini/Claude/DeepSeek/Grok</strong>) sudah aktif otomatis tanpa API key.
-            Anda juga dapat menghubungkan kunci <strong>Turnitin Core API (TCA)</strong> atau endpoint institusional di bawah ini agar ikut berjalan serentak bersama semua mesin lainnya.
+            Anda juga dapat menghubungkan kunci <strong>Turnitin Core API (TCA)</strong> atau endpoint institusional (mode <strong>No Repository</strong>) di bawah ini agar ikut berjalan serentak.
           </p>
 
           <div class="plg-field-group">
@@ -724,13 +928,15 @@ export function createPlagiarismController({ onToast = () => {} } = {}) {
     const sentCount = inputText.trim() ? segmentDocumentSentences(inputText).length : 0;
     const detectedLang = inputText.trim() ? detectDocumentLanguage(inputText).label : 'Otomatis';
     const hasTurnitinKey = Boolean(apiConfig.turnitinEndpoint && apiConfig.turnitinApiKey);
+    const canRun = inputMode === 'upload' ? Boolean(pendingFile) : words >= 10;
+    const canClear = inputMode === 'upload' ? Boolean(pendingFile || activeReport) : Boolean(inputText || activeReport);
 
     hostEl.innerHTML = `
       <div class="plg-studio">
         <div class="plg-studio-head">
           <div class="plg-head-copy">
             <h3>Cek Plagiarisme Terpadu Multi-Mesin</h3>
-            <p>Unggah semua jenis berkas atau tempel naskah untuk dipindai serentak oleh OpenAlex, Crossref, DOAJ, Wikipedia, Multi-AI (ChatGPT · Gemini · Claude · DeepSeek · Grok), &amp; Turnitin API.</p>
+            <p>Unggah semua jenis berkas atau tempel naskah untuk dipindai serentak oleh OpenAlex, Crossref, DOAJ, Wikipedia, Multi-AI (ChatGPT · Gemini · Claude · DeepSeek · Grok), &amp; Turnitin API — tampilan &amp; PDF mempertahankan dokumen asli.</p>
           </div>
           <div class="plg-head-actions">
             <button type="button" class="plg-btn-secondary" id="plg-demo-btn" ${scanning ? 'disabled' : ''}>Contoh Naskah Uji</button>
@@ -743,7 +949,7 @@ export function createPlagiarismController({ onToast = () => {} } = {}) {
 
         <div class="plg-norepo-banner" role="note" aria-label="Jaminan No Repository">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 12 2 2 4-4"/></svg>
-          <span><strong>No Repository Aktif:</strong> Dokumen dibaca 100% lokal di browser Anda &amp; dijamin tidak pernah disimpan atau diindeks ke repositori/database manapun.</span>
+          <span><strong>No Repository Aktif:</strong> Dokumen diproses 100% lokal di browser Anda, tata letak asli dipertahankan, &amp; dijamin tidak pernah masuk repositori manapun.</span>
         </div>
 
         <div class="plg-input-card">
@@ -761,9 +967,9 @@ export function createPlagiarismController({ onToast = () => {} } = {}) {
           ${
             inputMode === 'upload'
               ? `
-                <input id="plg-file-input" type="file" accept="*/*" hidden ${scanning || extractingFile ? 'disabled' : ''} />
+                <input id="plg-file-input" type="file" accept="*/*" hidden ${scanning ? 'disabled' : ''} />
                 ${
-                  hasUploadedFile && !extractingFile
+                  pendingFile
                     ? `<div class="plg-uploaded-file-card" id="plg-dropzone">
                         <div class="plg-uf-top">
                           <div class="plg-uf-icon" aria-hidden="true">
@@ -771,35 +977,21 @@ export function createPlagiarismController({ onToast = () => {} } = {}) {
                           </div>
                           <div class="plg-uf-meta">
                             <strong>${escapePlagHtml(fileName)}</strong>
-                            <span>${escapePlagHtml(fileFormat)} · ${formatFileSizeKb(fileSize)} · ${escapePlagHtml(uploadedFileNote || 'Siap dipindai')}</span>
+                            <span>${escapePlagHtml(fileFormat)} · ${formatFileSizeKb(fileSize)} · Siap langsung dicek (tata letak asli dipertahankan · No Repository)</span>
                           </div>
-                        </div>
-                        <div class="plg-uf-stats plg-mono">
-                          <span>${words.toLocaleString('id-ID')} kata</span>
-                          <span aria-hidden="true">·</span>
-                          <span>${chars.toLocaleString('id-ID')} karakter</span>
-                          <span aria-hidden="true">·</span>
-                          <span>${sentCount} kalimat</span>
-                          <span aria-hidden="true">·</span>
-                          <span>${escapePlagHtml(detectedLang)}</span>
                         </div>
                         <div class="plg-uf-actions">
                           <label for="plg-file-input" class="plg-btn-secondary plg-btn-compact">Ganti Berkas</label>
                           <button type="button" class="plg-btn-secondary plg-btn-compact" id="plg-remove-file-btn" ${scanning ? 'disabled' : ''}>Hapus Berkas</button>
                         </div>
                       </div>`
-                    : `<label class="plg-dropzone ${extractingFile ? 'is-busy' : ''}" id="plg-dropzone" for="plg-file-input">
+                    : `<label class="plg-dropzone" id="plg-dropzone" for="plg-file-input">
                         <div class="plg-drop-icon" aria-hidden="true">
                           <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
                         </div>
                         <div class="plg-drop-text">
-                          <strong id="plg-extract-label">${extractingFile ? escapePlagHtml(extractLabel) : 'Pilih atau tarik SEMUA jenis file dokumen'}</strong>
+                          <strong>Pilih atau tarik SEMUA jenis file dokumen (instan, tanpa tunggu)</strong>
                           <span>PDF (teks &amp; scan OCR otomatis), DOCX, DOC, PPTX, XLSX, CSV, ODT, EPUB, RTF, HTML, TXT, Markdown, Kode, &amp; Gambar</span>
-                          ${
-                            extractingFile
-                              ? `<div class="plg-extract-track"><div class="plg-extract-bar" id="plg-extract-bar" style="width:${Math.min(100, Math.max(8, extractPct))}%"></div></div>`
-                              : ''
-                          }
                         </div>
                       </label>`
                 }
@@ -858,11 +1050,11 @@ export function createPlagiarismController({ onToast = () => {} } = {}) {
           </div>
 
           <div class="plg-action-footer">
-            <button type="button" class="plg-btn-secondary" id="plg-clear-btn" ${scanning || !inputText ? 'disabled' : ''}>Bersihkan</button>
+            <button type="button" class="plg-btn-secondary" id="plg-clear-btn" ${scanning || !canClear ? 'disabled' : ''}>Bersihkan</button>
             ${
               scanning
                 ? `<button type="button" class="plg-btn-danger" id="plg-cancel-btn">Batalkan Pengecekan</button>`
-                : `<button type="button" class="plg-btn-primary" id="plg-run-btn" ${words < 10 || extractingFile ? 'disabled' : ''}>
+                : `<button type="button" class="plg-btn-primary" id="plg-run-btn" ${!canRun ? 'disabled' : ''}>
                     <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/><path d="m8.5 11 1.8 1.8 3.5-3.6"/></svg>
                     <span>Cek Plagiarisme Sekarang</span>
                   </button>`
@@ -904,14 +1096,12 @@ export function createPlagiarismController({ onToast = () => {} } = {}) {
     // Input Mode Switcher (Upload File vs Paste Text)
     hostEl.querySelectorAll('[data-plg-mode]').forEach((btn) => {
       btn.addEventListener('click', () => {
-        if (scanning || extractingFile) return;
+        if (scanning) return;
         const nextMode = btn.getAttribute('data-plg-mode') === 'paste' ? 'paste' : 'upload';
         if (nextMode !== inputMode) {
           inputMode = nextMode;
-          if (nextMode === 'paste' && hasUploadedFile) {
-            // Switching to paste starts clean or keeps paste independent
-            hasUploadedFile = false;
-            uploadedFileNote = '';
+          if (nextMode === 'paste' && pendingFile) {
+            pendingFile = null;
             fileName = 'Naskah_Tempel_Langsung.txt';
             fileFormat = 'TEXT';
             fileSize = inputText.length;
@@ -924,19 +1114,19 @@ export function createPlagiarismController({ onToast = () => {} } = {}) {
     // Remove uploaded file button
     hostEl.querySelector('#plg-remove-file-btn')?.addEventListener('click', () => {
       if (scanning) return;
-      inputText = '';
+      pendingFile = null;
       fileName = 'Naskah_Tempel_Langsung.txt';
       fileFormat = 'TEXT';
       fileSize = 0;
-      uploadedFileNote = '';
-      hasUploadedFile = false;
       activeReport = null;
       selectedSourceRank = null;
       selectedSentenceIdx = null;
+      viewerFullscreen = false;
+      syncFullscreenBodyLock();
       render();
     });
 
-    // File input & Drag/Drop
+    // File input & Drag/Drop (instant, 0ms wait)
     hostEl.querySelector('#plg-file-input')?.addEventListener('change', (e) => {
       const f = e.target.files?.[0];
       if (f) handleFileSelect(f);
@@ -961,10 +1151,10 @@ export function createPlagiarismController({ onToast = () => {} } = {}) {
     if (ta) {
       ta.addEventListener('input', () => {
         inputText = ta.value;
+        pendingFile = null;
         fileName = 'Naskah_Tempel_Langsung.txt';
         fileFormat = 'TEXT';
         fileSize = inputText.length;
-        hasUploadedFile = false;
         const w = countWords(inputText);
         const wEl = hostEl.querySelector('#plg-stat-words');
         const cEl = hostEl.querySelector('#plg-stat-chars');
@@ -973,34 +1163,36 @@ export function createPlagiarismController({ onToast = () => {} } = {}) {
         if (wEl) wEl.textContent = `${w.toLocaleString('id-ID')} kata`;
         if (cEl) cEl.textContent = `${inputText.length.toLocaleString('id-ID')} karakter`;
         if (runBtn) runBtn.disabled = w < 10;
-        if (clrBtn) clrBtn.disabled = !inputText;
+        if (clrBtn) clrBtn.disabled = !inputText && !activeReport;
       });
     }
 
     // Demo sample & clear
     hostEl.querySelector('#plg-demo-btn')?.addEventListener('click', () => {
       inputMode = 'paste';
+      pendingFile = null;
       inputText = PLAGIARISM_DEMO_TEXT;
       fileName = 'Contoh_Makalah_AI_Pendidikan_2026.docx';
       fileFormat = 'DEMO DOCX';
       fileSize = inputText.length;
-      uploadedFileNote = 'Naskah contoh uji campuran (salinan Wikipedia ID/EN + tulisan asli + kutipan + daftar pustaka).';
-      hasUploadedFile = false;
       activeReport = null;
+      viewerFullscreen = false;
+      syncFullscreenBodyLock();
       render();
       onToast('Contoh naskah uji dimuat — klik "Cek Plagiarisme Sekarang" untuk melihat Standar Report.');
     });
 
     hostEl.querySelector('#plg-clear-btn')?.addEventListener('click', () => {
+      pendingFile = null;
       inputText = '';
       fileName = 'Naskah_Tempel_Langsung.txt';
       fileFormat = 'TEXT';
       fileSize = 0;
-      uploadedFileNote = '';
-      hasUploadedFile = false;
       activeReport = null;
       selectedSourceRank = null;
       selectedSentenceIdx = null;
+      viewerFullscreen = false;
+      syncFullscreenBodyLock();
       render();
     });
 
@@ -1027,6 +1219,46 @@ export function createPlagiarismController({ onToast = () => {} } = {}) {
     hostEl.querySelector('#plg-dl-html-btn')?.addEventListener('click', handleDownloadHtml);
     hostEl.querySelector('#plg-dl-json-btn')?.addEventListener('click', handleDownloadJson);
 
+    // Original-Document Viewer: Zoom & Fullscreen & Page Scroll Tracking
+    hostEl.querySelector('#plg-zoom-out')?.addEventListener('click', () => {
+      viewerZoom = Math.max(75, viewerZoom - 15);
+      render();
+    });
+    hostEl.querySelector('#plg-zoom-in')?.addEventListener('click', () => {
+      viewerZoom = Math.min(150, viewerZoom + 15);
+      render();
+    });
+    const toggleFullscreen = () => {
+      viewerFullscreen = !viewerFullscreen;
+      syncFullscreenBodyLock();
+      render();
+    };
+    hostEl.querySelector('#plg-fullscreen-btn')?.addEventListener('click', toggleFullscreen);
+    hostEl.querySelector('#plg-fs-top-exit')?.addEventListener('click', toggleFullscreen);
+
+    const pagesStage = hostEl.querySelector('#plg-pages-stage');
+    if (pagesStage) {
+      pagesStage.addEventListener('scroll', () => {
+        const cards = pagesStage.querySelectorAll('[data-plg-page]');
+        const stageTop = pagesStage.getBoundingClientRect().top;
+        let bestPage = currentVisiblePage;
+        let bestDist = Infinity;
+        cards.forEach((card) => {
+          const dist = Math.abs(card.getBoundingClientRect().top - stageTop - 16);
+          if (dist < bestDist) {
+            bestDist = dist;
+            bestPage = Number(card.getAttribute('data-plg-page')) || 1;
+          }
+        });
+        if (bestPage !== currentVisiblePage) {
+          currentVisiblePage = bestPage;
+          const total = activeReport?.originalSource?.pageCount || cards.length || 1;
+          const ctr = hostEl.querySelector('#plg-page-counter');
+          if (ctr) ctr.textContent = `Hal ${currentVisiblePage} / ${total}`;
+        }
+      });
+    }
+
     // Inspector tabs
     hostEl.querySelectorAll('[data-plg-itab]').forEach((btn) => {
       btn.addEventListener('click', () => {
@@ -1035,12 +1267,16 @@ export function createPlagiarismController({ onToast = () => {} } = {}) {
       });
     });
 
-    // Source rank filter click
+    // Source rank filter click -> filters highlights & scrolls directly to first matched page!
     hostEl.querySelectorAll('[data-plg-source-rank]').forEach((btn) => {
       btn.addEventListener('click', () => {
         const rank = Number(btn.getAttribute('data-plg-source-rank'));
         selectedSourceRank = selectedSourceRank === rank ? null : rank;
         render();
+        if (selectedSourceRank !== null) {
+          const firstMatchEl = hostEl.querySelector(`[data-plg-hl-rank="${selectedSourceRank}"]`);
+          firstMatchEl?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
       });
     });
     hostEl.querySelector('#plg-clear-source-filter')?.addEventListener('click', () => {
@@ -1048,7 +1284,7 @@ export function createPlagiarismController({ onToast = () => {} } = {}) {
       render();
     });
 
-    // Sentence click to inspect
+    // Highlight overlay / margin badge click -> open match details
     hostEl.querySelectorAll('[data-plg-sent-idx]').forEach((btn) => {
       btn.addEventListener('click', () => {
         const idx = Number(btn.getAttribute('data-plg-sent-idx'));
@@ -1061,7 +1297,7 @@ export function createPlagiarismController({ onToast = () => {} } = {}) {
       render();
     });
 
-    // Live Turnitin Filter recalculation
+    // Live Filter recalculation (automatically recomputes pageHighlights on original pages!)
     const reapplyFilters = (patch) => {
       if (!activeReport) return;
       scanOptions = { ...scanOptions, ...patch };
@@ -1136,11 +1372,19 @@ export function createPlagiarismController({ onToast = () => {} } = {}) {
       mounted = true;
       apiConfig = loadPlagiarismApiConfig();
       historyList = loadPlagiarismHistory();
+      if (typeof window !== 'undefined') {
+        window.addEventListener('keydown', handleGlobalKeydown);
+      }
       render();
     },
     unmount() {
       handleCancelCheck();
       stopElapsedTimer();
+      viewerFullscreen = false;
+      syncFullscreenBodyLock();
+      if (typeof window !== 'undefined') {
+        window.removeEventListener('keydown', handleGlobalKeydown);
+      }
       mounted = false;
       hostEl = null;
     },

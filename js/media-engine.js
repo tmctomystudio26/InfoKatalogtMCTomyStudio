@@ -871,6 +871,33 @@ async function openPdfDocumentSafe(pdfjs, arrayBuffer) {
   }
 }
 
+let cachedPdfLib = null;
+
+/**
+ * Lazy-loads pdf-lib (ESM) so we can embed 100% original untouched vector PDF pages
+ * directly into exported Standard Similarity Reports with translucent highlights & margin badges.
+ */
+export async function loadPdfLib() {
+  if (typeof window === 'undefined') return null;
+  if (cachedPdfLib) return cachedPdfLib;
+  const urls = [
+    'https://cdn.jsdelivr.net/npm/pdf-lib@1.17.1/+esm',
+    'https://esm.sh/pdf-lib@1.17.1',
+  ];
+  for (const url of urls) {
+    try {
+      const mod = await import(/* @vite-ignore */ url);
+      if (mod?.PDFDocument) {
+        cachedPdfLib = mod;
+        return mod;
+      }
+    } catch {
+      // Try next CDN
+    }
+  }
+  return null;
+}
+
 function groupPdfTextItemsToLines(items = []) {
   const rows = [];
   let currentY = null;
@@ -902,6 +929,71 @@ function groupPdfTextItemsToLines(items = []) {
 }
 
 /**
+ * Extracts normalized [0..1] top-left word bounding boxes from PDF.js textContent items.
+ * Splits multi-word PDF text runs proportionally across the item's width so individual words
+ * can be highlighted accurately on the original PDF page.
+ */
+function extractNormalizedPdfSpans(items = [], viewport) {
+  const vw = Math.max(1, Number(viewport?.width) || 595);
+  const vh = Math.max(1, Number(viewport?.height) || 842);
+  const spans = [];
+
+  for (const item of items) {
+    const rawStr = String(item?.str || '');
+    if (!rawStr.trim()) continue;
+    const tr = Array.isArray(item?.transform) ? item.transform : [12, 0, 0, 12, 0, 0];
+    const tx = Number(tr[4]) || 0;
+    const ty = Number(tr[5]) || 0;
+    const fontH = Math.max(6, Math.hypot(Number(tr[2]) || 0, Number(tr[3]) || 0) || Number(item?.height) || 11);
+    const totalW = Math.max(4, Number(item?.width) || rawStr.length * fontH * 0.5);
+
+    // Map PDF bottom-left (tx, ty) to top-left viewport coordinates
+    let vx = tx;
+    let vyTop = vh - ty - fontH * 0.88;
+    if (typeof viewport?.convertToViewportPoint === 'function') {
+      try {
+        const [px, py] = viewport.convertToViewportPoint(tx, ty);
+        vx = px;
+        vyTop = py - fontH * 0.88;
+      } catch {
+        // Keep fallback
+      }
+    }
+
+    // Proportional glyph weight estimate (Helvetica/Times/Arial) so mid-line words align accurately
+    const charW = (ch) => {
+      if (ch === ' ') return 0.48;
+      if ('iljtfrI1.,:;!|\'"`()[]'.includes(ch)) return 0.44;
+      if ('mwMWGOQDHNUBRK@%'.includes(ch)) return 1.32;
+      if (ch >= 'A' && ch <= 'Z') return 1.15;
+      return 0.94;
+    };
+    const cumW = new Float64Array(rawStr.length + 1);
+    for (let i = 0; i < rawStr.length; i += 1) {
+      cumW[i + 1] = cumW[i] + charW(rawStr[i]);
+    }
+    const totalVisualW = Math.max(0.5, cumW[rawStr.length]);
+
+    const wordRegex = /\S+/g;
+    let m;
+    while ((m = wordRegex.exec(rawStr)) !== null) {
+      const word = m[0];
+      const startFrac = cumW[m.index] / totalVisualW;
+      const lenFrac = (cumW[m.index + word.length] - cumW[m.index]) / totalVisualW;
+      const wx = vx + startFrac * totalW - 1;
+      const ww = Math.max(4, lenFrac * totalW + 2);
+
+      const nx = Math.max(0, Math.min(0.99, wx / vw));
+      const ny = Math.max(0, Math.min(0.99, vyTop / vh));
+      const nw = Math.max(0.005, Math.min(1 - nx, ww / vw));
+      const nh = Math.max(0.008, Math.min(0.12, (fontH * 1.18) / vh));
+      spans.push({ text: word, x: nx, y: ny, w: nw, h: nh });
+    }
+  }
+  return spans;
+}
+
+/**
  * Renders real PDF page 1 onto a high-DPI Canvas using open-source PDF.js (handles FlateDecode, fonts, images).
  */
 export async function renderPdfPageToCanvasData(arrayBuffer) {
@@ -922,9 +1014,9 @@ export async function renderPdfPageToCanvasData(arrayBuffer) {
 }
 
 /**
- * Renders up to `maxPages` PDF pages to PNG blobs for client-side OCR on scanned PDFs.
+ * Renders up to `maxPages` PDF pages to PNG blobs + crisp JPEG data URLs for OCR & original page viewing.
  */
-export async function renderPdfPagesToBlobs(arrayBuffer, { maxPages = 8, scale = 1.75, onPage = () => {} } = {}) {
+export async function renderPdfPagesToBlobs(arrayBuffer, { maxPages = 12, scale = 1.65, onPage = () => {} } = {}) {
   const pdfjs = await getPdfJsLib();
   if (!pdfjs) return { blobs: [], numPages: 0 };
   const doc = await openPdfDocumentSafe(pdfjs, arrayBuffer);
@@ -934,41 +1026,104 @@ export async function renderPdfPagesToBlobs(arrayBuffer, { maxPages = 8, scale =
   for (let p = 1; p <= limit; p += 1) {
     onPage({ page: p, total: limit, numPages: doc.numPages });
     const page = await doc.getPage(p);
+    const baseVp = page.getViewport({ scale: 1.0 });
     const viewport = page.getViewport({ scale });
     const canvas = document.createElement('canvas');
-    canvas.width = Math.max(1, Math.min(2600, Math.round(viewport.width)));
-    canvas.height = Math.max(1, Math.min(3600, Math.round(viewport.height)));
+    canvas.width = Math.max(1, Math.min(2400, Math.round(viewport.width)));
+    canvas.height = Math.max(1, Math.min(3400, Math.round(viewport.height)));
     const ctx = canvas.getContext('2d');
     ctx.fillStyle = '#FFFFFF';
     ctx.fillRect(0, 0, canvas.width, canvas.height);
     await page.render({ canvasContext: ctx, viewport }).promise;
     const blob = await new Promise((r) => canvas.toBlob(r, 'image/png'));
-    if (blob) blobs.push({ page: p, blob });
+    const jpegDataUrl = canvas.toDataURL('image/jpeg', 0.86);
+    if (blob) {
+      blobs.push({
+        page: p,
+        blob,
+        jpegDataUrl,
+        width: canvas.width,
+        height: canvas.height,
+        widthPt: baseVp.width || 595,
+        heightPt: baseVp.height || 842,
+      });
+    }
   }
   return { blobs, numPages: doc.numPages };
 }
 
 /**
- * Detailed multi-page PDF text extraction preserving natural lines & returning metadata.
+ * Renders original PDF pages to crisp JPEG data URLs for the interactive page-by-page viewer
+ * without modifying or re-typing the original document layout.
+ */
+export async function renderPdfPagesToPreviewImages(
+  arrayBuffer,
+  { maxPages = 30, scale = 1.45, onPage = () => {} } = {}
+) {
+  const pdfjs = await getPdfJsLib();
+  if (!pdfjs) return { pages: [], numPages: 0 };
+  const doc = await openPdfDocumentSafe(pdfjs, arrayBuffer);
+  const limit = Math.min(doc.numPages, Math.max(1, maxPages));
+  const pages = [];
+
+  for (let p = 1; p <= limit; p += 1) {
+    onPage({ page: p, total: limit, numPages: doc.numPages });
+    const page = await doc.getPage(p);
+    const baseVp = page.getViewport({ scale: 1.0 });
+    const viewport = page.getViewport({ scale });
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.max(1, Math.min(2000, Math.round(viewport.width)));
+    canvas.height = Math.max(1, Math.min(2800, Math.round(viewport.height)));
+    const ctx = canvas.getContext('2d');
+    ctx.fillStyle = '#FFFFFF';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    await page.render({ canvasContext: ctx, viewport }).promise;
+    pages.push({
+      pageNumber: p,
+      widthPt: baseVp.width || 595,
+      heightPt: baseVp.height || 842,
+      widthPx: canvas.width,
+      heightPx: canvas.height,
+      imageDataUrl: canvas.toDataURL('image/jpeg', 0.88),
+    });
+  }
+  return { pages, numPages: doc.numPages };
+}
+
+/**
+ * Detailed multi-page PDF text extraction preserving natural lines, page dimensions,
+ * and normalized [0..1] word bounding boxes for pixel-accurate Turnitin-style overlays.
  */
 export async function extractPdfDetailedWithPdfJs(arrayBuffer, { maxPages = 40, onProgress = () => {} } = {}) {
   const pdfjs = await getPdfJsLib();
   if (!pdfjs) return null;
   const doc = await openPdfDocumentSafe(pdfjs, arrayBuffer);
   const pagesText = [];
+  const pagesLayout = [];
   const limit = Math.min(doc.numPages, Math.max(1, maxPages));
   for (let p = 1; p <= limit; p += 1) {
     onProgress({ page: p, total: limit, numPages: doc.numPages });
     const page = await doc.getPage(p);
+    const viewport = page.getViewport({ scale: 1.0 });
     const tc = await page.getTextContent();
-    const pageLines = groupPdfTextItemsToLines(tc.items || []);
+    const items = tc.items || [];
+    const pageLines = groupPdfTextItemsToLines(items);
     const pageStr = pageLines.join('\n').trim();
+    const spans = extractNormalizedPdfSpans(items, viewport);
+    pagesLayout.push({
+      pageNumber: p,
+      widthPt: viewport.width || 595,
+      heightPt: viewport.height || 842,
+      spans,
+      text: pageStr,
+    });
     if (pageStr) {
       pagesText.push(pageStr);
     }
   }
   return {
     lines: pagesText,
+    pagesLayout,
     text: pagesText.join('\n\n'),
     numPages: doc.numPages,
     scannedLikely: pagesText.join(' ').trim().length < 40,

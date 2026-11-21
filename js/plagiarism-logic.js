@@ -717,6 +717,7 @@ export function fusePlagiarismReport({
   submissionId = null,
   checkedAt = new Date().toISOString(),
   durationMs = 0,
+  originalSource = null,
 } = {}) {
   const cleanText = normalizePlainText(text);
   const sentences = segmentDocumentSentences(cleanText);
@@ -979,6 +980,7 @@ export function fusePlagiarismReport({
     repositoryMode: 'no-repository',
     repositoryLabel: 'No Repository (Aman — Tidak disimpan atau diindeks ke repositori manapun)',
     filters: defaultFilters,
+    originalSource: originalSource || null,
   };
 
   return applyReportFilters(baseReport, defaultFilters);
@@ -1086,6 +1088,8 @@ export function applyReportFilters(report, nextFilters = {}) {
       activeSourceRank: activeSource ? activeSource.rank : null,
       activeColorHex: activeSource ? activeSource.colorHex : null,
       activeColorSoft: activeSource ? activeSource.colorSoft : null,
+      activeColorRgb: activeSource ? activeSource.colorRgb : null,
+      activeColorBgRgb: activeSource ? activeSource.colorBgRgb : null,
     };
   });
 
@@ -1108,6 +1112,12 @@ export function applyReportFilters(report, nextFilters = {}) {
     riskLabel = 'Kemiripan Ringan — Periksa Sitasi';
   }
 
+  let pageHighlights = report.pageHighlights || null;
+  if (report.originalSource && Array.isArray(report.originalSource.pages) && report.originalSource.pages.some((p) => Array.isArray(p.spans) && p.spans.length > 0)) {
+    const hlMap = mapAnnotatedSentencesToPageHighlights(report.originalSource.pages, annotatedSentences);
+    pageHighlights = Object.fromEntries(hlMap.entries());
+  }
+
   return {
     ...report,
     filters,
@@ -1122,6 +1132,7 @@ export function applyReportFilters(report, nextFilters = {}) {
     riskLabel,
     primarySources: rankedSources,
     annotatedSentences,
+    pageHighlights,
   };
 }
 
@@ -1331,3 +1342,246 @@ export function extractReadableTextFromBinaryBytes(bytes) {
   const joined = normalizePlainText(uniqueRuns.join('\n\n'));
   return assessExtractedTextQuality(joined).isReadable ? joined : '';
 }
+
+function normalizeMatchWord(w = '') {
+  return String(w || '')
+    .toLowerCase()
+    .normalize('NFKD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9]/g, '');
+}
+
+function wordsApproximatelyMatch(a = '', b = '') {
+  if (!a || !b) return false;
+  if (a === b) return true;
+  if (a.length >= 4 && b.length >= 4 && (a.startsWith(b.slice(0, 4)) || b.startsWith(a.slice(0, 4)))) {
+    if (Math.abs(a.length - b.length) <= 2) return true;
+  }
+  return false;
+}
+
+/**
+ * Pure geometry matcher: maps matched annotated sentences onto exact normalized [0..1]
+ * bounding boxes on the ORIGINAL document pages (PDF text-layer spans OR OCR word boxes).
+ * Produces merged line-level highlight bands and collision-free left-margin numbered badges
+ * identical to Turnitin's original-document submission pages.
+ */
+export function mapAnnotatedSentencesToPageHighlights(pagesLayout = [], annotatedSentences = []) {
+  const resultByPage = new Map();
+  if (!Array.isArray(pagesLayout) || pagesLayout.length === 0) {
+    return resultByPage;
+  }
+
+  for (const pg of pagesLayout) {
+    resultByPage.set(pg.pageNumber, {
+      pageNumber: pg.pageNumber,
+      rects: [],
+      badges: [],
+    });
+  }
+
+  // Flatten all normalized word spans across all pages in reading order
+  const flatSpans = [];
+  for (const pg of pagesLayout) {
+    const spans = Array.isArray(pg.spans) ? pg.spans : [];
+    for (const sp of spans) {
+      const nw = normalizeMatchWord(sp.text);
+      if (!nw) continue;
+      flatSpans.push({
+        pageNumber: pg.pageNumber,
+        norm: nw,
+        x: Number(sp.x) || 0,
+        y: Number(sp.y) || 0,
+        w: Math.max(0.004, Number(sp.w) || 0.02),
+        h: Math.max(0.008, Number(sp.h) || 0.016),
+      });
+    }
+  }
+
+  if (flatSpans.length === 0) return resultByPage;
+
+  // Build inverted index of normalized words -> span indices for fast anchor lookup
+  const wordPos = new Map();
+  for (let i = 0; i < flatSpans.length; i += 1) {
+    const k = flatSpans[i].norm;
+    let list = wordPos.get(k);
+    if (!list) {
+      list = [];
+      wordPos.set(k, list);
+    }
+    if (list.length < 40) list.push(i);
+  }
+
+  const matchedSents = (annotatedSentences || []).filter(
+    (s) => s && s.activeSourceRank && s.activeColorHex && !s.excludedReason
+  );
+
+  const usedSpanIndices = new Set();
+
+  for (const sent of matchedSents) {
+    const sWords = String(sent.text || '')
+      .split(/\s+/)
+      .map(normalizeMatchWord)
+      .filter((w) => w.length >= 2);
+    if (sWords.length < 2) continue;
+
+    // Pick distinctive anchor words (longest words first) to locate candidate windows in flatSpans
+    const anchors = [];
+    for (let wi = 0; wi < sWords.length; wi += 1) {
+      const w = sWords[wi];
+      if (w.length >= 4 && wordPos.has(w)) {
+        anchors.push({ wi, positions: wordPos.get(w), len: w.length });
+      }
+    }
+    anchors.sort((a, b) => a.positions.length - b.positions.length || b.len - a.len);
+
+    const candidateStarts = new Set();
+    for (const anc of anchors.slice(0, 6)) {
+      for (const pos of anc.positions) {
+        const estStart = Math.max(0, pos - anc.wi - 2);
+        candidateStarts.add(estStart);
+      }
+    }
+    if (candidateStarts.size === 0) continue;
+
+    let bestMatchedSpanIndices = [];
+    let bestCompositeScore = -1;
+    const windowCap = Math.min(flatSpans.length, Math.max(sWords.length * 2 + 8, 20));
+
+    for (const startIdx of candidateStarts) {
+      const endLimit = Math.min(flatSpans.length, startIdx + windowCap);
+      const matched = [];
+      let cursor = startIdx;
+      let hits = 0;
+      let unusedHits = 0;
+
+      for (let wi = 0; wi < sWords.length; wi += 1) {
+        const target = sWords[wi];
+        const lookAhead = Math.min(endLimit, cursor + 8);
+        let foundAt = -1;
+        for (let p = cursor; p < lookAhead; p += 1) {
+          if (wordsApproximatelyMatch(flatSpans[p].norm, target)) {
+            foundAt = p;
+            break;
+          }
+        }
+        if (foundAt !== -1) {
+          matched.push(foundAt);
+          hits += 1;
+          if (!usedSpanIndices.has(foundAt)) unusedHits += 1;
+          cursor = foundAt + 1;
+        }
+      }
+
+      const ratio = hits / sWords.length;
+      // Prefer fresh unhighlighted occurrences so repeated sentences on Page 2 highlight Page 2 instead of stacking on Page 1
+      const compositeScore = unusedHits * 2.5 + hits;
+      if (hits >= Math.min(3, sWords.length) && ratio >= 0.42 && compositeScore > bestCompositeScore) {
+        bestCompositeScore = compositeScore;
+        bestMatchedSpanIndices = matched;
+      }
+    }
+
+    if (bestMatchedSpanIndices.length === 0) continue;
+
+    // Fill tiny 1-2 word gaps inside a matched span run on the same page so line highlights look continuous
+    const filledIndices = new Set(bestMatchedSpanIndices);
+    for (let k = 0; k + 1 < bestMatchedSpanIndices.length; k += 1) {
+      const a = bestMatchedSpanIndices[k];
+      const b = bestMatchedSpanIndices[k + 1];
+      if (b - a <= 3 && flatSpans[a].pageNumber === flatSpans[b].pageNumber) {
+        for (let m = a + 1; m < b; m += 1) filledIndices.add(m);
+      }
+    }
+    for (const idx of filledIndices) usedSpanIndices.add(idx);
+
+    const ordered = [...filledIndices].sort((a, b) => a - b);
+    // Group by page and merge adjacent spans on the same visual line
+    const byPage = new Map();
+    for (const idx of ordered) {
+      const sp = flatSpans[idx];
+      let arr = byPage.get(sp.pageNumber);
+      if (!arr) {
+        arr = [];
+        byPage.set(sp.pageNumber, arr);
+      }
+      arr.push(sp);
+    }
+
+    for (const [pageNumber, spList] of byPage.entries()) {
+      const bucket = resultByPage.get(pageNumber);
+      if (!bucket || spList.length === 0) continue;
+
+      const sorted = [...spList].sort((a, b) => (Math.abs(a.y - b.y) < Math.max(a.h, b.h) * 0.6 ? a.x - b.x : a.y - b.y));
+      const mergedLines = [];
+
+      for (const sp of sorted) {
+        const prev = mergedLines[mergedLines.length - 1];
+        const sameLine =
+          prev &&
+          Math.abs(sp.y - prev.y) <= Math.max(prev.h, sp.h) * 0.72 &&
+          sp.x <= prev.x + prev.w + 0.065 &&
+          sp.x >= prev.x - 0.02;
+        if (sameLine) {
+          const right = Math.max(prev.x + prev.w, sp.x + sp.w);
+          const top = Math.min(prev.y, sp.y);
+          const bottom = Math.max(prev.y + prev.h, sp.y + sp.h);
+          prev.x = Math.min(prev.x, sp.x);
+          prev.y = top;
+          prev.w = right - prev.x;
+          prev.h = bottom - top;
+        } else {
+          mergedLines.push({
+            pageNumber,
+            x: sp.x,
+            y: sp.y,
+            w: sp.w,
+            h: sp.h,
+            rank: sent.activeSourceRank,
+            colorHex: sent.activeColorHex,
+            colorSoft: sent.activeColorSoft || 'rgba(225, 29, 72, 0.18)',
+            colorRgb: sent.activeColorRgb || [225, 29, 72],
+            colorBgRgb: sent.activeColorBgRgb || [253, 230, 236],
+            sentenceIndex: sent.index,
+          });
+        }
+      }
+
+      for (const rect of mergedLines) {
+        bucket.rects.push(rect);
+      }
+
+      // Add 1 left-margin badge anchor at the vertical center of the first highlighted line for this sentence on this page
+      const firstLine = mergedLines[0];
+      if (firstLine) {
+        bucket.badges.push({
+          pageNumber,
+          y: firstLine.y + firstLine.h * 0.5,
+          rank: sent.activeSourceRank,
+          colorHex: sent.activeColorHex,
+          colorRgb: sent.activeColorRgb || [225, 29, 72],
+          sentenceIndex: sent.index,
+        });
+      }
+    }
+  }
+
+  // Deduplicate & space out left-margin badges vertically so circular badges NEVER overlap (just like Turnitin!)
+  for (const bucket of resultByPage.values()) {
+    bucket.badges.sort((a, b) => a.y - b.y || a.rank - b.rank);
+    const spaced = [];
+    for (const b of bucket.badges) {
+      const prev = spaced[spaced.length - 1];
+      // Skip duplicate badge of same rank right next to itself
+      if (prev && prev.rank === b.rank && Math.abs(prev.y - b.y) < 0.032) {
+        continue;
+      }
+      const nextY = prev && b.y - prev.y < 0.028 ? Math.min(0.96, prev.y + 0.028) : b.y;
+      spaced.push({ ...b, y: nextY });
+    }
+    bucket.badges = spaced;
+  }
+
+  return resultByPage;
+}
+
