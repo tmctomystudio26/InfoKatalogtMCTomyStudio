@@ -55,15 +55,15 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
-      href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@500;700&family=Outfit:wght@600;700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap"
+      href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@500;700&family=Literata:ital,opsz,wght@0,7..72,400..700;1,7..72,400..600&family=Outfit:wght@600;700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap"
       rel="stylesheet"
     />
 
-    <link rel="stylesheet" href="./css/tokens.css?v=69" />
-    <link rel="stylesheet" href="./css/styles.css?v=69" />
+    <link rel="stylesheet" href="./css/tokens.css?v=70" />
+    <link rel="stylesheet" href="./css/styles.css?v=70" />
     <script>
       (function () {
-        var CURRENT_CACHE = 'manifestudio-cache-v69';
+        var CURRENT_CACHE = 'manifestudio-cache-v70';
         if ('caches' in window) {
           caches.keys().then(function (keys) {
             keys.forEach(function (k) {
@@ -72,7 +72,7 @@
           });
         }
         if ('serviceWorker' in navigator) {
-          navigator.serviceWorker.register('./sw.js?v=69').then(function (reg) {
+          navigator.serviceWorker.register('./sw.js?v=70').then(function (reg) {
             reg.update();
           }).catch(function () {});
         }
@@ -112,6 +112,7 @@
           <button type="button" class="header-nav-link" data-tools-nav="audioeditor">Audio Editor</button>
           <button type="button" class="header-nav-link" data-tools-nav="manifestai">Manifest AI</button>
           <button type="button" class="header-nav-link" data-tools-nav="plagiarism">Cek Plagiarisme</button>
+          <button type="button" class="header-nav-link" data-tools-nav="novel">Novel</button>
         </nav>
 
         <div class="header-actions">
@@ -183,6 +184,6 @@
     </footer>
 
     <div id="toast-notification" class="toast-notification" role="status" aria-live="polite" hidden></div>
-    <script type="module" src="./js/tools-page.js?v=69"></script>
+    <script type="module" src="./js/tools-page.js?v=70"></script>
   </body>
 </html>

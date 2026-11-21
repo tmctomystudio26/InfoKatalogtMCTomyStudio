@@ -1,6 +1,6 @@
-# Manifestudio — Storefront Katalog Digital, Utility Hub (13 Fitur) & Panel Admin Statis
+# Manifestudio — Storefront Katalog Digital, Utility Hub (14 Fitur) & Panel Admin Statis
 
-Platform web statis resmi **Manifestudio** (*by Tomy*) berbasis **100% Static HTML/CSS + Native ES Modules (GitHub Pages & PWA Ready)** yang memadukan katalog akun premium, konfirmasi pesanan WhatsApp + struk Canvas 2D, Panel Admin terenkripsi AES-256-GCM penuh fitur, pemutar musik *full version* bebas iklan, serta halaman utilitas terpisah **Menu Utilitas** (`tools.html`) dengan **13 utilitas gratis** termasuk **Cek Plagiarisme Terpadu**, **Manifest AI**, **Audio Editor Studio DAW**, dan **Drama China Hub**.
+Platform web statis resmi **Manifestudio** (*by Tomy*) berbasis **100% Static HTML/CSS + Native ES Modules (GitHub Pages & PWA Ready)** yang memadukan katalog akun premium, konfirmasi pesanan WhatsApp + struk Canvas 2D, Panel Admin terenkripsi AES-256-GCM penuh fitur, pemutar musik *full version* bebas iklan, serta halaman utilitas terpisah **Menu Utilitas** (`tools.html`) dengan **14 utilitas gratis** termasuk **Novel Terpadu**, **Cek Plagiarisme Terpadu**, **Manifest AI**, **Audio Editor Studio DAW**, dan **Drama China Hub**.
 
 ---
 
@@ -8,7 +8,7 @@ Platform web statis resmi **Manifestudio** (*by Tomy*) berbasis **100% Static HT
 
 - Menyediakan toko produk digital statis zero-backend (`https://manifestudio.my.id/`) yang cepat, ringan, dan siap instal sebagai PWA di desktop maupun seluler.
 - Memberikan kendali operasional penuh kepada Admin langsung lewat peramban terenkripsi tanpa menyentuh kode sumber.
-- Menghadirkan ekosistem 13 utilitas harian gratis & bebas iklan bagi pengunjung: **Jadwal Sholat**, **Cuaca Presisi**, **Jam Dunia 3D**, **Speedtest**, **Downloader All-in-One**, **Kompresor Media HD AI**, **Konversi Semua File**, **Cari Judul Lagu & Video**, **YT Music Player**, **Drama China (Dracin)**, **Audio Editor Studio AI**, **Manifest AI (Multi-Model Chat AI)**, dan **Cek Plagiarisme Terpadu (Format Turnitin Terbaru)**.
+- Menghadirkan ekosistem 14 utilitas harian gratis & bebas iklan bagi pengunjung: **Jadwal Sholat**, **Cuaca Presisi**, **Jam Dunia 3D**, **Speedtest**, **Downloader All-in-One**, **Kompresor Media HD AI**, **Konversi Semua File**, **Cari Judul Lagu & Video**, **YT Music Player**, **Drama China (Dracin)**, **Audio Editor Studio AI**, **Manifest AI (Multi-Model Chat AI)**, **Cek Plagiarisme Terpadu (Format Turnitin Terbaru)**, dan **Novel Terpadu Real-Time (Gratis Penuh & 122+ Tema)**.
 
 ---
 
@@ -22,7 +22,10 @@ Platform web statis resmi **Manifestudio** (*by Tomy*) berbasis **100% Static HT
    - Validasi voucher ketat dengan kuota **1x Pakai**, **Maksimal N Kali**, atau **Tak Terbatas**.
    - Skema *Bayar Sekarang (0%)*, *Bayar Belakangan (+% dapat diatur Admin)*, dan *Biaya Layanan Flat* transparan.
    - Generator struk belanja HTML5 Canvas 2D (`MS-YYMMDD-HHMMSS`) `< 60 KB` + kirim WhatsApp 1-klik.
-3. **Menu Utilitas — 13 Fitur Gratis di `tools.html`**:
+3. **Menu Utilitas — 14 Fitur Gratis di `tools.html`**:
+   - **Novel Terpadu Real-Time (`tools.html?tab=novel`, `v70`)**:
+     - **1 Katalog Terpadu 6 Sumber Gratis Penuh (Tanpa Kunci VIP)**: Mengintegrasikan **SakuraNovel.id**, **IndoWebNovel.id**, **Wattpad Free-Only**, **SecondLifeTranslations**, **Wikisource ID**, dan **Internet Archive** ke dalam satu antarmuka bergaya Top-5 Play Store / App Store dengan pembaruan real-time otomatis, tanpa pemisahan menu per platform dan tanpa bab terkunci.
+     - **Pembaca Layar Penuh, Loncat Halaman/Bab, Pencocokan hingga 100%, 122+ Tema & Audiobook**: Mendukung mode **Layar Penuh**, **Mode Halaman + Loncat Halaman** & **Mode Gulir**, pencarian & pencocokan novel dari potongan teks / screenshot OCR / file novel hingga 100% (+ baca file lokal), riwayat baca & rak bookmark, **Studio 122+ Tema Halaman** (Nyaman Mata, Modern, Ilustrasi SVG, 26 Animasi Canvas Bergerak, Upload Wallpaper/JSON, Palet API Publik, & Request Tema AI), serta **Mode Suara Audiobook** dengan 31 suara pria/wanita natural & auto-lanjut bab.
    - **Cek Plagiarisme Terpadu (`tools.html?tab=plagiarism`, `v67–v69`)**:
      - **Upload File Instan 0ms (Tanpa Tunggu & Tanpa Kolom Teks) vs Tempel Tulisan**: Pilih file `PDF` (teks & scan OCR), `DOCX/DOC`, `PPTX`, `XLSX/CSV`, `ODT/ODP/ODS`, `EPUB`, `RTF`, `HTML/XML`, `TXT/MD/Code`, atau gambar dan langsung klik **`Cek Plagiarisme Sekarang`** — ekstraksi, OCR, render halaman asli, & pemindaian multi-mesin berjalan serentak dalam **1 bar progres terpadu**.
      - **Penampil Dokumen Asli Multi-Halaman + Layar Penuh**: Menampilkan halaman asli dokumen secara utuh (kop surat, logo, tabel, font, tata letak tidak dibuat ulang) yang dapat di-scroll halaman demi halaman, lengkap dengan zoom, mode **Layar Penuh (`Esc` / `Keluar Full`)**, sorotan warna transparan, dan lencana angka bulat margin kiri (`1`, `2`, ...) + filter pengecualian real-time.
@@ -47,7 +50,7 @@ Platform web statis resmi **Manifestudio** (*by Tomy*) berbasis **100% Static HT
 ```text
 ├── index.html              # Beranda katalog toko, multi-banner carousel, drawer checkout & FAQ
 ├── order.html              # Halaman konfirmasi invoice dedikasi & unduh struk Canvas 2D
-├── tools.html              # Halaman Menu Utilitas (13 Fitur Gratis termasuk Cek Plagiarisme & Manifest AI)
+├── tools.html              # Halaman Menu Utilitas (14 Fitur Gratis termasuk Novel Terpadu, Cek Plagiarisme & Manifest AI)
 ├── admin.html              # Panel Admin terenkripsi AES-256-GCM (Kendali penuh toko & CMS)
 ├── BLUEPRINT.md            # Arsitektur teknis lengkap, tujuan proyek, daftar API & storage keys
 ├── ROADMAP.md              # Pencapaian milestone (Fase 1-11) & rencana fase berikutnya

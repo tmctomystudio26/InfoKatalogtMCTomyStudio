@@ -775,6 +775,18 @@ export const DEFAULT_UTILITY_CONFIG = {
       heroDescription:
         'Seluruh mesin deteksi berjalan serentak (OpenAlex, Crossref, DOAJ, Wikipedia ID/EN, Winnowing K-Gram, Multi-AI ChatGPT/Gemini/Claude/DeepSeek/Grok & konektor Turnitin Core API) lalu digabungkan menjadi laporan interaktif & PDF siap unduh.',
     },
+    {
+      id: 'novel',
+      label: 'Novel Terpadu',
+      icon: './assets/icons/tool-novel.svg',
+      pageTitle: 'Novel Terpadu — Baca Full Gratis Real-Time, 122+ Tema & Audiobook',
+      pageSubtitle:
+        'Gabungkan banyak platform novel populer & open-source dalam satu katalog gratis penuh tanpa kunci VIP, update real-time, cari novel dari potongan teks/screenshot/file hingga 100%, 122+ tema halaman (animasi, upload & AI), layar penuh, dan mode suara.',
+      heroKicker: '6 Sumber Novel Gratis · Real-Time Auto-Update · 122+ Tema AI & Animasi · Mode Suara',
+      heroTitle: 'Pembaca Novel Terpadu — Gratis Penuh Tanpa Kunci VIP',
+      heroDescription:
+        'Nikmati ribuan bab novel populer lintas platform yang terintegrasi dalam satu katalog, lengkap dengan mode layar penuh, loncat halaman & bab, pencocokan novel dari cuplikan/screenshot/file hingga 100%, riwayat baca, 122+ tema halaman termasuk tema bergerak & request AI, serta mode suara audiobook.',
+    },
   ],
 };
 

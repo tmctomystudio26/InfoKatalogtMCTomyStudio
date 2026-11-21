@@ -59,7 +59,8 @@ import { createDracinController } from './dracin-ui.js?v=60';
 import { createAudioEditorController } from './audio-editor-ui.js?v=67';
 import { createManifestAiController } from './manifest-ai-ui.js?v=67';
 import { createPlagiarismController } from './plagiarism-ui.js?v=69';
-import { normalizeUtilityConfig } from './store.js?v=67';
+import { createNovelController } from './novel-ui.js?v=70';
+import { normalizeUtilityConfig } from './store.js?v=70';
 
 const PRAYER_CACHE_KEY = 'manifestudio_prayer_cache_v1';
 const MYQURAN_CITIES_KEY = 'manifestudio_myquran_cities_v1';
@@ -478,6 +479,7 @@ export function createToolsHubController({
   let audioEditorCtrl = null;
   let manifestAiCtrl = null;
   let plagiarismCtrl = null;
+  let novelCtrl = null;
   let isHubSeeking = false;
 
   function getUtilityItemConfig(id) {
@@ -4501,6 +4503,15 @@ export function createToolsHubController({
     `;
   }
 
+  function renderNovelPanel() {
+    return `
+      <section class="tool-panel novel-panel" aria-label="Pembaca Novel Terpadu Gratis">
+        ${renderSubPanelIntro('novel')}
+        <div id="novel-hub-mount"></div>
+      </section>
+    `;
+  }
+
   function bindToolEvents() {
     rootEl.querySelectorAll('[data-tool-subtab]').forEach((btn) => {
       btn.addEventListener('click', () => {
@@ -5345,6 +5356,19 @@ export function createToolsHubController({
     } else if (plagiarismCtrl) {
       plagiarismCtrl.unmount();
     }
+
+    if (toolState.activeSubTab === 'novel') {
+      const nvlMount = rootEl.querySelector('#novel-hub-mount');
+      if (nvlMount) {
+        if (novelCtrl) {
+          novelCtrl.unmount();
+        }
+        novelCtrl = createNovelController(nvlMount);
+      }
+    } else if (novelCtrl) {
+      novelCtrl.unmount();
+      novelCtrl = null;
+    }
   }
 
   function renderPrayerSearchResultsHtml(subDistrictResults = [], filteredCities = []) {
@@ -5404,6 +5428,8 @@ export function createToolsHubController({
         ? renderManifestAiPanel()
         : toolState.activeSubTab === 'plagiarism'
         ? renderPlagiarismPanel()
+        : toolState.activeSubTab === 'novel'
+        ? renderNovelPanel()
         : renderDownloaderPanel();
 
     const subnavButtonsHtml = (toolState.utilities?.items || [])
@@ -5475,7 +5501,8 @@ export function createToolsHubController({
         subTab === 'dracin' ||
         subTab === 'audioeditor' ||
         subTab === 'manifestai' ||
-        subTab === 'plagiarism'
+        subTab === 'plagiarism' ||
+        subTab === 'novel'
       ) {
         toolState.activeSubTab = subTab;
       }
@@ -5527,6 +5554,10 @@ export function createToolsHubController({
       if (plagiarismCtrl) {
         plagiarismCtrl.unmount();
       }
+      if (novelCtrl) {
+        novelCtrl.unmount();
+        novelCtrl = null;
+      }
       stopLiveTimers();
       if (rootEl) rootEl.innerHTML = '';
     },
@@ -5536,6 +5567,7 @@ export function createToolsHubController({
       audioEditorCtrl?.redrawTheme();
       manifestAiCtrl?.redrawTheme();
       plagiarismCtrl?.redrawTheme?.();
+      novelCtrl?.redrawTheme?.();
     },
   };
 }

@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64" fill="none">
+  <defs>
+    <linearGradient id="novelBg" x1="6" y1="6" x2="58" y2="58" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#f97316" />
+      <stop offset="52%" stop-color="#ec4899" />
+      <stop offset="100%" stop-color="#6366f1" />
+    </linearGradient>
+    <linearGradient id="novelGloss" x1="10" y1="6" x2="52" y2="44" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#ffffff" stop-opacity="0.3" />
+      <stop offset="100%" stop-color="#ffffff" stop-opacity="0" />
+    </linearGradient>
+  </defs>
+  <rect x="4" y="4" width="56" height="56" rx="16" fill="url(#novelBg)" />
+  <rect x="6" y="6" width="52" height="52" rx="14" fill="url(#novelGloss)" />
+  <path d="M16 19.5C16 17.6 17.6 16 19.5 16H27.5C30 16 32 18 32 20.5V46C32 44.3 30.7 43 29 43H18.5C17.1 43 16 41.9 16 40.5V19.5Z" fill="#ffffff" fill-opacity="0.2" stroke="#ffffff" stroke-width="2.6" stroke-linejoin="round" />
+  <path d="M48 19.5C48 17.6 46.4 16 44.5 16H36.5C34 16 32 18 32 20.5V46C32 44.3 33.3 43 35 43H45.5C46.9 43 48 41.9 48 40.5V19.5Z" fill="#ffffff" fill-opacity="0.14" stroke="#ffffff" stroke-width="2.6" stroke-linejoin="round" />
+  <line x1="20.5" y1="23.5" x2="27.5" y2="23.5" stroke="#fef08a" stroke-width="2.4" stroke-linecap="round" />
+  <line x1="20.5" y1="29.5" x2="27.5" y2="29.5" stroke="#ffffff" stroke-width="2.4" stroke-linecap="round" />
+  <line x1="36.5" y1="23.5" x2="43.5" y2="23.5" stroke="#ffffff" stroke-width="2.4" stroke-linecap="round" />
+  <line x1="36.5" y1="29.5" x2="42.5" y2="29.5" stroke="#fde68a" stroke-width="2.4" stroke-linecap="round" />
+  <path d="M40 35.5L41.4 38.4L44.5 38.8L42.2 41L42.8 44.1L40 42.6L37.2 44.1L37.8 41L35.5 38.8L38.6 38.4L40 35.5Z" fill="#fde047" />
+</svg>

@@ -188,11 +188,11 @@ test('Turnitin PDF, HTML, and JSON exporters produce valid standards-compliant &
   assert.equal(jsonParsed.submissionId, report.submissionId);
 });
 
-test('Utility registration in store.js and catalog.json includes plagiarism alongside all 13 utilities', async () => {
+test('Utility registration in store.js and catalog.json includes plagiarism alongside all 14 utilities', async () => {
   const { DEFAULT_UTILITY_CONFIG, normalizeUtilityConfig } = await import('./store.js');
   const util = normalizeUtilityConfig();
-  assert.equal(DEFAULT_UTILITY_CONFIG.items.length, 13);
-  assert.equal(util.items.length, 13);
+  assert.equal(DEFAULT_UTILITY_CONFIG.items.length, 14);
+  assert.equal(util.items.length, 14);
   const plg = util.items.find((it) => it.id === 'plagiarism');
   assert.ok(plg, 'plagiarism utility must be registered');
   assert.equal(plg.label, 'Cek Plagiarisme');

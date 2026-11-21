@@ -16955,6 +16955,1718 @@ body.plg-fs-lock {
   }
 }
 
+/* ============================================================================
+   NOVEL TERPADU HUB & FULLSCREEN READER (v70)
+   Top-5 Play Store / App Store Novel App UI + 122+ Themes + Audiobook Mode
+   ========================================================================== */
+
+body.nvl-reader-locked {
+  overflow: hidden;
+}
+
+.novel-panel {
+  overflow-x: clip;
+}
+
+.nvl-app {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+}
+
+.nvl-app .sr-only,
+.nvl-reader-overlay .sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* Top Bar & Sub-Tabs */
+.nvl-topbar {
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+  padding: 1rem 1.15rem;
+  border-radius: 16px;
+  background: var(--surface-card, rgba(255, 255, 255, 0.04));
+  border: 1px solid var(--border-subtle, rgba(148, 163, 184, 0.18));
+}
+
+.nvl-topbar-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.nvl-title {
+  margin: 0;
+  font-size: 1.25rem;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  color: var(--text-primary);
+}
+
+.nvl-subtitle {
+  margin: 0.2rem 0 0;
+  font-size: 0.82rem;
+  color: var(--text-secondary);
+}
+
+.nvl-refresh-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  min-height: 40px;
+  padding: 0.45rem 0.9rem;
+  border-radius: 10px;
+  border: 1px solid var(--border-subtle, rgba(148, 163, 184, 0.24));
+  background: var(--surface-elevated, rgba(255, 255, 255, 0.05));
+  color: var(--text-primary);
+  font-size: 0.82rem;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: border-color 0.18s ease, background 0.18s ease;
+}
+
+.nvl-refresh-btn:hover {
+  border-color: var(--accent-primary, #3b82f6);
+}
+
+.nvl-refresh-btn.is-spinning svg {
+  animation: nvlSpin 0.85s linear infinite;
+}
+
+@keyframes nvlSpin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.nvl-subtabs {
+  display: flex;
+  gap: 0.4rem;
+  border-bottom: 1px solid var(--border-subtle, rgba(148, 163, 184, 0.16));
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.nvl-subtabs::-webkit-scrollbar {
+  display: none;
+}
+
+.nvl-subtab {
+  position: relative;
+  min-height: 44px;
+  padding: 0.55rem 0.95rem;
+  border: none;
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 0.88rem;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: color 0.18s ease;
+}
+
+.nvl-subtab.is-active {
+  color: var(--accent-primary, #3b82f6);
+}
+
+.nvl-subtab.is-active::after {
+  content: '';
+  position: absolute;
+  left: 0.5rem;
+  right: 0.5rem;
+  bottom: 0;
+  height: 2.5px;
+  border-radius: 2px;
+  background: var(--accent-primary, #3b82f6);
+}
+
+.nvl-tab-count {
+  font-size: 0.76rem;
+  opacity: 0.8;
+}
+
+/* Shared Buttons & Form Controls */
+.nvl-btn-primary,
+.nvl-btn-secondary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.45rem;
+  min-height: 44px;
+  padding: 0.55rem 1.15rem;
+  border-radius: 12px;
+  font-size: 0.88rem;
+  font-weight: 700;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: transform 0.14s ease, opacity 0.14s ease, border-color 0.16s ease;
+}
+
+.nvl-btn-primary {
+  border: none;
+  background: var(--accent-primary, #2563eb);
+  color: #ffffff;
+}
+
+.nvl-btn-primary:hover:not(:disabled) {
+  opacity: 0.92;
+  transform: translateY(-1px);
+}
+
+.nvl-btn-secondary {
+  border: 1px solid var(--border-subtle, rgba(148, 163, 184, 0.28));
+  background: var(--surface-elevated, rgba(255, 255, 255, 0.05));
+  color: var(--text-primary);
+}
+
+.nvl-btn-secondary:hover:not(:disabled) {
+  border-color: var(--accent-primary, #3b82f6);
+}
+
+.nvl-btn-secondary.is-saved {
+  border-color: #f59e0b;
+  color: #f59e0b;
+}
+
+.nvl-btn-sm {
+  min-height: 38px;
+  padding: 0.4rem 0.85rem;
+  font-size: 0.82rem;
+  border-radius: 10px;
+}
+
+.nvl-full-btn {
+  width: 100%;
+  margin-top: 0.6rem;
+}
+
+.nvl-icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 38px;
+  min-height: 38px;
+  border-radius: 10px;
+  border: 1px solid var(--border-subtle, rgba(148, 163, 184, 0.24));
+  background: transparent;
+  color: var(--text-primary);
+  font-size: 0.9rem;
+  cursor: pointer;
+}
+
+.nvl-link-btn {
+  border: none;
+  background: transparent;
+  color: var(--accent-primary, #3b82f6);
+  font-size: 0.82rem;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 0.25rem 0.35rem;
+}
+
+.nvl-danger-link {
+  color: #ef4444;
+}
+
+.nvl-input,
+.nvl-textarea,
+.nvl-sort-select {
+  width: 100%;
+  min-height: 44px;
+  padding: 0.6rem 0.9rem;
+  border-radius: 12px;
+  border: 1px solid var(--border-subtle, rgba(148, 163, 184, 0.28));
+  background: var(--surface-elevated, rgba(15, 23, 42, 0.35));
+  color: var(--text-primary);
+  font-size: 0.9rem;
+  font-family: inherit;
+}
+
+[data-theme='light'] .nvl-input,
+[data-theme='light'] .nvl-textarea,
+[data-theme='light'] .nvl-sort-select {
+  background: #ffffff;
+}
+
+.nvl-textarea {
+  min-height: 112px;
+  resize: vertical;
+  line-height: 1.55;
+}
+
+.nvl-input-sm {
+  min-height: 38px;
+  padding: 0.42rem 0.75rem;
+  font-size: 0.84rem;
+}
+
+.nvl-input-num {
+  width: 78px;
+  flex-shrink: 0;
+  text-align: center;
+  min-height: 38px;
+  padding: 0.4rem 0.5rem;
+}
+
+/* Hero Spotlight (Top-5 Play Store / App Store Featured Novel Card) */
+.nvl-hero {
+  display: grid;
+  grid-template-columns: 156px minmax(0, 1fr);
+  gap: 1.35rem;
+  align-items: center;
+  padding: 1.35rem;
+  border-radius: 18px;
+  background: linear-gradient(135deg, rgba(37, 99, 235, 0.14), rgba(124, 58, 237, 0.1));
+  border: 1px solid var(--border-subtle, rgba(148, 163, 184, 0.2));
+}
+
+[data-theme='light'] .nvl-hero {
+  background: linear-gradient(135deg, #eff6ff, #f5f3ff);
+  border-color: rgba(37, 99, 235, 0.18);
+}
+
+.nvl-hero-cover {
+  width: 100%;
+  aspect-ratio: 2 / 3;
+  object-fit: cover;
+  border-radius: 12px;
+  box-shadow: 0 14px 32px rgba(2, 6, 23, 0.28);
+  display: block;
+}
+
+.nvl-hero-eyebrow {
+  margin: 0 0 0.35rem;
+  font-size: 0.76rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--accent-primary, #3b82f6);
+}
+
+.nvl-hero-title {
+  margin: 0;
+  font-size: 1.45rem;
+  font-weight: 800;
+  line-height: 1.25;
+  letter-spacing: -0.02em;
+  color: var(--text-primary);
+}
+
+.nvl-hero-meta {
+  margin: 0.45rem 0 0;
+  font-size: 0.84rem;
+  color: var(--text-secondary);
+}
+
+.nvl-hero-synopsis {
+  margin: 0.65rem 0 1rem;
+  font-size: 0.9rem;
+  line-height: 1.55;
+  color: var(--text-secondary);
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.nvl-hero-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.65rem;
+}
+
+/* Sections & Shelves */
+.nvl-body {
+  display: flex;
+  flex-direction: column;
+  gap: 1.45rem;
+  min-width: 0;
+}
+
+.nvl-section {
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+  min-width: 0;
+}
+
+.nvl-section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+}
+
+.nvl-section-title {
+  margin: 0;
+  font-size: 1.05rem;
+  font-weight: 800;
+  color: var(--text-primary);
+}
+
+.nvl-section-note {
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+}
+
+/* Continue Reading Resume Shelf */
+.nvl-resume-shelf {
+  display: flex;
+  gap: 0.85rem;
+  overflow-x: auto;
+  padding-bottom: 0.35rem;
+  scroll-snap-type: x proximity;
+}
+
+.nvl-resume-card {
+  flex: 0 0 265px;
+  scroll-snap-align: start;
+  display: flex;
+  gap: 0.75rem;
+  padding: 0.7rem;
+  border-radius: 14px;
+  background: var(--surface-card, rgba(255, 255, 255, 0.04));
+  border: 1px solid var(--border-subtle, rgba(148, 163, 184, 0.18));
+  cursor: pointer;
+  transition: border-color 0.16s ease, transform 0.16s ease;
+}
+
+.nvl-resume-card:hover {
+  border-color: var(--accent-primary, #3b82f6);
+  transform: translateY(-2px);
+}
+
+.nvl-resume-cover {
+  width: 56px;
+  height: 82px;
+  object-fit: cover;
+  border-radius: 8px;
+  flex-shrink: 0;
+}
+
+.nvl-resume-info {
+  min-width: 0;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 0.22rem;
+}
+
+.nvl-resume-title {
+  margin: 0;
+  font-size: 0.86rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.nvl-resume-sub,
+.nvl-resume-time {
+  margin: 0;
+  font-size: 0.76rem;
+  color: var(--text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.nvl-mini-progress {
+  width: 100%;
+  height: 4px;
+  border-radius: 99px;
+  background: rgba(148, 163, 184, 0.22);
+  overflow: hidden;
+  margin: 0.15rem 0;
+}
+
+.nvl-mini-progress span {
+  display: block;
+  height: 100%;
+  background: var(--accent-primary, #3b82f6);
+  border-radius: 99px;
+}
+
+/* Filter Strip */
+.nvl-filter-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.nvl-genre-strip {
+  display: flex;
+  gap: 0.45rem;
+  overflow-x: auto;
+  max-width: 100%;
+  padding-bottom: 0.2rem;
+  scrollbar-width: none;
+}
+
+.nvl-genre-strip::-webkit-scrollbar {
+  display: none;
+}
+
+.nvl-genre-btn {
+  min-height: 38px;
+  padding: 0.42rem 0.88rem;
+  border-radius: 10px;
+  border: 1px solid var(--border-subtle, rgba(148, 163, 184, 0.22));
+  background: var(--surface-card, rgba(255, 255, 255, 0.03));
+  color: var(--text-secondary);
+  font-size: 0.82rem;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.nvl-genre-btn.is-active {
+  background: var(--accent-primary, #2563eb);
+  border-color: var(--accent-primary, #2563eb);
+  color: #ffffff;
+}
+
+.nvl-sort-wrap {
+  min-width: 160px;
+}
+
+/* Book Cards & Shelves */
+.nvl-horizontal-shelf {
+  display: flex;
+  gap: 0.9rem;
+  overflow-x: auto;
+  padding-bottom: 0.45rem;
+  scroll-snap-type: x proximity;
+}
+
+.nvl-horizontal-shelf .nvl-book-card {
+  flex: 0 0 148px;
+  scroll-snap-align: start;
+}
+
+.nvl-book-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(156px, 1fr));
+  gap: 1rem;
+  width: 100%;
+}
+
+.nvl-book-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  cursor: pointer;
+  min-width: 0;
+  transition: transform 0.16s ease;
+}
+
+.nvl-book-card:hover {
+  transform: translateY(-3px);
+}
+
+.nvl-cover-wrap {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 2 / 3;
+  border-radius: 12px;
+  overflow: hidden;
+  background: #1e293b;
+  box-shadow: 0 8px 20px rgba(2, 6, 23, 0.22);
+}
+
+.nvl-cover-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.nvl-rank-badge {
+  position: absolute;
+  top: 7px;
+  left: 7px;
+  padding: 0.18rem 0.48rem;
+  border-radius: 7px;
+  background: #ef4444;
+  color: #ffffff;
+  font-size: 0.72rem;
+  font-weight: 800;
+  box-shadow: 0 3px 8px rgba(0, 0, 0, 0.35);
+}
+
+.nvl-free-tag {
+  position: absolute;
+  top: 7px;
+  right: 7px;
+  padding: 0.14rem 0.42rem;
+  border-radius: 6px;
+  background: rgba(16, 185, 129, 0.92);
+  color: #ffffff;
+  font-size: 0.68rem;
+  font-weight: 700;
+}
+
+.nvl-rating-tag {
+  position: absolute;
+  bottom: 7px;
+  left: 7px;
+  padding: 0.14rem 0.44rem;
+  border-radius: 6px;
+  background: rgba(15, 23, 42, 0.78);
+  color: #fde047;
+  font-size: 0.7rem;
+  font-weight: 700;
+}
+
+.nvl-card-info {
+  min-width: 0;
+}
+
+.nvl-card-title {
+  margin: 0;
+  font-size: 0.88rem;
+  font-weight: 700;
+  line-height: 1.3;
+  color: var(--text-primary);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.nvl-card-meta {
+  margin: 0.22rem 0 0;
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.nvl-loadmore-wrap {
+  display: flex;
+  justify-content: center;
+  margin-top: 0.5rem;
+}
+
+/* Search, Excerpt/Screenshot/File Matcher & Library Panels */
+.nvl-search-layout,
+.nvl-library-layout {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+.nvl-panel {
+  padding: 1.2rem;
+  border-radius: 16px;
+  background: var(--surface-card, rgba(255, 255, 255, 0.04));
+  border: 1px solid var(--border-subtle, rgba(148, 163, 184, 0.18));
+  display: flex;
+  flex-direction: column;
+  gap: 0.8rem;
+}
+
+.nvl-panel-title {
+  margin: 0;
+  font-size: 1.02rem;
+  font-weight: 800;
+  color: var(--text-primary);
+}
+
+.nvl-panel-desc {
+  margin: 0;
+  font-size: 0.84rem;
+  color: var(--text-secondary);
+  line-height: 1.5;
+}
+
+.nvl-search-form {
+  display: flex;
+  gap: 0.6rem;
+}
+
+.nvl-mode-seg {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.nvl-seg-btn {
+  min-height: 38px;
+  padding: 0.4rem 0.85rem;
+  border-radius: 10px;
+  border: 1px solid var(--border-subtle, rgba(148, 163, 184, 0.24));
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 0.82rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.nvl-seg-btn.is-active {
+  background: var(--accent-primary, #2563eb);
+  border-color: var(--accent-primary, #2563eb);
+  color: #ffffff;
+}
+
+.nvl-dropzone {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  gap: 0.35rem;
+  min-height: 112px;
+  padding: 1.1rem;
+  border-radius: 14px;
+  border: 1.5px dashed var(--accent-primary, #3b82f6);
+  background: rgba(59, 130, 246, 0.06);
+  cursor: pointer;
+}
+
+.nvl-dropzone-title {
+  font-size: 0.9rem;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.nvl-dropzone-sub {
+  font-size: 0.78rem;
+  color: var(--text-secondary);
+}
+
+.nvl-matcher-actions {
+  display: flex;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+}
+
+.nvl-progress-box {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.nvl-progress-track {
+  width: 100%;
+  height: 8px;
+  border-radius: 99px;
+  background: rgba(148, 163, 184, 0.22);
+  overflow: hidden;
+}
+
+.nvl-progress-track span {
+  display: block;
+  height: 100%;
+  background: var(--accent-primary, #3b82f6);
+  transition: width 0.25s ease;
+}
+
+.nvl-progress-label,
+.nvl-status-inline,
+.nvl-mini-status {
+  margin: 0;
+  font-size: 0.82rem;
+  color: var(--text-secondary);
+}
+
+.nvl-alert-warn {
+  margin: 0;
+  padding: 0.7rem 0.9rem;
+  border-radius: 10px;
+  background: rgba(245, 158, 11, 0.14);
+  color: #f59e0b;
+  font-size: 0.84rem;
+}
+
+.nvl-local-reader-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.85rem;
+  flex-wrap: wrap;
+  padding: 0.95rem 1.05rem;
+  border-radius: 14px;
+  background: rgba(16, 185, 129, 0.12);
+  border: 1px solid rgba(16, 185, 129, 0.35);
+}
+
+.nvl-local-reader-banner p {
+  margin: 0.2rem 0 0;
+  font-size: 0.82rem;
+  color: var(--text-secondary);
+}
+
+.nvl-extracted-preview {
+  margin: 0;
+  font-size: 0.82rem;
+  color: var(--text-secondary);
+  line-height: 1.5;
+}
+
+.nvl-match-results,
+.nvl-match-list,
+.nvl-history-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.nvl-match-card,
+.nvl-history-row {
+  display: flex;
+  gap: 0.85rem;
+  align-items: center;
+  padding: 0.8rem;
+  border-radius: 14px;
+  background: var(--surface-elevated, rgba(255, 255, 255, 0.04));
+  border: 1px solid var(--border-subtle, rgba(148, 163, 184, 0.18));
+}
+
+.nvl-match-cover,
+.nvl-history-cover {
+  width: 62px;
+  height: 92px;
+  object-fit: cover;
+  border-radius: 8px;
+  flex-shrink: 0;
+}
+
+.nvl-match-body,
+.nvl-history-info {
+  min-width: 0;
+  flex: 1;
+}
+
+.nvl-match-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.nvl-match-head h4,
+.nvl-history-info h4 {
+  margin: 0;
+  font-size: 0.94rem;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.nvl-match-score {
+  padding: 0.2rem 0.55rem;
+  border-radius: 8px;
+  font-size: 0.76rem;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.nvl-match-score.is-high {
+  background: rgba(16, 185, 129, 0.18);
+  color: #10b981;
+}
+
+.nvl-match-score.is-mid {
+  background: rgba(59, 130, 246, 0.18);
+  color: #3b82f6;
+}
+
+.nvl-match-score.is-low {
+  background: rgba(245, 158, 11, 0.18);
+  color: #f59e0b;
+}
+
+.nvl-match-reason {
+  margin: 0.3rem 0 0.55rem;
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+}
+
+.nvl-match-actions,
+.nvl-history-actions {
+  display: flex;
+  gap: 0.45rem;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.nvl-empty-box {
+  padding: 1.6rem 1.2rem;
+  text-align: center;
+  border-radius: 14px;
+  border: 1px dashed var(--border-subtle, rgba(148, 163, 184, 0.25));
+  color: var(--text-secondary);
+}
+
+.nvl-mt-md {
+  margin-top: 0.8rem;
+}
+
+/* Loading Skeletons */
+.nvl-skeleton-hero {
+  height: 220px;
+  border-radius: 18px;
+  background: linear-gradient(90deg, rgba(148, 163, 184, 0.1), rgba(148, 163, 184, 0.2), rgba(148, 163, 184, 0.1));
+  background-size: 200% 100%;
+  animation: nvlShimmer 1.3s infinite;
+}
+
+.nvl-skeleton-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 1rem;
+  margin-top: 1rem;
+}
+
+.nvl-skeleton-card {
+  aspect-ratio: 2 / 3.3;
+  border-radius: 12px;
+  background: linear-gradient(90deg, rgba(148, 163, 184, 0.09), rgba(148, 163, 184, 0.18), rgba(148, 163, 184, 0.09));
+  background-size: 200% 100%;
+  animation: nvlShimmer 1.3s infinite;
+}
+
+@keyframes nvlShimmer {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
+}
+
+/* Book Detail Modal */
+.nvl-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 9500;
+  background: rgba(2, 6, 23, 0.72);
+  backdrop-filter: blur(5px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+}
+
+.nvl-detail-modal {
+  width: 100%;
+  max-width: 780px;
+  max-height: 88vh;
+  display: flex;
+  flex-direction: column;
+  border-radius: 18px;
+  background: var(--bg-surface, #0f172a);
+  color: var(--text-primary);
+  border: 1px solid var(--border-subtle, rgba(148, 163, 184, 0.22));
+  overflow: hidden;
+}
+
+[data-theme='light'] .nvl-detail-modal {
+  background: #ffffff;
+}
+
+.nvl-detail-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.85rem 1.15rem;
+  border-bottom: 1px solid var(--border-subtle, rgba(148, 163, 184, 0.18));
+}
+
+.nvl-detail-header h3 {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 800;
+}
+
+.nvl-detail-scroll {
+  overflow-y: auto;
+  padding: 1.15rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.2rem;
+}
+
+.nvl-detail-top {
+  display: grid;
+  grid-template-columns: 144px minmax(0, 1fr);
+  gap: 1.15rem;
+}
+
+.nvl-detail-cover {
+  width: 100%;
+  aspect-ratio: 2 / 3;
+  object-fit: cover;
+  border-radius: 12px;
+}
+
+.nvl-detail-title {
+  margin: 0;
+  font-size: 1.25rem;
+  font-weight: 800;
+  line-height: 1.25;
+}
+
+.nvl-detail-meta {
+  margin: 0.4rem 0 0;
+  font-size: 0.82rem;
+  color: var(--text-secondary);
+}
+
+.nvl-detail-synopsis {
+  margin: 0.65rem 0 0.9rem;
+  font-size: 0.88rem;
+  line-height: 1.55;
+  color: var(--text-secondary);
+}
+
+.nvl-detail-actions {
+  display: flex;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+}
+
+.nvl-chapters-section {
+  display: flex;
+  flex-direction: column;
+  gap: 0.7rem;
+}
+
+.nvl-chapters-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.nvl-chapters-head h4 {
+  margin: 0;
+  font-size: 0.96rem;
+  font-weight: 800;
+}
+
+.nvl-chapters-head .nvl-input {
+  max-width: 240px;
+}
+
+.nvl-chapter-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 0.45rem;
+  max-height: 310px;
+  overflow-y: auto;
+}
+
+.nvl-chapter-row {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  width: 100%;
+  min-height: 42px;
+  padding: 0.45rem 0.7rem;
+  border-radius: 10px;
+  border: 1px solid var(--border-subtle, rgba(148, 163, 184, 0.16));
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.nvl-chapter-row:hover,
+.nvl-chapter-row.is-current {
+  border-color: var(--accent-primary, #3b82f6);
+  background: rgba(59, 130, 246, 0.1);
+}
+
+.nvl-ch-num {
+  font-size: 0.76rem;
+  font-weight: 700;
+  opacity: 0.7;
+  min-width: 28px;
+}
+
+.nvl-ch-title {
+  flex: 1;
+  min-width: 0;
+  font-size: 0.83rem;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.nvl-ch-free {
+  font-size: 0.7rem;
+  font-weight: 700;
+  color: #10b981;
+}
+
+/* ============================================================================
+   IMMERSIVE FULLSCREEN NOVEL READER OVERLAY
+   ========================================================================== */
+
+.nvl-reader-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  display: flex;
+  flex-direction: column;
+  color: var(--nvl-r-text);
+  overflow: hidden;
+  transition: background 0.25s ease, color 0.25s ease;
+}
+
+.nvl-reader-motif {
+  position: absolute;
+  inset: 0;
+  background-repeat: repeat;
+  background-size: 420px 420px;
+  pointer-events: none;
+  z-index: 0;
+}
+
+.nvl-reader-canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 1;
+}
+
+/* Compact Top Bar (<= 52px) */
+.nvl-reader-topbar {
+  position: relative;
+  z-index: 3;
+  height: 52px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.65rem;
+  padding: 0 0.85rem;
+  background: var(--nvl-r-surface);
+  border-bottom: 1px solid var(--nvl-r-border);
+  backdrop-filter: blur(10px);
+}
+
+.nvl-reader-top-left,
+.nvl-reader-top-right {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-width: 0;
+}
+
+.nvl-reader-titles {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.nvl-r-book-title {
+  font-size: 0.86rem;
+  font-weight: 800;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.nvl-r-ch-title {
+  font-size: 0.73rem;
+  color: var(--nvl-r-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.nvl-r-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  min-height: 36px;
+  padding: 0.3rem 0.65rem;
+  border-radius: 9px;
+  border: 1px solid var(--nvl-r-border);
+  background: transparent;
+  color: var(--nvl-r-text);
+  font-size: 0.78rem;
+  font-weight: 700;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.nvl-r-btn.is-active {
+  background: var(--nvl-r-accent);
+  border-color: var(--nvl-r-accent);
+  color: #ffffff;
+}
+
+/* Reading Stage */
+.nvl-reader-stage {
+  position: relative;
+  z-index: 2;
+  flex: 1;
+  overflow-y: auto;
+  padding: 1.35rem 1rem 2.2rem;
+  display: flex;
+  justify-content: center;
+}
+
+.nvl-reader-paper {
+  width: 100%;
+  max-width: 780px;
+  min-height: 100%;
+  padding: 1.85rem 2.1rem;
+  border-radius: 18px;
+  background: var(--nvl-r-surface);
+  border: 1px solid var(--nvl-r-border);
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.14);
+  font-family: var(--nvl-r-font);
+  font-size: var(--nvl-r-size);
+  line-height: var(--nvl-r-lh);
+  text-align: var(--nvl-r-align);
+  height: fit-content;
+}
+
+.nvl-chapter-heading-wrap {
+  margin-bottom: 1.4rem;
+  padding-bottom: 0.9rem;
+  border-bottom: 1px solid var(--nvl-r-border);
+}
+
+.nvl-chapter-kicker {
+  margin: 0 0 0.3rem;
+  font-family: 'Plus Jakarta Sans', system-ui, sans-serif;
+  font-size: 0.76rem;
+  font-weight: 700;
+  color: var(--nvl-r-accent);
+  letter-spacing: 0.03em;
+}
+
+.nvl-chapter-heading {
+  margin: 0;
+  font-size: 1.38em;
+  font-weight: 800;
+  line-height: 1.28;
+}
+
+.nvl-chapter-paragraphs {
+  display: flex;
+  flex-direction: column;
+  gap: 0.95em;
+}
+
+.nvl-para {
+  margin: 0;
+  border-radius: 8px;
+  transition: background 0.18s ease;
+}
+
+.nvl-para.is-speaking {
+  background: color-mix(in srgb, var(--nvl-r-accent) 22%, transparent);
+  padding: 0.35rem 0.55rem;
+  margin-left: -0.55rem;
+  margin-right: -0.55rem;
+}
+
+.nvl-reader-loading {
+  min-height: 280px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.8rem;
+  text-align: center;
+  font-family: 'Plus Jakarta Sans', system-ui, sans-serif;
+  font-size: 0.92rem;
+}
+
+.nvl-spinner {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  border: 3px solid var(--nvl-r-border);
+  border-top-color: var(--nvl-r-accent);
+  animation: nvlSpin 0.8s linear infinite;
+}
+
+.nvl-reader-nav-footer {
+  margin-top: 2rem;
+  padding-top: 1.2rem;
+  border-top: 1px solid var(--nvl-r-border);
+  display: flex;
+  flex-direction: column;
+  gap: 0.7rem;
+  font-family: 'Plus Jakarta Sans', system-ui, sans-serif;
+}
+
+.nvl-page-turn-bar,
+.nvl-chapter-turn-bar {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  gap: 0.55rem;
+  align-items: center;
+}
+
+.nvl-r-nav-btn,
+.nvl-r-page-pill {
+  min-height: 44px;
+  padding: 0.45rem 0.8rem;
+  border-radius: 11px;
+  border: 1px solid var(--nvl-r-border);
+  background: transparent;
+  color: var(--nvl-r-text);
+  font-size: 0.82rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.nvl-r-nav-btn.is-primary {
+  background: var(--nvl-r-accent);
+  border-color: var(--nvl-r-accent);
+  color: #ffffff;
+}
+
+.nvl-r-nav-btn:disabled {
+  opacity: 0.42;
+  cursor: not-allowed;
+}
+
+/* Compact Bottom Thumb Bar (<= 54px -> Total top+bottom = 106px < 13% on mobile!) */
+.nvl-reader-bottombar {
+  position: relative;
+  z-index: 4;
+  height: 54px;
+  flex-shrink: 0;
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  background: var(--nvl-r-surface);
+  border-top: 1px solid var(--nvl-r-border);
+  backdrop-filter: blur(10px);
+}
+
+.nvl-r-tab {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  border: none;
+  background: transparent;
+  color: var(--nvl-r-muted);
+  font-size: 0.78rem;
+  font-weight: 700;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.nvl-r-tab.is-active {
+  color: var(--nvl-r-accent);
+}
+
+/* Reader Drawers (Chapters, Page Jump, 122+ Themes, Typography, Voice) */
+.nvl-drawer {
+  position: relative;
+  z-index: 4;
+  max-height: 48vh;
+  overflow-y: auto;
+  padding: 0.95rem 1.1rem;
+  background: var(--nvl-r-surface);
+  color: var(--nvl-r-text);
+  border-top: 1px solid var(--nvl-r-border);
+  box-shadow: 0 -10px 30px rgba(0, 0, 0, 0.22);
+  display: flex;
+  flex-direction: column;
+  gap: 0.8rem;
+}
+
+.nvl-reader-overlay .nvl-input,
+.nvl-reader-overlay .nvl-sort-select {
+  background: color-mix(in srgb, var(--nvl-r-text) 8%, var(--nvl-r-bg));
+  color: var(--nvl-r-text);
+  border-color: var(--nvl-r-border);
+}
+
+.nvl-reader-overlay .nvl-input::placeholder {
+  color: var(--nvl-r-muted);
+  opacity: 0.85;
+}
+
+.nvl-reader-overlay .nvl-btn-secondary,
+.nvl-reader-overlay .nvl-icon-btn,
+.nvl-reader-overlay .nvl-seg-btn {
+  background: color-mix(in srgb, var(--nvl-r-text) 8%, transparent);
+  color: var(--nvl-r-text);
+  border-color: var(--nvl-r-border);
+}
+
+.nvl-reader-overlay .nvl-seg-btn.is-active {
+  background: var(--nvl-r-accent);
+  border-color: var(--nvl-r-accent);
+  color: #ffffff;
+}
+
+.nvl-drawer-tall {
+  max-height: 62vh;
+}
+
+.nvl-drawer-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
+}
+
+.nvl-drawer-head h4 {
+  margin: 0;
+  font-size: 0.94rem;
+  font-weight: 800;
+}
+
+.nvl-drawer-jump-row,
+.nvl-ai-theme-row,
+.nvl-page-jump-inline {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.nvl-drawer-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 0.4rem;
+  max-height: 220px;
+  overflow-y: auto;
+}
+
+.nvl-drawer-section {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+}
+
+.nvl-drawer-label {
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: var(--nvl-r-muted);
+}
+
+.nvl-range {
+  width: 100%;
+  accent-color: var(--nvl-r-accent);
+}
+
+/* 122+ Theme Studio Grid */
+.nvl-theme-tools-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+  padding: 0.75rem;
+  border-radius: 12px;
+  border: 1px solid var(--nvl-r-border);
+}
+
+.nvl-custom-theme-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+}
+
+.nvl-upload-lbl {
+  cursor: pointer;
+}
+
+.nvl-theme-filter-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.nvl-theme-cats {
+  display: flex;
+  gap: 0.35rem;
+  overflow-x: auto;
+  max-width: 100%;
+  scrollbar-width: none;
+}
+
+.nvl-cat-btn {
+  min-height: 34px;
+  padding: 0.3rem 0.65rem;
+  border-radius: 8px;
+  border: 1px solid var(--nvl-r-border);
+  background: transparent;
+  color: var(--nvl-r-muted);
+  font-size: 0.76rem;
+  font-weight: 700;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.nvl-cat-btn.is-active {
+  background: var(--nvl-r-accent);
+  border-color: var(--nvl-r-accent);
+  color: #ffffff;
+}
+
+.nvl-theme-filter-row .nvl-input {
+  max-width: 220px;
+}
+
+.nvl-theme-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(112px, 1fr));
+  gap: 0.65rem;
+}
+
+.nvl-theme-item {
+  display: flex;
+  flex-direction: column;
+  gap: 0.28rem;
+}
+
+.nvl-theme-swatch {
+  position: relative;
+  height: 62px;
+  width: 100%;
+  border-radius: 12px;
+  border: 2px solid transparent;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem;
+  cursor: pointer;
+  box-shadow: inset 0 0 0 1px rgba(128, 128, 128, 0.22);
+}
+
+.nvl-swatch-aa {
+  font-size: 1rem;
+  font-weight: 800;
+}
+
+.nvl-swatch-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+}
+
+.nvl-swatch-tag {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  padding: 0.08rem 0.3rem;
+  border-radius: 5px;
+  background: rgba(15, 23, 42, 0.76);
+  color: #ffffff;
+  font-size: 0.6rem;
+  font-weight: 700;
+}
+
+.nvl-theme-label-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.25rem;
+}
+
+.nvl-theme-name {
+  font-size: 0.72rem;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.nvl-theme-del {
+  border: none;
+  background: transparent;
+  color: #ef4444;
+  font-size: 0.72rem;
+  cursor: pointer;
+  padding: 0 0.2rem;
+}
+
+/* Typography & Voice Drawers */
+.nvl-typo-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 0.85rem;
+}
+
+.nvl-stepper {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+}
+
+.nvl-font-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+.nvl-voice-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.nvl-voice-transport {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+}
+
+.nvl-voice-settings-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(195px, 1fr));
+  gap: 0.7rem;
+  align-items: end;
+}
+
+.nvl-voice-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  font-size: 0.78rem;
+  font-weight: 600;
+}
+
+.nvl-voice-check {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  font-size: 0.82rem;
+  cursor: pointer;
+  min-height: 40px;
+}
+
+/* Mobile Responsive Polish (360px - 640px, Zero Horizontal Overflow) */
+@media (max-width: 640px) {
+  .nvl-topbar {
+    padding: 0.85rem 0.9rem;
+  }
+
+  .nvl-subtabs {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 0.15rem;
+  }
+
+  .nvl-subtab {
+    padding: 0.5rem 0.35rem;
+    font-size: 0.8rem;
+    text-align: center;
+  }
+
+  .nvl-hero {
+    grid-template-columns: 108px minmax(0, 1fr);
+    gap: 0.85rem;
+    padding: 0.95rem;
+    align-items: start;
+  }
+
+  .nvl-hero-title {
+    font-size: 1.08rem;
+  }
+
+  .nvl-hero-synopsis {
+    -webkit-line-clamp: 2;
+    font-size: 0.82rem;
+    margin: 0.45rem 0 0.7rem;
+  }
+
+  .nvl-hero-actions .nvl-btn-primary,
+  .nvl-hero-actions .nvl-btn-secondary {
+    flex: 1 1 auto;
+    min-height: 40px;
+    padding: 0.45rem 0.75rem;
+    font-size: 0.8rem;
+  }
+
+  .nvl-book-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.75rem;
+  }
+
+  .nvl-horizontal-shelf .nvl-book-card {
+    flex: 0 0 124px;
+  }
+
+  .nvl-search-form {
+    flex-direction: column;
+  }
+
+  .nvl-detail-top {
+    grid-template-columns: 104px minmax(0, 1fr);
+    gap: 0.85rem;
+  }
+
+  .nvl-detail-modal {
+    max-height: 92vh;
+  }
+
+  .nvl-reader-stage {
+    padding: 0.75rem 0.55rem 1.4rem;
+  }
+
+  .nvl-reader-paper {
+    padding: 1.15rem 1rem;
+    border-radius: 14px;
+  }
+
+  .nvl-r-btn span {
+    display: none;
+  }
+
+  .nvl-page-turn-bar,
+  .nvl-chapter-turn-bar {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .nvl-r-page-pill,
+  .nvl-chapter-turn-bar > button:nth-child(2) {
+    grid-column: 1 / -1;
+    order: -1;
+  }
+
+  .nvl-theme-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 0.5rem;
+  }
+
+  .nvl-match-card,
+  .nvl-history-row {
+    align-items: flex-start;
+  }
+}
+
+
 
 
 
