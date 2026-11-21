@@ -233,11 +233,28 @@ export function segmentDocumentSentences(rawText = '') {
       continue;
     }
 
-    // Single newline in bibliography or headings
-    if (ch === '\n' && (bibStart !== -1 && i >= bibStart)) {
-      pushSlice(cursor, i);
-      cursor = i + 1;
-      continue;
+    // Single newline in bibliography or after standalone PDF/document headings (e.g. ALL-CAPS titles, BAB I, Pasal 1)
+    if (ch === '\n') {
+      const inBib = bibStart !== -1 && i >= bibStart;
+      const lineBefore = text.slice(cursor, i).trim();
+      const lineWords = lineBefore ? lineBefore.split(/\s+/).length : 0;
+      const alphaOnly = lineBefore.replace(/[^A-Za-z]/g, '');
+      const isAllCapsHeading =
+        alphaOnly.length >= 4 &&
+        alphaOnly === alphaOnly.toUpperCase() &&
+        lineWords >= 2 &&
+        lineWords <= 14;
+      const isStructuredHeading =
+        lineWords >= 1 &&
+        lineWords <= 10 &&
+        /^(?:bab\s+[ivx0-9]+|pasal\s+\d+|lampiran\b|keputusan\b|menimbang|mengingat|memutuskan|pendahuluan|metodologi|kesimpulan|daftar\s+pustaka|abstrak|abstract)\b/i.test(
+          lineBefore
+        );
+      if (inBib || isAllCapsHeading || isStructuredHeading) {
+        pushSlice(cursor, i);
+        cursor = i + 1;
+        continue;
+      }
     }
 
     if (ch === '.' || ch === '!' || ch === '?') {
@@ -464,7 +481,7 @@ export function buildPlagiarismSearchQueries(sentences = [], maxQueries = 6) {
     }
   }
 
-  return picked.map((s) => {
+  const queries = picked.map((s) => {
     const cleanWords = s.text
       .replace(/["“”()[\]{}]/g, ' ')
       .replace(/\s+/g, ' ')
@@ -484,6 +501,27 @@ export function buildPlagiarismSearchQueries(sentences = [], maxQueries = 6) {
       lang: detectDocumentLanguage(s.text).code,
     };
   });
+
+  // For short documents with long sentences, also probe the middle/second half so copied clauses aren't masked by intro words
+  for (const s of picked) {
+    if (queries.length >= maxQueries) break;
+    const uniqKey = [...new Set(s.keyTokens)];
+    if (uniqKey.length >= 9) {
+      const midStart = Math.floor(uniqKey.length / 2) - 1;
+      const midSlice = uniqKey.slice(midStart, midStart + 6);
+      if (midSlice.length >= 4) {
+        queries.push({
+          sentenceIndex: s.index,
+          phrase: midSlice.join(' '),
+          keywords: midSlice.join(' '),
+          shortKeywords: midSlice.slice(0, 4).join(' '),
+          lang: detectDocumentLanguage(s.text).code,
+        });
+      }
+    }
+  }
+
+  return queries;
 }
 
 /**
@@ -938,6 +976,8 @@ export function fusePlagiarismReport({
     },
     engineStatuses: Array.isArray(engineStatuses) ? engineStatuses : [],
     turnitinApiConnected: Boolean(turnitinResult && turnitinResult.ok),
+    repositoryMode: 'no-repository',
+    repositoryLabel: 'No Repository (Aman — Tidak disimpan atau diindeks ke repositori manapun)',
     filters: defaultFilters,
   };
 
@@ -1123,36 +1163,152 @@ export function stripHtmlOrXmlToPlainText(markup = '') {
   );
 }
 
+/**
+ * Pure helper: generates clean download filename ALWAYS prefixed with "Report_" (never "Turnitin_").
+ */
+export function buildPlagiarismDownloadFilename(fileName = 'Dokumen', similarityPct = 0, ext = 'pdf') {
+  const cleanStem =
+    String(fileName || 'Dokumen')
+      .replace(/\.[^.]+$/, '')
+      .replace(/^(?:turnitin[\s_-]*|report[\s_-]*)+/i, '')
+      .replace(/[^a-zA-Z0-9_-]+/g, '_')
+      .replace(/^_+|_+$/g, '')
+      .slice(0, 48) || 'Dokumen';
+  const safePct = Math.min(100, Math.max(0, Math.round(Number(similarityPct) || 0)));
+  const safeExt = String(ext || 'pdf').replace(/^\./, '').toLowerCase();
+  return `Report_${cleanStem}_${safePct}pct.${safeExt}`;
+}
+
+/**
+ * Pure quality gate that detects garbled binary/compressed stream "alien text" (e.g. "½'!]@≡≡ÎÆæ-:q")
+ * so corrupted PDF/binary streams NEVER pollute the manuscript or plagiarism check.
+ */
+export function assessExtractedTextQuality(text = '') {
+  const clean = normalizePlainText(text);
+  const nonSpace = clean.replace(/\s+/g, '');
+  if (!nonSpace || nonSpace.length < 10) {
+    return {
+      isReadable: false,
+      wordCount: 0,
+      realWordCount: 0,
+      realWordRatio: 0,
+      alphaRatio: 0,
+      garbageRatio: 1,
+      reason: 'Teks terlalu pendek atau kosong.',
+    };
+  }
+
+  const normalLettersDigits = (nonSpace.match(/[A-Za-z0-9]/g) || []).length;
+  const standardPunct = (nonSpace.match(/[.,;:!?'"()\-–—/%&@#+*=[\]{}|\\<>]/g) || []).length;
+  const mojibakeChars = (
+    nonSpace.match(/[\uFFFD\u0000-\u001F\u007F-\u00BF\u2200-\u22FF\u2500-\u257F\u00C0-\u00FF]/g) || []
+  ).length;
+  const weirdSymbols = (nonSpace.match(/[~`^|\\{}[\]<>@#$%*_+=]/g) || []).length;
+
+  const tokens = clean.split(/\s+/).filter(Boolean);
+  const wordCount = tokens.length;
+
+  let realWordCount = 0;
+  let noisyTokenCount = 0;
+  for (const tok of tokens) {
+    const stripped = tok.replace(/^[("'«[\s.,;:!?-]+|[)"'»\]\s.,;:!?-]+$/g, '');
+    if (!stripped) continue;
+    if (/^\d+(?:[.,:/-]\d+)*$/.test(stripped)) {
+      realWordCount += 1;
+      continue;
+    }
+    if (/^[A-Za-z]{2,}$/.test(stripped)) {
+      const isNormalCase =
+        stripped === stripped.toLowerCase() ||
+        stripped === stripped.toUpperCase() ||
+        /^[A-Z][a-z]+$/.test(stripped);
+      const hasVowel = /[aiueoyAIUEOY]/.test(stripped);
+      if (isNormalCase && (hasVowel || stripped.length <= 5)) {
+        realWordCount += 1;
+        continue;
+      }
+    }
+    if (/^[A-Za-z]+-[A-Za-z]+$/.test(stripped)) {
+      realWordCount += 1;
+      continue;
+    }
+    if (/[\uFFFD\u0080-\u00FF\u2200-\u257F]/.test(stripped) || /[~`^|\\{}[\]<>@#$%*]/.test(stripped)) {
+      noisyTokenCount += 1;
+    }
+  }
+
+  const realWordRatio = realWordCount / Math.max(1, wordCount);
+  const alphaRatio = normalLettersDigits / Math.max(1, nonSpace.length);
+  const mojibakeRatio = mojibakeChars / Math.max(1, nonSpace.length);
+  const weirdSymbolRatio = weirdSymbols / Math.max(1, nonSpace.length);
+  const noisyTokenRatio = noisyTokenCount / Math.max(1, wordCount);
+  const garbageRatio = Math.min(1, mojibakeRatio + weirdSymbolRatio + noisyTokenRatio * 0.5);
+
+  const isReadable =
+    wordCount >= 3 &&
+    alphaRatio >= 0.55 &&
+    mojibakeRatio <= 0.08 &&
+    weirdSymbolRatio <= 0.12 &&
+    realWordRatio >= 0.42 &&
+    (normalLettersDigits + standardPunct) / Math.max(1, nonSpace.length) >= 0.78;
+
+  return {
+    isReadable,
+    wordCount,
+    realWordCount,
+    realWordRatio: Number(realWordRatio.toFixed(3)),
+    alphaRatio: Number(alphaRatio.toFixed(3)),
+    garbageRatio: Number(garbageRatio.toFixed(3)),
+    reason: isReadable ? 'ok' : 'Terdeteksi karakter biner acak / lapisan teks terkompresi tidak terbaca.',
+  };
+}
+
 export function extractReadableTextFromBinaryBytes(bytes) {
   const u8 = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes || []);
   if (u8.length === 0) return '';
-  // Try clean UTF-8 first
+
+  // Reject compressed binary archive/PDF signatures outright so compressed streams never leak as gibberish
+  const isPdf = u8.length >= 4 && u8[0] === 0x25 && u8[1] === 0x50 && u8[2] === 0x44 && u8[3] === 0x46;
+  const isZip = u8.length >= 4 && u8[0] === 0x50 && u8[1] === 0x4b && u8[2] === 0x03 && u8[3] === 0x04;
+  if (isPdf || isZip) return '';
+
+  // Try clean UTF-8 plain text first
   try {
     const utf8 = new TextDecoder('utf-8', { fatal: false }).decode(u8);
-    const printableRatio = (utf8.match(/[\p{L}\p{N}\p{P}\s]/gu) || []).length / Math.max(1, utf8.length);
-    if (printableRatio > 0.85 && !utf8.includes('\u0000\u0000')) {
-      return normalizePlainText(utf8);
+    if (!utf8.includes('\u0000\u0000')) {
+      const normalized = normalizePlainText(utf8);
+      if (assessExtractedTextQuality(normalized).isReadable) {
+        return normalized;
+      }
     }
   } catch {
     // Fall through
   }
-  // Legacy .doc / OLE UTF-16LE + ASCII readable runs
+
+  // Legacy .doc / OLE UTF-16LE + ASCII readable runs (strictly filtered for natural language)
   const runs = [];
+  const isNoiseRun = (s) =>
+    /(?:Root Entry|WordDocument|CompObj|SummaryInformation|Microsoft Word|Times New Roman|Calibri|Cambria|Normal\.dotm|FlateDecode|endstream|endobj)/i.test(
+      s
+    );
+
   let asciiBuf = '';
   for (let i = 0; i < u8.length; i += 1) {
     const b = u8[i];
     if ((b >= 32 && b <= 126) || b === 10 || b === 13 || b === 9) {
       asciiBuf += String.fromCharCode(b);
     } else {
-      if (asciiBuf.trim().length >= 24 && /[a-zA-Z]{3,}\s+[a-zA-Z]{2,}/.test(asciiBuf)) {
-        runs.push(asciiBuf.trim());
+      const t = asciiBuf.trim();
+      if (t.length >= 24 && /[a-zA-Z]{3,}\s+[a-zA-Z]{2,}/.test(t) && !isNoiseRun(t)) {
+        if (assessExtractedTextQuality(t).isReadable) runs.push(t);
       }
       asciiBuf = '';
     }
   }
-  if (asciiBuf.trim().length >= 24) runs.push(asciiBuf.trim());
+  if (asciiBuf.trim().length >= 24 && !isNoiseRun(asciiBuf.trim()) && assessExtractedTextQuality(asciiBuf.trim()).isReadable) {
+    runs.push(asciiBuf.trim());
+  }
 
-  // Also scan UTF-16LE runs (common in MS Word .doc)
   let u16Buf = '';
   for (let i = 0; i + 1 < u8.length; i += 2) {
     const lo = u8[i];
@@ -1160,16 +1316,18 @@ export function extractReadableTextFromBinaryBytes(bytes) {
     if (hi === 0 && ((lo >= 32 && lo <= 126) || lo === 10 || lo === 13)) {
       u16Buf += String.fromCharCode(lo);
     } else {
-      if (u16Buf.trim().length >= 24 && /[a-zA-Z]{3,}\s+[a-zA-Z]{2,}/.test(u16Buf)) {
-        runs.push(u16Buf.trim());
+      const t = u16Buf.trim();
+      if (t.length >= 24 && /[a-zA-Z]{3,}\s+[a-zA-Z]{2,}/.test(t) && !isNoiseRun(t)) {
+        if (assessExtractedTextQuality(t).isReadable) runs.push(t);
       }
       u16Buf = '';
     }
   }
-  if (u16Buf.trim().length >= 24) runs.push(u16Buf.trim());
+  if (u16Buf.trim().length >= 24 && !isNoiseRun(u16Buf.trim()) && assessExtractedTextQuality(u16Buf.trim()).isReadable) {
+    runs.push(u16Buf.trim());
+  }
 
-  const uniqueRuns = [...new Set(runs)].filter(
-    (r) => !/^(?:Root Entry|WordDocument|CompObj|SummaryInformation|Microsoft Word)/i.test(r)
-  );
-  return normalizePlainText(uniqueRuns.join('\n\n'));
+  const uniqueRuns = [...new Set(runs)];
+  const joined = normalizePlainText(uniqueRuns.join('\n\n'));
+  return assessExtractedTextQuality(joined).isReadable ? joined : '';
 }

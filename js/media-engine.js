@@ -812,6 +812,22 @@ export async function captureRealVideoFrameInBrowser(file) {
   }
 }
 
+let cachedPdfWorkerBlobUrl = null;
+
+async function getPdfWorkerBlobUrl(workerUrl) {
+  if (cachedPdfWorkerBlobUrl) return cachedPdfWorkerBlobUrl;
+  try {
+    const resp = await fetch(workerUrl, { mode: 'cors' });
+    if (!resp.ok) return workerUrl;
+    const code = await resp.text();
+    if (!code || code.length < 1000) return workerUrl;
+    cachedPdfWorkerBlobUrl = URL.createObjectURL(new Blob([code], { type: 'text/javascript' }));
+    return cachedPdfWorkerBlobUrl;
+  } catch {
+    return workerUrl;
+  }
+}
+
 async function getPdfJsLib() {
   if (typeof window === 'undefined') return null;
   if (cachedPdfJs) return cachedPdfJs;
@@ -821,7 +837,7 @@ async function getPdfJsLib() {
       const mod = await import(/* @vite-ignore */ PDFJS_MODULE_URLS[i]);
       if (mod?.getDocument) {
         if (mod.GlobalWorkerOptions) {
-          mod.GlobalWorkerOptions.workerSrc = PDFJS_WORKER_URLS[i];
+          mod.GlobalWorkerOptions.workerSrc = await getPdfWorkerBlobUrl(PDFJS_WORKER_URLS[i]);
         }
         cachedPdfJs = mod;
         return mod;
@@ -833,13 +849,65 @@ async function getPdfJsLib() {
   return null;
 }
 
+async function openPdfDocumentSafe(pdfjs, arrayBuffer) {
+  const dataCopy = new Uint8Array(arrayBuffer.slice(0));
+  const opts = {
+    data: dataCopy,
+    cMapUrl: 'https://cdn.jsdelivr.net/npm/pdfjs-dist@4.8.69/cmaps/',
+    cMapPacked: true,
+    standardFontDataUrl: 'https://cdn.jsdelivr.net/npm/pdfjs-dist@4.8.69/standard_fonts/',
+    useSystemFonts: true,
+    isEvalSupported: false,
+  };
+  try {
+    return await pdfjs.getDocument(opts).promise;
+  } catch {
+    // Fallback without external worker/cmaps if blocked by strict environment
+    return await pdfjs.getDocument({
+      data: new Uint8Array(arrayBuffer.slice(0)),
+      disableWorker: true,
+      isEvalSupported: false,
+    }).promise;
+  }
+}
+
+function groupPdfTextItemsToLines(items = []) {
+  const rows = [];
+  let currentY = null;
+  let currentParts = [];
+
+  for (const item of items) {
+    const str = String(item?.str || '');
+    if (!str && !item?.hasEOL) continue;
+    const y = Array.isArray(item?.transform) ? Math.round(Number(item.transform[5]) || 0) : currentY;
+
+    if (currentY !== null && y !== null && Math.abs(y - currentY) > 4) {
+      const line = currentParts.join(' ').replace(/\s+/g, ' ').trim();
+      if (line) rows.push(line);
+      currentParts = [];
+    }
+    if (str.trim()) currentParts.push(str.trim());
+    currentY = y;
+
+    if (item?.hasEOL) {
+      const line = currentParts.join(' ').replace(/\s+/g, ' ').trim();
+      if (line) rows.push(line);
+      currentParts = [];
+      currentY = null;
+    }
+  }
+  const tail = currentParts.join(' ').replace(/\s+/g, ' ').trim();
+  if (tail) rows.push(tail);
+  return rows;
+}
+
 /**
  * Renders real PDF page 1 onto a high-DPI Canvas using open-source PDF.js (handles FlateDecode, fonts, images).
  */
 export async function renderPdfPageToCanvasData(arrayBuffer) {
   const pdfjs = await getPdfJsLib();
   if (!pdfjs) return null;
-  const doc = await pdfjs.getDocument({ data: new Uint8Array(arrayBuffer.slice(0)) }).promise;
+  const doc = await openPdfDocumentSafe(pdfjs, arrayBuffer);
   const page = await doc.getPage(1);
   const viewport = page.getViewport({ scale: 2.0 });
   const canvas = document.createElement('canvas');
@@ -854,26 +922,70 @@ export async function renderPdfPageToCanvasData(arrayBuffer) {
 }
 
 /**
+ * Renders up to `maxPages` PDF pages to PNG blobs for client-side OCR on scanned PDFs.
+ */
+export async function renderPdfPagesToBlobs(arrayBuffer, { maxPages = 8, scale = 1.75, onPage = () => {} } = {}) {
+  const pdfjs = await getPdfJsLib();
+  if (!pdfjs) return { blobs: [], numPages: 0 };
+  const doc = await openPdfDocumentSafe(pdfjs, arrayBuffer);
+  const limit = Math.min(doc.numPages, Math.max(1, maxPages));
+  const blobs = [];
+
+  for (let p = 1; p <= limit; p += 1) {
+    onPage({ page: p, total: limit, numPages: doc.numPages });
+    const page = await doc.getPage(p);
+    const viewport = page.getViewport({ scale });
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.max(1, Math.min(2600, Math.round(viewport.width)));
+    canvas.height = Math.max(1, Math.min(3600, Math.round(viewport.height)));
+    const ctx = canvas.getContext('2d');
+    ctx.fillStyle = '#FFFFFF';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    await page.render({ canvasContext: ctx, viewport }).promise;
+    const blob = await new Promise((r) => canvas.toBlob(r, 'image/png'));
+    if (blob) blobs.push({ page: p, blob });
+  }
+  return { blobs, numPages: doc.numPages };
+}
+
+/**
+ * Detailed multi-page PDF text extraction preserving natural lines & returning metadata.
+ */
+export async function extractPdfDetailedWithPdfJs(arrayBuffer, { maxPages = 40, onProgress = () => {} } = {}) {
+  const pdfjs = await getPdfJsLib();
+  if (!pdfjs) return null;
+  const doc = await openPdfDocumentSafe(pdfjs, arrayBuffer);
+  const pagesText = [];
+  const limit = Math.min(doc.numPages, Math.max(1, maxPages));
+  for (let p = 1; p <= limit; p += 1) {
+    onProgress({ page: p, total: limit, numPages: doc.numPages });
+    const page = await doc.getPage(p);
+    const tc = await page.getTextContent();
+    const pageLines = groupPdfTextItemsToLines(tc.items || []);
+    const pageStr = pageLines.join('\n').trim();
+    if (pageStr) {
+      pagesText.push(pageStr);
+    }
+  }
+  return {
+    lines: pagesText,
+    text: pagesText.join('\n\n'),
+    numPages: doc.numPages,
+    scannedLikely: pagesText.join(' ').trim().length < 40,
+  };
+}
+
+/**
  * Extracts real multi-page UTF-8 text from compressed/uncompressed PDFs using PDF.js.
  */
 export async function extractPdfTextWithPdfJs(arrayBuffer) {
-  const pdfjs = await getPdfJsLib();
-  if (!pdfjs) return null;
-  const doc = await pdfjs.getDocument({ data: new Uint8Array(arrayBuffer.slice(0)) }).promise;
-  const lines = [];
-  const maxPages = Math.min(doc.numPages, 30);
-  for (let p = 1; p <= maxPages; p += 1) {
-    const page = await doc.getPage(p);
-    const tc = await page.getTextContent();
-    const pageStr = (tc.items || [])
-      .map((item) => item.str || '')
-      .join(' ')
-      .replace(/\s+/g, ' ')
-      .trim();
-    if (pageStr) {
-      if (maxPages > 1) lines.push(`Halaman ${p}:`);
-      lines.push(pageStr);
-    }
-  }
-  return lines.length > 0 ? lines : null;
+  const detail = await extractPdfDetailedWithPdfJs(arrayBuffer, { maxPages: 30 });
+  if (!detail || !detail.lines || detail.lines.length === 0) return null;
+  if (detail.lines.length === 1) return detail.lines;
+  const out = [];
+  detail.lines.forEach((txt, idx) => {
+    out.push(`Halaman ${idx + 1}:`);
+    out.push(txt);
+  });
+  return out;
 }

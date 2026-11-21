@@ -1,22 +1,21 @@
 /**
- * Manifestudio Integrated Plagiarism Checker UI Controller (v67)
- * Turnitin Latest-inspired workspace with:
- * - Universal All-File Upload (PDF, DOCX, PPTX, XLSX, ODT, EPUB, RTF, HTML, TXT, MD, Code, Images OCR, Any File) + Paste Editor
+ * Manifestudio Integrated Plagiarism Checker UI Controller (v68 — Strict No Repository Mode)
+ * - Clean Mode Switcher: Upload File (hides text editor completely!) vs Paste Text
+ * - Universal All-File Upload (PDF + Auto OCR Scan, DOCX, DOC, PPTX, XLSX, ODT, EPUB, RTF, HTML, TXT, MD, Code, Images OCR)
  * - Real-time Progress Bar (0–100%), live status text, elapsed timer, Cancel button & per-engine live telemetry
  * - Interactive Color-Coded Annotated Manuscript + Click-to-Inspect Match Details & Paraphrase Suggestions
- * - Turnitin Similarity Index Panel (Overall %, Internet %, Publications %, AI Writing %) + Live Exclusion Filters
- * - Direct Downloads: Multi-Page Turnitin-Style PDF (.pdf), Interactive HTML Report (.html), & Structured JSON (.json)
- * - Optional Turnitin Core API / Institutional API Settings Modal + Local Check History
+ * - Direct Downloads prefixed with "Report_": Multi-Page Vector PDF (Standar Report), Interactive HTML, & JSON Audit
  */
 
 import {
   PLAGIARISM_DEMO_TEXT,
   applyReportFilters,
+  buildPlagiarismDownloadFilename,
   countWords,
   detectDocumentLanguage,
   escapePlagHtml,
   segmentDocumentSentences,
-} from './plagiarism-logic.js?v=67';
+} from './plagiarism-logic.js?v=68';
 import {
   clearPlagiarismHistory,
   extractTextFromAnyFile,
@@ -24,12 +23,12 @@ import {
   loadPlagiarismHistory,
   runIntegratedPlagiarismCheck,
   savePlagiarismApiConfig,
-} from './plagiarism-engine.js?v=67';
+} from './plagiarism-engine.js?v=68';
 import {
   generateTurnitinHtmlReport,
   generateTurnitinJsonReport,
   generateTurnitinPdfBlob,
-} from './plagiarism-report.js?v=67';
+} from './plagiarism-report.js?v=68';
 import { loadStoredByokKeys } from './manifest-ai.js?v=67';
 
 function triggerBlobDownload(blob, filename) {
@@ -49,14 +48,10 @@ function triggerBlobDownload(blob, filename) {
   }, 4000);
 }
 
-function sanitizeDownloadStem(fileName = 'laporan_plagiarisme') {
-  return (
-    String(fileName || 'laporan_plagiarisme')
-      .replace(/\.[^.]+$/, '')
-      .replace(/[^a-zA-Z0-9_-]+/g, '_')
-      .replace(/^_+|_+$/g, '')
-      .slice(0, 48) || 'laporan_plagiarisme'
-  );
+function formatFileSizeKb(bytes = 0) {
+  const n = Number(bytes) || 0;
+  if (n >= 1024 * 1024) return `${(n / (1024 * 1024)).toFixed(2)} MB`;
+  return `${Math.max(1, Math.round(n / 1024))} KB`;
 }
 
 function formatShortDate(iso = '') {
@@ -77,13 +72,16 @@ export function createPlagiarismController({ onToast = () => {} } = {}) {
   let mounted = false;
 
   // Input state
+  let inputMode = 'upload'; // 'upload' | 'paste' (when 'upload', text input area is completely hidden!)
   let inputText = '';
   let fileName = 'Naskah_Tempel_Langsung.txt';
   let fileFormat = 'TEXT';
   let fileSize = 0;
   let uploadedFileNote = '';
+  let hasUploadedFile = false;
   let extractingFile = false;
   let extractLabel = '';
+  let extractPct = 0;
 
   // Scan options
   let scanOptions = {
@@ -173,30 +171,41 @@ export function createPlagiarismController({ onToast = () => {} } = {}) {
 
   async function handleFileSelect(file) {
     if (!file || scanning) return;
+    inputMode = 'upload';
     extractingFile = true;
+    extractPct = 10;
     extractLabel = `Mengekstrak "${file.name}"...`;
     render();
     try {
       const extracted = await extractTextFromAnyFile(file, (p) => {
         extractLabel = p?.label || extractLabel;
+        extractPct = p?.percent ?? extractPct;
         const el = hostEl?.querySelector('#plg-extract-label');
         if (el) el.textContent = extractLabel;
+        const bar = hostEl?.querySelector('#plg-extract-bar');
+        if (bar) bar.style.width = `${Math.min(100, Math.max(5, extractPct))}%`;
       });
       inputText = extracted.text;
       fileName = extracted.fileName;
       fileFormat = extracted.fileFormat;
       fileSize = extracted.fileSize;
       uploadedFileNote = extracted.note || '';
+      hasUploadedFile = true;
       extractingFile = false;
+      extractPct = 100;
       activeReport = null;
       selectedSourceRank = null;
       selectedSentenceIdx = null;
       render();
-      onToast(`Berkas "${file.name}" siap dicek (${countWords(inputText)} kata).`);
+      onToast(`Berkas "${file.name}" siap dicek (${countWords(inputText)} kata · No Repository).`);
     } catch (err) {
       extractingFile = false;
+      extractPct = 0;
+      hasUploadedFile = false;
+      inputText = '';
+      uploadedFileNote = '';
       render();
-      onToast(err?.message || 'Gagal membaca berkas. Pastikan file berisi teks atau salin teks langsung.');
+      onToast(err?.message || 'Gagal membaca berkas. Pastikan dokumen berisi teks yang jelas.');
     }
   }
 
@@ -279,11 +288,11 @@ export function createPlagiarismController({ onToast = () => {} } = {}) {
     if (!activeReport) return;
     try {
       const blob = generateTurnitinPdfBlob(activeReport);
-      const stem = sanitizeDownloadStem(activeReport.fileName);
-      triggerBlobDownload(blob, `Turnitin_Report_${stem}_${activeReport.similarityPct}pct.pdf`);
-      onToast('Laporan PDF format Turnitin terbaru berhasil diunduh.');
+      const outName = buildPlagiarismDownloadFilename(activeReport.fileName, activeReport.similarityPct, 'pdf');
+      triggerBlobDownload(blob, outName);
+      onToast(`PDF Standar Report berhasil diunduh (${outName}).`);
     } catch {
-      onToast('Gagal membuat PDF. Coba unduh versi HTML Laporan.');
+      onToast('Gagal membuat PDF. Coba unduh versi Laporan HTML.');
     }
   }
 
@@ -291,18 +300,18 @@ export function createPlagiarismController({ onToast = () => {} } = {}) {
     if (!activeReport) return;
     const html = generateTurnitinHtmlReport(activeReport);
     const blob = new Blob([html], { type: 'text/html;charset=utf-8' });
-    const stem = sanitizeDownloadStem(activeReport.fileName);
-    triggerBlobDownload(blob, `Turnitin_Report_${stem}_${activeReport.similarityPct}pct.html`);
-    onToast('Laporan HTML interaktif format Turnitin berhasil diunduh.');
+    const outName = buildPlagiarismDownloadFilename(activeReport.fileName, activeReport.similarityPct, 'html');
+    triggerBlobDownload(blob, outName);
+    onToast(`Laporan HTML berhasil diunduh (${outName}).`);
   }
 
   function handleDownloadJson() {
     if (!activeReport) return;
     const json = generateTurnitinJsonReport(activeReport);
     const blob = new Blob([json], { type: 'application/json;charset=utf-8' });
-    const stem = sanitizeDownloadStem(activeReport.fileName);
-    triggerBlobDownload(blob, `Plagiarism_Audit_${stem}.json`);
-    onToast('Data audit JSON berhasil diekspor.');
+    const outName = buildPlagiarismDownloadFilename(activeReport.fileName, activeReport.similarityPct, 'json');
+    triggerBlobDownload(blob, outName);
+    onToast(`Data audit JSON berhasil diekspor (${outName}).`);
   }
 
   function renderSimilarityGauge(pct, riskLevel) {
@@ -575,7 +584,7 @@ export function createPlagiarismController({ onToast = () => {} } = {}) {
       <section class="plg-report-shell" id="plg-report-anchor" aria-label="Laporan Hasil Cek Plagiarisme">
         <div class="plg-report-topbar">
           <div class="plg-report-title-block">
-            <span class="plg-kicker-sm">Turnitin-Style Integrated Similarity Report · ${escapePlagHtml(r.submissionId)}</span>
+            <span class="plg-kicker-sm">Standar Similarity Report · No Repository · ${escapePlagHtml(r.submissionId)}</span>
             <h3>${escapePlagHtml(r.fileName)}</h3>
             <div class="plg-meta-inline">
               <span>${r.totalWords.toLocaleString('id-ID')} kata</span>
@@ -591,7 +600,7 @@ export function createPlagiarismController({ onToast = () => {} } = {}) {
           <div class="plg-download-bar">
             <button type="button" class="plg-dl-btn is-primary" id="plg-dl-pdf-btn">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-              <span>Unduh PDF (Turnitin)</span>
+              <span>Unduh PDF (Standar Report)</span>
             </button>
             <button type="button" class="plg-dl-btn" id="plg-dl-html-btn">Laporan HTML</button>
             <button type="button" class="plg-dl-btn" id="plg-dl-json-btn">JSON</button>
@@ -732,51 +741,100 @@ export function createPlagiarismController({ onToast = () => {} } = {}) {
           </div>
         </div>
 
-        <div class="plg-input-card">
-          <label class="plg-dropzone ${extractingFile ? 'is-busy' : ''}" id="plg-dropzone" for="plg-file-input">
-            <input id="plg-file-input" type="file" accept="*/*" hidden ${scanning || extractingFile ? 'disabled' : ''} />
-            <div class="plg-drop-icon" aria-hidden="true">
-              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
-            </div>
-            <div class="plg-drop-text">
-              <strong id="plg-extract-label">${extractingFile ? escapePlagHtml(extractLabel) : 'Tarik & lepas atau pilih SEMUA jenis file dokumen'}</strong>
-              <span>Mendukung PDF, DOCX, DOC, PPTX, XLSX, CSV, ODT, EPUB, RTF, HTML, TXT, Markdown, Kode, hingga Gambar (OCR)</span>
-              ${
-                uploadedFileNote
-                  ? `<span class="plg-file-loaded">Berkas aktif: <b>${escapePlagHtml(fileName)}</b> (${escapePlagHtml(fileFormat)}) · ${escapePlagHtml(uploadedFileNote)}</span>`
-                  : ''
-              }
-            </div>
-          </label>
+        <div class="plg-norepo-banner" role="note" aria-label="Jaminan No Repository">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 12 2 2 4-4"/></svg>
+          <span><strong>No Repository Aktif:</strong> Dokumen dibaca 100% lokal di browser Anda &amp; dijamin tidak pernah disimpan atau diindeks ke repositori/database manapun.</span>
+        </div>
 
-          <div class="plg-editor-wrap">
-            <div class="plg-editor-bar">
-              <label for="plg-textarea">Tempel atau sunting naskah di sini</label>
-              <div class="plg-editor-stats plg-mono">
-                <span id="plg-stat-words">${words.toLocaleString('id-ID')} kata</span>
-                <span aria-hidden="true">·</span>
-                <span id="plg-stat-chars">${chars.toLocaleString('id-ID')} karakter</span>
-                <span aria-hidden="true">·</span>
-                <span>${sentCount} kalimat</span>
-                <span aria-hidden="true">·</span>
-                <span>${escapePlagHtml(detectedLang)}</span>
-              </div>
-            </div>
-            <textarea
-              id="plg-textarea"
-              class="plg-textarea"
-              rows="8"
-              placeholder="Tempel paragraf makalah, skripsi, jurnal, esai, artikel blog, atau unggah dokumen apa saja di atas..."
-              ${scanning ? 'disabled' : ''}
-            >${escapePlagHtml(inputText)}</textarea>
+        <div class="plg-input-card">
+          <div class="plg-input-mode-tabs" role="tablist" aria-label="Metode input naskah">
+            <button type="button" role="tab" class="plg-mode-tab ${inputMode === 'upload' ? 'is-active' : ''}" data-plg-mode="upload" aria-selected="${inputMode === 'upload'}" ${scanning ? 'disabled' : ''}>
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+              <span>Upload File</span>
+            </button>
+            <button type="button" role="tab" class="plg-mode-tab ${inputMode === 'paste' ? 'is-active' : ''}" data-plg-mode="paste" aria-selected="${inputMode === 'paste'}" ${scanning ? 'disabled' : ''}>
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+              <span>Tempel Tulisan</span>
+            </button>
           </div>
+
+          ${
+            inputMode === 'upload'
+              ? `
+                <input id="plg-file-input" type="file" accept="*/*" hidden ${scanning || extractingFile ? 'disabled' : ''} />
+                ${
+                  hasUploadedFile && !extractingFile
+                    ? `<div class="plg-uploaded-file-card" id="plg-dropzone">
+                        <div class="plg-uf-top">
+                          <div class="plg-uf-icon" aria-hidden="true">
+                            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><path d="m9 15 2 2 4-4"/></svg>
+                          </div>
+                          <div class="plg-uf-meta">
+                            <strong>${escapePlagHtml(fileName)}</strong>
+                            <span>${escapePlagHtml(fileFormat)} · ${formatFileSizeKb(fileSize)} · ${escapePlagHtml(uploadedFileNote || 'Siap dipindai')}</span>
+                          </div>
+                        </div>
+                        <div class="plg-uf-stats plg-mono">
+                          <span>${words.toLocaleString('id-ID')} kata</span>
+                          <span aria-hidden="true">·</span>
+                          <span>${chars.toLocaleString('id-ID')} karakter</span>
+                          <span aria-hidden="true">·</span>
+                          <span>${sentCount} kalimat</span>
+                          <span aria-hidden="true">·</span>
+                          <span>${escapePlagHtml(detectedLang)}</span>
+                        </div>
+                        <div class="plg-uf-actions">
+                          <label for="plg-file-input" class="plg-btn-secondary plg-btn-compact">Ganti Berkas</label>
+                          <button type="button" class="plg-btn-secondary plg-btn-compact" id="plg-remove-file-btn" ${scanning ? 'disabled' : ''}>Hapus Berkas</button>
+                        </div>
+                      </div>`
+                    : `<label class="plg-dropzone ${extractingFile ? 'is-busy' : ''}" id="plg-dropzone" for="plg-file-input">
+                        <div class="plg-drop-icon" aria-hidden="true">
+                          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                        </div>
+                        <div class="plg-drop-text">
+                          <strong id="plg-extract-label">${extractingFile ? escapePlagHtml(extractLabel) : 'Pilih atau tarik SEMUA jenis file dokumen'}</strong>
+                          <span>PDF (teks &amp; scan OCR otomatis), DOCX, DOC, PPTX, XLSX, CSV, ODT, EPUB, RTF, HTML, TXT, Markdown, Kode, &amp; Gambar</span>
+                          ${
+                            extractingFile
+                              ? `<div class="plg-extract-track"><div class="plg-extract-bar" id="plg-extract-bar" style="width:${Math.min(100, Math.max(8, extractPct))}%"></div></div>`
+                              : ''
+                          }
+                        </div>
+                      </label>`
+                }
+              `
+              : `
+                <div class="plg-editor-wrap">
+                  <div class="plg-editor-bar">
+                    <label for="plg-textarea">Tempel atau sunting naskah di sini</label>
+                    <div class="plg-editor-stats plg-mono">
+                      <span id="plg-stat-words">${words.toLocaleString('id-ID')} kata</span>
+                      <span aria-hidden="true">·</span>
+                      <span id="plg-stat-chars">${chars.toLocaleString('id-ID')} karakter</span>
+                      <span aria-hidden="true">·</span>
+                      <span>${sentCount} kalimat</span>
+                      <span aria-hidden="true">·</span>
+                      <span>${escapePlagHtml(detectedLang)}</span>
+                    </div>
+                  </div>
+                  <textarea
+                    id="plg-textarea"
+                    class="plg-textarea"
+                    rows="8"
+                    placeholder="Tempel paragraf makalah, skripsi, jurnal, esai, atau artikel di sini..."
+                    ${scanning ? 'disabled' : ''}
+                  >${escapePlagHtml(inputText)}</textarea>
+                </div>
+              `
+          }
 
           <div class="plg-options-bar">
             <div class="plg-option-item">
               <label for="plg-opt-mode">Kedalaman</label>
               <select id="plg-opt-mode" class="plg-select" ${scanning ? 'disabled' : ''}>
                 <option value="standard" ${scanOptions.mode === 'standard' ? 'selected' : ''}>Standar Terpadu (Cepat)</option>
-                <option value="deep" ${scanOptions.mode === 'deep' ? 'selected' : ''}>Mendalam (Multi-AI 3 Model + 7 Query)</option>
+                <option value="deep" ${scanOptions.mode === 'deep' ? 'selected' : ''}>Mendalam (Multi-AI + 7 Query)</option>
               </select>
             </div>
             <div class="plg-option-item">
@@ -787,14 +845,16 @@ export function createPlagiarismController({ onToast = () => {} } = {}) {
                 <option value="en" ${scanOptions.language === 'en' ? 'selected' : ''}>English</option>
               </select>
             </div>
-            <label class="plg-check-inline">
-              <input type="checkbox" id="plg-opt-quotes" ${scanOptions.excludeQuotes ? 'checked' : ''} ${scanning ? 'disabled' : ''} />
-              <span>Kecualikan Kutipan</span>
-            </label>
-            <label class="plg-check-inline">
-              <input type="checkbox" id="plg-opt-bib" ${scanOptions.excludeBibliography ? 'checked' : ''} ${scanning ? 'disabled' : ''} />
-              <span>Kecualikan Daftar Pustaka</span>
-            </label>
+            <div class="plg-checks-row">
+              <label class="plg-check-inline">
+                <input type="checkbox" id="plg-opt-quotes" ${scanOptions.excludeQuotes ? 'checked' : ''} ${scanning ? 'disabled' : ''} />
+                <span>Kecualikan Kutipan</span>
+              </label>
+              <label class="plg-check-inline">
+                <input type="checkbox" id="plg-opt-bib" ${scanOptions.excludeBibliography ? 'checked' : ''} ${scanning ? 'disabled' : ''} />
+                <span>Kecualikan Daftar Pustaka</span>
+              </label>
+            </div>
           </div>
 
           <div class="plg-action-footer">
@@ -802,7 +862,7 @@ export function createPlagiarismController({ onToast = () => {} } = {}) {
             ${
               scanning
                 ? `<button type="button" class="plg-btn-danger" id="plg-cancel-btn">Batalkan Pengecekan</button>`
-                : `<button type="button" class="plg-btn-primary" id="plg-run-btn" ${words < 10 ? 'disabled' : ''}>
+                : `<button type="button" class="plg-btn-primary" id="plg-run-btn" ${words < 10 || extractingFile ? 'disabled' : ''}>
                     <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/><path d="m8.5 11 1.8 1.8 3.5-3.6"/></svg>
                     <span>Cek Plagiarisme Sekarang</span>
                   </button>`
@@ -841,6 +901,41 @@ export function createPlagiarismController({ onToast = () => {} } = {}) {
   function bindEvents() {
     if (!hostEl) return;
 
+    // Input Mode Switcher (Upload File vs Paste Text)
+    hostEl.querySelectorAll('[data-plg-mode]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        if (scanning || extractingFile) return;
+        const nextMode = btn.getAttribute('data-plg-mode') === 'paste' ? 'paste' : 'upload';
+        if (nextMode !== inputMode) {
+          inputMode = nextMode;
+          if (nextMode === 'paste' && hasUploadedFile) {
+            // Switching to paste starts clean or keeps paste independent
+            hasUploadedFile = false;
+            uploadedFileNote = '';
+            fileName = 'Naskah_Tempel_Langsung.txt';
+            fileFormat = 'TEXT';
+            fileSize = inputText.length;
+          }
+          render();
+        }
+      });
+    });
+
+    // Remove uploaded file button
+    hostEl.querySelector('#plg-remove-file-btn')?.addEventListener('click', () => {
+      if (scanning) return;
+      inputText = '';
+      fileName = 'Naskah_Tempel_Langsung.txt';
+      fileFormat = 'TEXT';
+      fileSize = 0;
+      uploadedFileNote = '';
+      hasUploadedFile = false;
+      activeReport = null;
+      selectedSourceRank = null;
+      selectedSentenceIdx = null;
+      render();
+    });
+
     // File input & Drag/Drop
     hostEl.querySelector('#plg-file-input')?.addEventListener('change', (e) => {
       const f = e.target.files?.[0];
@@ -866,11 +961,10 @@ export function createPlagiarismController({ onToast = () => {} } = {}) {
     if (ta) {
       ta.addEventListener('input', () => {
         inputText = ta.value;
-        if (!uploadedFileNote) {
-          fileName = 'Naskah_Tempel_Langsung.txt';
-          fileFormat = 'TEXT';
-          fileSize = inputText.length;
-        }
+        fileName = 'Naskah_Tempel_Langsung.txt';
+        fileFormat = 'TEXT';
+        fileSize = inputText.length;
+        hasUploadedFile = false;
         const w = countWords(inputText);
         const wEl = hostEl.querySelector('#plg-stat-words');
         const cEl = hostEl.querySelector('#plg-stat-chars');
@@ -885,14 +979,16 @@ export function createPlagiarismController({ onToast = () => {} } = {}) {
 
     // Demo sample & clear
     hostEl.querySelector('#plg-demo-btn')?.addEventListener('click', () => {
+      inputMode = 'paste';
       inputText = PLAGIARISM_DEMO_TEXT;
       fileName = 'Contoh_Makalah_AI_Pendidikan_2026.docx';
       fileFormat = 'DEMO DOCX';
       fileSize = inputText.length;
       uploadedFileNote = 'Naskah contoh uji campuran (salinan Wikipedia ID/EN + tulisan asli + kutipan + daftar pustaka).';
+      hasUploadedFile = false;
       activeReport = null;
       render();
-      onToast('Contoh naskah uji dimuat — klik "Cek Plagiarisme Sekarang" untuk melihat laporan Turnitin.');
+      onToast('Contoh naskah uji dimuat — klik "Cek Plagiarisme Sekarang" untuk melihat Standar Report.');
     });
 
     hostEl.querySelector('#plg-clear-btn')?.addEventListener('click', () => {
@@ -901,6 +997,7 @@ export function createPlagiarismController({ onToast = () => {} } = {}) {
       fileFormat = 'TEXT';
       fileSize = 0;
       uploadedFileNote = '';
+      hasUploadedFile = false;
       activeReport = null;
       selectedSourceRank = null;
       selectedSentenceIdx = null;

@@ -4,6 +4,8 @@ import {
   PLAGIARISM_DEMO_TEXT,
   analyzeStylometricAiSignals,
   applyReportFilters,
+  assessExtractedTextQuality,
+  buildPlagiarismDownloadFilename,
   buildPlagiarismSearchQueries,
   detectDocumentLanguage,
   detectInternalSelfDuplication,
@@ -194,4 +196,60 @@ test('Utility registration in store.js and catalog.json includes plagiarism alon
   assert.equal(plg.label, 'Cek Plagiarisme');
   assert.equal(plg.icon, './assets/icons/tool-plagiarism.svg');
 });
+
+test('assessExtractedTextQuality rejects garbled alien binary output and accepts readable prose (v68)', () => {
+  const alienSample =
+    `½'!]@≡≡ÎÆæ-:"q ´≡¿õ§õþg±"ã%Mò½¿¯#ú≡ÿƒq? à¦°Ïí!ðÒãö5ø·| ÷ß≡>≡ø≡®|≡â]sR²,ûUðõμé·6≡a‡≡‡OŠ]:"Ø? +Ž~QXÑ≡è]≡YŒ≡+.ïô±ýEÓ8≡™? mK≡í?Øÿö¢° ¦Hn≡gÿ≡ª¦3&ÛR≡²çÇ˜≡»šêÁK"≡Ÿ®`;
+  const alienQuality = assessExtractedTextQuality(alienSample);
+  assert.equal(alienQuality.isReadable, false, 'Must reject garbled alien mojibake text');
+  assert.ok(alienQuality.garbageRatio > 0.2 || alienQuality.realWordRatio < 0.5);
+
+  const cleanIndo =
+    'Keputusan Rektor Universitas Siliwangi tentang Kalender Akademik Tahun Akademik 2026/2027 menetapkan jadwal perkuliahan semester ganjil dan genap secara resmi.';
+  const cleanQuality = assessExtractedTextQuality(cleanIndo);
+  assert.equal(cleanQuality.isReadable, true, `Clean Indonesian text must pass quality gate: ${JSON.stringify(cleanQuality)}`);
+});
+
+test('extractReadableTextFromBinaryBytes strictly rejects raw PDF and ZIP binary containers (v68)', () => {
+  const fakePdf = new TextEncoder().encode('%PDF-1.4\n1 0 obj\n<< /Length 25 /Filter /FlateDecode >>\nstream\nx\x9c\x01\x02\x03\x04\nendstream\n%%EOF');
+  assert.equal(extractReadableTextFromBinaryBytes(fakePdf), '', 'Raw PDF binary must never leak through binary fallback');
+
+  const fakeZip = new Uint8Array([0x50, 0x4b, 0x03, 0x04, 0x14, 0x00, 0x00, 0x00, 0x08, 0x00, 0x41, 0x42, 0x43]);
+  assert.equal(extractReadableTextFromBinaryBytes(fakeZip), '', 'Raw ZIP binary must never leak through binary fallback');
+});
+
+test('buildPlagiarismDownloadFilename always starts with Report_ and strips Turnitin prefix (v68)', () => {
+  const f1 = buildPlagiarismDownloadFilename('964. SK Kalender Akademik di UNSIL TA 2026-2027.pdf', 18, 'pdf');
+  assert.ok(f1.startsWith('Report_'), `Filename must start with Report_, got ${f1}`);
+  assert.ok(!/^Turnitin/i.test(f1), `Filename must never start with Turnitin, got ${f1}`);
+  assert.ok(f1.endsWith('_18pct.pdf'), `Filename must end with _18pct.pdf, got ${f1}`);
+
+  const f2 = buildPlagiarismDownloadFilename('Turnitin_Report_Skripsi_Final.docx', 5, 'html');
+  assert.ok(f2.startsWith('Report_'), `Should normalize Turnitin_ prefix to Report_, got ${f2}`);
+  assert.ok(!f2.toLowerCase().includes('turnitin'), `Should strip Turnitin prefix completely, got ${f2}`);
+  assert.ok(f2.endsWith('_5pct.html'));
+});
+
+test('Strict NO REPOSITORY policy is enforced across fused report, PDF, HTML, and JSON outputs (v68)', () => {
+  const report = fusePlagiarismReport({
+    text: PLAGIARISM_DEMO_TEXT,
+    fileName: 'Skripsi_NoRepo.pdf',
+    fileFormat: 'PDF',
+    candidates: [],
+  });
+  assert.equal(report.repositoryMode, 'no-repository');
+  assert.ok(/No Repository/i.test(report.repositoryLabel));
+
+  const pdfStr = new TextDecoder('latin1').decode(buildTurnitinPdfBytes(report));
+  assert.ok(pdfStr.includes('NO REPOSITORY'), 'PDF output must explicitly state NO REPOSITORY');
+  assert.ok(pdfStr.includes('STANDARD SIMILARITY & ORIGINALITY REPORT'), 'PDF must use Standard Report header');
+
+  const html = generateTurnitinHtmlReport(report);
+  assert.ok(html.includes('NO REPOSITORY'), 'HTML report must display NO REPOSITORY guarantee');
+
+  const jsonParsed = JSON.parse(generateTurnitinJsonReport(report));
+  assert.equal(jsonParsed.repositoryMode, 'no-repository');
+  assert.ok(/No Repository/i.test(jsonParsed.repositoryLabel));
+});
+
 

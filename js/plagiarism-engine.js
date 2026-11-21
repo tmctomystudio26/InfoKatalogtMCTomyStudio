@@ -1,7 +1,8 @@
 /**
- * Manifestudio Integrated Plagiarism Engine (v67)
- * 1. Universal All-File Extractor (PDF, DOCX, PPTX, ODT/ODP/ODS, EPUB, XLSX/CSV, RTF, HTML/XML, TXT/MD/Code, DOC, Images OCR, Any File)
- * 2. Parallel Integrated Multi-Engine Scanner (OpenAlex + Crossref + DOAJ + Wikipedia ID/EN + Multi-AI Ensemble + Optional Turnitin Core API)
+ * Manifestudio Integrated Plagiarism Engine (v68 — Strict No Repository Mode)
+ * 1. Universal All-File Extractor (PDF Text Layer + Auto Scanned-PDF Multi-Page OCR, DOCX+Tables, PPTX, ODT/ODP/ODS, EPUB, XLSX/CSV, RTF, HTML/XML, TXT/MD/Code, DOC, Images OCR, Any File)
+ *    with strict alien/binary gibberish quality gating so corrupted streams NEVER leak into the manuscript.
+ * 2. Parallel Integrated Multi-Engine Scanner (OpenAlex + Crossref + DOAJ + Wikipedia ID/EN + Multi-AI Ensemble + Optional Turnitin Core API w/ No-Repository)
  *    All engines execute concurrently in a single fused pipeline with real-time 0–100% progress & live status updates.
  */
 
@@ -11,7 +12,10 @@ import {
   parseExcelBuffer,
   extractTextFromPdfBuffer,
 } from './converter.js?v=60';
-import { extractPdfTextWithPdfJs } from './media-engine.js?v=60';
+import {
+  extractPdfDetailedWithPdfJs,
+  renderPdfPagesToBlobs,
+} from './media-engine.js?v=68';
 import {
   executeModelTarget,
   getCachedModelRegistry,
@@ -22,6 +26,7 @@ import {
 import { planEnsembleExecution } from './manifest-ai-logic.js?v=67';
 import {
   PLAGIARISM_STORAGE_KEYS,
+  assessExtractedTextQuality,
   buildPlagiarismSearchQueries,
   countWords,
   detectDocumentLanguage,
@@ -33,7 +38,7 @@ import {
   segmentDocumentSentences,
   stripHtmlOrXmlToPlainText,
   stripRtfToPlainText,
-} from './plagiarism-logic.js?v=67';
+} from './plagiarism-logic.js?v=68';
 
 const API_TIMEOUT_MS = 9000;
 const AI_AUDIT_TIMEOUT_MS = 18000;
@@ -101,7 +106,7 @@ export function savePlagiarismHistoryEntry(report) {
     aiWritingPct: report.aiAnalysis?.aiWritingPct || 0,
     sourcesCount: report.primarySources?.length || 0,
     riskLevel: report.riskLevel,
-    previewText: String(report.text || '').slice(0, 260),
+    repositoryMode: 'no-repository',
   };
   const next = [compact, ...loadPlagiarismHistory().filter((h) => h.submissionId !== compact.submissionId)].slice(0, 15);
   try {
@@ -150,56 +155,174 @@ async function fetchJsonWithTimeout(url, options = {}, timeoutMs = API_TIMEOUT_M
   }
 }
 
-async function runImageOcrFallback(file, onProgress = () => {}) {
-  // Optional lazy load of Tesseract.js from jsDelivr for image screenshots/scanned pages
-  if (typeof window === 'undefined') return '';
-  onProgress({ percent: 45, label: 'Memuat mesin OCR gambar (Tesseract.js)...' });
+async function ensureTesseractLoaded(onProgress = () => {}) {
+  if (typeof window === 'undefined') return null;
+  if (window.Tesseract) return window.Tesseract;
+  onProgress({ percent: 45, label: 'Memuat mesin OCR lokal browser (Tesseract.js)...' });
   try {
-    if (!window.Tesseract) {
-      await new Promise((resolve, reject) => {
-        const script = document.createElement('script');
-        script.src = 'https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js';
-        script.async = true;
-        script.onload = resolve;
-        script.onerror = reject;
-        document.head.appendChild(script);
+    await new Promise((resolve, reject) => {
+      const script = document.createElement('script');
+      script.src = 'https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js';
+      script.async = true;
+      script.onload = resolve;
+      script.onerror = reject;
+      document.head.appendChild(script);
+    });
+    return window.Tesseract || null;
+  } catch {
+    return null;
+  }
+}
+
+async function runImageOcrFallback(file, onProgress = () => {}) {
+  const tesseract = await ensureTesseractLoaded(onProgress);
+  if (!tesseract || typeof tesseract.recognize !== 'function') return '';
+  try {
+    onProgress({ percent: 65, label: 'Membaca teks dari gambar (OCR ID + EN, 100% lokal)...' });
+    const res = await tesseract.recognize(file, 'ind+eng');
+    return normalizePlainText(res?.data?.text || '');
+  } catch {
+    return '';
+  }
+}
+
+async function runScannedPdfOcr(rawBuffer, onProgress = () => {}) {
+  if (typeof window === 'undefined') return { text: '', pagesOcrd: 0, numPages: 0 };
+  onProgress({ percent: 38, label: 'PDF hasil scan terdeteksi — merender halaman untuk OCR lokal...' });
+  const rendered = await renderPdfPagesToBlobs(rawBuffer, {
+    maxPages: 8,
+    scale: 1.75,
+    onPage: ({ page, total }) => {
+      onProgress({
+        percent: 38 + Math.round((page / Math.max(1, total)) * 18),
+        label: `Menyiapkan halaman scan PDF ${page}/${total} untuk OCR...`,
       });
+    },
+  });
+  if (!rendered.blobs || rendered.blobs.length === 0) {
+    return { text: '', pagesOcrd: 0, numPages: rendered.numPages || 0 };
+  }
+
+  const tesseract = await ensureTesseractLoaded(onProgress);
+  if (!tesseract) {
+    return { text: '', pagesOcrd: 0, numPages: rendered.numPages || 0 };
+  }
+
+  const ocrParts = [];
+  let worker = null;
+  try {
+    if (typeof tesseract.createWorker === 'function') {
+      onProgress({ percent: 58, label: 'Menginisialisasi model bahasa OCR Indonesia + Inggris...' });
+      worker = await tesseract.createWorker('ind+eng');
     }
-    if (window.Tesseract && typeof window.Tesseract.recognize === 'function') {
-      onProgress({ percent: 65, label: 'Membaca teks dari gambar (OCR ID + EN)...' });
-      const res = await window.Tesseract.recognize(file, 'ind+eng');
-      return normalizePlainText(res?.data?.text || '');
+    for (let i = 0; i < rendered.blobs.length; i += 1) {
+      const { page, blob } = rendered.blobs[i];
+      onProgress({
+        percent: 60 + Math.round(((i + 1) / rendered.blobs.length) * 35),
+        label: `Membaca teks halaman scan ${page}/${rendered.blobs.length} dengan OCR...`,
+      });
+      const res = worker ? await worker.recognize(blob) : await tesseract.recognize(blob, 'ind+eng');
+      const pageTxt = normalizePlainText(res?.data?.text || '');
+      if (pageTxt) ocrParts.push(pageTxt);
     }
   } catch {
-    // Graceful fallback if offline
+    // Keep any pages already recognized
+  } finally {
+    if (worker && typeof worker.terminate === 'function') {
+      try {
+        await worker.terminate();
+      } catch {
+        // Ignore
+      }
+    }
   }
-  return '';
+
+  return {
+    text: normalizePlainText(ocrParts.join('\n\n')),
+    pagesOcrd: rendered.blobs.length,
+    numPages: rendered.numPages || rendered.blobs.length,
+  };
+}
+
+/**
+ * Pure-browser FlateDecode PDF text extractor fallback (only used if PDF.js CDN is unreachable).
+ * Never accepts raw compressed binary bytes without passing `assessExtractedTextQuality`.
+ */
+async function tryDecompressedPdfFallback(rawBuffer) {
+  const safeRawLines = extractTextFromPdfBuffer(rawBuffer).filter(
+    (l) => !/^Dokumen PDF Terverifikasi|^Ukuran Berkas PDF:/i.test(String(l || '').trim())
+  );
+  const rawJoined = normalizePlainText(safeRawLines.join('\n\n'));
+  if (rawJoined && assessExtractedTextQuality(rawJoined).isReadable && countWords(rawJoined) >= 10) {
+    return rawJoined;
+  }
+
+  // Try inflating FlateDecode streams using native browser DecompressionStream('deflate')
+  if (typeof DecompressionStream === 'undefined') return '';
+  const bytes = new Uint8Array(rawBuffer);
+  const latin1 = new TextDecoder('latin1').decode(bytes);
+  const parts = [];
+  const streamRegex = /stream\r?\n([\s\S]*?)\r?\nendstream/g;
+  let match;
+  let scannedStreams = 0;
+
+  while ((match = streamRegex.exec(latin1)) !== null && scannedStreams < 40) {
+    scannedStreams += 1;
+    const startIdx = match.index + match[0].indexOf(match[1]);
+    const endIdx = startIdx + match[1].length;
+    if (endIdx - startIdx < 8 || endIdx - startIdx > 2_000_000) continue;
+    const slice = bytes.subarray(startIdx, endIdx);
+    // Zlib header check (0x78 ...)
+    if (slice[0] !== 0x78) continue;
+    try {
+      const ds = new DecompressionStream('deflate');
+      const ab = await new Response(new Blob([slice]).stream().pipeThrough(ds)).arrayBuffer();
+      const dec = new TextDecoder('latin1').decode(new Uint8Array(ab));
+      const tj = [...dec.matchAll(/\(([^()\\]*(?:\\.[^()\\]*)*)\)\s*Tj/g)].map((m) =>
+        m[1].replace(/\\([()\\])/g, '$1')
+      );
+      const tja = [...dec.matchAll(/\[([^\]]+)\]\s*TJ/g)].map((m) =>
+        [...m[1].matchAll(/\(([^()\\]*(?:\\.[^()\\]*)*)\)/g)]
+          .map((x) => x[1].replace(/\\([()\\])/g, '$1'))
+          .join('')
+      );
+      const chunk = normalizePlainText([...tj, ...tja].join(' '));
+      if (chunk && assessExtractedTextQuality(chunk).isReadable) {
+        parts.push(chunk);
+      }
+    } catch {
+      // Not a deflate text stream (likely image stream) — skip cleanly
+    }
+  }
+  const merged = normalizePlainText(parts.join('\n\n'));
+  return assessExtractedTextQuality(merged).isReadable ? merged : '';
 }
 
 /**
  * Universal All-File Text Extractor (supports all document, code, and image types).
- * Extracts clean prose from PDF, DOCX, PPTX, ODT/ODP/ODS, EPUB, XLSX/XLS/CSV, RTF, HTML/XML,
- * TXT/MD/TeX/JSON/Source Code, legacy `.doc`, Images (via OCR), and arbitrary text/binary files.
+ * Extracts clean prose from PDF (text layer + automatic scanned-PDF OCR), DOCX (paragraphs + tables),
+ * PPTX, ODT/ODP/ODS, EPUB, XLSX/XLS/CSV, RTF, HTML/XML, TXT/MD/TeX/JSON/Code, legacy .doc, & Images (OCR).
+ * Strictly rejects alien/binary gibberish.
  */
 export async function extractTextFromAnyFile(file, onProgress = () => {}) {
   if (!file) throw new Error('Berkas tidak ditemukan.');
   const ext = getFileExtension(file.name);
   const mime = String(file.type || '').toLowerCase();
-  onProgress({ percent: 15, label: `Membaca berkas "${file.name}"...` });
+  onProgress({ percent: 12, label: `Membaca berkas "${file.name}" secara lokal (No Repository)...` });
 
   // 1. Images -> OCR
   if (mime.startsWith('image/') || ['png', 'jpg', 'jpeg', 'webp', 'bmp', 'gif'].includes(ext)) {
     const ocrText = await runImageOcrFallback(file, onProgress);
-    if (ocrText && countWords(ocrText) >= 3) {
+    if (ocrText && assessExtractedTextQuality(ocrText).isReadable && countWords(ocrText) >= 3) {
       return {
         text: ocrText,
         fileName: file.name,
         fileFormat: `${(ext || 'IMG').toUpperCase()} (OCR)`,
         fileSize: file.size || 0,
-        note: 'Teks berhasil diekstrak dari gambar menggunakan OCR.',
+        note: 'Teks diekstrak lokal dari gambar menggunakan OCR (No Repository).',
       };
     }
-    throw new Error('Tidak ditemukan teks terbaca pada gambar ini (pastikan gambar jelas atau salin teks langsung).');
+    throw new Error('Tidak ditemukan teks terbaca pada gambar ini (pastikan gambar tajam/tidak buram).');
   }
 
   const rawBuffer = await file.arrayBuffer();
@@ -207,58 +330,104 @@ export async function extractTextFromAnyFile(file, onProgress = () => {}) {
   const isPdfMagic = bytes.length >= 4 && bytes[0] === 0x25 && bytes[1] === 0x50 && bytes[2] === 0x44 && bytes[3] === 0x46;
   const isZipMagic = bytes.length >= 4 && bytes[0] === 0x50 && bytes[1] === 0x4b && bytes[2] === 0x03 && bytes[3] === 0x04;
 
-  // 2. PDF
+  // 2. PDF (Stage 1: PDF.js w/ Blob Worker & CMap -> Stage 2: Auto Multi-Page OCR for scanned PDF -> Stage 3: Pure FlateDecode)
   if (ext === 'pdf' || mime.includes('pdf') || isPdfMagic) {
-    onProgress({ percent: 45, label: 'Mengekstrak teks dokumen PDF (PDF.js)...' });
-    let lines = null;
+    onProgress({ percent: 26, label: 'Mengekstrak lapisan teks dokumen PDF (PDF.js)...' });
+    let pdfDetail = null;
     if (typeof window !== 'undefined') {
       try {
-        lines = await extractPdfTextWithPdfJs(rawBuffer);
+        pdfDetail = await extractPdfDetailedWithPdfJs(rawBuffer, {
+          maxPages: 40,
+          onProgress: ({ page, total }) => {
+            onProgress({
+              percent: 26 + Math.round((page / Math.max(1, total)) * 22),
+              label: `Membaca teks PDF halaman ${page}/${total}...`,
+            });
+          },
+        });
       } catch {
-        lines = null;
+        pdfDetail = null;
       }
     }
-    if (!lines || lines.length === 0) {
-      lines = extractTextFromPdfBuffer(rawBuffer);
+
+    const pdfText = normalizePlainText(pdfDetail?.text || '');
+    const pdfQuality = assessExtractedTextQuality(pdfText);
+    if (pdfText && pdfQuality.isReadable && countWords(pdfText) >= 12) {
+      return {
+        text: pdfText,
+        fileName: file.name,
+        fileFormat: 'PDF',
+        fileSize: file.size || bytes.length,
+        pageCount: pdfDetail?.numPages || 1,
+        note: `Teks bersih diekstrak dari ${pdfDetail?.numPages || 1} halaman PDF (100% lokal).`,
+      };
     }
-    const text = normalizePlainText(Array.isArray(lines) ? lines.join('\n\n') : String(lines || ''));
-    if (!text || countWords(text) < 2) {
-      throw new Error('Dokumen PDF ini tampak berupa hasil scan gambar tanpa lapisan teks. Unggah sebagai gambar (PNG/JPG) untuk OCR atau tempel teks langsung.');
+
+    // Stage 2: Scanned/image-only PDF -> Automatic multi-page Canvas + Tesseract OCR
+    if (typeof window !== 'undefined') {
+      const ocrRes = await runScannedPdfOcr(rawBuffer, onProgress);
+      const ocrQuality = assessExtractedTextQuality(ocrRes.text);
+      if (ocrRes.text && ocrQuality.isReadable && countWords(ocrRes.text) >= 8) {
+        const extraNote =
+          ocrRes.numPages > ocrRes.pagesOcrd
+            ? ` (${ocrRes.pagesOcrd} dari ${ocrRes.numPages} halaman pertama)`
+            : ` (${ocrRes.pagesOcrd} halaman)`;
+        return {
+          text: ocrRes.text,
+          fileName: file.name,
+          fileFormat: 'PDF (OCR Scan)',
+          fileSize: file.size || bytes.length,
+          pageCount: ocrRes.numPages || ocrRes.pagesOcrd,
+          note: `PDF scan berhasil dibaca dengan OCR lokal${extraNote}.`,
+        };
+      }
     }
-    return {
-      text,
-      fileName: file.name,
-      fileFormat: 'PDF',
-      fileSize: file.size || bytes.length,
-      note: 'Diekstrak dari dokumen PDF.',
-    };
+
+    // Stage 3: Offline pure-JS FlateDecode text-stream fallback (strictly quality-gated)
+    const fallbackText = await tryDecompressedPdfFallback(rawBuffer);
+    if (fallbackText && countWords(fallbackText) >= 10) {
+      return {
+        text: fallbackText,
+        fileName: file.name,
+        fileFormat: 'PDF',
+        fileSize: file.size || bytes.length,
+        note: 'Diekstrak dari aliran teks PDF (mode lokal).',
+      };
+    }
+
+    throw new Error(
+      'Gagal mengekstrak teks terbaca dari PDF ini (kemungkinan PDF terenkripsi password atau hasil scan buram). Coba simpan ulang PDF tanpa kunci atau unggah versi DOCX/TXT.'
+    );
   }
 
-  // 3. DOCX
+  // 3. DOCX (paragraphs + tables preserved cleanly)
   if (ext === 'docx' || mime.includes('wordprocessingml')) {
     onProgress({ percent: 48, label: 'Membongkar struktur dokumen Word (.docx)...' });
     const parsed = await parseDocxBuffer(rawBuffer);
     const paras = (parsed?.paragraphs || []).map((p) => (typeof p === 'string' ? p : p.text || '')).filter(Boolean);
-    const text = normalizePlainText(paras.join('\n\n'));
-    if (text && countWords(text) >= 2) {
+    const tableLines = (parsed?.tables || [])
+      .flatMap((tbl) => (Array.isArray(tbl) ? tbl.map((row) => (Array.isArray(row) ? row.filter(Boolean).join(' · ') : '')) : []))
+      .filter(Boolean);
+    const text = normalizePlainText([...paras, ...tableLines].join('\n\n'));
+    if (text && assessExtractedTextQuality(text).isReadable && countWords(text) >= 2) {
       return {
         text,
         fileName: file.name,
         fileFormat: 'DOCX',
         fileSize: file.size || bytes.length,
-        note: 'Diekstrak dari Microsoft Word (.docx).',
+        note: 'Teks & tabel diekstrak dari Microsoft Word (.docx).',
       };
     }
   }
 
-  // 4. XLSX / XLS / CSV / TSV
+  // 4. XLSX / XLS / ODS
   if (['xlsx', 'xls', 'ods'].includes(ext) || mime.includes('spreadsheetml') || mime.includes('excel')) {
     onProgress({ percent: 48, label: 'Mengekstrak isi tabel spreadsheet...' });
     try {
       const parsed = await parseExcelBuffer(rawBuffer, file.name);
       const rows = (parsed?.rows || []).map((r) => (Array.isArray(r) ? r.filter(Boolean).join(' · ') : String(r || ''))).filter(Boolean);
       const text = normalizePlainText(rows.join('\n'));
-      if (text) {
+      if (text && assessExtractedTextQuality(text).isReadable) {
         return {
           text,
           fileName: file.name,
@@ -273,18 +442,25 @@ export async function extractTextFromAnyFile(file, onProgress = () => {}) {
   }
 
   // 5. ZIP-based office & e-book formats: PPTX, ODT, ODP, ODS, EPUB, or generic DOCX fallback
+  // Note: extractZipEntries returns a Map<string, Uint8Array>
   if (isZipMagic || ['pptx', 'odt', 'odp', 'epub', 'docx'].includes(ext)) {
     onProgress({ percent: 55, label: `Membaca konten arsip dokumen .${(ext || 'zip').toUpperCase()}...` });
     try {
-      const entries = await extractZipEntries(rawBuffer);
+      const entriesRaw = await extractZipEntries(rawBuffer);
+      const entryList =
+        entriesRaw instanceof Map
+          ? Array.from(entriesRaw.entries()).map(([name, data]) => ({ name, data }))
+          : Array.isArray(entriesRaw)
+          ? entriesRaw
+          : [];
       const decoder = new TextDecoder('utf-8', { fatal: false });
       const textParts = [];
 
-      const relevant = entries
+      const relevant = entryList
         .filter((e) => {
           const n = String(e.name || '').toLowerCase();
           if (n.startsWith('ppt/slides/slide') && n.endsWith('.xml')) return true;
-          if (n === 'word/document.xml' || n === 'content.xml') return true;
+          if (n === 'word/document.xml' || n === 'content.xml' || n === 'xl/sharedstrings.xml') return true;
           if (n.endsWith('.xhtml') || n.endsWith('.html') || n.endsWith('.htm') || n.endsWith('.txt') || n.endsWith('.md')) return true;
           return false;
         })
@@ -292,14 +468,15 @@ export async function extractTextFromAnyFile(file, onProgress = () => {}) {
 
       for (const entry of relevant) {
         const rawStr = decoder.decode(entry.data);
-        const extracted = entry.name.endsWith('.txt') || entry.name.endsWith('.md')
-          ? normalizePlainText(rawStr)
-          : stripHtmlOrXmlToPlainText(rawStr);
+        const extracted =
+          entry.name.endsWith('.txt') || entry.name.endsWith('.md')
+            ? normalizePlainText(rawStr)
+            : stripHtmlOrXmlToPlainText(rawStr);
         if (extracted) textParts.push(extracted);
       }
 
       const text = normalizePlainText(textParts.join('\n\n'));
-      if (text && countWords(text) >= 2) {
+      if (text && assessExtractedTextQuality(text).isReadable && countWords(text) >= 2) {
         return {
           text,
           fileName: file.name,
@@ -309,8 +486,9 @@ export async function extractTextFromAnyFile(file, onProgress = () => {}) {
         };
       }
     } catch {
-      // Fall through to text/binary decoder
+      // Fall through to strict error
     }
+    throw new Error(`Berkas arsip .${(ext || 'zip').toUpperCase()} tidak berisi teks terbaca atau terproteksi kata sandi.`);
   }
 
   // 6. RTF
@@ -318,6 +496,9 @@ export async function extractTextFromAnyFile(file, onProgress = () => {}) {
     onProgress({ percent: 60, label: 'Membersihkan kode format RTF...' });
     const rawText = new TextDecoder('latin1').decode(bytes);
     const text = stripRtfToPlainText(rawText);
+    if (!text || !assessExtractedTextQuality(text).isReadable) {
+      throw new Error('Dokumen RTF ini tidak mengandung teks terbaca.');
+    }
     return {
       text,
       fileName: file.name,
@@ -332,6 +513,9 @@ export async function extractTextFromAnyFile(file, onProgress = () => {}) {
     onProgress({ percent: 60, label: 'Mengekstrak teks bersih dari HTML/XML...' });
     const rawStr = new TextDecoder('utf-8', { fatal: false }).decode(bytes);
     const text = stripHtmlOrXmlToPlainText(rawStr);
+    if (!text || !assessExtractedTextQuality(text).isReadable) {
+      throw new Error('Berkas HTML/XML ini tidak mengandung paragraf teks terbaca.');
+    }
     return {
       text,
       fileName: file.name,
@@ -344,8 +528,10 @@ export async function extractTextFromAnyFile(file, onProgress = () => {}) {
   // 8. Plain text, Markdown, CSV, LaTeX, JSON, Code, or Legacy .doc / Any Other File
   onProgress({ percent: 65, label: 'Mengekstrak teks dari berkas...' });
   const text = extractReadableTextFromBinaryBytes(bytes);
-  if (!text || countWords(text) < 2) {
-    throw new Error(`Tidak ditemukan teks yang dapat dibaca pada berkas "${file.name}". Coba konversi ke PDF/DOCX/TXT atau tempel teks langsung.`);
+  if (!text || !assessExtractedTextQuality(text).isReadable || countWords(text) < 2) {
+    throw new Error(
+      `Berkas "${file.name}" tidak memiliki lapisan teks terbaca atau berformat biner terkompresi. Gunakan PDF, DOCX, TXT, HTML, atau gambar jelas (OCR).`
+    );
   }
   return {
     text,
@@ -724,7 +910,7 @@ async function probeTurnitinCoreApi(text = '', fileName = '', apiConfig = {}, si
       found: 0,
       latencyMs: Date.now() - started,
       result: null,
-      note: 'Siap dihubungkan via Pengaturan API (mode terpadu gratis aktif)',
+      note: 'Mode gratis aktif · No Repository',
     };
   }
 
@@ -737,13 +923,18 @@ async function probeTurnitinCoreApi(text = '', fileName = '', apiConfig = {}, si
           'Content-Type': 'application/json',
           Authorization: `Bearer ${apiKey}`,
           'X-Turnitin-Integration-Name': 'Manifestudio-Plagiarism-Checker',
-          'X-Turnitin-Integration-Version': '67.0',
+          'X-Turnitin-Integration-Version': '68.0',
+          'X-No-Repository': 'true',
           ...(apiConfig.turnitinInstitutionId ? { 'X-Turnitin-Institution-Id': apiConfig.turnitinInstitutionId } : {}),
         },
         body: JSON.stringify({
           title: fileName || 'Document',
           text: String(text || '').slice(0, 80000),
           submitter: 'manifestudio-user',
+          no_repository: true,
+          store_in_repository: false,
+          index_submission: false,
+          submit_to_repository: false,
         }),
       },
       12000,
@@ -763,7 +954,7 @@ async function probeTurnitinCoreApi(text = '', fileName = '', apiConfig = {}, si
       found: sources.length,
       latencyMs: Date.now() - started,
       result: { ok: true, sources, raw: data },
-      note: `Terhubung · ${sources.length} sumber institusional disatukan`,
+      note: `Terhubung (No Repo) · ${sources.length} sumber`,
     };
   } catch (err) {
     return {
@@ -773,7 +964,7 @@ async function probeTurnitinCoreApi(text = '', fileName = '', apiConfig = {}, si
       found: 0,
       latencyMs: Date.now() - started,
       result: null,
-      note: `Endpoint tidak merespons (${err?.message || 'CORS/Auth'}), dilanjutkan mesin terpadu lain`,
+      note: `Endpoint fallback (${err?.message || 'CORS/Auth'})`,
     };
   }
 }
@@ -813,8 +1004,8 @@ export async function runIntegratedPlagiarismCheck({
       status: effectiveApi.turnitinEndpoint && effectiveApi.turnitinApiKey ? 'pending' : 'standby',
       found: 0,
       note: effectiveApi.turnitinEndpoint && effectiveApi.turnitinApiKey
-        ? 'Menghubungkan ke Turnitin Core API...'
-        : 'Siap via Pengaturan API (mode terpadu gratis aktif)',
+        ? 'Menghubungkan (No Repository)...'
+        : 'Mode gratis aktif · No Repository',
     },
   ];
 
@@ -935,7 +1126,7 @@ export async function runIntegratedPlagiarismCheck({
   });
 
   // PHASE 4: Finalization (94% -> 100%)
-  emit(96, 'Menyusun laporan visual & dokumen unduhan berformat Turnitin terbaru...', 'finalize');
+  emit(96, 'Menyusun Standar Report terpadu (No Repository)...', 'finalize');
   savePlagiarismHistoryEntry(report);
   emit(100, `Pengecekan selesai — Indeks Kemiripan ${report.similarityPct}% (${report.primarySources.length} sumber teridentifikasi).`, 'complete');
 

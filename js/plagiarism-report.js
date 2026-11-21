@@ -1,16 +1,16 @@
 /**
- * Manifestudio Turnitin Latest-Style Similarity Report Exporter (v67)
+ * Manifestudio Standard Originality & Similarity Report Exporter (v68)
  * Generates:
- * 1. Genuine Multi-Page Vector PDF (`generateTurnitinPdfBlob`) modeled on Turnitin's latest Originality Report:
- *    - Page 1: Turnitin Cover Sheet (Document Title, Submission ID, Date, File Info, Word/Char Count, Engines Fused)
- *    - Pages 2..N: Annotated Manuscript with real colored vector highlight bands & inline [1], [2] source badges
- *    - Final Pages: Originality Report Summary (Crimson Similarity Index %, Internet %, Publications %, AI Writing %,
- *      Ranked Primary Sources table with color square badges, URL/DOI, and Turnitin Filter Exclusion footer)
+ * 1. Genuine Multi-Page Vector PDF (`generateTurnitinPdfBlob`) — Standard Report (No Repository):
+ *    - Page 1: Cover Sheet (Document Title, Submission ID, No Repository Guarantee, Date, File Info, Word/Char Count, Engines Fused)
+ *    - Pages 2..N: Annotated Manuscript with colored vector highlight bands & inline [1], [2] source badges
+ *    - Final Pages: Originality Report Summary (Similarity Index %, Internet %, Publications %, AI Writing %,
+ *      Ranked Primary Sources table with color square badges, URL/DOI, and Filter Exclusion & No Repository footer)
  * 2. Self-Contained Interactive HTML Report (`generateTurnitinHtmlReport`) with Print-to-PDF `@media print` styling
  * 3. Structured JSON Audit Report (`generateTurnitinJsonReport`)
  */
 
-import { escapePlagHtml } from './plagiarism-logic.js?v=67';
+import { escapePlagHtml } from './plagiarism-logic.js?v=68';
 
 function sanitizePdfText(str = '') {
   return String(str || '')
@@ -178,12 +178,12 @@ export function buildTurnitinPdfBytes(report) {
 
   // ==================== PAGE 1: TURNITIN COVER PAGE ====================
   const cover = [];
-  // Bold top hero band (Turnitin Latest clean institutional cover)
+  // Bold top hero band (Standard Originality Report Cover)
   cover.push(`${rgbFill([15, 23, 42])} 0 726 595 116 re f`);
   cover.push(`${rgbFill([225, 29, 72])} 0 720 595 6 re f`);
-  cover.push(`BT /F2 11 Tf ${rgbFill([244, 63, 94])} 48 806 Td (MANIFESTUDIO  |  SIMILARITY & ORIGINALITY REPORT) Tj ET`);
-  cover.push(`BT /F2 22 Tf ${rgbFill([255, 255, 255])} 48 776 Td (${pdfEsc(docTitle.slice(0, 42))}) Tj ET`);
-  cover.push(`BT /F1 10 Tf ${rgbFill([203, 213, 225])} 48 750 Td (Multi-Engine Integrated Verification: OpenAlex + Crossref + DOAJ + Wikipedia + Multi-AI + Turnitin API) Tj ET`);
+  cover.push(`BT /F2 10.5 Tf ${rgbFill([244, 63, 94])} 48 806 Td (MANIFESTUDIO  |  STANDARD SIMILARITY & ORIGINALITY REPORT) Tj ET`);
+  cover.push(`BT /F2 20 Tf ${rgbFill([255, 255, 255])} 48 776 Td (${pdfEsc(docTitle.slice(0, 44))}) Tj ET`);
+  cover.push(`BT /F1 9.5 Tf ${rgbFill([203, 213, 225])} 48 750 Td (No Repository Mode Active  |  OpenAlex + Crossref + DOAJ + Wikipedia + Multi-AI + API) Tj ET`);
 
   // Big Similarity Summary Card on Cover
   cover.push(`${rgbFill([248, 250, 252])} 48 566 499 124 re f`);
@@ -205,12 +205,13 @@ export function buildTurnitinPdfBytes(report) {
   }
   cover.push(`BT /F1 8.5 Tf ${rgbFill([71, 85, 105])} 255 586 Td (Unique Content: ${report.uniquePct ?? (100 - simPct)}%  |  Self-Check / Internal: ${stuPct}%) Tj ET`);
 
-  // Submission Metadata Table (Turnitin Cover Sheet style)
-  cover.push(`BT /F2 12 Tf ${rgbFill([15, 23, 42])} 48 532 Td (SUBMISSION DETAILS) Tj ET`);
-  cover.push(`${rgbStroke([15, 23, 42])} 1.2 w 48 524 m 547 524 l S`);
+  // Submission Metadata Table (Standard Cover Sheet)
+  cover.push(`BT /F2 11.5 Tf ${rgbFill([15, 23, 42])} 48 538 Td (SUBMISSION DETAILS) Tj ET`);
+  cover.push(`${rgbStroke([15, 23, 42])} 1.2 w 48 530 m 547 530 l S`);
 
   const metaRows = [
     ['Submission ID', subId],
+    ['Repository Policy', 'NO REPOSITORY (Dokumen tidak disimpan/diindeks ke database manapun)'],
     ['Submission Date', dateStr],
     ['File Name', docTitle],
     ['File Format', `${report.fileFormat || 'TEXT'} (${Math.max(1, Math.round((report.fileSize || 0) / 1024))} KB)`],
@@ -222,31 +223,34 @@ export function buildTurnitinPdfBytes(report) {
     ['Scan Duration', `${((report.durationMs || 0) / 1000).toFixed(1)}s`],
   ];
 
-  let my = 500;
+  let my = 508;
   for (let i = 0; i < metaRows.length; i += 1) {
     const [k, v] = metaRows[i];
     if (i % 2 === 0) {
-      cover.push(`${rgbFill([248, 250, 252])} 48 ${my - 7} 499 22 re f`);
+      cover.push(`${rgbFill([248, 250, 252])} 48 ${my - 6} 499 20 re f`);
     }
-    cover.push(`BT /F2 9 Tf ${rgbFill([71, 85, 105])} 58 ${my} Td (${pdfEsc(k)}) Tj ET`);
-    cover.push(`BT /F1 9 Tf ${rgbFill([15, 23, 42])} 215 ${my} Td (${pdfEsc(String(v).slice(0, 62))}) Tj ET`);
-    my -= 24;
+    const isNoRepo = k === 'Repository Policy';
+    cover.push(`BT /F2 8.5 Tf ${rgbFill([71, 85, 105])} 58 ${my} Td (${pdfEsc(k)}) Tj ET`);
+    cover.push(`BT /F${isNoRepo ? '2' : '1'} 8.5 Tf ${rgbFill(isNoRepo ? [5, 150, 105] : [15, 23, 42])} 205 ${my} Td (${pdfEsc(String(v).slice(0, 68))}) Tj ET`);
+    my -= 22;
   }
 
-  // Active Engines Fused Box
-  cover.push(`BT /F2 11 Tf ${rgbFill([15, 23, 42])} 48 232 Td (INTEGRATED ENGINES COMBINED IN THIS REPORT) Tj ET`);
-  cover.push(`${rgbStroke([226, 232, 240])} 0.8 w 48 224 m 547 224 l S`);
-  let ey = 204;
+  // Active Engines Fused Box (spaced cleanly so engine name & status note NEVER collide or clip)
+  cover.push(`BT /F2 10.5 Tf ${rgbFill([15, 23, 42])} 48 242 Td (INTEGRATED ENGINES COMBINED IN THIS REPORT) Tj ET`);
+  cover.push(`${rgbStroke([226, 232, 240])} 0.8 w 48 234 m 547 234 l S`);
+  let ey = 215;
   for (const eng of (report.engineStatuses || []).slice(0, 7)) {
     const badgeCol = eng.status === 'done' ? [5, 150, 105] : eng.status === 'standby' ? [100, 116, 139] : [217, 119, 6];
+    const shortName = sanitizePdfText(eng.name || '').slice(0, 38);
+    const shortNote = sanitizePdfText(eng.note || eng.status || '').slice(0, 50);
     cover.push(`${rgbFill(badgeCol)} 52 ${ey + 1} 6 6 re f`);
-    cover.push(`BT /F2 8.5 Tf ${rgbFill([15, 23, 42])} 66 ${ey} Td (${pdfEsc(eng.name)}) Tj ET`);
-    cover.push(`BT /F1 8 Tf ${rgbFill([100, 116, 139])} 315 ${ey} Td (${pdfEsc(eng.note || eng.status).slice(0, 44)}) Tj ET`);
+    cover.push(`BT /F2 8.2 Tf ${rgbFill([15, 23, 42])} 66 ${ey} Td (${pdfEsc(shortName)}) Tj ET`);
+    cover.push(`BT /F1 7.8 Tf ${rgbFill([100, 116, 139])} 296 ${ey} Td (${pdfEsc(shortNote)}) Tj ET`);
     ey -= 18;
   }
 
   cover.push(`${rgbStroke([226, 232, 240])} 0.7 w 48 44 m 547 44 l S`);
-  cover.push(`BT /F1 7.5 Tf ${rgbFill([100, 116, 139])} 48 31 Td (Generated by Manifestudio Plagiarism Checker  |  https://manifestudio.my.id) Tj ET`);
+  cover.push(`BT /F1 7.5 Tf ${rgbFill([100, 116, 139])} 48 31 Td (Manifestudio Standard Report  |  No Repository Verified  |  https://manifestudio.my.id) Tj ET`);
   cover.push(`BT /F2 8 Tf ${rgbFill([71, 85, 105])} 492 31 Td (Page 1) Tj ET`);
   pages.push(cover.join('\n'));
 
@@ -375,20 +379,23 @@ export function buildTurnitinPdfBytes(report) {
     }
   }
 
-  // Turnitin Exclusion Filter Footer Box
-  if (sy < 120) {
+  // Filter & No Repository Footer Box
+  if (sy < 130) {
     flushSumPage();
     startSumPage();
   }
   sy -= 14;
-  sumOps.push(`${rgbFill([248, 250, 252])} 48 ${sy - 46} 499 58 re f`);
-  sumOps.push(`${rgbStroke([226, 232, 240])} 0.8 w 48 ${sy - 46} 499 58 re S`);
-  sumOps.push(`BT /F2 8.5 Tf ${rgbFill([15, 23, 42])} 60 ${sy - 4} Td (REPORT FILTERS & EXCLUSIONS) Tj ET`);
+  sumOps.push(`${rgbFill([248, 250, 252])} 48 ${sy - 60} 499 72 re f`);
+  sumOps.push(`${rgbStroke([226, 232, 240])} 0.8 w 48 ${sy - 60} 499 72 re S`);
+  sumOps.push(`BT /F2 8.5 Tf ${rgbFill([15, 23, 42])} 60 ${sy - 4} Td (REPORT FILTERS, EXCLUSIONS & NO REPOSITORY GUARANTEE) Tj ET`);
   sumOps.push(
     `BT /F1 8.5 Tf ${rgbFill([71, 85, 105])} 60 ${sy - 20} Td (Exclude quotes: ${report.filters?.excludeQuotes ? 'ON' : 'OFF'}     |     Exclude bibliography: ${report.filters?.excludeBibliography ? 'ON' : 'OFF'}     |     Exclude matches: ${report.filters?.excludeSmallWords ? `< ${report.filters.excludeSmallWords} words` : 'OFF'}) Tj ET`
   );
   sumOps.push(
-    `BT /F1 8 Tf ${rgbFill([100, 116, 139])} 60 ${sy - 35} Td (AI Stylometry Verdict: ${pdfEsc(report.aiAnalysis?.stylometric?.verdict || 'Terverifikasi')}) Tj ET`
+    `BT /F2 8 Tf ${rgbFill([5, 150, 105])} 60 ${sy - 35} Td (Repository Status: NO REPOSITORY - Dokumen diproses lokal & tidak disimpan ke repositori manapun) Tj ET`
+  );
+  sumOps.push(
+    `BT /F1 8 Tf ${rgbFill([100, 116, 139])} 60 ${sy - 50} Td (AI Stylometry Verdict: ${pdfEsc(report.aiAnalysis?.stylometric?.verdict || 'Terverifikasi')}) Tj ET`
   );
 
   flushSumPage();
@@ -493,9 +500,9 @@ export function generateTurnitinHtmlReport(report) {
   <article class="sheet">
     <header class="hero">
       <button class="print-btn" onclick="window.print()">Cetak / Simpan PDF</button>
-      <div class="hero-kicker">Manifestudio · Originality &amp; Similarity Report</div>
+      <div class="hero-kicker">Manifestudio · Standard Originality &amp; Similarity Report (No Repository)</div>
       <h1>${safeTitle}</h1>
-      <p class="hero-sub">Submission ID: ${safeId} · ${dateStr}</p>
+      <p class="hero-sub">Submission ID: ${safeId} · ${dateStr} · Status: No Repository (Aman)</p>
     </header>
     <div class="body">
       <div class="kpi-grid">
@@ -506,9 +513,10 @@ export function generateTurnitinHtmlReport(report) {
       </div>
       <table class="meta-table">
         <tr><td>Nama Berkas</td><td>${safeTitle} (${escapePlagHtml(report.fileFormat || 'TEXT')})</td></tr>
+        <tr><td>Kebijakan Repositori</td><td><strong style="color:#059669">No Repository</strong> — Dokumen tidak disimpan atau diindeks ke repositori/database manapun</td></tr>
         <tr><td>Jumlah Kata / Karakter</td><td>${Number(report.totalWords || 0).toLocaleString('id-ID')} kata · ${Number(report.totalChars || 0).toLocaleString('id-ID')} karakter</td></tr>
         <tr><td>Status Evaluasi</td><td>${escapePlagHtml(report.riskLabel || '')} (Orisinalitas ${report.uniquePct ?? (100 - simPct)}%)</td></tr>
-        <tr><td>Mesin Terintegrasi</td><td>OpenAlex · Crossref · DOAJ · Wikipedia ID/EN · Multi-AI Ensemble · Local Winnowing${report.turnitinApiConnected ? ' · Turnitin Core API' : ''}</td></tr>
+        <tr><td>Mesin Terintegrasi</td><td>OpenAlex · Crossref · DOAJ · Wikipedia ID/EN · Multi-AI Ensemble · Local Winnowing${report.turnitinApiConnected ? ' · Turnitin Core API (No Repository)' : ''}</td></tr>
       </table>
 
       <h2>Naskah Teranotasi (Highlight Warna Sumber)</h2>
@@ -521,10 +529,11 @@ export function generateTurnitinHtmlReport(report) {
       <ul>${recsHtml}</ul>
 
       <div class="filters">
-        <strong>Filter Laporan:</strong>
+        <strong>Filter Laporan &amp; Privasi:</strong>
         Exclude quotes: <b>${report.filters?.excludeQuotes ? 'ON' : 'OFF'}</b> ·
         Exclude bibliography: <b>${report.filters?.excludeBibliography ? 'ON' : 'OFF'}</b> ·
-        Exclude small matches: <b>${report.filters?.excludeSmallWords ? `&lt; ${report.filters.excludeSmallWords} kata` : 'OFF'}</b>
+        Exclude small matches: <b>${report.filters?.excludeSmallWords ? `&lt; ${report.filters.excludeSmallWords} kata` : 'OFF'}</b> ·
+        Repository: <b style="color:#059669">NO REPOSITORY</b>
       </div>
     </div>
   </article>
@@ -535,7 +544,9 @@ export function generateTurnitinHtmlReport(report) {
 export function generateTurnitinJsonReport(report) {
   return JSON.stringify(
     {
-      generator: 'Manifestudio Integrated Plagiarism Checker v67',
+      generator: 'Manifestudio Integrated Plagiarism Checker v68 (Standard Report)',
+      repositoryMode: 'no-repository',
+      repositoryLabel: report.repositoryLabel || 'No Repository (Tidak disimpan/diindeks ke repositori manapun)',
       submissionId: report.submissionId,
       checkedAt: report.checkedAt,
       fileName: report.fileName,
