@@ -1,10 +1,10 @@
-import { createToolsHubController } from './tools-ui.js?v=66';
+import { createToolsHubController } from './tools-ui.js?v=67';
 import { initMusicPlayer } from './music.js?v=59';
-import { loadCatalogData } from './data.js?v=59';
-import { normalizeBrandConfig, normalizeUtilityConfig } from './store.js?v=59';
+import { loadCatalogData } from './data.js?v=67';
+import { normalizeBrandConfig, normalizeUtilityConfig } from './store.js?v=67';
 
 const THEME_STORAGE_KEY = 'manifestudio_theme_v1';
-const VALID_TABS = new Set(['prayer', 'weather', 'worldclock', 'speedtest', 'downloader', 'compressor', 'converter', 'songfinder', 'music', 'dracin', 'audioeditor', 'manifestai']);
+const VALID_TABS = new Set(['prayer', 'weather', 'worldclock', 'speedtest', 'downloader', 'compressor', 'converter', 'songfinder', 'music', 'dracin', 'audioeditor', 'manifestai', 'plagiarism']);
 
 let currentTheme = 'dark';
 let toolsHub = null;
@@ -98,6 +98,7 @@ const CONCISE_HEADER_NAV_LABELS = {
   dracin: 'Drama China',
   audioeditor: 'Audio Editor',
   manifestai: 'Manifest AI',
+  plagiarism: 'Cek Plagiarisme',
 };
 
 function syncHeaderNavLabels() {

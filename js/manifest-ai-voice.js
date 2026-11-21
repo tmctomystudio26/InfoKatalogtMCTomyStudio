@@ -12,7 +12,7 @@ import {
   getVoiceProfileById,
   resolveVoiceForSegment,
   segmentMultilingualSpeech,
-} from './manifest-ai-logic.js?v=66';
+} from './manifest-ai-logic.js?v=67';
 
 const EDGE_TTS_HOST = 'https://innoai-edge-tts-text-to-speech.hf.space';
 const TIKTOK_TTS_URL = 'https://tiktok-tts.weilnet.workers.dev/api/generation';

@@ -24,7 +24,7 @@ import {
   renderMarkdownSafe,
   upsertByokKey,
   upsertChatThread,
-} from './manifest-ai-logic.js?v=66';
+} from './manifest-ai-logic.js?v=67';
 import {
   getCachedModelRegistry,
   isPuterAiReady,
@@ -39,8 +39,8 @@ import {
   signInPuterSdk,
   syncLiveModelRegistry,
   testByokKeyConnection,
-} from './manifest-ai.js?v=66';
-import { createManifestAiVoicePlayer } from './manifest-ai-voice.js?v=66';
+} from './manifest-ai.js?v=67';
+import { createManifestAiVoicePlayer } from './manifest-ai-voice.js?v=67';
 
 const STARTER_PROMPTS = Object.freeze([
   {

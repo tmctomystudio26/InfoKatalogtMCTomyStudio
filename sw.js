@@ -1,4 +1,4 @@
-const CACHE_NAME = 'manifestudio-cache-v66';
+const CACHE_NAME = 'manifestudio-cache-v67';
 
 const PRECACHE_ASSETS = [
   './',
@@ -45,7 +45,12 @@ const PRECACHE_ASSETS = [
   './js/audio-editor-ui.js',
   './js/manifest-ai-logic.js',
   './js/manifest-ai.js',
+  './js/manifest-ai-voice.js',
   './js/manifest-ai-ui.js',
+  './js/plagiarism-logic.js',
+  './js/plagiarism-engine.js',
+  './js/plagiarism-report.js',
+  './js/plagiarism-ui.js',
   './js/receipt.js',
   './js/vault.js',
   './js/pwa.js',
@@ -77,6 +82,7 @@ const PRECACHE_ASSETS = [
   './assets/icons/tool-dracin.svg',
   './assets/icons/tool-audioeditor.svg',
   './assets/icons/tool-manifestai.svg',
+  './assets/icons/tool-plagiarism.svg',
   './assets/icons/icon-192.png',
   './assets/icons/icon-512.png',
   './assets/icons/icon-maskable-512.png',

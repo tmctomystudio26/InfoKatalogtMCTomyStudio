@@ -56,9 +56,10 @@ import {
 import { formatAudioTime, getLoadingProgressMeta, isTrackInWatchLater } from './music-logic.js?v=59';
 import { MUSIC_PRESET_CATEGORIES, getMusicController, initMusicPlayer } from './music.js?v=59';
 import { createDracinController } from './dracin-ui.js?v=60';
-import { createAudioEditorController } from './audio-editor-ui.js?v=60';
-import { createManifestAiController } from './manifest-ai-ui.js?v=66';
-import { normalizeUtilityConfig } from './store.js?v=60';
+import { createAudioEditorController } from './audio-editor-ui.js?v=67';
+import { createManifestAiController } from './manifest-ai-ui.js?v=67';
+import { createPlagiarismController } from './plagiarism-ui.js?v=67';
+import { normalizeUtilityConfig } from './store.js?v=67';
 
 const PRAYER_CACHE_KEY = 'manifestudio_prayer_cache_v1';
 const MYQURAN_CITIES_KEY = 'manifestudio_myquran_cities_v1';
@@ -476,6 +477,7 @@ export function createToolsHubController({
   let dracinCtrl = null;
   let audioEditorCtrl = null;
   let manifestAiCtrl = null;
+  let plagiarismCtrl = null;
   let isHubSeeking = false;
 
   function getUtilityItemConfig(id) {
@@ -4490,6 +4492,15 @@ export function createToolsHubController({
     `;
   }
 
+  function renderPlagiarismPanel() {
+    return `
+      <section class="tool-panel plagiarism-panel" aria-label="Cek Plagiarisme Terpadu Multi-Mesin">
+        ${renderSubPanelIntro('plagiarism')}
+        <div id="plagiarism-hub-mount"></div>
+      </section>
+    `;
+  }
+
   function bindToolEvents() {
     rootEl.querySelectorAll('[data-tool-subtab]').forEach((btn) => {
       btn.addEventListener('click', () => {
@@ -5322,6 +5333,18 @@ export function createToolsHubController({
     } else if (manifestAiCtrl) {
       manifestAiCtrl.unmount();
     }
+
+    if (toolState.activeSubTab === 'plagiarism') {
+      const plgMount = rootEl.querySelector('#plagiarism-hub-mount');
+      if (plgMount) {
+        if (!plagiarismCtrl) {
+          plagiarismCtrl = createPlagiarismController({ onToast });
+        }
+        plagiarismCtrl.mount(plgMount);
+      }
+    } else if (plagiarismCtrl) {
+      plagiarismCtrl.unmount();
+    }
   }
 
   function renderPrayerSearchResultsHtml(subDistrictResults = [], filteredCities = []) {
@@ -5379,6 +5402,8 @@ export function createToolsHubController({
         ? renderAudioEditorPanel()
         : toolState.activeSubTab === 'manifestai'
         ? renderManifestAiPanel()
+        : toolState.activeSubTab === 'plagiarism'
+        ? renderPlagiarismPanel()
         : renderDownloaderPanel();
 
     const subnavButtonsHtml = (toolState.utilities?.items || [])
@@ -5449,7 +5474,8 @@ export function createToolsHubController({
         subTab === 'music' ||
         subTab === 'dracin' ||
         subTab === 'audioeditor' ||
-        subTab === 'manifestai'
+        subTab === 'manifestai' ||
+        subTab === 'plagiarism'
       ) {
         toolState.activeSubTab = subTab;
       }
@@ -5498,6 +5524,9 @@ export function createToolsHubController({
       if (manifestAiCtrl) {
         manifestAiCtrl.unmount();
       }
+      if (plagiarismCtrl) {
+        plagiarismCtrl.unmount();
+      }
       stopLiveTimers();
       if (rootEl) rootEl.innerHTML = '';
     },
@@ -5506,6 +5535,7 @@ export function createToolsHubController({
       gaugeInstance?.redraw();
       audioEditorCtrl?.redrawTheme();
       manifestAiCtrl?.redrawTheme();
+      plagiarismCtrl?.redrawTheme?.();
     },
   };
 }

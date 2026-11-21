@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64" fill="none">
+  <defs>
+    <linearGradient id="plagBg" x1="6" y1="6" x2="58" y2="58" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#e11d48" />
+      <stop offset="52%" stop-color="#7c3aed" />
+      <stop offset="100%" stop-color="#0284c7" />
+    </linearGradient>
+    <linearGradient id="plagGloss" x1="10" y1="6" x2="52" y2="44" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#ffffff" stop-opacity="0.28" />
+      <stop offset="100%" stop-color="#ffffff" stop-opacity="0" />
+    </linearGradient>
+  </defs>
+  <rect x="4" y="4" width="56" height="56" rx="16" fill="url(#plagBg)" />
+  <rect x="6" y="6" width="52" height="52" rx="14" fill="url(#plagGloss)" />
+  <rect x="16" y="14" width="24" height="32" rx="4" fill="#ffffff" fill-opacity="0.16" stroke="#ffffff" stroke-width="2.6" />
+  <line x1="21" y1="22" x2="35" y2="22" stroke="#ffffff" stroke-width="2.6" stroke-linecap="round" />
+  <line x1="21" y1="28" x2="33" y2="28" stroke="#fecdd3" stroke-width="2.6" stroke-linecap="round" />
+  <line x1="21" y1="34" x2="29" y2="34" stroke="#bae6fd" stroke-width="2.6" stroke-linecap="round" />
+  <circle cx="40" cy="40" r="9.5" fill="#0f172a" fill-opacity="0.45" stroke="#ffffff" stroke-width="2.8" />
+  <path d="M36.5 40.2L39 42.6L43.8 37.6" stroke="#6ee7b7" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" />
+  <line x1="46.8" y1="46.8" x2="51.5" y2="51.5" stroke="#ffffff" stroke-width="3.2" stroke-linecap="round" />
+</svg>

@@ -763,6 +763,18 @@ export const DEFAULT_UTILITY_CONFIG = {
       heroDescription:
         'Satukan kekuatan banyak model AI terkemuka dalam satu ruang obrolan yang konsisten memorinya, gratis tanpa API key dengan jalur failover otomatis per pengguna, atau kombinasikan beberapa API Key pribadi Anda secara paralel.',
     },
+    {
+      id: 'plagiarism',
+      label: 'Cek Plagiarisme',
+      icon: './assets/icons/tool-plagiarism.svg',
+      pageTitle: 'Cek Plagiarisme Terpadu — Laporan Format Turnitin & Multi-AI',
+      pageSubtitle:
+        'Unggah semua jenis berkas (PDF, DOCX, PPTX, XLSX, ODT, EPUB, RTF, Gambar OCR) atau tempel naskah. Gabungan OpenAlex, Crossref, DOAJ, Wikipedia, Multi-AI & Turnitin API dengan unduh laporan PDF/HTML mirip Turnitin terbaru.',
+      heroKicker: 'Turnitin-Style Report · OpenAlex 250M+ · Crossref · DOAJ · Multi-AI Ensemble',
+      heroTitle: 'Cek Plagiarisme Multi-Mesin Terpadu & Laporan Turnitin',
+      heroDescription:
+        'Seluruh mesin deteksi berjalan serentak (OpenAlex, Crossref, DOAJ, Wikipedia ID/EN, Winnowing K-Gram, Multi-AI ChatGPT/Gemini/Claude/DeepSeek/Grok & konektor Turnitin Core API) lalu digabungkan menjadi laporan interaktif & PDF siap unduh.',
+    },
   ],
 };
 

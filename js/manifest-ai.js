@@ -27,7 +27,7 @@ import {
   recordProviderCooldown,
   redactSensitiveOwnerData,
   shouldPerformWebResearch,
-} from './manifest-ai-logic.js?v=66';
+} from './manifest-ai-logic.js?v=67';
 
 const MODEL_SYNC_TTL_MS = 6 * 60 * 60 * 1000; // 6 hours auto-refresh
 const RESEARCH_CACHE_TTL_MS = 10 * 60 * 1000; // 10 minutes live research cache

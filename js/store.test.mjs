@@ -1817,15 +1817,16 @@ test('normalizeYtMusicTrack supports hybrid tracks with both videoId and backgro
 test('normalizeUtilityConfig, upsertUtilityItemInCatalog, and describeCatalogChanges manage utility icons, labels, page headers, and YT Music hero card', () => {
   const base = getDefaultCatalogSnapshot();
   const util = normalizeUtilityConfig(base.utilities);
-  assert.equal(util.items.length, 12);
+  assert.equal(util.items.length, 13);
   assert.equal(util.items.some((i) => i.id === 'downloader' && i.label === 'Downloader'), true);
   assert.equal(util.items.some((i) => i.id === 'converter' && i.label === 'Konversi File'), true);
   assert.equal(util.items.some((i) => i.id === 'songfinder' && i.label === 'Cari Judul Lagu'), true);
   assert.equal(util.items.some((i) => i.id === 'dracin' && i.label === 'Drama China'), true);
   assert.equal(util.items.some((i) => i.id === 'audioeditor' && i.label === 'Audio Editor'), true);
   assert.equal(util.items.some((i) => i.id === 'manifestai' && i.label === 'Manifest AI'), true);
+  assert.equal(util.items.some((i) => i.id === 'plagiarism' && i.label === 'Cek Plagiarisme'), true);
   assert.equal(util.musicHero.icon, './assets/icons/tool-music.svg');
-  assert.ok(DEFAULT_UTILITY_CONFIG.items.length === 12);
+  assert.ok(DEFAULT_UTILITY_CONFIG.items.length === 13);
 
   let next = upsertUtilityItemInCatalog(base, {
     id: 'downloader',
@@ -3265,9 +3266,9 @@ test('v49 AI Hybrid Super-Compressor & Ultra Perceptual AVIF/WebP planner, PSNR 
 });
 
 test('v51 Drama China (Dracin) unifies 15+ short-drama platforms, parallel APIs, free episode jump, auto-ID subtitles, history, and AI clip matcher', () => {
-  // 1. Utility registration (12 free utilities including dracin, audioeditor & manifestai)
+  // 1. Utility registration (13 free utilities including dracin, audioeditor, manifestai & plagiarism)
   const utilCfg = normalizeUtilityConfig();
-  assert.equal(utilCfg.items.length, 12);
+  assert.equal(utilCfg.items.length, 13);
   const dracinTool = utilCfg.items.find((it) => it.id === 'dracin');
   assert.ok(dracinTool);
   assert.equal(dracinTool.label, 'Drama China');

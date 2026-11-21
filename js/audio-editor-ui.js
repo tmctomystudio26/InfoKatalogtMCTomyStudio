@@ -570,14 +570,25 @@ export function createAudioEditorController({ onToast = () => {} } = {}) {
     const waveMidY = (waveTop + waveBottom) / 2;
     const maxAmp = (waveBottom - waveTop) * 0.42;
 
-    const bg = isDark ? '#0b1230' : '#eef3fa';
-    const rulerBg = isDark ? '#080e24' : '#e2eaf5';
+    const bg = isDark ? '#0b1124' : '#f4f6fc';
+    const rulerBg = isDark ? '#080d1c' : '#e9eef8';
     const tickColor = isDark ? 'rgba(148,163,184,0.34)' : 'rgba(51,65,85,0.28)';
-    const labelColor = isDark ? 'rgba(203,213,225,0.78)' : 'rgba(51,65,85,0.78)';
-    const waveActive = isDark ? '#2aa8ff' : '#0284c7';
-    const waveMuted = isDark ? 'rgba(148,163,184,0.24)' : 'rgba(100,116,139,0.28)';
-    const cutShade = isDark ? 'rgba(239, 68, 68, 0.16)' : 'rgba(239, 68, 68, 0.12)';
-    const outShade = isDark ? 'rgba(4, 8, 24, 0.52)' : 'rgba(15, 23, 42, 0.08)';
+    const labelColor = isDark ? 'rgba(226,232,240,0.88)' : 'rgba(30,41,59,0.86)';
+    const subLabelColor = isDark ? 'rgba(148,163,184,0.82)' : 'rgba(100,116,139,0.88)';
+    const waveGrad = ctx.createLinearGradient(0, waveTop, 0, waveBottom);
+    if (isDark) {
+      waveGrad.addColorStop(0, '#818cf8');
+      waveGrad.addColorStop(0.5, '#38bdf8');
+      waveGrad.addColorStop(1, '#2dd4bf');
+    } else {
+      waveGrad.addColorStop(0, '#4f46e5');
+      waveGrad.addColorStop(0.55, '#0284c7');
+      waveGrad.addColorStop(1, '#0d9488');
+    }
+    const waveActive = waveGrad;
+    const waveMuted = isDark ? 'rgba(148,163,184,0.22)' : 'rgba(100,116,139,0.26)';
+    const cutShade = isDark ? 'rgba(244, 63, 94, 0.16)' : 'rgba(244, 63, 94, 0.11)';
+    const outShade = isDark ? 'rgba(4, 8, 22, 0.54)' : 'rgba(15, 23, 42, 0.08)';
 
     // Background & top ruler strip
     ctx.fillStyle = bg;
@@ -586,7 +597,7 @@ export function createAudioEditorController({ onToast = () => {} } = {}) {
     ctx.fillRect(0, 0, width, rulerH);
 
     // Subtle horizontal center line
-    ctx.strokeStyle = isDark ? 'rgba(148,163,184,0.1)' : 'rgba(15,23,42,0.08)';
+    ctx.strokeStyle = isDark ? 'rgba(148,163,184,0.12)' : 'rgba(15,23,42,0.08)';
     ctx.lineWidth = 1;
     ctx.beginPath();
     ctx.moveTo(0, waveMidY);
@@ -594,10 +605,48 @@ export function createAudioEditorController({ onToast = () => {} } = {}) {
     ctx.stroke();
 
     if (!sourceBuffer || !waveformPeaks) {
-      ctx.fillStyle = labelColor;
-      ctx.font = '600 13px "Plus Jakarta Sans", sans-serif';
+      // Subtle ambient placeholder bars so the empty stage feels like a studio DAW
+      const ghostBars = Math.max(24, Math.floor((width - 24) / 7));
+      const ghostGap = (width - 24) / ghostBars;
+      ctx.fillStyle = isDark ? 'rgba(129, 140, 248, 0.12)' : 'rgba(99, 102, 241, 0.1)';
+      for (let i = 0; i < ghostBars; i += 1) {
+        const waveShape = Math.abs(Math.sin(i * 0.42) * Math.cos(i * 0.17));
+        const gh = 6 + waveShape * Math.min(34, maxAmp * 0.6);
+        ctx.fillRect(12 + i * ghostGap, waveMidY - gh, 3, gh * 2);
+      }
+
+      const safeMaxW = Math.max(180, width - 36);
+      const wrapLines = (text, maxW) => {
+        const words = String(text).split(/\s+/);
+        const lines = [];
+        let line = '';
+        for (const w of words) {
+          const test = line ? `${line} ${w}` : w;
+          if (ctx.measureText(test).width > maxW && line) {
+            lines.push(line);
+            line = w;
+          } else {
+            line = test;
+          }
+        }
+        if (line) lines.push(line);
+        return lines;
+      };
+
       ctx.textAlign = 'center';
-      ctx.fillText('Ketuk "Pilih Audio" atau "Audio Contoh" untuk mulai mengedit gelombang', width / 2, waveMidY + 5);
+      ctx.fillStyle = labelColor;
+      ctx.font = '700 13.5px "Plus Jakarta Sans", sans-serif';
+      ctx.fillText('Siap mengedit gelombang audio', width / 2, waveMidY - 10, safeMaxW);
+
+      ctx.fillStyle = subLabelColor;
+      ctx.font = '500 12px "Plus Jakarta Sans", sans-serif';
+      const hintLines = wrapLines(
+        'Pilih Audio / Video, Rekam Mic, atau ketuk Audio Contoh di atas.',
+        safeMaxW
+      );
+      hintLines.forEach((ln, idx) => {
+        ctx.fillText(ln, width / 2, waveMidY + 11 + idx * 17, safeMaxW);
+      });
       return;
     }
 
