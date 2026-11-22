@@ -32,11 +32,16 @@ import {
 } from './novel-logic.js';
 
 import {
+  CURATED_DRACIN_CATALOG,
   DRACIN_GENRES,
+  NUNODRAMA_SUPPORTED_PLATFORMS,
+  extractNunoSectionItems,
+  extractNunoWatchPayload,
   filterDracinCatalog,
   isFullFreeDrama,
   isLikelyChineseDramaTitle,
   normalizeDracinItem,
+  resolveNunoPlatformId,
 } from './dracin-logic.js';
 
 import { DEFAULT_UTILITY_CONFIG } from './store.js';
@@ -406,5 +411,71 @@ test('v72 Canonical novel abbreviation expander & VIP-to-Free mirror filter work
   assert.ok(vipOnly.some((n) => n.id === 'vipfree:sl'));
   assert.ok(vipOnly.some((n) => n.id === 'sakura:1'));
 });
+
+test('v73 Drama China 17-Platform Native Catalog has 90+ verified items, zero Dailymotion items, and parses NunoDrama VIP & TikTok FYP streams', () => {
+  assert.ok(
+    CURATED_DRACIN_CATALOG.length >= 90,
+    `Expected >= 90 verified native dramas in CURATED_DRACIN_CATALOG, got ${CURATED_DRACIN_CATALOG.length}`
+  );
+  const dmCount = CURATED_DRACIN_CATALOG.filter((d) => Boolean(d.dailymotionId)).length;
+  assert.equal(dmCount, 0, 'CURATED_DRACIN_CATALOG must contain 0 Dailymotion screen-recording items in v73');
+  assert.ok(NUNODRAMA_SUPPORTED_PLATFORMS.size >= 17);
+  assert.equal(resolveNunoPlatformId('stardusttv'), 'stardust');
+  assert.equal(resolveNunoPlatformId('dramabox'), 'dramabox');
+
+  // Verify TikTok FYP & Dub Indo filters
+  const fypDramas = filterDracinCatalog(CURATED_DRACIN_CATALOG, { genreId: 'fyp-tiktok' });
+  assert.ok(fypDramas.length >= 6, `Expected >= 6 FYP TikTok dramas, got ${fypDramas.length}`);
+  const vipDramas = filterDracinCatalog(CURATED_DRACIN_CATALOG, { genreId: 'full-free' });
+  assert.ok(vipDramas.length >= 80, `Expected >= 80 VIP-unlocked dramas, got ${vipDramas.length}`);
+  const dubDramas = filterDracinCatalog(CURATED_DRACIN_CATALOG, { genreId: 'dub-indo' });
+  assert.ok(dubDramas.length >= 5, `Expected >= 5 Dub Indo dramas, got ${dubDramas.length}`);
+
+  // Verify extractNunoSectionItems handles Jina text wrapper + VIP + PineDrama TikTok items
+  const rawSectionText = `Title: NunoDrama API
+URL Source: https://nunodrama.my.id/api/section/dramabox/vip
+Markdown Content:
+{"dramas":[{"BookID":"42000006753","BookName":"Dewa Judi","Cover":"https://hwztchapter.dramaboxdb.com/data/cppartner/4x2/42x0/420x0/42000006753/42000006753.jpg","ChapterCount":62,"Introduction":"Kembali dari puncak dunia judi.","Tags":["Action","Urban"],"Corner":"Anggota Saja"}]}`;
+
+  const parsedItems = extractNunoSectionItems(rawSectionText, 'dramabox', 'vip');
+  assert.equal(parsedItems.length, 1);
+  assert.equal(parsedItems[0].sourceId, '42000006753');
+  assert.equal(parsedItems[0].title, 'Dewa Judi');
+  assert.equal(parsedItems[0].totalEpisodes, 62);
+  assert.equal(parsedItems[0].isVipUnlocked, true);
+  assert.ok(parsedItems[0].genres.includes('full-free'));
+
+  // Verify extractNunoWatchPayload parses MP4, HLS, Melolo CENC key, NunoMix relative proxy, subtitles, and episode count
+  const sampleWatchHtml = `
+    <html>
+      <head><title>Nonton Dewa Judi - Ep 25 - NunoDrama</title></head>
+      <body>
+        <span>62 Episode Tersedia</span>
+        <video id="player" data-src="https://hwztvideo.dramaboxdb.com/42000006753_ep25_720p.mp4" data-kind="mp4"></video>
+        <button data-quality-option data-label="1080p" data-url="https://hwztvideo.dramaboxdb.com/42000006753_ep25_1080p.mp4">1080p</button>
+        <button data-quality-option data-label="720p" data-url="https://hwztvideo.dramaboxdb.com/42000006753_ep25_720p.mp4">720p</button>
+        <button data-sub-option data-lang="id" data-label="Indonesia" data-url="https://inter.nunodrama.my.id/sub.vtt">ID</button>
+      </body>
+    </html>
+  `;
+  const watchRes = extractNunoWatchPayload(sampleWatchHtml, { platformId: 'dramabox', episodeNumber: 25 });
+  assert.equal(watchRes.totalEpisodes, 62);
+  assert.equal(watchRes.servers.length, 2);
+  assert.equal(watchRes.servers[0].qualityLabel, '720P');
+  assert.equal(watchRes.servers[0].kind, 'mp4');
+  assert.equal(watchRes.subtitles.length, 1);
+  assert.equal(watchRes.subtitles[0].url, 'https://inter.nunodrama.my.id/sub.vtt');
+
+  // Verify Melolo CENC key attribute format (data-key="HEX_KEY" data-encrypted="true")
+  const meloloWatchHtml = `
+    <video id="player" data-src="https://v16m-default.akamaized.net/melolo_ep20.mp4" data-kind="mp4" data-key="a1b2c3d4e5f60718293a4b5c6d7e8f90" data-encrypted="true"></video>
+  `;
+  const meloloWatch = extractNunoWatchPayload(meloloWatchHtml, { platformId: 'melolo', episodeNumber: 20 });
+  assert.equal(meloloWatch.servers.length, 1);
+  assert.equal(meloloWatch.servers[0].kind, 'cenc-mp4');
+  assert.equal(meloloWatch.servers[0].contentKey, 'a1b2c3d4e5f60718293a4b5c6d7e8f90');
+  assert.equal(meloloWatch.servers[0].url, 'https://v16m-default.akamaized.net/melolo_ep20.mp4');
+});
+
 
 

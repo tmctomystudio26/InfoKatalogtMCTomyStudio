@@ -9895,6 +9895,64 @@ body.dracin-fs-lock {
   min-width: 0;
 }
 
+.dracin-fyp-banner {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  padding: 0.85rem 1rem;
+  border-radius: 14px;
+  background: linear-gradient(135deg, #fff1f2 0%, #f5f3ff 100%);
+  border: 1px solid rgba(225, 29, 72, 0.28);
+  color: #0f172a;
+}
+
+[data-theme='dark'] .dracin-fyp-banner {
+  background: linear-gradient(135deg, rgba(225, 29, 72, 0.2), rgba(124, 58, 237, 0.24));
+  border-color: rgba(244, 63, 94, 0.36);
+  color: #f8fafc;
+}
+
+.dracin-fyp-banner-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 0.18rem;
+  min-width: 0;
+}
+
+.dracin-fyp-banner-title {
+  font-weight: 700;
+  font-size: 0.86rem;
+  line-height: 1.35;
+  color: #0f172a;
+}
+
+[data-theme='dark'] .dracin-fyp-banner-title {
+  color: #f8fafc;
+}
+
+.dracin-fyp-banner-sub {
+  font-size: 0.78rem;
+  font-weight: 500;
+  color: #475569;
+}
+
+[data-theme='dark'] .dracin-fyp-banner-sub {
+  color: #cbd5e1;
+}
+
+.dracin-fyp-banner-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.dracin-fyp-banner-actions .btn {
+  flex: 1 1 auto;
+  justify-content: center;
+  white-space: nowrap;
+}
+
 .dracin-stage {
   position: relative;
   width: 100%;

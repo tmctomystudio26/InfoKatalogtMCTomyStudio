@@ -55,12 +55,12 @@ import {
 } from './song-finder.js?v=59';
 import { formatAudioTime, getLoadingProgressMeta, isTrackInWatchLater } from './music-logic.js?v=59';
 import { MUSIC_PRESET_CATEGORIES, getMusicController, initMusicPlayer } from './music.js?v=59';
-import { createDracinController } from './dracin-ui.js?v=71';
+import { createDracinController } from './dracin-ui.js?v=73';
 import { createAudioEditorController } from './audio-editor-ui.js?v=67';
 import { createManifestAiController } from './manifest-ai-ui.js?v=67';
 import { createPlagiarismController } from './plagiarism-ui.js?v=69';
-import { createNovelController } from './novel-ui.js?v=72';
-import { normalizeUtilityConfig } from './store.js?v=72';
+import { createNovelController } from './novel-ui.js?v=73';
+import { normalizeUtilityConfig } from './store.js?v=73';
 
 const PRAYER_CACHE_KEY = 'manifestudio_prayer_cache_v1';
 const MYQURAN_CITIES_KEY = 'manifestudio_myquran_cities_v1';
