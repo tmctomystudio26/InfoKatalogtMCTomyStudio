@@ -1,4 +1,4 @@
-const CACHE_NAME = 'manifestudio-cache-v72';
+const CACHE_NAME = 'manifestudio-cache-v73';
 
 const PRECACHE_ASSETS = [
   './',
@@ -36,6 +36,7 @@ const PRECACHE_ASSETS = [
   './js/tools-page.js',
   './js/music-logic.js',
   './js/music.js',
+  './js/dracin-verified-seed.js',
   './js/dracin-logic.js',
   './js/dracin-cenc.js',
   './js/dracin.js',
