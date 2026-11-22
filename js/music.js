@@ -3279,12 +3279,23 @@ export function initMusicPlayer() {
   }
 
   function updateCartOverlapOffset() {
+    const cartBar = document.getElementById('mobile-cart-bar');
+    const hasCart = Boolean(cartBar && !cartBar.hidden && window.innerWidth <= 768);
     if (customPos) {
       root.classList.remove('is-above-mobile-cart');
+      if (hasCart) {
+        const fabSize = window.innerWidth <= 640 ? 40 : 44;
+        const maxSafeTop = Math.max(12, window.innerHeight - 96 - fabSize);
+        if (customPos.y > maxSafeTop) {
+          root.style.top = `${maxSafeTop}px`;
+        } else {
+          root.style.top = `${customPos.y}px`;
+        }
+      } else {
+        root.style.top = `${customPos.y}px`;
+      }
       return;
     }
-    const cartBar = document.getElementById('mobile-cart-bar');
-    const hasCart = Boolean(cartBar && !cartBar.hidden);
     root.classList.toggle('is-above-mobile-cart', hasCart);
   }
 

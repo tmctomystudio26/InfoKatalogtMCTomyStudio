@@ -1,4 +1,4 @@
-const CACHE_NAME = 'manifestudio-cache-v73';
+const CACHE_NAME = 'manifestudio-cache-v74';
 
 const PRECACHE_ASSETS = [
   './',
@@ -68,6 +68,21 @@ const PRECACHE_ASSETS = [
   './assets/banner-weather.jpg',
   './assets/banner-worldclock.jpg',
   './assets/banner-speedtest.jpg',
+  './assets/banners/banner-katalog.jpg',
+  './assets/banners/banner-prayer.jpg',
+  './assets/banners/banner-weather.jpg',
+  './assets/banners/banner-worldclock.jpg',
+  './assets/banners/banner-speedtest.jpg',
+  './assets/banners/banner-downloader.jpg',
+  './assets/banners/banner-compressor.jpg',
+  './assets/banners/banner-converter.jpg',
+  './assets/banners/banner-songfinder.jpg',
+  './assets/banners/banner-music.jpg',
+  './assets/banners/banner-dracin.jpg',
+  './assets/banners/banner-audioeditor.jpg',
+  './assets/banners/banner-manifestai.jpg',
+  './assets/banners/banner-plagiarism.jpg',
+  './assets/banners/banner-novel.jpg',
   './assets/icons/brand-icon.svg',
   './assets/icons/menu-utilitas.svg',
   './assets/icons/social-whatsapp.svg',

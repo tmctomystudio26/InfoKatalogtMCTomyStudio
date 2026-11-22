@@ -2,7 +2,7 @@ import {
   CATALOG_PREVIEW_STORAGE_KEY,
   getDefaultCatalogSnapshot,
   loadCatalogData,
-} from './data.js?v=60';
+} from './data.js?v=74';
 import {
   DEFAULT_UTILITY_CONFIG,
   MAX_HISTORY_LOGS,
@@ -10,6 +10,7 @@ import {
   applyOpenGraphToHtml,
   collectAllActiveUploadLogoPaths,
   collectOrphanedUploadLogos,
+  computeAdminSyncStatus,
   deleteBannerFromCatalog,
   deleteCategoryFromCatalog,
   deleteFaqFromCatalog,
@@ -18,8 +19,11 @@ import {
   extractManagedUploadLogoPath,
   formatRupiah,
   getProductCardTone,
+  inferBannerUtilityId,
   moveBannerInCatalog,
   moveProductInCatalog,
+  moveUtilityItemInCatalog,
+  normalizeBannerScrim,
   normalizeBanners,
   normalizeBrandConfig,
   normalizeOpenGraphConfig,
@@ -29,6 +33,7 @@ import {
   reorderProductToIndex,
   slugifyId,
   summarizeCatalogDiff,
+  syncAllMenusAndBanners,
   syncPaymentOptionsWithBrand,
   toggleProductStockInCatalog,
   upsertBannerInCatalog,
@@ -37,12 +42,12 @@ import {
   upsertProductInCatalog,
   upsertSocialInCatalog,
   upsertUtilityItemInCatalog,
-} from './store.js?v=60';
+} from './store.js?v=74';
 import {
   decryptVault,
   encryptVault,
   verifyGitHubTokenAccess,
-} from './vault.js?v=60';
+} from './vault.js?v=74';
 
 const THEME_STORAGE_KEY = 'manifestudio_theme_v1';
 const ADMIN_VAULT_STORAGE_KEY = 'manifestudio_admin_vault_v1';
@@ -72,21 +77,34 @@ const SOCIAL_LOGO_PRESETS = [
 ];
 
 const BANNER_IMAGE_PRESETS = [
-  { value: './assets/hero-banner.jpg', label: 'Banner Katalog Default' },
-  { value: './assets/banner-prayer.jpg', label: 'Banner Jadwal Sholat' },
-  { value: './assets/banner-weather.jpg', label: 'Banner Prakiraan Cuaca' },
-  { value: './assets/banner-worldclock.jpg', label: 'Banner Jam Dunia' },
-  { value: './assets/banner-speedtest.jpg', label: 'Banner Speedtest' },
+  { value: './assets/banners/banner-katalog.jpg', label: 'Maskot Katalog Utama (Gen-Z)' },
+  { value: './assets/banners/banner-prayer.jpg', label: 'Maskot Jadwal Sholat' },
+  { value: './assets/banners/banner-weather.jpg', label: 'Maskot Prakiraan Cuaca' },
+  { value: './assets/banners/banner-worldclock.jpg', label: 'Maskot Jam Dunia & Globe' },
+  { value: './assets/banners/banner-speedtest.jpg', label: 'Maskot Speedtest Internet' },
+  { value: './assets/banners/banner-downloader.jpg', label: 'Maskot Media Downloader' },
+  { value: './assets/banners/banner-compressor.jpg', label: 'Maskot Kompres HD' },
+  { value: './assets/banners/banner-converter.jpg', label: 'Maskot Konversi File' },
+  { value: './assets/banners/banner-songfinder.jpg', label: 'Maskot Cari Lagu' },
+  { value: './assets/banners/banner-music.jpg', label: 'Maskot YT Music' },
+  { value: './assets/banners/banner-dracin.jpg', label: 'Maskot Drama China' },
+  { value: './assets/banners/banner-audioeditor.jpg', label: 'Maskot Audio Editor' },
+  { value: './assets/banners/banner-manifestai.jpg', label: 'Maskot Manifest AI' },
+  { value: './assets/banners/banner-plagiarism.jpg', label: 'Maskot Cek Plagiarisme' },
+  { value: './assets/banners/banner-novel.jpg', label: 'Maskot Novel Terpadu' },
   { value: '', label: 'Tanpa Gambar (Hanya Gradien Warna)' },
 ];
 
 const BANNER_SCRIM_OPTIONS = [
-  { value: '', label: 'Biru Gelap Standar' },
-  { value: 'is-emerald', label: 'Hijau Emerald' },
-  { value: 'is-sky', label: 'Biru Langit Cerah' },
-  { value: 'is-indigo', label: 'Indigo / Ungu' },
-  { value: 'is-cyan', label: 'Cyan / Tosca' },
-  { value: 'is-violet', label: 'Violet / Magenta' },
+  { value: 'default', label: 'Electric Blue (Standar)' },
+  { value: 'prayer', label: 'Emerald Sholat' },
+  { value: 'weather', label: 'Sky Blue Cuaca' },
+  { value: 'world', label: 'Indigo Jam Dunia' },
+  { value: 'downloader', label: 'Cyan / Tosca' },
+  { value: 'emerald', label: 'Hijau Emerald Neon' },
+  { value: 'violet', label: 'Violet / Magenta' },
+  { value: 'crimson', label: 'Crimson / Coral' },
+  { value: 'amber', label: 'Amber / Sunset Gold' },
 ];
 
 const UTILITY_ICON_PRESETS = [
@@ -102,6 +120,9 @@ const UTILITY_ICON_PRESETS = [
   { value: './assets/icons/tool-music.svg', label: 'Ikon Musik YT' },
   { value: './assets/icons/tool-dracin.svg', label: 'Ikon Drama China (Dracin)' },
   { value: './assets/icons/tool-audioeditor.svg', label: 'Ikon Audio Editor Studio' },
+  { value: './assets/icons/tool-manifestai.svg', label: 'Ikon Manifest AI' },
+  { value: './assets/icons/tool-plagiarism.svg', label: 'Ikon Cek Plagiarisme' },
+  { value: './assets/icons/tool-novel.svg', label: 'Ikon Novel Terpadu' },
 ];
 
 const adminState = {
@@ -115,6 +136,7 @@ const adminState = {
   activeTab: 'products',
   searchQuery: '',
   dirty: false,
+  lastSyncCheckedAt: '',
   confirmDeleteProductId: null,
   confirmDeleteCategoryId: null,
   confirmDeleteBannerId: null,
@@ -540,6 +562,10 @@ async function openUnlockedDashboard() {
   baseLoaded.data.banners = normalizeBanners(baseLoaded.data.banners);
   baseLoaded.data.utilities = normalizeUtilityConfig(baseLoaded.data.utilities || {});
   adminState.baseCatalog = structuredClone(baseLoaded.data);
+  adminState.lastSyncCheckedAt = new Date().toLocaleTimeString('id-ID', {
+    hour: '2-digit',
+    minute: '2-digit',
+  });
 
   if (loaded.source !== 'preview' || adminState.lastPublishedProducts.length === 0) {
     adminState.lastPublishedProducts = extractPublishedLogoEntries(baseLoaded.data);
@@ -560,27 +586,155 @@ async function openUnlockedDashboard() {
   pullHistoryFromGitHub().catch(() => {});
 }
 
+function updateAdminTabCounters() {
+  const cat = adminState.catalog || {};
+  const setCount = (id, val) => {
+    const el = document.getElementById(id);
+    if (el) el.textContent = String(val);
+  };
+  const products = Array.isArray(cat.products) ? cat.products : [];
+  const categories = Array.isArray(cat.categories)
+    ? cat.categories.filter((c) => c && c.id !== 'all')
+    : [];
+  const banners = normalizeBanners(cat.banners);
+  const util = normalizeUtilityConfig(cat.utilities || {});
+  const activeUtilCount = util.items.filter((it) => it.enabled !== false).length;
+  const vouchers = Array.isArray(cat.vouchers) ? cat.vouchers : [];
+  const faqs = Array.isArray(cat.faqItems) ? cat.faqItems : [];
+
+  setCount('tab-count-products', products.length);
+  setCount('tab-count-categories', categories.length);
+  setCount('tab-count-banners', banners.length);
+  setCount('tab-count-utilities', activeUtilCount);
+  setCount('tab-count-vouchers', vouchers.length);
+  setCount('tab-count-faq', faqs.length);
+}
+
+function renderSyncStatusPanel() {
+  const panel = document.getElementById('admin-sync-status-panel');
+  const dot = document.getElementById('admin-sync-dot');
+  const titleEl = document.getElementById('admin-sync-summary-title');
+  const timeEl = document.getElementById('admin-sync-timestamp');
+  const grid = document.getElementById('admin-sync-grid');
+  if (!panel || !grid) return;
+
+  const status = computeAdminSyncStatus(adminState.catalog, adminState.baseCatalog, {
+    source: adminState.source,
+    dirty: adminState.dirty,
+    checkedAt: adminState.lastSyncCheckedAt,
+  });
+
+  panel.classList.remove('is-synced', 'is-draft', 'is-attention');
+  panel.classList.add(`is-${status.overallStatus}`);
+
+  if (dot) {
+    dot.classList.remove('is-ok', 'is-draft', 'is-attention');
+    dot.classList.add(
+      status.overallStatus === 'synced'
+        ? 'is-ok'
+        : status.overallStatus === 'attention'
+        ? 'is-attention'
+        : 'is-draft'
+    );
+  }
+  if (titleEl) {
+    titleEl.textContent = status.overallLabel;
+  }
+  if (timeEl) {
+    timeEl.textContent = `Cek ${status.checkedAt}`;
+  }
+
+  const pillTextMap = {
+    ok: 'Sinkron',
+    draft: 'Draft',
+    warn: 'Perlu Cek',
+  };
+
+  grid.innerHTML = status.checks
+    .map(
+      (chk) => `
+      <div class="admin-sync-tile is-${escapeHtml(chk.status)}" data-sync-tile="${escapeHtml(chk.id)}">
+        <div class="admin-sync-tile-top">
+          <span class="admin-sync-tile-label">${escapeHtml(chk.label)}</span>
+          <span class="admin-sync-pill is-${escapeHtml(chk.status)}">${escapeHtml(pillTextMap[chk.status] || 'Info')}</span>
+        </div>
+        <strong class="admin-sync-tile-value">${escapeHtml(chk.value)}</strong>
+        <span class="admin-sync-tile-detail">${escapeHtml(chk.detail)}</span>
+      </div>
+    `
+    )
+    .join('');
+
+  return status;
+}
+
+function runSyncAllMenusAndBanners() {
+  if (!adminState.unlocked) return;
+  adminState.catalog = syncAllMenusAndBanners(adminState.catalog);
+  adminState.lastSyncCheckedAt = new Date().toLocaleTimeString('id-ID', {
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+  markDirty();
+  renderBannerList();
+  renderUtilitiesSettings();
+  renderBrandSettings();
+  setStatusBox(
+    'admin-status-box',
+    'Menu Utama, Menu Utilitas, Kartu Pintasan, dan seluruh slide Banner berhasil disinkronkan. Klik "Simpan & Publikasikan ke GitHub" atau "Pratinjau Lokal" untuk menerapkan.',
+    'ok'
+  );
+  showToast('Semua Menu & Banner berhasil disinkronkan.');
+}
+
+async function runCheckSyncStatus() {
+  if (!adminState.unlocked) return;
+  try {
+    const fresh = await loadCatalogData({ allowLocalPreview: false });
+    fresh.data.brand = normalizeBrandConfig(fresh.data.brand || {});
+    fresh.data.banners = normalizeBanners(fresh.data.banners);
+    fresh.data.utilities = normalizeUtilityConfig(fresh.data.utilities || {});
+    adminState.baseCatalog = structuredClone(fresh.data);
+    adminState.lastSyncCheckedAt = new Date().toLocaleTimeString('id-ID', {
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+    const status = updateSourceBadge();
+    showToast(`Pemeriksaan sinkronisasi selesai: ${status?.overallLabel || 'OK'}`);
+  } catch {
+    showToast('Gagal memeriksa sinkronisasi katalog live.');
+  }
+}
+
 function updateSourceBadge() {
+  updateAdminTabCounters();
+  const syncStatus = renderSyncStatusPanel();
   const badge = document.getElementById('admin-source-badge');
-  if (!badge) return;
-  if (adminState.dirty) {
-    badge.textContent = 'Ada perubahan belum dipublikasikan';
+  if (!badge) return syncStatus;
+  if (syncStatus?.overallStatus === 'attention') {
+    badge.textContent = 'Perlu Sinkronisasi';
     badge.className = 'admin-badge is-warn';
-    return;
+    return syncStatus;
+  }
+  if (adminState.dirty) {
+    badge.textContent = 'Draft Lokal (Belum Publish)';
+    badge.className = 'admin-badge is-warn';
+    return syncStatus;
   }
   if (adminState.source === 'preview') {
     badge.textContent = 'Pratinjau Lokal Aktif';
     badge.className = 'admin-badge is-warn';
   } else if (adminState.source === 'github') {
-    badge.textContent = 'Sinkron dari GitHub';
+    badge.textContent = 'Tersinkron GitHub';
     badge.className = 'admin-badge is-ok';
   } else if (adminState.source === 'remote') {
-    badge.textContent = 'Katalog Live (catalog.json)';
+    badge.textContent = 'Tersinkron Penuh';
     badge.className = 'admin-badge is-ok';
   } else {
     badge.textContent = 'Data Bawaan';
     badge.className = 'admin-badge';
   }
+  return syncStatus;
 }
 
 function markDirty() {
@@ -747,6 +901,8 @@ function renderBannerList() {
 
   adminState.catalog.banners = normalizeBanners(adminState.catalog.banners);
   const banners = adminState.catalog.banners;
+  const utilItems = normalizeUtilityConfig(adminState.catalog.utilities || {}).items || [];
+  const utilMap = new Map(utilItems.map((it) => [it.id, it]));
 
   if (banners.length === 0) {
     container.innerHTML = `<p class="admin-subtitle">Belum ada slide banner terdaftar.</p>`;
@@ -759,6 +915,20 @@ function renderBannerList() {
       const isLast = idx === banners.length - 1;
       const pending = adminState.pendingUploads[`__banner__${ban.id}`];
       const isConfirming = adminState.confirmDeleteBannerId === ban.id;
+      const cleanScrim = normalizeBannerScrim(ban.scrim);
+      const linkedUtilId = inferBannerUtilityId(ban);
+      const linkedUtil = linkedUtilId ? utilMap.get(linkedUtilId) : null;
+      const isDisabled = ban.enabled === false || (linkedUtil && linkedUtil.enabled === false);
+
+      let syncBadgeHtml = '<span class="admin-badge is-ok">Katalog Utama</span>';
+      if (linkedUtil) {
+        syncBadgeHtml =
+          linkedUtil.enabled === false
+            ? `<span class="admin-badge is-warn">Menu Nonaktif: ${escapeHtml(linkedUtil.label)}</span>`
+            : `<span class="admin-badge is-ok">Menu: ${escapeHtml(linkedUtil.label)}</span>`;
+      } else if (linkedUtilId) {
+        syncBadgeHtml = `<span class="admin-badge">Tab: ${escapeHtml(linkedUtilId)}</span>`;
+      }
 
       const presetOpts = BANNER_IMAGE_PRESETS.map(
         (preset) =>
@@ -767,43 +937,50 @@ function renderBannerList() {
 
       const scrimOpts = BANNER_SCRIM_OPTIONS.map(
         (opt) =>
-          `<option value="${escapeHtml(opt.value)}" ${(ban.scrim || '') === opt.value ? 'selected' : ''}>${escapeHtml(opt.label)}</option>`
+          `<option value="${escapeHtml(opt.value)}" ${cleanScrim === opt.value ? 'selected' : ''}>${escapeHtml(opt.label)}</option>`
       ).join('');
 
       return `
-        <article class="admin-banner-card" data-banner-card="${escapeHtml(ban.id)}">
-          <div class="admin-banner-card-head">
-            <div class="admin-banner-preview-mini ${escapeHtml(ban.scrim || '')}">
+        <details class="admin-collapsible-card ${isDisabled ? 'is-disabled-item' : ''}" data-banner-card="${escapeHtml(ban.id)}"${isConfirming ? ' open' : ''}>
+          <summary class="admin-collapsible-summary">
+            <div class="admin-util-summary-left">
               ${
                 ban.image
-                  ? `<img src="${escapeHtml(ban.image)}" alt="" class="admin-banner-preview-img" data-banner-thumb="${escapeHtml(ban.id)}" />`
-                  : `<div class="admin-banner-preview-grad" data-banner-thumb-grad="${escapeHtml(ban.id)}"></div>`
+                  ? `<img src="${escapeHtml(ban.image)}" alt="" class="admin-banner-summary-thumb" loading="lazy" data-banner-thumb="${escapeHtml(ban.id)}" />`
+                  : `<div class="admin-banner-summary-thumb" data-banner-thumb-grad="${escapeHtml(ban.id)}"></div>`
               }
-              <div class="admin-banner-preview-overlay">
-                <span class="admin-order-badge mono-num">Slide #${idx + 1}</span>
-                <strong data-banner-title-preview="${escapeHtml(ban.id)}">${escapeHtml(ban.heading || 'Slide Banner')}</strong>
-                <small data-banner-kicker-preview="${escapeHtml(ban.id)}">${escapeHtml(ban.kicker || '')}</small>
+              <div class="admin-util-summary-meta">
+                <div class="admin-util-summary-title">
+                  <span class="admin-order-badge mono-num">#${idx + 1}</span>
+                  <span data-banner-title-preview="${escapeHtml(ban.id)}">${escapeHtml(ban.heading || 'Slide Banner')}</span>
+                </div>
+                <div class="admin-prod-meta" data-banner-kicker-preview="${escapeHtml(ban.id)}">
+                  ${escapeHtml(ban.kicker || '')} · ${escapeHtml(ban.href || '#katalog')}
+                </div>
               </div>
             </div>
 
-            <div class="admin-order-controls">
+            <div class="admin-util-summary-right">
+              ${syncBadgeHtml}
               <button
                 type="button"
                 class="btn btn-secondary btn-sm admin-order-btn"
                 data-move-banner="${escapeHtml(ban.id)}"
                 data-move-dir="up"
+                aria-label="Naikkan slide ${idx + 1}"
                 ${isFirst ? 'disabled' : ''}
               >
-                ↑ Naik
+                ↑
               </button>
               <button
                 type="button"
                 class="btn btn-secondary btn-sm admin-order-btn"
                 data-move-banner="${escapeHtml(ban.id)}"
                 data-move-dir="down"
+                aria-label="Turunkan slide ${idx + 1}"
                 ${isLast ? 'disabled' : ''}
               >
-                ↓ Turun
+                ↓
               </button>
               <button
                 type="button"
@@ -811,122 +988,132 @@ function renderBannerList() {
                 data-delete-banner="${escapeHtml(ban.id)}"
                 ${banners.length <= 1 ? 'disabled' : ''}
               >
-                ${isConfirming ? 'Konfirmasi Hapus' : 'Hapus Slide'}
+                ${isConfirming ? 'Konfirmasi' : 'Hapus'}
               </button>
             </div>
-          </div>
+          </summary>
 
-          <div class="admin-form-grid">
-            <div class="form-field">
-              <label for="ban-kicker-${escapeHtml(ban.id)}">Label Kicker (Teks Kecil Atas)</label>
-              <input
-                type="text"
-                id="ban-kicker-${escapeHtml(ban.id)}"
-                data-ban-id="${escapeHtml(ban.id)}"
-                data-ban-field="kicker"
-                value="${escapeHtml(ban.kicker || '')}"
-              />
+          <div class="admin-collapsible-body">
+            <div class="admin-form-grid">
+              <div class="form-field">
+                <label for="ban-kicker-${escapeHtml(ban.id)}">Label Kicker (Teks Kecil Atas)</label>
+                <input
+                  type="text"
+                  id="ban-kicker-${escapeHtml(ban.id)}"
+                  data-ban-id="${escapeHtml(ban.id)}"
+                  data-ban-field="kicker"
+                  value="${escapeHtml(ban.kicker || '')}"
+                />
+              </div>
+              <div class="form-field">
+                <label for="ban-heading-${escapeHtml(ban.id)}">Judul Utama Banner</label>
+                <input
+                  type="text"
+                  id="ban-heading-${escapeHtml(ban.id)}"
+                  data-ban-id="${escapeHtml(ban.id)}"
+                  data-ban-field="heading"
+                  value="${escapeHtml(ban.heading || '')}"
+                />
+              </div>
+              <div class="form-field admin-sum-field">
+                <label for="ban-sub-${escapeHtml(ban.id)}">Deskripsi Singkat Banner</label>
+                <input
+                  type="text"
+                  id="ban-sub-${escapeHtml(ban.id)}"
+                  data-ban-id="${escapeHtml(ban.id)}"
+                  data-ban-field="sub"
+                  value="${escapeHtml(ban.sub || '')}"
+                />
+              </div>
+              <div class="form-field">
+                <label for="ban-cta-${escapeHtml(ban.id)}">Teks Tombol (CTA)</label>
+                <input
+                  type="text"
+                  id="ban-cta-${escapeHtml(ban.id)}"
+                  data-ban-id="${escapeHtml(ban.id)}"
+                  data-ban-field="ctaLabel"
+                  value="${escapeHtml(ban.ctaLabel || '')}"
+                />
+              </div>
+              <div class="form-field">
+                <label for="ban-href-${escapeHtml(ban.id)}">Link Tujuan Saat Diklik</label>
+                <input
+                  type="text"
+                  id="ban-href-${escapeHtml(ban.id)}"
+                  data-ban-id="${escapeHtml(ban.id)}"
+                  data-ban-field="href"
+                  value="${escapeHtml(ban.href || '#katalog')}"
+                />
+              </div>
+              <div class="form-field">
+                <label for="ban-scrim-${escapeHtml(ban.id)}">Tema Warna Latar / Scrim</label>
+                <select
+                  id="ban-scrim-${escapeHtml(ban.id)}"
+                  class="admin-select"
+                  data-ban-id="${escapeHtml(ban.id)}"
+                  data-ban-field="scrim"
+                >
+                  ${scrimOpts}
+                </select>
+              </div>
+              <div class="form-field">
+                <label for="ban-preset-${escapeHtml(ban.id)}">Preset Gambar Maskot Gen-Z</label>
+                <select
+                  id="ban-preset-${escapeHtml(ban.id)}"
+                  class="admin-select"
+                  data-ban-preset="${escapeHtml(ban.id)}"
+                >
+                  <option value="__custom__">— Pilih Preset Maskot Banner —</option>
+                  ${presetOpts}
+                </select>
+              </div>
+              <div class="form-field admin-sum-field">
+                <label for="ban-img-${escapeHtml(ban.id)}">Path / URL Gambar Banner</label>
+                <input
+                  type="text"
+                  id="ban-img-${escapeHtml(ban.id)}"
+                  data-ban-id="${escapeHtml(ban.id)}"
+                  data-ban-field="image"
+                  value="${escapeHtml(String(ban.image || '').startsWith('data:') ? '' : ban.image || '')}"
+                  placeholder="./assets/banners/banner-katalog.jpg atau https://..."
+                />
+              </div>
             </div>
-            <div class="form-field">
-              <label for="ban-heading-${escapeHtml(ban.id)}">Judul Utama Banner</label>
-              <input
-                type="text"
-                id="ban-heading-${escapeHtml(ban.id)}"
-                data-ban-id="${escapeHtml(ban.id)}"
-                data-ban-field="heading"
-                value="${escapeHtml(ban.heading || '')}"
-              />
-            </div>
-            <div class="form-field admin-sum-field">
-              <label for="ban-sub-${escapeHtml(ban.id)}">Deskripsi / Kalimat Penjelas Banner</label>
-              <input
-                type="text"
-                id="ban-sub-${escapeHtml(ban.id)}"
-                data-ban-id="${escapeHtml(ban.id)}"
-                data-ban-field="sub"
-                value="${escapeHtml(ban.sub || '')}"
-              />
-            </div>
-            <div class="form-field">
-              <label for="ban-cta-${escapeHtml(ban.id)}">Teks Tombol (CTA)</label>
-              <input
-                type="text"
-                id="ban-cta-${escapeHtml(ban.id)}"
-                data-ban-id="${escapeHtml(ban.id)}"
-                data-ban-field="ctaLabel"
-                value="${escapeHtml(ban.ctaLabel || '')}"
-              />
-            </div>
-            <div class="form-field">
-              <label for="ban-href-${escapeHtml(ban.id)}">Link Tujuan Saat Diklik</label>
-              <input
-                type="text"
-                id="ban-href-${escapeHtml(ban.id)}"
-                data-ban-id="${escapeHtml(ban.id)}"
-                data-ban-field="href"
-                value="${escapeHtml(ban.href || '#katalog')}"
-              />
-            </div>
-            <div class="form-field">
-              <label for="ban-scrim-${escapeHtml(ban.id)}">Tema Warna Latar / Overlay</label>
-              <select
-                id="ban-scrim-${escapeHtml(ban.id)}"
-                class="admin-select"
-                data-ban-id="${escapeHtml(ban.id)}"
-                data-ban-field="scrim"
-              >
-                ${scrimOpts}
-              </select>
-            </div>
-            <div class="form-field">
-              <label for="ban-preset-${escapeHtml(ban.id)}">Preset Gambar Banner</label>
-              <select
-                id="ban-preset-${escapeHtml(ban.id)}"
-                class="admin-select"
-                data-ban-preset="${escapeHtml(ban.id)}"
-              >
-                <option value="__custom__">— Pilih Preset Gambar / Gradien —</option>
-                ${presetOpts}
-              </select>
-            </div>
-            <div class="form-field admin-sum-field">
-              <label for="ban-img-${escapeHtml(ban.id)}">Path / URL Gambar Banner (Kosongkan untuk Tanpa Gambar / Gradien)</label>
-              <input
-                type="text"
-                id="ban-img-${escapeHtml(ban.id)}"
-                data-ban-id="${escapeHtml(ban.id)}"
-                data-ban-field="image"
-                value="${escapeHtml(String(ban.image || '').startsWith('data:') ? '' : ban.image || '')}"
-                placeholder="./assets/hero-banner.jpg atau https://... (kosongkan untuk gradien)"
-              />
-            </div>
-          </div>
 
-          <div class="admin-file-row">
-            <label
-              for="ban-file-${escapeHtml(ban.id)}"
-              class="btn btn-secondary btn-sm admin-file-trigger"
-            >
-              Upload Gambar Banner Baru
-            </label>
-            <input
-              type="file"
-              id="ban-file-${escapeHtml(ban.id)}"
-              class="visually-hidden-file"
-              accept="image/*"
-              data-ban-file="${escapeHtml(ban.id)}"
-            />
-            <span class="admin-prod-meta">
-              ${
-                pending
-                  ? `File baru siap diunggah: ${escapeHtml(pending.fileName)}`
-                  : ban.image
-                  ? `Gambar aktif: ${escapeHtml(String(ban.image).slice(0, 64))}`
-                  : 'Mode Gradien Warna Tanpa Foto'
-              }
-            </span>
+            <div class="admin-file-row">
+              <label
+                for="ban-file-${escapeHtml(ban.id)}"
+                class="btn btn-secondary btn-sm admin-file-trigger"
+              >
+                Upload Gambar Banner Baru
+              </label>
+              <input
+                type="file"
+                id="ban-file-${escapeHtml(ban.id)}"
+                class="visually-hidden-file"
+                accept="image/*"
+                data-ban-file="${escapeHtml(ban.id)}"
+              />
+              <label class="admin-switch-label">
+                <input
+                  type="checkbox"
+                  data-ban-toggle="${escapeHtml(ban.id)}"
+                  ${ban.enabled !== false ? 'checked' : ''}
+                />
+                <span>Slide Aktif</span>
+              </label>
+              <span class="admin-prod-meta">
+                ${
+                  pending
+                    ? `File baru siap diunggah: ${escapeHtml(pending.fileName)}`
+                    : ban.image
+                    ? `Gambar: ${escapeHtml(String(ban.image).slice(0, 56))}`
+                    : 'Mode Gradien Warna'
+                }
+              </span>
+            </div>
           </div>
-        </article>
+        </details>
       `;
     })
     .join('');
@@ -944,52 +1131,38 @@ function renderBannerList() {
         queueManagedLogoForDeletion(target.image);
         delete adminState.pendingUploads[`__banner__${banId}`];
         target.image = nextImg;
-        const card = container.querySelector(`[data-banner-card="${banId}"]`);
-        const preview = card?.querySelector('.admin-banner-preview-mini');
-        if (preview) {
-          const existingImg = preview.querySelector(`[data-banner-thumb="${banId}"]`);
-          const existingGrad = preview.querySelector(`[data-banner-thumb-grad="${banId}"]`);
-          if (nextImg) {
-            if (existingGrad) existingGrad.remove();
-            if (existingImg) {
-              existingImg.src = nextImg;
-            } else {
-              const imgEl = document.createElement('img');
-              imgEl.src = nextImg;
-              imgEl.alt = '';
-              imgEl.className = 'admin-banner-preview-img';
-              imgEl.setAttribute('data-banner-thumb', banId);
-              preview.prepend(imgEl);
-            }
-          } else {
-            if (existingImg) existingImg.remove();
-            if (!existingGrad) {
-              const gradEl = document.createElement('div');
-              gradEl.className = 'admin-banner-preview-grad';
-              gradEl.setAttribute('data-banner-thumb-grad', banId);
-              preview.prepend(gradEl);
-            }
-          }
-        }
+        const thumb = container.querySelector(`[data-banner-thumb="${banId}"]`);
+        if (thumb && nextImg) thumb.src = nextImg;
       } else if (field === 'scrim') {
-        target.scrim = e.target.value;
-        const card = container.querySelector(`[data-banner-card="${banId}"]`);
-        const preview = card?.querySelector('.admin-banner-preview-mini');
-        if (preview) {
-          preview.className = `admin-banner-preview-mini ${e.target.value || ''}`.trim();
-        }
+        target.scrim = normalizeBannerScrim(e.target.value);
       } else if (field === 'heading') {
         target.heading = e.target.value;
         const titlePreview = container.querySelector(`[data-banner-title-preview="${banId}"]`);
         if (titlePreview) titlePreview.textContent = e.target.value || 'Slide Banner';
-      } else if (field === 'kicker') {
-        target.kicker = e.target.value;
+      } else if (field === 'kicker' || field === 'href') {
+        target[field] = e.target.value;
+        if (field === 'href') {
+          target.utilityId = inferBannerUtilityId(target);
+        }
         const kickerPreview = container.querySelector(`[data-banner-kicker-preview="${banId}"]`);
-        if (kickerPreview) kickerPreview.textContent = e.target.value || '';
+        if (kickerPreview) {
+          kickerPreview.textContent = `${target.kicker || ''} · ${target.href || '#katalog'}`;
+        }
       } else {
         target[field] = e.target.value;
       }
       markDirty();
+    });
+  });
+
+  container.querySelectorAll('[data-ban-toggle]').forEach((checkbox) => {
+    checkbox.addEventListener('change', (e) => {
+      const banId = checkbox.getAttribute('data-ban-toggle');
+      const target = (adminState.catalog.banners || []).find((b) => b.id === banId);
+      if (!target) return;
+      target.enabled = Boolean(e.target.checked);
+      markDirty();
+      renderBannerList();
     });
   });
 
@@ -1037,7 +1210,9 @@ function renderBannerList() {
   });
 
   container.querySelectorAll('[data-move-banner]').forEach((btn) => {
-    btn.addEventListener('click', () => {
+    btn.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
       const banId = btn.getAttribute('data-move-banner');
       const dir = btn.getAttribute('data-move-dir');
       adminState.catalog = moveBannerInCatalog(adminState.catalog, banId, dir);
@@ -1048,7 +1223,9 @@ function renderBannerList() {
   });
 
   container.querySelectorAll('[data-delete-banner]').forEach((btn) => {
-    btn.addEventListener('click', () => {
+    btn.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
       const banId = btn.getAttribute('data-delete-banner');
       const bannersList = adminState.catalog.banners || [];
       if (bannersList.length <= 1) {
@@ -1069,7 +1246,7 @@ function renderBannerList() {
       adminState.confirmDeleteBannerId = null;
       markDirty();
       renderBannerList();
-      showToast(`Banner "${deleted?.heading || banId}" dihapus.`);
+      showToast(`Slide banner "${deleted?.heading || banId}" dihapus.`);
     });
   });
 }
@@ -3244,6 +3421,10 @@ function bindEvents() {
 
   document.getElementById('pull-github-btn')?.addEventListener('click', pullFromGitHub);
   document.getElementById('publish-github-btn')?.addEventListener('click', publishToGitHub);
+  document.getElementById('sync-all-menus-banners-btn')?.addEventListener('click', runSyncAllMenusAndBanners);
+  document.getElementById('banner-sync-all-btn')?.addEventListener('click', runSyncAllMenusAndBanners);
+  document.getElementById('utilities-sync-all-btn')?.addEventListener('click', runSyncAllMenusAndBanners);
+  document.getElementById('check-sync-btn')?.addEventListener('click', runCheckSyncStatus);
 
   document.getElementById('save-preview-btn')?.addEventListener('click', () => {
     if (!adminState.unlocked) return;
@@ -3551,11 +3732,11 @@ function bindEvents() {
     const sub = document.getElementById('new-banner-sub')?.value.trim() || '';
     const ctaLabel = document.getElementById('new-banner-cta')?.value.trim() || 'Lihat →';
     const href = document.getElementById('new-banner-href')?.value.trim() || '#katalog';
-    const scrim = document.getElementById('new-banner-scrim')?.value || '';
+    const scrim = normalizeBannerScrim(document.getElementById('new-banner-scrim')?.value || 'default');
     const pendingUpload = adminState.newBannerPendingUpload;
     const image = pendingUpload
       ? pendingUpload.previewDataUrl
-      : newBanImgUrlEl?.value.trim() ?? './assets/hero-banner.jpg';
+      : newBanImgUrlEl?.value.trim() ?? './assets/banners/banner-katalog.jpg';
 
     try {
       const bannerId = `banner-${slugifyId(heading)}-${Date.now().toString(36).slice(-3)}`;
@@ -3582,13 +3763,13 @@ function bindEvents() {
       markDirty();
       e.target.reset();
       adminState.newBannerPendingUpload = null;
-      if (newBanImgUrlEl) newBanImgUrlEl.value = './assets/hero-banner.jpg';
+      if (newBanImgUrlEl) newBanImgUrlEl.value = './assets/banners/banner-katalog.jpg';
       if (newBanPreviewEl) {
-        newBanPreviewEl.src = './assets/hero-banner.jpg';
+        newBanPreviewEl.src = './assets/banners/banner-katalog.jpg';
         newBanPreviewEl.hidden = false;
       }
       if (newBanStatusEl) {
-        newBanStatusEl.textContent = 'Rasio landscape 16:9 atau 21:9 direkomendasikan.';
+        newBanStatusEl.textContent = 'Rasio landscape 16:9 direkomendasikan (1200×675px).';
       }
       renderBannerList();
       showToast(`Slide banner "${heading}" berhasil ditambahkan.`);
@@ -3948,6 +4129,14 @@ function renderUtilitiesSettings() {
 
   adminState.catalog.utilities = normalizeUtilityConfig(adminState.catalog.utilities || {});
   const util = adminState.catalog.utilities;
+  const banners = normalizeBanners(adminState.catalog.banners);
+  const activeBannerUtilIds = new Set(
+    banners
+      .filter((b) => b.enabled !== false)
+      .map((b) => inferBannerUtilityId(b))
+      .filter(Boolean)
+  );
+  const enabledCount = util.items.filter((it) => it.enabled !== false).length;
 
   const buildPresetOptions = (currentVal) =>
     UTILITY_ICON_PRESETS.map(
@@ -3957,221 +4146,11 @@ function renderUtilitiesSettings() {
 
   const calloutPending = adminState.pendingUploads['__util_callout__'];
   const musicHeroPending = adminState.pendingUploads['__util_music_hero__'];
+  const calloutDesc = String(util.callout.description || '').trim();
 
   container.innerHTML = `
     <div class="admin-utilities-sections">
-      <!-- 1. Kartu Hero YT Music Hub -->
-      <article class="admin-banner-card">
-        <div class="admin-social-top">
-          <div class="admin-social-brand">
-            <img
-              src="${escapeHtml(util.musicHero.icon)}"
-              alt="Ikon YT Music Hub"
-              width="48"
-              height="48"
-              class="modal-logo admin-logo-thumb"
-              data-util-hero-thumb="musicHero"
-            />
-            <div>
-              <strong class="admin-social-title">Kartu Hero YT Music Hub (Halaman Musik YT)</strong>
-              <div class="admin-prod-meta">
-                ${musicHeroPending ? `File baru siap: ${escapeHtml(musicHeroPending.fileName)}` : `Ikon aktif: ${escapeHtml(String(util.musicHero.icon).slice(0, 60))}`}
-              </div>
-            </div>
-          </div>
-          <span class="admin-badge is-ok">tools.html?tab=music</span>
-        </div>
-
-        <div class="admin-form-grid">
-          <div class="form-field admin-sum-field">
-            <label for="util-music-hero-title">Judul Utama Kartu YT Music Hub</label>
-            <input
-              type="text"
-              id="util-music-hero-title"
-              data-util-section="musicHero"
-              data-util-field="title"
-              value="${escapeHtml(util.musicHero.title || '')}"
-            />
-          </div>
-          <div class="form-field admin-sum-field">
-            <label for="util-music-hero-sub">Deskripsi / Penjelasan Kartu YT Music Hub</label>
-            <textarea
-              id="util-music-hero-sub"
-              class="admin-textarea"
-              rows="2"
-              data-util-section="musicHero"
-              data-util-field="subtitle"
-            >${escapeHtml(util.musicHero.subtitle || '')}</textarea>
-          </div>
-          <div class="form-field">
-            <label for="util-music-hero-preset">Preset Ikon YT Music Hub</label>
-            <select id="util-music-hero-preset" class="admin-select" data-util-preset="musicHero">
-              <option value="__custom__">— Pilih Preset Ikon —</option>
-              ${buildPresetOptions(util.musicHero.icon)}
-            </select>
-          </div>
-          <div class="form-field">
-            <label for="util-music-hero-icon">Atau Path / URL Gambar Ikon</label>
-            <input
-              type="text"
-              id="util-music-hero-icon"
-              data-util-section="musicHero"
-              data-util-field="icon"
-              value="${escapeHtml(String(util.musicHero.icon || '').startsWith('data:') ? '' : util.musicHero.icon || '')}"
-              placeholder="./assets/icons/tool-music.svg atau https://..."
-            />
-          </div>
-        </div>
-
-        <div class="admin-file-row">
-          <label for="util-music-hero-file" class="btn btn-secondary btn-sm admin-file-trigger">
-            Upload Gambar / Ikon Kartu YT Music
-          </label>
-          <input
-            type="file"
-            id="util-music-hero-file"
-            class="visually-hidden-file"
-            accept="image/*"
-            data-util-file="musicHero"
-          />
-          <span class="admin-prod-meta">Mendukung SVG, PNG, JPG, atau WebP (otomatis dikompres ke repo).</span>
-        </div>
-      </article>
-
-      <!-- 2. Daftar 9 Tombol Sub-Menu, Judul Halaman & Konten Kartu Utilitas -->
-      <div class="admin-utilities-items-list">
-        ${util.items
-          .map((item, idx) => {
-            const pending = adminState.pendingUploads[`__util_tab__${item.id}`];
-            return `
-              <article class="admin-banner-card" data-util-item-card="${escapeHtml(item.id)}">
-                <div class="admin-social-top">
-                  <div class="admin-social-brand">
-                    <img
-                      src="${escapeHtml(item.icon)}"
-                      alt="Ikon ${escapeHtml(item.label)}"
-                      width="44"
-                      height="44"
-                      class="modal-logo admin-logo-thumb"
-                      data-util-item-thumb="${escapeHtml(item.id)}"
-                    />
-                    <div>
-                      <strong class="admin-social-title" data-util-item-heading="${escapeHtml(item.id)}">#${idx + 1} · ${escapeHtml(item.label)}</strong>
-                      <div class="admin-prod-meta">
-                        ${pending ? `File baru siap: ${escapeHtml(pending.fileName)}` : `Tab ID: ${escapeHtml(item.id)} · ./tools.html?tab=${escapeHtml(item.id)}`}
-                      </div>
-                    </div>
-                  </div>
-                  <span class="admin-badge">Sub-Menu #${idx + 1}</span>
-                </div>
-
-                <div class="admin-form-grid">
-                  <div class="form-field">
-                    <label for="util-label-${escapeHtml(item.id)}">Nama Tombol Menu (Navigasi)</label>
-                    <input
-                      type="text"
-                      id="util-label-${escapeHtml(item.id)}"
-                      data-util-item-id="${escapeHtml(item.id)}"
-                      data-util-item-field="label"
-                      value="${escapeHtml(item.label || '')}"
-                    />
-                  </div>
-                  <div class="form-field">
-                    <label for="util-preset-${escapeHtml(item.id)}">Preset Ikon Tombol</label>
-                    <select
-                      id="util-preset-${escapeHtml(item.id)}"
-                      class="admin-select"
-                      data-util-item-preset="${escapeHtml(item.id)}"
-                    >
-                      <option value="__custom__">— Pilih Preset Ikon —</option>
-                      ${buildPresetOptions(item.icon)}
-                    </select>
-                  </div>
-                  <div class="form-field admin-sum-field">
-                    <label for="util-icon-${escapeHtml(item.id)}">Path / URL Gambar Ikon Tombol</label>
-                    <input
-                      type="text"
-                      id="util-icon-${escapeHtml(item.id)}"
-                      data-util-item-id="${escapeHtml(item.id)}"
-                      data-util-item-field="icon"
-                      value="${escapeHtml(String(item.icon || '').startsWith('data:') ? '' : item.icon || '')}"
-                      placeholder="./assets/icons/tool-${escapeHtml(item.id)}.svg atau https://..."
-                    />
-                  </div>
-                  <div class="form-field admin-sum-field">
-                    <label for="util-pagetitle-${escapeHtml(item.id)}">Judul Besar Atas Halaman Saat Tab Ini Dibuka</label>
-                    <input
-                      type="text"
-                      id="util-pagetitle-${escapeHtml(item.id)}"
-                      data-util-item-id="${escapeHtml(item.id)}"
-                      data-util-item-field="pageTitle"
-                      value="${escapeHtml(item.pageTitle || '')}"
-                    />
-                  </div>
-                  <div class="form-field admin-sum-field">
-                    <label for="util-pagesub-${escapeHtml(item.id)}">Sub-Judul / Deskripsi Atas Halaman Saat Tab Ini Dibuka</label>
-                    <input
-                      type="text"
-                      id="util-pagesub-${escapeHtml(item.id)}"
-                      data-util-item-id="${escapeHtml(item.id)}"
-                      data-util-item-field="pageSubtitle"
-                      value="${escapeHtml(item.pageSubtitle || '')}"
-                    />
-                  </div>
-                  <div class="form-field admin-sum-field">
-                    <label for="util-herokicker-${escapeHtml(item.id)}">Caption / Kicker Kecil Di Dalam Kartu Fitur</label>
-                    <input
-                      type="text"
-                      id="util-herokicker-${escapeHtml(item.id)}"
-                      data-util-item-id="${escapeHtml(item.id)}"
-                      data-util-item-field="heroKicker"
-                      value="${escapeHtml(item.heroKicker || '')}"
-                    />
-                  </div>
-                  <div class="form-field admin-sum-field">
-                    <label for="util-herotitle-${escapeHtml(item.id)}">Judul Utama Di Dalam Kartu Fitur</label>
-                    <input
-                      type="text"
-                      id="util-herotitle-${escapeHtml(item.id)}"
-                      data-util-item-id="${escapeHtml(item.id)}"
-                      data-util-item-field="heroTitle"
-                      value="${escapeHtml(item.heroTitle || '')}"
-                    />
-                  </div>
-                  <div class="form-field admin-sum-field">
-                    <label for="util-herodesc-${escapeHtml(item.id)}">Deskripsi / Sub-Deskripsi Di Dalam Kartu Fitur</label>
-                    <textarea
-                      id="util-herodesc-${escapeHtml(item.id)}"
-                      class="admin-textarea"
-                      rows="2"
-                      data-util-item-id="${escapeHtml(item.id)}"
-                      data-util-item-field="heroDescription"
-                    >${escapeHtml(item.heroDescription || '')}</textarea>
-                  </div>
-                </div>
-
-                <div class="admin-file-row">
-                  <label for="util-file-${escapeHtml(item.id)}" class="btn btn-secondary btn-sm admin-file-trigger">
-                    Upload Gambar Ikon ${escapeHtml(item.label)}
-                  </label>
-                  <input
-                    type="file"
-                    id="util-file-${escapeHtml(item.id)}"
-                    class="visually-hidden-file"
-                    accept="image/*"
-                    data-util-item-file="${escapeHtml(item.id)}"
-                  />
-                  <span class="admin-prod-meta">
-                    ${pending ? `File siap diunggah: ${escapeHtml(pending.fileName)}` : `Ikon aktif: ${escapeHtml(String(item.icon).slice(0, 64))}`}
-                  </span>
-                </div>
-              </article>
-            `;
-          })
-          .join('')}
-      </div>
-
-      <!-- 3. Kartu Pintasan Menu Utilitas di Halaman Depan Toko -->
+      <!-- 1. Kartu Pintasan Menu Utilitas di Beranda Toko (Ringkas & Sinkron Otomatis) -->
       <article class="admin-banner-card">
         <div class="admin-social-top">
           <div class="admin-social-brand">
@@ -4184,13 +4163,34 @@ function renderUtilitiesSettings() {
               data-util-hero-thumb="callout"
             />
             <div>
-              <strong class="admin-social-title">Kartu Pintasan Menu Utilitas di Beranda Toko</strong>
+              <strong class="admin-social-title">Kartu Pintasan Menu Utilitas (Beranda)</strong>
               <div class="admin-prod-meta">
-                ${calloutPending ? `File baru siap: ${escapeHtml(calloutPending.fileName)}` : `Tampil di halaman utama toko (index.html)`}
+                ${calloutPending ? `File baru siap: ${escapeHtml(calloutPending.fileName)}` : `Sinkron otomatis dengan jumlah fitur aktif (${enabledCount} Fitur Gratis)`}
               </div>
             </div>
           </div>
-          <span class="admin-badge">Beranda Toko</span>
+          <span class="admin-badge is-ok">Beranda Toko</span>
+        </div>
+
+        <div class="admin-callout-live-preview" aria-label="Pratinjau kartu Menu Utilitas">
+          <div class="admin-callout-live-left">
+            <img
+              src="${escapeHtml(util.callout.icon)}"
+              alt=""
+              width="34"
+              height="34"
+              class="modal-logo"
+              data-util-callout-live-icon
+            />
+            <div>
+              <div style="display:flex;align-items:center;gap:0.45rem;flex-wrap:wrap;">
+                <strong data-util-callout-live-title>${escapeHtml(util.callout.title || 'Menu Utilitas')}</strong>
+                <span class="admin-badge is-ok" data-util-callout-live-badge>${escapeHtml(util.callout.badge || `${enabledCount} Fitur Gratis`)}</span>
+              </div>
+              <div class="admin-prod-meta" data-util-callout-live-desc ${calloutDesc ? '' : 'hidden'}>${escapeHtml(calloutDesc)}</div>
+            </div>
+          </div>
+          <span class="btn btn-primary btn-sm" style="pointer-events:none;">Buka ›</span>
         </div>
 
         <div class="admin-form-grid">
@@ -4205,23 +4205,35 @@ function renderUtilitiesSettings() {
             />
           </div>
           <div class="form-field">
-            <label for="util-callout-badge">Label Badge Kecil</label>
+            <label for="util-callout-badge">Label Badge Jumlah Fitur</label>
             <input
               type="text"
               id="util-callout-badge"
               data-util-section="callout"
               data-util-field="badge"
               value="${escapeHtml(util.callout.badge || '')}"
+              ${util.callout.autoCountBadge !== false ? 'disabled' : ''}
             />
           </div>
           <div class="form-field admin-sum-field">
-            <label for="util-callout-sub">Deskripsi Kartu Pintasan</label>
+            <label class="admin-switch-label">
+              <input
+                type="checkbox"
+                id="util-callout-autocount"
+                ${util.callout.autoCountBadge !== false ? 'checked' : ''}
+              />
+              <span>Hitung otomatis jumlah fitur aktif (${enabledCount} Fitur Gratis)</span>
+            </label>
+          </div>
+          <div class="form-field admin-sum-field">
+            <label for="util-callout-sub">Deskripsi Singkat Opsional (Kosongkan agar kartu ringkas &amp; rapi)</label>
             <input
               type="text"
               id="util-callout-sub"
               data-util-section="callout"
               data-util-field="description"
-              value="${escapeHtml(util.callout.description || util.callout.subtitle || '')}"
+              value="${escapeHtml(calloutDesc)}"
+              placeholder="Kosongkan untuk tampilan kartu ringkas tanpa daftar panjang"
             />
           </div>
           <div class="form-field">
@@ -4246,7 +4258,7 @@ function renderUtilitiesSettings() {
 
         <div class="admin-file-row">
           <label for="util-callout-file" class="btn btn-secondary btn-sm admin-file-trigger">
-            Upload Gambar Ikon Pintasan
+            Upload Ikon Pintasan
           </label>
           <input
             type="file"
@@ -4255,11 +4267,283 @@ function renderUtilitiesSettings() {
             accept="image/*"
             data-util-file="callout"
           />
-          <span class="admin-prod-meta">Ikon tampil pada kartu Menu Utilitas di bawah daftar produk.</span>
+          <span class="admin-prod-meta">Tampil ringkas di atas katalog produk halaman depan.</span>
         </div>
       </article>
+
+      <!-- 2. Daftar 14 Menu Utilitas (Ringkas Collapsible + Toggle Aktif + Reorder + Status Banner) -->
+      <div class="admin-utilities-items-list">
+        ${util.items
+          .map((item, idx) => {
+            const pending = adminState.pendingUploads[`__util_tab__${item.id}`];
+            const isEnabled = item.enabled !== false;
+            const hasBanner = activeBannerUtilIds.has(item.id);
+            const isFirst = idx === 0;
+            const isLast = idx === util.items.length - 1;
+            return `
+              <details class="admin-collapsible-card ${isEnabled ? '' : 'is-disabled-item'}" data-util-item-card="${escapeHtml(item.id)}">
+                <summary class="admin-collapsible-summary">
+                  <div class="admin-util-summary-left">
+                    <img
+                      src="${escapeHtml(item.icon)}"
+                      alt="Ikon ${escapeHtml(item.label)}"
+                      width="36"
+                      height="36"
+                      class="modal-logo admin-logo-thumb"
+                      data-util-item-thumb="${escapeHtml(item.id)}"
+                    />
+                    <div class="admin-util-summary-meta">
+                      <div class="admin-util-summary-title">
+                        <span class="admin-order-badge mono-num">#${idx + 1}</span>
+                        <span data-util-item-heading="${escapeHtml(item.id)}">${escapeHtml(item.label)}</span>
+                      </div>
+                      <div class="admin-prod-meta">
+                        ${pending ? `File siap: ${escapeHtml(pending.fileName)}` : `tools.html?tab=${escapeHtml(item.id)}`}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div class="admin-util-summary-right">
+                    <span class="admin-badge ${hasBanner ? 'is-ok' : 'is-warn'}">
+                      ${hasBanner ? 'Banner Sinkron' : 'Belum Ada Banner'}
+                    </span>
+                    <label class="admin-switch-label" data-util-switch-wrap>
+                      <input
+                        type="checkbox"
+                        data-util-toggle="${escapeHtml(item.id)}"
+                        aria-label="Aktifkan menu ${escapeHtml(item.label)}"
+                        ${isEnabled ? 'checked' : ''}
+                      />
+                      <span>${isEnabled ? 'Aktif' : 'Nonaktif'}</span>
+                    </label>
+                    <button
+                      type="button"
+                      class="btn btn-secondary btn-sm admin-order-btn"
+                      data-util-move="${escapeHtml(item.id)}"
+                      data-util-dir="up"
+                      aria-label="Naikkan urutan ${escapeHtml(item.label)}"
+                      ${isFirst ? 'disabled' : ''}
+                    >
+                      ↑
+                    </button>
+                    <button
+                      type="button"
+                      class="btn btn-secondary btn-sm admin-order-btn"
+                      data-util-move="${escapeHtml(item.id)}"
+                      data-util-dir="down"
+                      aria-label="Turunkan urutan ${escapeHtml(item.label)}"
+                      ${isLast ? 'disabled' : ''}
+                    >
+                      ↓
+                    </button>
+                  </div>
+                </summary>
+
+                <div class="admin-collapsible-body">
+                  <div class="admin-form-grid">
+                    <div class="form-field">
+                      <label for="util-label-${escapeHtml(item.id)}">Nama Menu (Header &amp; Tab Utilitas)</label>
+                      <input
+                        type="text"
+                        id="util-label-${escapeHtml(item.id)}"
+                        data-util-item-id="${escapeHtml(item.id)}"
+                        data-util-item-field="label"
+                        value="${escapeHtml(item.label || '')}"
+                      />
+                    </div>
+                    <div class="form-field">
+                      <label for="util-preset-${escapeHtml(item.id)}">Preset Ikon Menu</label>
+                      <select
+                        id="util-preset-${escapeHtml(item.id)}"
+                        class="admin-select"
+                        data-util-item-preset="${escapeHtml(item.id)}"
+                      >
+                        <option value="__custom__">— Pilih Preset Ikon —</option>
+                        ${buildPresetOptions(item.icon)}
+                      </select>
+                    </div>
+                    <div class="form-field admin-sum-field">
+                      <label for="util-icon-${escapeHtml(item.id)}">Path / URL Gambar Ikon</label>
+                      <input
+                        type="text"
+                        id="util-icon-${escapeHtml(item.id)}"
+                        data-util-item-id="${escapeHtml(item.id)}"
+                        data-util-item-field="icon"
+                        value="${escapeHtml(String(item.icon || '').startsWith('data:') ? '' : item.icon || '')}"
+                        placeholder="./assets/icons/tool-${escapeHtml(item.id)}.svg atau https://..."
+                      />
+                    </div>
+                    <div class="form-field admin-sum-field">
+                      <label for="util-pagetitle-${escapeHtml(item.id)}">Judul Halaman Saat Tab Dibuka</label>
+                      <input
+                        type="text"
+                        id="util-pagetitle-${escapeHtml(item.id)}"
+                        data-util-item-id="${escapeHtml(item.id)}"
+                        data-util-item-field="pageTitle"
+                        value="${escapeHtml(item.pageTitle || '')}"
+                      />
+                    </div>
+                    <div class="form-field admin-sum-field">
+                      <label for="util-pagesub-${escapeHtml(item.id)}">Sub-Judul Halaman</label>
+                      <input
+                        type="text"
+                        id="util-pagesub-${escapeHtml(item.id)}"
+                        data-util-item-id="${escapeHtml(item.id)}"
+                        data-util-item-field="pageSubtitle"
+                        value="${escapeHtml(item.pageSubtitle || '')}"
+                      />
+                    </div>
+                    <div class="form-field">
+                      <label for="util-herokicker-${escapeHtml(item.id)}">Kicker Kartu Fitur</label>
+                      <input
+                        type="text"
+                        id="util-herokicker-${escapeHtml(item.id)}"
+                        data-util-item-id="${escapeHtml(item.id)}"
+                        data-util-item-field="heroKicker"
+                        value="${escapeHtml(item.heroKicker || '')}"
+                      />
+                    </div>
+                    <div class="form-field">
+                      <label for="util-herotitle-${escapeHtml(item.id)}">Judul Kartu Fitur</label>
+                      <input
+                        type="text"
+                        id="util-herotitle-${escapeHtml(item.id)}"
+                        data-util-item-id="${escapeHtml(item.id)}"
+                        data-util-item-field="heroTitle"
+                        value="${escapeHtml(item.heroTitle || '')}"
+                      />
+                    </div>
+                    <div class="form-field admin-sum-field">
+                      <label for="util-herodesc-${escapeHtml(item.id)}">Deskripsi Kartu Fitur</label>
+                      <textarea
+                        id="util-herodesc-${escapeHtml(item.id)}"
+                        class="admin-textarea"
+                        rows="2"
+                        data-util-item-id="${escapeHtml(item.id)}"
+                        data-util-item-field="heroDescription"
+                      >${escapeHtml(item.heroDescription || '')}</textarea>
+                    </div>
+                  </div>
+
+                  <div class="admin-file-row">
+                    <label for="util-file-${escapeHtml(item.id)}" class="btn btn-secondary btn-sm admin-file-trigger">
+                      Upload Ikon ${escapeHtml(item.label)}
+                    </label>
+                    <input
+                      type="file"
+                      id="util-file-${escapeHtml(item.id)}"
+                      class="visually-hidden-file"
+                      accept="image/*"
+                      data-util-item-file="${escapeHtml(item.id)}"
+                    />
+                    <span class="admin-prod-meta">
+                      ${pending ? `File siap: ${escapeHtml(pending.fileName)}` : `Ikon: ${escapeHtml(String(item.icon).slice(0, 56))}`}
+                    </span>
+                  </div>
+                </div>
+              </details>
+            `;
+          })
+          .join('')}
+      </div>
+
+      <!-- 3. Kartu Hero YT Music Hub (Collapsible) -->
+      <details class="admin-collapsible-card">
+        <summary class="admin-collapsible-summary">
+          <div class="admin-util-summary-left">
+            <img
+              src="${escapeHtml(util.musicHero.icon)}"
+              alt="Ikon YT Music Hub"
+              width="36"
+              height="36"
+              class="modal-logo admin-logo-thumb"
+              data-util-hero-thumb="musicHero"
+            />
+            <div class="admin-util-summary-meta">
+              <div class="admin-util-summary-title">Kartu Hero YT Music Hub</div>
+              <div class="admin-prod-meta">
+                ${musicHeroPending ? `File baru siap: ${escapeHtml(musicHeroPending.fileName)}` : 'Halaman tools.html?tab=music'}
+              </div>
+            </div>
+          </div>
+          <div class="admin-util-summary-right">
+            <span class="admin-badge is-ok">YT Music Hub</span>
+          </div>
+        </summary>
+
+        <div class="admin-collapsible-body">
+          <div class="admin-form-grid">
+            <div class="form-field admin-sum-field">
+              <label for="util-music-hero-title">Judul Utama Kartu YT Music Hub</label>
+              <input
+                type="text"
+                id="util-music-hero-title"
+                data-util-section="musicHero"
+                data-util-field="title"
+                value="${escapeHtml(util.musicHero.title || '')}"
+              />
+            </div>
+            <div class="form-field admin-sum-field">
+              <label for="util-music-hero-sub">Deskripsi Kartu YT Music Hub</label>
+              <textarea
+                id="util-music-hero-sub"
+                class="admin-textarea"
+                rows="2"
+                data-util-section="musicHero"
+                data-util-field="subtitle"
+              >${escapeHtml(util.musicHero.subtitle || '')}</textarea>
+            </div>
+            <div class="form-field">
+              <label for="util-music-hero-preset">Preset Ikon YT Music Hub</label>
+              <select id="util-music-hero-preset" class="admin-select" data-util-preset="musicHero">
+                <option value="__custom__">— Pilih Preset Ikon —</option>
+                ${buildPresetOptions(util.musicHero.icon)}
+              </select>
+            </div>
+            <div class="form-field">
+              <label for="util-music-hero-icon">Atau Path / URL Gambar Ikon</label>
+              <input
+                type="text"
+                id="util-music-hero-icon"
+                data-util-section="musicHero"
+                data-util-field="icon"
+                value="${escapeHtml(String(util.musicHero.icon || '').startsWith('data:') ? '' : util.musicHero.icon || '')}"
+                placeholder="./assets/icons/tool-music.svg atau https://..."
+              />
+            </div>
+          </div>
+
+          <div class="admin-file-row">
+            <label for="util-music-hero-file" class="btn btn-secondary btn-sm admin-file-trigger">
+              Upload Gambar / Ikon Kartu YT Music
+            </label>
+            <input
+              type="file"
+              id="util-music-hero-file"
+              class="visually-hidden-file"
+              accept="image/*"
+              data-util-file="musicHero"
+            />
+            <span class="admin-prod-meta">Mendukung SVG, PNG, JPG, atau WebP.</span>
+          </div>
+        </div>
+      </details>
     </div>
   `;
+
+  // Auto-count checkbox on callout
+  container.querySelector('#util-callout-autocount')?.addEventListener('change', (e) => {
+    const checked = Boolean(e.target.checked);
+    adminState.catalog.utilities = normalizeUtilityConfig({
+      ...(adminState.catalog.utilities || {}),
+      callout: {
+        ...(adminState.catalog.utilities?.callout || {}),
+        autoCountBadge: checked,
+      },
+    });
+    markDirty();
+    renderUtilitiesSettings();
+  });
 
   // Bind section inputs (musicHero & callout)
   container.querySelectorAll('[data-util-section]').forEach((input) => {
@@ -4280,8 +4564,29 @@ function renderUtilitiesSettings() {
         targetObj.icon = nextIcon;
         const thumb = container.querySelector(`[data-util-hero-thumb="${section}"]`);
         if (thumb) thumb.src = nextIcon;
+        if (section === 'callout') {
+          const liveIcon = container.querySelector('[data-util-callout-live-icon]');
+          if (liveIcon) liveIcon.src = nextIcon;
+        }
       } else {
         targetObj[field] = e.target.value;
+        if (section === 'callout') {
+          if (field === 'title') {
+            const liveTitle = container.querySelector('[data-util-callout-live-title]');
+            if (liveTitle) liveTitle.textContent = e.target.value || 'Menu Utilitas';
+          } else if (field === 'badge') {
+            targetObj.autoCountBadge = false;
+            const liveBadge = container.querySelector('[data-util-callout-live-badge]');
+            if (liveBadge) liveBadge.textContent = e.target.value || `${enabledCount} Fitur Gratis`;
+          } else if (field === 'description') {
+            const liveDesc = container.querySelector('[data-util-callout-live-desc]');
+            if (liveDesc) {
+              const trimmed = e.target.value.trim();
+              liveDesc.textContent = trimmed;
+              liveDesc.hidden = !trimmed;
+            }
+          }
+        }
       }
       markDirty();
     });
@@ -4336,7 +4641,53 @@ function renderUtilitiesSettings() {
     });
   });
 
-  // Bind 7 utility item fields
+  // Prevent clicking switch label inside <summary> from toggling <details>
+  container.querySelectorAll('[data-util-switch-wrap]').forEach((labelEl) => {
+    labelEl.addEventListener('click', (e) => {
+      e.stopPropagation();
+    });
+  });
+
+  // Bind Aktif/Nonaktif toggles for all 14 utility menus
+  container.querySelectorAll('[data-util-toggle]').forEach((checkbox) => {
+    checkbox.addEventListener('change', (e) => {
+      e.stopPropagation();
+      const itemId = checkbox.getAttribute('data-util-toggle');
+      if (!itemId) return;
+      adminState.catalog.utilities = normalizeUtilityConfig(adminState.catalog.utilities || {});
+      const currentItem = (adminState.catalog.utilities.items || []).find((i) => i.id === itemId);
+      if (!currentItem) return;
+      adminState.catalog = upsertUtilityItemInCatalog(adminState.catalog, {
+        ...currentItem,
+        enabled: Boolean(e.target.checked),
+      });
+      markDirty();
+      renderUtilitiesSettings();
+      renderBannerList();
+      showToast(
+        e.target.checked
+          ? `Menu "${currentItem.label}" diaktifkan.`
+          : `Menu "${currentItem.label}" dinonaktifkan. Klik "Sinkronkan Semua Menu & Banner" bila perlu.`
+      );
+    });
+  });
+
+  // Bind reorder buttons for all 14 utility menus
+  container.querySelectorAll('[data-util-move]').forEach((btn) => {
+    btn.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const itemId = btn.getAttribute('data-util-move');
+      const dir = btn.getAttribute('data-util-dir');
+      if (!itemId || !dir) return;
+      adminState.catalog = moveUtilityItemInCatalog(adminState.catalog, itemId, dir);
+      markDirty();
+      renderUtilitiesSettings();
+      showToast('Urutan menu utilitas diperbarui.');
+    });
+  });
+
+  // Bind 14 utility item fields
   container.querySelectorAll('[data-util-item-id]').forEach((input) => {
     input.addEventListener('input', (e) => {
       const itemId = input.getAttribute('data-util-item-id');
@@ -4358,8 +4709,7 @@ function renderUtilitiesSettings() {
         currentItem[field] = e.target.value;
         if (field === 'label') {
           const heading = container.querySelector(`[data-util-item-heading="${itemId}"]`);
-          const idx = (adminState.catalog.utilities.items || []).findIndex((i) => i.id === itemId);
-          if (heading) heading.textContent = `#${idx + 1} · ${e.target.value || itemId}`;
+          if (heading) heading.textContent = e.target.value || itemId;
         }
       }
       adminState.catalog = upsertUtilityItemInCatalog(adminState.catalog, currentItem);
@@ -4367,7 +4717,7 @@ function renderUtilitiesSettings() {
     });
   });
 
-  // Bind 7 utility item preset selects
+  // Bind 14 utility item preset selects
   container.querySelectorAll('[data-util-item-preset]').forEach((select) => {
     select.addEventListener('change', (e) => {
       const itemId = select.getAttribute('data-util-item-preset');
@@ -4386,7 +4736,7 @@ function renderUtilitiesSettings() {
     });
   });
 
-  // Bind 7 utility item file uploads
+  // Bind 14 utility item file uploads
   container.querySelectorAll('[data-util-item-file]').forEach((fileInput) => {
     fileInput.addEventListener('change', async (e) => {
       const itemId = fileInput.getAttribute('data-util-item-file');

@@ -19,11 +19,11 @@
       rel="stylesheet"
     />
 
-    <link rel="stylesheet" href="./css/tokens.css?v=73" />
-    <link rel="stylesheet" href="./css/styles.css?v=73" />
+    <link rel="stylesheet" href="./css/tokens.css?v=74" />
+    <link rel="stylesheet" href="./css/styles.css?v=74" />
     <script>
       (function () {
-        var CURRENT_CACHE = 'manifestudio-cache-v73';
+        var CURRENT_CACHE = 'manifestudio-cache-v74';
         if ('caches' in window) {
           caches.keys().then(function (keys) {
             keys.forEach(function (k) {
@@ -32,7 +32,7 @@
           });
         }
         if ('serviceWorker' in navigator) {
-          navigator.serviceWorker.register('./sw.js?v=73').then(function (reg) {
+          navigator.serviceWorker.register('./sw.js?v=74').then(function (reg) {
             reg.update();
           }).catch(function () {});
         }
@@ -203,15 +203,35 @@
 
       <!-- Dashboard Admin: Tersembunyi & kosong sampai berhasil verifikasi/unlock -->
       <div id="admin-dashboard" class="admin-dashboard" hidden>
-        <section class="admin-card" aria-labelledby="sync-heading">
+        <section class="admin-card admin-control-card" aria-labelledby="sync-heading">
           <div class="admin-card-head">
             <div>
-              <h1 id="sync-heading" class="admin-title">Sinkronisasi Katalog Publik</h1>
+              <h1 id="sync-heading" class="admin-title">Pusat Kontrol &amp; Status Sinkronisasi</h1>
               <p class="admin-subtitle">
-                Terhubung terenkripsi ke <code id="connected-repo-label">-</code>. Setiap publikasi memperbarui <code>data/catalog.json</code> di GitHub Pages.
+                Terhubung terenkripsi ke <code id="connected-repo-label">-</code> · Sinkron otomatis antara Menu Utama, 14 Menu Utilitas, Banner Carousel, dan <code>data/catalog.json</code>.
               </p>
             </div>
-            <span id="admin-source-badge" class="admin-badge">Siap</span>
+            <span id="admin-source-badge" class="admin-badge is-ok">Tersinkron Penuh</span>
+          </div>
+
+          <!-- Live Status Sinkronisasi Panel -->
+          <div id="admin-sync-status-panel" class="admin-sync-panel" aria-live="polite">
+            <div class="admin-sync-head">
+              <div class="admin-sync-summary">
+                <span class="admin-sync-dot is-ok" id="admin-sync-dot" aria-hidden="true"></span>
+                <strong id="admin-sync-summary-title">Memeriksa status sinkronisasi...</strong>
+                <span id="admin-sync-timestamp" class="admin-sync-time mono-num"></span>
+              </div>
+              <div class="admin-sync-actions">
+                <button type="button" id="sync-all-menus-banners-btn" class="btn btn-secondary btn-sm">
+                  Sinkronkan Semua Menu &amp; Banner
+                </button>
+                <button type="button" id="check-sync-btn" class="btn btn-ghost btn-sm">
+                  Cek Sinkronisasi
+                </button>
+              </div>
+            </div>
+            <div id="admin-sync-grid" class="admin-sync-grid"></div>
           </div>
 
           <div class="admin-action-bar">
@@ -219,16 +239,16 @@
               Simpan &amp; Publikasikan ke GitHub
             </button>
             <button type="button" id="pull-github-btn" class="btn btn-secondary btn-sm">
-              Muat Ulang dari GitHub
+              Muat Ulang GitHub
             </button>
             <button type="button" id="save-preview-btn" class="btn btn-secondary btn-sm">
-              Simpan Pratinjau Lokal
+              Pratinjau Lokal
             </button>
             <button type="button" id="clear-preview-btn" class="btn btn-ghost btn-sm">
               Hapus Pratinjau
             </button>
             <button type="button" id="download-json-btn" class="btn btn-ghost btn-sm">
-              Unduh catalog.json
+              Unduh JSON
             </button>
           </div>
 
@@ -261,7 +281,8 @@
             data-admin-tab="products"
             aria-selected="true"
           >
-            Produk &amp; Harga
+            <span>Produk</span>
+            <span class="admin-tab-count mono-num" id="tab-count-products">0</span>
           </button>
           <button
             type="button"
@@ -271,7 +292,7 @@
             data-admin-tab="add"
             aria-selected="false"
           >
-            + Tambah Produk Baru
+            <span>+ Produk Baru</span>
           </button>
           <button
             type="button"
@@ -281,7 +302,8 @@
             data-admin-tab="categories"
             aria-selected="false"
           >
-            Kategori Layanan
+            <span>Kategori</span>
+            <span class="admin-tab-count mono-num" id="tab-count-categories">0</span>
           </button>
           <button
             type="button"
@@ -291,17 +313,8 @@
             data-admin-tab="banners"
             aria-selected="false"
           >
-            Banner Promo
-          </button>
-          <button
-            type="button"
-            role="tab"
-            id="tab-btn-brand"
-            class="cat-tab"
-            data-admin-tab="brand"
-            aria-selected="false"
-          >
-            Brand, OpenGraph &amp; Kontak
+            <span>Banner</span>
+            <span class="admin-tab-count mono-num" id="tab-count-banners">0</span>
           </button>
           <button
             type="button"
@@ -311,17 +324,18 @@
             data-admin-tab="utilities"
             aria-selected="false"
           >
-            Menu Utilitas
+            <span>Menu Utilitas</span>
+            <span class="admin-tab-count mono-num" id="tab-count-utilities">14</span>
           </button>
           <button
             type="button"
             role="tab"
-            id="tab-btn-faq"
+            id="tab-btn-brand"
             class="cat-tab"
-            data-admin-tab="faq"
+            data-admin-tab="brand"
             aria-selected="false"
           >
-            Pertanyaan Umum (FAQ)
+            <span>Brand &amp; Kontak</span>
           </button>
           <button
             type="button"
@@ -331,7 +345,19 @@
             data-admin-tab="vouchers"
             aria-selected="false"
           >
-            Voucher Promo
+            <span>Voucher</span>
+            <span class="admin-tab-count mono-num" id="tab-count-vouchers">0</span>
+          </button>
+          <button
+            type="button"
+            role="tab"
+            id="tab-btn-faq"
+            class="cat-tab"
+            data-admin-tab="faq"
+            aria-selected="false"
+          >
+            <span>FAQ</span>
+            <span class="admin-tab-count mono-num" id="tab-count-faq">0</span>
           </button>
           <button
             type="button"
@@ -341,7 +367,7 @@
             data-admin-tab="history"
             aria-selected="false"
           >
-            Riwayat Perubahan
+            <span>Riwayat</span>
           </button>
         </div>
 
@@ -560,10 +586,17 @@
         <!-- Panel Banner Promo Carousel -->
         <section id="panel-banners" class="admin-panel" aria-labelledby="tab-btn-banners" hidden>
           <div class="admin-card">
-            <h2 class="admin-section-title">Kelola Banner Carousel Halaman Utama</h2>
-            <p class="admin-subtitle">
-              Tambah, edit, urutkan, atau hapus slide banner di halaman depan toko. Anda bisa mengganti gambar latar banner (upload foto/gambar sendiri, pilih preset, atau gunakan gradien elegan) serta mengubah seluruh tulisan dan link tujuan pada setiap banner.
-            </p>
+            <div class="admin-card-head">
+              <div>
+                <h2 class="admin-section-title">Kelola Banner Carousel Gen-Z (Menu Utama &amp; 14 Utilitas)</h2>
+                <p class="admin-subtitle">
+                  Klik judul slide untuk membuka editor. Setiap menu memiliki banner maskot Gen-Z yang otomatis tersinkron dengan Menu Utama &amp; Menu Utilitas.
+                </p>
+              </div>
+              <button type="button" id="banner-sync-all-btn" class="btn btn-secondary btn-sm">
+                Sinkronkan Banner dengan Menu
+              </button>
+            </div>
 
             <div id="admin-banner-list" class="admin-banner-list"></div>
 
@@ -611,29 +644,42 @@
                     type="text"
                     id="new-banner-href"
                     value="#katalog"
-                    placeholder="#katalog atau ./tools.html?tool=compressor"
+                    placeholder="#katalog atau ./tools.html?tab=novel"
                   />
                 </div>
                 <div class="form-field">
-                  <label for="new-banner-scrim">Tema Warna Latar / Overlay</label>
+                  <label for="new-banner-scrim">Tema Warna Overlay</label>
                   <select id="new-banner-scrim" class="admin-select">
-                    <option value="">Biru Gelap Standar</option>
-                    <option value="is-emerald">Hijau Emerald</option>
-                    <option value="is-sky">Biru Langit Cerah</option>
-                    <option value="is-indigo">Indigo / Ungu</option>
-                    <option value="is-cyan">Cyan / Tosca</option>
-                    <option value="is-violet">Violet / Magenta</option>
+                    <option value="default">Biru Gelap Standar</option>
+                    <option value="emerald">Hijau Emerald</option>
+                    <option value="weather">Biru Langit Cerah</option>
+                    <option value="world">Indigo / Kosmik</option>
+                    <option value="prayer">Cyan / Tosca</option>
+                    <option value="downloader">Magenta / Neon</option>
+                    <option value="violet">Violet Studio</option>
+                    <option value="crimson">Merah Sinema</option>
+                    <option value="amber">Emas / Amber Hangat</option>
                   </select>
                 </div>
                 <div class="form-field">
-                  <label for="new-banner-preset">Preset Gambar Banner</label>
+                  <label for="new-banner-preset">Preset Gambar Maskot Gen-Z</label>
                   <select id="new-banner-preset" class="admin-select">
-                    <option value="./assets/hero-banner.jpg">Banner Katalog Default</option>
-                    <option value="./assets/banner-prayer.jpg">Banner Jadwal Sholat</option>
-                    <option value="./assets/banner-weather.jpg">Banner Prakiraan Cuaca</option>
-                    <option value="./assets/banner-worldclock.jpg">Banner Jam Dunia</option>
-                    <option value="./assets/banner-speedtest.jpg">Banner Speedtest</option>
-                    <option value="">Tanpa Gambar (Hanya Gradien Warna)</option>
+                    <option value="./assets/banners/banner-katalog.jpg">Maskot Katalog Utama (Fox)</option>
+                    <option value="./assets/banners/banner-prayer.jpg">Maskot Jadwal Sholat (Kucing)</option>
+                    <option value="./assets/banners/banner-weather.jpg">Maskot Prakiraan Cuaca (Shiba)</option>
+                    <option value="./assets/banners/banner-worldclock.jpg">Maskot Jam Dunia (Beruang)</option>
+                    <option value="./assets/banners/banner-speedtest.jpg">Maskot Speedtest (Cheetah)</option>
+                    <option value="./assets/banners/banner-downloader.jpg">Maskot Downloader (Panda)</option>
+                    <option value="./assets/banners/banner-compressor.jpg">Maskot Kompresor HD (Bunglon)</option>
+                    <option value="./assets/banners/banner-converter.jpg">Maskot Konversi File (Rakun)</option>
+                    <option value="./assets/banners/banner-songfinder.jpg">Maskot Cari Lagu (Kelinci DJ)</option>
+                    <option value="./assets/banners/banner-music.jpg">Maskot YT Music (Kucing DJ)</option>
+                    <option value="./assets/banners/banner-dracin.jpg">Maskot Drama China (Red Panda)</option>
+                    <option value="./assets/banners/banner-audioeditor.jpg">Maskot Audio Editor (Serigala)</option>
+                    <option value="./assets/banners/banner-manifestai.jpg">Maskot Manifest AI (Burung Hantu)</option>
+                    <option value="./assets/banners/banner-plagiarism.jpg">Maskot Cek Plagiarisme (Corgi)</option>
+                    <option value="./assets/banners/banner-novel.jpg">Maskot Novel Terpadu (Rubah)</option>
+                    <option value="">Tanpa Gambar (Gradien Warna)</option>
                   </select>
                 </div>
                 <div class="form-field admin-sum-field">
@@ -641,17 +687,17 @@
                   <input
                     type="text"
                     id="new-banner-image-url"
-                    value="./assets/hero-banner.jpg"
-                    placeholder="./assets/hero-banner.jpg atau https://... (kosongkan untuk gradien)"
+                    value="./assets/banners/banner-katalog.jpg"
+                    placeholder="./assets/banners/banner-katalog.jpg atau https://..."
                   />
                 </div>
                 <div class="form-field admin-sum-field">
                   <div class="admin-file-row">
                     <img
-                      src="./assets/hero-banner.jpg"
+                      src="./assets/banners/banner-katalog.jpg"
                       alt="Pratinjau gambar banner baru"
                       width="96"
-                      height="48"
+                      height="54"
                       id="new-banner-image-preview"
                       class="admin-banner-thumb"
                     />
@@ -664,7 +710,7 @@
                       class="visually-hidden-file"
                       accept="image/*"
                     />
-                    <span id="new-banner-image-status" class="admin-prod-meta">Rasio landscape 16:9 atau 21:9 direkomendasikan.</span>
+                    <span id="new-banner-image-status" class="admin-prod-meta">Rasio landscape 16:9 direkomendasikan.</span>
                   </div>
                 </div>
               </div>
@@ -1042,19 +1088,24 @@
           </div>
         </section>
 
-        <!-- Panel Menu Utilitas (Ikon, Nama Tombol, Judul Atas & Hero YT Music) -->
+        <!-- Panel Menu Utilitas (Kartu Beranda, 14 Menu Utilitas & Hero YT Music) -->
         <section id="panel-utilities" class="admin-panel" aria-labelledby="tab-btn-utilities" hidden>
           <div class="admin-card">
             <div class="admin-card-head">
               <div>
-                <h2 class="admin-section-title">Kelola Menu Utilitas, Judul Halaman &amp; Kartu YT Music Hub</h2>
+                <h2 class="admin-section-title">Kelola &amp; Sinkronkan 14 Menu Utilitas</h2>
                 <p class="admin-subtitle">
-                  Ubah ikon/gambar, nama tombol sub-menu, judul, sub-judul, caption, serta deskripsi kartu pada seluruh 9 halaman utilitas (Jadwal Sholat, Prakiraan Cuaca, Jam Dunia &amp; Globe, Speedtest, Downloader, Kompresor HD, Konversi File, Cari Judul Lagu, Musik YT), beserta kartu hero YT Music Hub dan kartu pintasan di beranda toko.
+                  Aktifkan/nonaktifkan, urutkan, atau ubah ikon &amp; judul seluruh 14 menu utilitas (Jadwal Sholat hingga Novel Terpadu). Perubahan otomatis tersinkron ke Header Beranda, Kartu Pintasan, Halaman Utilitas, dan Banner Carousel.
                 </p>
               </div>
-              <button type="button" id="utilities-reset-default-btn" class="btn btn-ghost btn-sm">
-                Reset Semua Utilitas ke Default
-              </button>
+              <div class="admin-history-toolbar">
+                <button type="button" id="utilities-sync-all-btn" class="btn btn-secondary btn-sm">
+                  Sinkronkan Menu &amp; Banner
+                </button>
+                <button type="button" id="utilities-reset-default-btn" class="btn btn-ghost btn-sm">
+                  Reset Default
+                </button>
+              </div>
             </div>
 
             <div id="admin-utilities-editor" class="admin-utilities-editor"></div>
@@ -1179,6 +1230,6 @@
 
     <div id="toast-notification" class="toast-notification" role="status" aria-live="polite" hidden></div>
 
-    <script type="module" src="./js/admin.js?v=60"></script>
+    <script type="module" src="./js/admin.js?v=74"></script>
   </body>
 </html>

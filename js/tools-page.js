@@ -1,7 +1,7 @@
-import { createToolsHubController } from './tools-ui.js?v=73';
-import { initMusicPlayer } from './music.js?v=59';
-import { loadCatalogData } from './data.js?v=67';
-import { normalizeBrandConfig, normalizeUtilityConfig } from './store.js?v=73';
+import { createToolsHubController } from './tools-ui.js?v=74';
+import { initMusicPlayer } from './music.js?v=74';
+import { loadCatalogData } from './data.js?v=74';
+import { normalizeBrandConfig, normalizeUtilityConfig } from './store.js?v=74';
 
 const THEME_STORAGE_KEY = 'manifestudio_theme_v1';
 const VALID_TABS = new Set(['prayer', 'weather', 'worldclock', 'speedtest', 'downloader', 'compressor', 'converter', 'songfinder', 'music', 'dracin', 'audioeditor', 'manifestai', 'plagiarism', 'novel']);
@@ -10,12 +10,27 @@ let currentTheme = 'dark';
 let toolsHub = null;
 let toastTimer = null;
 let activeUtilities = normalizeUtilityConfig();
+let currentTab = 'prayer';
+
+function getEnabledUtilityItems() {
+  const enabled = (activeUtilities.items || []).filter((it) => it.enabled !== false);
+  return enabled.length > 0 ? enabled : activeUtilities.items || [];
+}
+
+function resolveEnabledTab(tab) {
+  const enabled = getEnabledUtilityItems();
+  if (VALID_TABS.has(tab) && enabled.some((it) => it.id === tab)) {
+    return tab;
+  }
+  return enabled[0]?.id || 'prayer';
+}
 
 function getTabMeta(tab) {
-  const safeTab = VALID_TABS.has(tab) ? tab : 'prayer';
+  const safeTab = resolveEnabledTab(tab);
+  const enabled = getEnabledUtilityItems();
   const item =
-    (activeUtilities.items || []).find((it) => it.id === safeTab) ||
-    activeUtilities.items?.[0] || {
+    enabled.find((it) => it.id === safeTab) ||
+    enabled[0] || {
       label: 'Jadwal Sholat',
       pageTitle: 'Jadwal Sholat Indonesia',
       pageSubtitle: 'Waktu Imsak hingga Isya resmi Kemenag RI sesuai lokasimu.',
@@ -102,21 +117,36 @@ const CONCISE_HEADER_NAV_LABELS = {
   novel: 'Novel',
 };
 
-function syncHeaderNavLabels() {
-  document.querySelectorAll('[data-tools-nav]').forEach((btn) => {
-    const target = btn.getAttribute('data-tools-nav');
-    const item = (activeUtilities.items || []).find((it) => it.id === target);
-    const customLabel = String(item?.label || '').trim();
-    if (customLabel) {
-      btn.textContent = customLabel.length <= 24 ? customLabel : CONCISE_HEADER_NAV_LABELS[target] || customLabel;
-    } else if (CONCISE_HEADER_NAV_LABELS[target]) {
-      btn.textContent = CONCISE_HEADER_NAV_LABELS[target];
-    }
+function renderHeaderNavFromUtilities() {
+  const navEl = document.getElementById('tools-header-nav') || document.querySelector('.header-nav');
+  if (!navEl) return;
+  const enabledItems = getEnabledUtilityItems();
+  const buttonsHtml = enabledItems
+    .map((item) => {
+      const rawLabel = String(item.label || '').trim();
+      const label = rawLabel.length <= 24 ? rawLabel : CONCISE_HEADER_NAV_LABELS[item.id] || rawLabel;
+      const isActive = item.id === currentTab;
+      return `<button type="button" class="header-nav-link ${isActive ? 'is-active' : ''}" data-tools-nav="${escapeHtml(
+        item.id
+      )}" aria-current="${isActive ? 'page' : 'false'}">${escapeHtml(label)}</button>`;
+    })
+    .join('');
+
+  navEl.innerHTML = `<a href="./index.html" class="header-nav-link">Katalog</a>${buttonsHtml}`;
+  navEl.querySelectorAll('[data-tools-nav]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const next = btn.getAttribute('data-tools-nav');
+      if (!next || !VALID_TABS.has(next)) return;
+      currentTab = resolveEnabledTab(next);
+      toolsHub?.mount(currentTab);
+      syncActiveTabChrome(currentTab);
+    });
   });
 }
 
 function syncActiveTabChrome(tab) {
-  const safeTab = VALID_TABS.has(tab) ? tab : 'prayer';
+  const safeTab = resolveEnabledTab(tab);
+  currentTab = safeTab;
   const meta = getTabMeta(safeTab);
 
   const titleEl = document.getElementById('tools-page-title');
@@ -125,14 +155,7 @@ function syncActiveTabChrome(tab) {
   if (subEl) subEl.textContent = meta.subtitle;
   document.title = `${meta.title} — Manifestudio`;
 
-  syncHeaderNavLabels();
-
-  document.querySelectorAll('[data-tools-nav]').forEach((btn) => {
-    const target = btn.getAttribute('data-tools-nav');
-    const isActive = target === safeTab;
-    btn.classList.toggle('is-active', isActive);
-    btn.setAttribute('aria-current', isActive ? 'page' : 'false');
-  });
+  renderHeaderNavFromUtilities();
 
   const url = new URL(window.location.href);
   url.searchParams.set('tab', safeTab);
@@ -184,7 +207,7 @@ async function bootstrap() {
   loadTheme();
   applyTheme();
 
-  let currentTab = readInitialTab();
+  currentTab = readInitialTab();
   const root = document.getElementById('tools-hub-root');
 
   if (root) {
@@ -193,23 +216,13 @@ async function bootstrap() {
       utilitiesConfig: activeUtilities,
       onToast: showToast,
       onSubTabChange: (nextTab) => {
-        currentTab = VALID_TABS.has(nextTab) ? nextTab : 'prayer';
+        currentTab = resolveEnabledTab(nextTab);
         syncActiveTabChrome(currentTab);
       },
     });
     toolsHub.mount(currentTab);
     syncActiveTabChrome(currentTab);
   }
-
-  document.querySelectorAll('[data-tools-nav]').forEach((btn) => {
-    btn.addEventListener('click', () => {
-      const next = btn.getAttribute('data-tools-nav');
-      if (!next || !VALID_TABS.has(next)) return;
-      currentTab = next;
-      toolsHub?.mount(next);
-      syncActiveTabChrome(next);
-    });
-  });
 
   document.getElementById('theme-toggle-btn')?.addEventListener('click', () => {
     currentTheme = currentTheme === 'dark' ? 'light' : 'dark';
@@ -230,7 +243,12 @@ async function bootstrap() {
     }
     if (loaded?.data?.utilities) {
       activeUtilities = normalizeUtilityConfig(loaded.data.utilities);
+      const nextSafeTab = resolveEnabledTab(currentTab);
       toolsHub?.setUtilitiesConfig?.(activeUtilities);
+      if (nextSafeTab !== currentTab) {
+        currentTab = nextSafeTab;
+        toolsHub?.mount(currentTab);
+      }
       syncActiveTabChrome(currentTab);
     }
   } catch {

@@ -59,11 +59,11 @@
       rel="stylesheet"
     />
 
-    <link rel="stylesheet" href="./css/tokens.css?v=73" />
-    <link rel="stylesheet" href="./css/styles.css?v=73" />
+    <link rel="stylesheet" href="./css/tokens.css?v=74" />
+    <link rel="stylesheet" href="./css/styles.css?v=74" />
     <script>
       (function () {
-        var CURRENT_CACHE = 'manifestudio-cache-v73';
+        var CURRENT_CACHE = 'manifestudio-cache-v74';
         if ('caches' in window) {
           caches.keys().then(function (keys) {
             keys.forEach(function (k) {
@@ -72,7 +72,7 @@
           });
         }
         if ('serviceWorker' in navigator) {
-          navigator.serviceWorker.register('./sw.js?v=73').then(function (reg) {
+          navigator.serviceWorker.register('./sw.js?v=74').then(function (reg) {
             reg.update();
           }).catch(function () {});
         }
@@ -97,7 +97,7 @@
           </div>
         </a>
 
-        <nav class="header-nav" aria-label="Navigasi menu utilitas">
+        <nav id="tools-header-nav" class="header-nav" aria-label="Navigasi menu utilitas">
           <a href="./index.html" class="header-nav-link">Katalog</a>
           <button type="button" class="header-nav-link" data-tools-nav="prayer">Jadwal Sholat</button>
           <button type="button" class="header-nav-link" data-tools-nav="weather">Cuaca</button>
@@ -184,6 +184,6 @@
     </footer>
 
     <div id="toast-notification" class="toast-notification" role="status" aria-live="polite" hidden></div>
-    <script type="module" src="./js/tools-page.js?v=73"></script>
+    <script type="module" src="./js/tools-page.js?v=74"></script>
   </body>
 </html>

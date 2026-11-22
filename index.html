@@ -88,11 +88,11 @@ Dilengkapi Jadwal Sholat, Prakiraan Cuaca, Jam Dunia, Speedtest, Social Media Do
     />
 
     <!-- Styles -->
-    <link rel="stylesheet" href="./css/tokens.css?v=73" />
-    <link rel="stylesheet" href="./css/styles.css?v=73" />
+    <link rel="stylesheet" href="./css/tokens.css?v=74" />
+    <link rel="stylesheet" href="./css/styles.css?v=74" />
     <script>
       (function () {
-        var CURRENT_CACHE = 'manifestudio-cache-v73';
+        var CURRENT_CACHE = 'manifestudio-cache-v74';
         if ('caches' in window) {
           caches.keys().then(function (keys) {
             keys.forEach(function (k) {
@@ -101,7 +101,7 @@ Dilengkapi Jadwal Sholat, Prakiraan Cuaca, Jam Dunia, Speedtest, Social Media Do
           });
         }
         if ('serviceWorker' in navigator) {
-          navigator.serviceWorker.register('./sw.js?v=73').then(function (reg) {
+          navigator.serviceWorker.register('./sw.js?v=74').then(function (reg) {
             reg.update();
           }).catch(function () {});
         }
@@ -138,20 +138,22 @@ Dilengkapi Jadwal Sholat, Prakiraan Cuaca, Jam Dunia, Speedtest, Social Media Do
           </div>
         </a>
 
-        <nav class="header-nav" aria-label="Navigasi utama">
+        <nav id="header-nav-list" class="header-nav" aria-label="Navigasi utama">
           <button type="button" class="header-nav-link is-active" data-nav-target="catalog">Katalog</button>
           <a href="./tools.html?tab=prayer" class="header-nav-link">Jadwal Sholat</a>
-          <a href="./tools.html?tab=weather" class="header-nav-link">Cuaca</a>
+          <a href="./tools.html?tab=weather" class="header-nav-link">Prakiraan Cuaca</a>
           <a href="./tools.html?tab=worldclock" class="header-nav-link">Jam Dunia</a>
           <a href="./tools.html?tab=speedtest" class="header-nav-link">Speedtest</a>
           <a href="./tools.html?tab=downloader" class="header-nav-link">Downloader</a>
           <a href="./tools.html?tab=compressor" class="header-nav-link">Kompresor HD</a>
           <a href="./tools.html?tab=converter" class="header-nav-link">Konversi File</a>
-          <a href="./tools.html?tab=music" class="header-nav-link">Musik YT</a>
+          <a href="./tools.html?tab=songfinder" class="header-nav-link">Cari Lagu</a>
+          <a href="./tools.html?tab=music" class="header-nav-link">YT Music</a>
           <a href="./tools.html?tab=dracin" class="header-nav-link">Drama China</a>
           <a href="./tools.html?tab=audioeditor" class="header-nav-link">Audio Editor</a>
           <a href="./tools.html?tab=manifestai" class="header-nav-link">Manifest AI</a>
           <a href="./tools.html?tab=plagiarism" class="header-nav-link">Cek Plagiarisme</a>
+          <a href="./tools.html?tab=novel" class="header-nav-link">Novel Terpadu</a>
         </nav>
 
         <div class="header-actions">
@@ -209,25 +211,25 @@ Dilengkapi Jadwal Sholat, Prakiraan Cuaca, Jam Dunia, Speedtest, Social Media Do
               <!-- Slide 1: Katalog Utama -->
               <article class="promo-banner-frame banner-slide" data-slide-index="0" data-banner-href="#katalog">
                 <img
-                  src="./assets/hero-banner.jpg"
+                  src="./assets/banners/banner-katalog.jpg"
                   alt="Akun premium bergaransi Manifestudio"
                   class="promo-banner-img"
                   width="1200"
-                  height="400"
+                  height="675"
                 />
                 <div class="promo-banner-scrim" aria-hidden="true"></div>
                 <div class="promo-banner-content">
                   <div class="promo-banner-copy">
-                    <span class="promo-kicker">Proses 3–10 Menit</span>
-                    <h1 class="promo-heading">Akun Premium &amp; Top Up Bergaransi</h1>
+                    <span class="promo-kicker">Katalog Utama · Garansi Jelas</span>
+                    <h1 class="promo-heading">Layanan Digital Siap Pakai dalam Hitungan Menit</h1>
                     <p class="promo-sub">
-                      Belanja minimal <strong>Rp50.000</strong> diskon <strong>Rp2.000</strong>, dukung voucher &amp; Bayar Nanti.
+                      Potongan otomatis <strong>Rp2.000</strong> mulai <strong>Rp50.000</strong>, dukung kode voucher, &amp; Bayar Nanti.
                     </p>
                   </div>
                   <div class="promo-banner-cta">
-                    <button type="button" id="hero-custom-btn" class="btn btn-outline-light btn-sm">
-                      Request Custom
-                    </button>
+                    <a href="#katalog" class="btn btn-primary btn-sm">
+                      Jelajahi Katalog →
+                    </a>
                   </div>
                 </div>
               </article>
@@ -363,13 +365,11 @@ Dilengkapi Jadwal Sholat, Prakiraan Cuaca, Jam Dunia, Speedtest, Social Media Do
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg>
             </button>
 
-            <div class="banner-dots" id="banner-dots" role="tablist" aria-label="Pilih slide banner">
-              <button type="button" class="banner-dot is-active" data-slide-dot="0" aria-label="Slide 1: Katalog"></button>
-              <button type="button" class="banner-dot" data-slide-dot="1" aria-label="Slide 2: Jadwal Sholat"></button>
-              <button type="button" class="banner-dot" data-slide-dot="2" aria-label="Slide 3: Prakiraan Cuaca"></button>
-              <button type="button" class="banner-dot" data-slide-dot="3" aria-label="Slide 4: Jam Dunia"></button>
-              <button type="button" class="banner-dot" data-slide-dot="4" aria-label="Slide 5: Speedtest"></button>
-              <button type="button" class="banner-dot" data-slide-dot="5" aria-label="Slide 6: Downloader"></button>
+            <div class="banner-controls-bar">
+              <div class="banner-dots" id="banner-dots" role="tablist" aria-label="Pilih slide banner">
+                <button type="button" class="banner-dot is-active" data-slide-dot="0" aria-label="Slide 1: Katalog"></button>
+              </div>
+              <span id="banner-slide-counter" class="banner-slide-counter mono-num" aria-live="polite">1 / 15</span>
             </div>
           </div>
         </div>
@@ -379,30 +379,28 @@ Dilengkapi Jadwal Sholat, Prakiraan Cuaca, Jam Dunia, Speedtest, Social Media Do
       <section id="katalog" class="catalog-section container">
         <div class="catalog-top-bar">
           <h2 id="catalog-section-title" class="section-title">Pilih Layanan</h2>
-          <span id="catalog-count" class="catalog-count">10 layanan</span>
+          <span id="catalog-count" class="catalog-count">19 layanan</span>
         </div>
 
         <a
           href="./tools.html"
           id="utilities-callout-card"
           class="utilities-callout-card"
-          aria-label="Buka Menu Utilitas: Jadwal Sholat, Cuaca, Jam Dunia, Speedtest, Downloader, Kompres HD, Konversi File, Cari Judul Lagu & YT Music"
+          aria-label="Buka Menu Utilitas — 14 Fitur Gratis"
         >
           <img
             src="./assets/icons/menu-utilitas.svg"
             alt=""
-            width="42"
-            height="42"
+            width="40"
+            height="40"
             class="utilities-callout-icon"
           />
           <div class="utilities-callout-copy">
             <div class="utilities-callout-head">
               <strong class="utilities-callout-title">Menu Utilitas</strong>
-              <span class="utilities-callout-sub-tag">10 Fitur Gratis</span>
+              <span class="utilities-callout-sub-tag">14 Fitur Gratis</span>
             </div>
-            <p class="utilities-callout-desc">
-              Jadwal Sholat · Cuaca · Jam Dunia &amp; Globe · Speedtest · Downloader · Kompres HD · Konversi File · Cari Judul Lagu &amp; Video · YT Music · Drama China
-            </p>
+            <p class="utilities-callout-desc" hidden></p>
           </div>
           <span class="utilities-callout-cta" aria-hidden="true">
             <span>Buka</span>
@@ -514,6 +512,6 @@ Dilengkapi Jadwal Sholat, Prakiraan Cuaca, Jam Dunia, Speedtest, Social Media Do
     <div id="cart-drawer-root" class="drawer-root" hidden></div>
     <div id="toast-notification" class="toast-notification" role="status" aria-live="polite" hidden></div>
 
-    <script type="module" src="./js/app.js?v=59"></script>
+    <script type="module" src="./js/app.js?v=74"></script>
   </body>
 </html>

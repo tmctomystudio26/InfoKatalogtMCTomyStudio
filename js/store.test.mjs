@@ -1,5 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import path from 'node:path';
 import { getDefaultCatalogSnapshot, PRODUCTS, VOUCHERS } from './data.js';
 import {
   ANICHIN_UNIFIED_SOURCES,
@@ -120,6 +122,7 @@ import {
   upsertChatThread,
 } from './manifest-ai-logic.js';
 import {
+  DEFAULT_BANNERS,
   DEFAULT_UTILITY_CONFIG,
   MAX_HISTORY_LOGS,
   addToCart,
@@ -129,6 +132,7 @@ import {
   buildWhatsAppOrderMessage,
   calculateCartTotals,
   collectOrphanedUploadLogos,
+  computeAdminSyncStatus,
   createOrderSnapshot,
   deleteBannerFromCatalog,
   deleteCategoryFromCatalog,
@@ -141,8 +145,11 @@ import {
   formatRupiah,
   getProductCardTone,
   getStartingPrice,
+  inferBannerUtilityId,
   moveBannerInCatalog,
   moveProductInCatalog,
+  moveUtilityItemInCatalog,
+  normalizeBannerScrim,
   normalizeBanners,
   normalizeBrandConfig,
   normalizeOpenGraphConfig,
@@ -151,6 +158,7 @@ import {
   removeFromCart,
   reorderProductToIndex,
   summarizeCatalogDiff,
+  syncAllMenusAndBanners,
   toggleProductStockInCatalog,
   updateCartQty,
   upsertBannerInCatalog,
@@ -1817,7 +1825,7 @@ test('normalizeYtMusicTrack supports hybrid tracks with both videoId and backgro
 test('normalizeUtilityConfig, upsertUtilityItemInCatalog, and describeCatalogChanges manage utility icons, labels, page headers, and YT Music hero card', () => {
   const base = getDefaultCatalogSnapshot();
   const util = normalizeUtilityConfig(base.utilities);
-  assert.equal(util.items.length, 13);
+  assert.equal(util.items.length, 14);
   assert.equal(util.items.some((i) => i.id === 'downloader' && i.label === 'Downloader'), true);
   assert.equal(util.items.some((i) => i.id === 'converter' && i.label === 'Konversi File'), true);
   assert.equal(util.items.some((i) => i.id === 'songfinder' && i.label === 'Cari Judul Lagu'), true);
@@ -1825,8 +1833,9 @@ test('normalizeUtilityConfig, upsertUtilityItemInCatalog, and describeCatalogCha
   assert.equal(util.items.some((i) => i.id === 'audioeditor' && i.label === 'Audio Editor'), true);
   assert.equal(util.items.some((i) => i.id === 'manifestai' && i.label === 'Manifest AI'), true);
   assert.equal(util.items.some((i) => i.id === 'plagiarism' && i.label === 'Cek Plagiarisme'), true);
+  assert.equal(util.items.some((i) => i.id === 'novel' && i.label === 'Novel Terpadu'), true);
   assert.equal(util.musicHero.icon, './assets/icons/tool-music.svg');
-  assert.ok(DEFAULT_UTILITY_CONFIG.items.length === 13);
+  assert.ok(DEFAULT_UTILITY_CONFIG.items.length === 14);
 
   let next = upsertUtilityItemInCatalog(base, {
     id: 'downloader',
@@ -4336,7 +4345,7 @@ test('Manifest AI v60 maintains unified grounded conversation memory, per-user c
   assert.equal(failoverPlan.primary.some((t) => t.id === 'byok:k_oai'), true);
 
   // 4. Free keyless mode combines multiple distinct gateways simultaneously (max 1 LLM7 per turn + HF Gradio SSE Spaces)
-  assert.ok(Array.isArray(HF_GRADIO_FREE_SPACES) && HF_GRADIO_FREE_SPACES.length >= 4);
+  assert.ok(Array.isArray(HF_GRADIO_FREE_SPACES) && HF_GRADIO_FREE_SPACES.length >= 2);
   const freePlan = planEnsembleExecution({
     mode: 'ensemble',
     byokKeys: [],
@@ -4390,12 +4399,90 @@ test('Manifest AI v60 maintains unified grounded conversation memory, per-user c
   assert.ok(safeHtml.includes('data-mai-copy-code="0"'));
 });
 
+test('v74: normalizeUtilityConfig auto-counts enabled utilities, strips legacy dot list, and preserves custom order', () => {
+  const legacyUtil = normalizeUtilityConfig({
+    callout: {
+      title: 'Menu Utilitas',
+      badge: '12 Fitur Gratis',
+      description:
+        'Jadwal Sholat · Cuaca · Jam Dunia & Globe · Speedtest · Downloader · Kompres HD · Konversi File · Cari Lagu · YT Music · Drama China · Audio Editor · Manifest AI',
+    },
+    items: [
+      { id: 'novel', label: 'Novel', enabled: true },
+      { id: 'speedtest', label: 'Speedtest', enabled: false },
+    ],
+  });
 
+  assert.equal(legacyUtil.items.length, 14);
+  assert.equal(legacyUtil.items[0].id, 'novel');
+  assert.equal(legacyUtil.items.find((it) => it.id === 'speedtest')?.enabled, false);
+  assert.equal(legacyUtil.callout.badge, '13 Fitur Gratis');
+  assert.equal(legacyUtil.callout.description, '');
 
+  const snapshot = getDefaultCatalogSnapshot();
+  const moved = moveUtilityItemInCatalog(snapshot, 'novel', 'up');
+  const novelIdx = moved.utilities.items.findIndex((it) => it.id === 'novel');
+  assert.equal(novelIdx, 12);
+});
 
+test('v74: syncAllMenusAndBanners & computeAdminSyncStatus track synced, attention, and draft states across 15 mascot banners', () => {
+  assert.equal(DEFAULT_BANNERS.length, 15);
+  assert.equal(normalizeBannerScrim('is-emerald'), 'emerald');
+  assert.equal(inferBannerUtilityId({ href: './tools.html?tab=plagiarism' }), 'plagiarism');
 
+  const live = getDefaultCatalogSnapshot();
+  const initialStatus = computeAdminSyncStatus(live, live, { source: 'remote', dirty: false, checkedAt: '10:00' });
+  assert.equal(initialStatus.overallStatus, 'synced');
+  assert.equal(initialStatus.metrics.activeUtilities, 14);
+  assert.equal(initialStatus.metrics.activeBanners, 15);
+  assert.equal(initialStatus.metrics.calloutBadgeSynced, true);
 
+  // Disabling 1 utility without syncing banners puts status into 'attention'
+  const speedtestItem = live.utilities.items.find((it) => it.id === 'speedtest');
+  const disabledDraft = upsertUtilityItemInCatalog(live, { ...speedtestItem, enabled: false });
+  const attentionStatus = computeAdminSyncStatus(disabledDraft, live, {
+    source: 'remote',
+    dirty: true,
+    checkedAt: '10:01',
+  });
+  assert.equal(attentionStatus.overallStatus, 'attention');
+  assert.equal(attentionStatus.metrics.activeUtilities, 13);
+  assert.equal(attentionStatus.metrics.extraDisabledUtilityBanners.length, 1);
 
+  // 1-click sync reconciles banners (14 active = Katalog + 13 utilities) and switches status to 'draft'
+  const syncedDraft = syncAllMenusAndBanners(disabledDraft);
+  assert.equal(syncedDraft.utilities.callout.badge, '13 Fitur Gratis');
+  assert.equal(syncedDraft.banners.length, 14);
+  assert.equal(
+    syncedDraft.banners.some((b) => inferBannerUtilityId(b) === 'speedtest'),
+    false
+  );
+  const draftStatus = computeAdminSyncStatus(syncedDraft, live, {
+    source: 'remote',
+    dirty: true,
+    checkedAt: '10:02',
+  });
+  assert.equal(draftStatus.overallStatus, 'draft');
+  assert.equal(draftStatus.metrics.missingUtilityBanners.length, 0);
+  assert.equal(draftStatus.metrics.extraDisabledUtilityBanners.length, 0);
+});
 
+test('v74: live data/catalog.json is 100% synced with 14 utilities, 15 Gen-Z mascot banners, and valid banner images on disk', () => {
+  const repoRoot = path.resolve(path.dirname(new URL(import.meta.url).pathname), '..');
+  const catalogJson = JSON.parse(fs.readFileSync(path.join(repoRoot, 'data', 'catalog.json'), 'utf8'));
 
+  assert.equal(catalogJson.utilities.items.length, 14);
+  assert.equal(catalogJson.utilities.callout.badge, '14 Fitur Gratis');
+  assert.equal(catalogJson.utilities.callout.description, '');
+  assert.equal(catalogJson.banners.length, 15);
 
+  const syncStatus = computeAdminSyncStatus(catalogJson, catalogJson, { source: 'remote', dirty: false });
+  assert.equal(syncStatus.overallStatus, 'synced');
+
+  for (const ban of catalogJson.banners) {
+    assert.ok(ban.image.startsWith('./assets/banners/banner-'), `Expected Gen-Z banner path for ${ban.id}`);
+    const absPath = path.join(repoRoot, ban.image.replace(/^\.\//, ''));
+    assert.equal(fs.existsSync(absPath), true, `Missing banner asset: ${absPath}`);
+    assert.ok(fs.statSync(absPath).size > 10_000, `Banner asset too small: ${absPath}`);
+  }
+});

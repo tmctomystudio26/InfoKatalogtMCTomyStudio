@@ -481,76 +481,229 @@ export const DEFAULT_OPEN_GRAPH = {
   siteName: 'Manifestudio',
 };
 
+export const VALID_BANNER_SCRIMS = [
+  'default',
+  'prayer',
+  'weather',
+  'world',
+  'downloader',
+  'crimson',
+  'emerald',
+  'violet',
+  'amber',
+];
+
+const LEGACY_SCRIM_MAP = {
+  '': 'default',
+  default: 'default',
+  'is-emerald': 'emerald',
+  'is-sky': 'weather',
+  'is-indigo': 'world',
+  'is-cyan': 'prayer',
+  'is-violet': 'violet',
+  'is-crimson': 'crimson',
+  'is-amber': 'amber',
+};
+
+export function normalizeBannerScrim(rawScrim = 'default') {
+  const key = String(rawScrim ?? '').trim();
+  if (VALID_BANNER_SCRIMS.includes(key)) return key;
+  if (Object.prototype.hasOwnProperty.call(LEGACY_SCRIM_MAP, key)) {
+    return LEGACY_SCRIM_MAP[key];
+  }
+  return 'default';
+}
+
+export function inferBannerUtilityId(banner = {}) {
+  const explicit = String(banner?.utilityId || '').trim();
+  if (explicit) return explicit;
+  const href = String(banner?.href || '').trim();
+  const match = href.match(/[?&](?:tab|tool)=([a-z0-9_-]+)/i);
+  if (match && match[1]) return match[1].toLowerCase();
+  const idMatch = String(banner?.id || '').match(/^banner-(prayer|weather|worldclock|speedtest|downloader|compressor|converter|songfinder|music|dracin|audioeditor|manifestai|plagiarism|novel)$/i);
+  return idMatch ? idMatch[1].toLowerCase() : '';
+}
+
 export const DEFAULT_BANNERS = [
   {
     id: 'banner-katalog',
-    kicker: 'Katalog Akun Premium · Harga Pelajar',
-    heading: 'Langganan Aplikasi Favorit, Aktif Dalam Hitungan Menit.',
-    sub: 'Pilih paket Sharing atau Privat bergaransi jelas. Checkout praktis langsung ke WhatsApp Admin.',
-    ctaLabel: 'Lihat Katalog',
+    utilityId: '',
+    kicker: 'Katalog Utama · Garansi Jelas',
+    heading: 'Akun Premium Favorit, Aktif Dalam Hitungan Menit',
+    sub: 'Netflix, Canva Pro, Spotify & 15+ layanan. Diskon otomatis mulai Rp50rb, voucher, & Bayar Nanti.',
+    ctaLabel: 'Lihat Katalog →',
     href: '#katalog',
-    image: './assets/hero-banner.jpg',
+    image: './assets/banners/banner-katalog.jpg',
     scrim: 'default',
+    enabled: true,
   },
   {
     id: 'banner-prayer',
-    kicker: 'Menu Utilitas · Jadwal Sholat',
-    heading: 'Waktu Imsak & Sholat 5 Waktu Resmi Kemenag RI',
-    sub: 'Deteksi otomatis lokasi GPS/kecamatan kamu lengkap dengan hitung mundur waktu sholat berikutnya.',
-    ctaLabel: 'Buka Jadwal Sholat',
+    utilityId: 'prayer',
+    kicker: 'Menu Utilitas · Kemenag RI',
+    heading: 'Jadwal Sholat & Imsakiyah Presisi Lokasi',
+    sub: 'Hitung mundur adzan otomatis sesuai GPS & kecamatan se-Indonesia lengkap waktu Imsak hingga Isya.',
+    ctaLabel: 'Buka Jadwal Sholat →',
     href: './tools.html?tab=prayer',
-    image: './assets/banner-prayer.jpg',
-    scrim: 'prayer',
+    image: './assets/banners/banner-prayer.jpg',
+    scrim: 'emerald',
+    enabled: true,
   },
   {
     id: 'banner-weather',
-    kicker: 'Menu Utilitas · Prakiraan Cuaca',
+    utilityId: 'weather',
+    kicker: 'Menu Utilitas · Radar Live',
     heading: 'Pantau Cuaca Real-Time & Prakiraan 7 Hari',
-    sub: 'Cek suhu, curah hujan aktual per jam, hembusan angin, dan prakiraan mingguan di kotamu.',
-    ctaLabel: 'Cek Cuaca',
+    sub: 'Cek suhu aktual, curah hujan per jam, UV, angin, & kondisi langit sebelum beraktivitas.',
+    ctaLabel: 'Cek Cuaca →',
     href: './tools.html?tab=weather',
-    image: './assets/banner-weather.jpg',
+    image: './assets/banners/banner-weather.jpg',
     scrim: 'weather',
+    enabled: true,
   },
   {
     id: 'banner-worldclock',
+    utilityId: 'worldclock',
     kicker: 'Menu Utilitas · Standar UTC',
-    heading: 'Putar Bola Dunia & Konversi WIB/WITA/WIT',
-    sub: 'Klik negara di globe interaktif untuk cek zona waktu & selisih jam Indonesia.',
-    ctaLabel: 'Putar Bola Dunia',
+    heading: 'Putar Globe 3D & Konversi WIB / WITA / WIT',
+    sub: 'Klik negara di bola dunia interaktif untuk membandingkan zona waktu internasional secara instan.',
+    ctaLabel: 'Buka Jam Dunia →',
     href: './tools.html?tab=worldclock',
-    image: './assets/banner-worldclock.jpg',
+    image: './assets/banners/banner-worldclock.jpg',
     scrim: 'world',
+    enabled: true,
   },
   {
     id: 'banner-speedtest',
-    kicker: 'Menu Utilitas · Speedtest',
-    heading: 'Uji Kecepatan Internet & Ping Real-Time',
-    sub: 'Cek rata-rata download, upload, latensi, server, ISP, dan info perangkat dalam satu klik.',
-    ctaLabel: 'Mulai Speedtest',
+    utilityId: 'speedtest',
+    kicker: 'Menu Utilitas · Edge Speed',
+    heading: 'Uji Kecepatan Internet, Ping & Jitter Real-Time',
+    sub: 'Cek download, upload, latensi gaming, info ISP, dan server terdekat cukup sekali klik.',
+    ctaLabel: 'Mulai Speedtest →',
     href: './tools.html?tab=speedtest',
-    image: './assets/banner-speedtest.jpg',
-    scrim: 'weather',
+    image: './assets/banners/banner-speedtest.jpg',
+    scrim: 'prayer',
+    enabled: true,
   },
   {
     id: 'banner-downloader',
-    kicker: 'Menu Utilitas · Downloader',
-    heading: 'Download Video, Foto, Story & Caption Sosmed Tanpa Watermark',
-    sub: 'Unduh video MP4 HD, slide foto TikTok/IG, Story, MP3, & salin caption otomatis.',
-    ctaLabel: 'Buka Downloader',
+    utilityId: 'downloader',
+    kicker: 'Menu Utilitas · Tanpa Watermark',
+    heading: 'Downloader Video, Foto, Story & Audio Sosmed',
+    sub: 'Simpan video HD TikTok, IG, YT, FB, slide carousel, & salin caption langsung tanpa watermark.',
+    ctaLabel: 'Buka Downloader →',
     href: './tools.html?tab=downloader',
-    image: '',
+    image: './assets/banners/banner-downloader.jpg',
     scrim: 'downloader',
+    enabled: true,
   },
   {
     id: 'banner-compressor',
-    kicker: 'Menu Utilitas · Kompresor HD',
-    heading: 'Kompres Foto & Video Anti-Pecah untuk TikTok, IG & WA',
-    sub: 'Optimasi ukuran file tanpa mengurangi kualitas visual agar tidak dikompres ulang oleh sosmed.',
-    ctaLabel: 'Kompres Media HD',
+    utilityId: 'compressor',
+    kicker: 'Menu Utilitas · Anti-Pecah Sosmed',
+    heading: 'Kompres Foto & Video HD Tanpa Turun Kualitas',
+    sub: 'Perkecil ukuran file secara nyata dengan AVIF/WebP & FFmpeg agar unggahan TikTok, IG & WA tetap tajam.',
+    ctaLabel: 'Kompres Media →',
     href: './tools.html?tab=compressor',
-    image: '',
+    image: './assets/banners/banner-compressor.jpg',
+    scrim: 'emerald',
+    enabled: true,
+  },
+  {
+    id: 'banner-converter',
+    utilityId: 'converter',
+    kicker: 'Menu Utilitas · 85+ Format File',
+    heading: 'Konversi DOCX, PDF, Excel, Foto, Video & Audio',
+    sub: 'Deteksi format otomatis untuk ubah dokumen, gambar, arsip ZIP, hingga audio instan di browser.',
+    ctaLabel: 'Konversi File →',
+    href: './tools.html?tab=converter',
+    image: './assets/banners/banner-converter.jpg',
+    scrim: 'amber',
+    enabled: true,
+  },
+  {
+    id: 'banner-songfinder',
+    utilityId: 'songfinder',
+    kicker: 'Menu Utilitas · 9 Engine AI',
+    heading: 'Cari Judul Lagu & Sumber Video dari Potongan',
+    sub: 'Unggah rekaman audio atau klip video untuk lacak judul, lirik, & link resmi hingga ~100% akurat.',
+    ctaLabel: 'Cari Lagu →',
+    href: './tools.html?tab=songfinder',
+    image: './assets/banners/banner-songfinder.jpg',
+    scrim: 'violet',
+    enabled: true,
+  },
+  {
+    id: 'banner-music',
+    utilityId: 'music',
+    kicker: 'Menu Utilitas · Bebas Iklan',
+    heading: 'YT Music Hub — Streaming Musik Gratis Full',
+    sub: 'Putar lagu viral Indonesia & mancanegara tanpa iklan, lengkap pemutar mini mengambang.',
+    ctaLabel: 'Putar Musik →',
+    href: './tools.html?tab=music',
+    image: './assets/banners/banner-music.jpg',
+    scrim: 'crimson',
+    enabled: true,
+  },
+  {
+    id: 'banner-dracin',
+    utilityId: 'dracin',
+    kicker: 'Menu Utilitas · 20+ Platform Terpadu',
+    heading: 'Nonton Drama China Full Episode Gratis',
+    sub: 'Satukan drama populer dalam satu player bebas iklan, lompat episode bebas, & subtitle Indonesia.',
+    ctaLabel: 'Tonton Dracin →',
+    href: './tools.html?tab=dracin',
+    image: './assets/banners/banner-dracin.jpg',
+    scrim: 'crimson',
+    enabled: true,
+  },
+  {
+    id: 'banner-audioeditor',
+    utilityId: 'audioeditor',
+    kicker: 'Menu Utilitas · Studio DSP & AI',
+    heading: 'Audio Editor — EQ 10-Band, Pisah Vokal & Mix',
+    sub: 'Potong audio, hapus noise, ubah suara, pisah karaoke, & ekspor MP3/WAV/FLAC langsung di web.',
+    ctaLabel: 'Buka Studio →',
+    href: './tools.html?tab=audioeditor',
+    image: './assets/banners/banner-audioeditor.jpg',
+    scrim: 'violet',
+    enabled: true,
+  },
+  {
+    id: 'banner-manifestai',
+    utilityId: 'manifestai',
+    kicker: 'Menu Utilitas · Multi-Model AI',
+    heading: 'Manifest AI — Gabungan Model Cerdas Gratis',
+    sub: 'Ngobrol dengan ensemble AI modern, memori konsisten, failover otomatis, & dukung API Key pribadi.',
+    ctaLabel: 'Chat Manifest AI →',
+    href: './tools.html?tab=manifestai',
+    image: './assets/banners/banner-manifestai.jpg',
     scrim: 'world',
+    enabled: true,
+  },
+  {
+    id: 'banner-plagiarism',
+    utilityId: 'plagiarism',
+    kicker: 'Menu Utilitas · Format Turnitin',
+    heading: 'Cek Plagiarisme Dokumen Asli + Laporan PDF',
+    sub: 'Pertahankan tata letak dokumen asli dengan sorotan warna sumber & unduh laporan ala Turnitin.',
+    ctaLabel: 'Cek Plagiarisme →',
+    href: './tools.html?tab=plagiarism',
+    image: './assets/banners/banner-plagiarism.jpg',
+    scrim: 'prayer',
+    enabled: true,
+  },
+  {
+    id: 'banner-novel',
+    utilityId: 'novel',
+    kicker: 'Menu Utilitas · 122+ Tema & Suara',
+    heading: 'Baca Novel Terpadu Gratis Penuh Real-Time',
+    sub: 'Katalog novel lintas platform bebas kunci VIP, cari dari cuplikan, tema animasi, & mode audiobook.',
+    ctaLabel: 'Baca Novel →',
+    href: './tools.html?tab=novel',
+    image: './assets/banners/banner-novel.jpg',
+    scrim: 'amber',
+    enabled: true,
   },
 ];
 
@@ -588,6 +741,7 @@ export function normalizeBanners(banners, fallbackBanners = DEFAULT_BANNERS) {
     .filter((b) => b && (String(b.heading || '').trim() || String(b.kicker || '').trim()))
     .map((b, idx) => ({
       id: String(b.id || `banner-${idx + 1}`).trim(),
+      utilityId: inferBannerUtilityId(b),
       kicker: String(b.kicker || 'Promo & Info')
         .trim()
         .replace(/^Menu Lainnya\b/i, 'Menu Utilitas'),
@@ -596,11 +750,8 @@ export function normalizeBanners(banners, fallbackBanners = DEFAULT_BANNERS) {
       ctaLabel: String(b.ctaLabel || 'Selengkapnya').trim() || 'Selengkapnya',
       href: String(b.href || '#katalog').trim() || '#katalog',
       image: String(b.image ?? '').trim(),
-      scrim: ['default', 'prayer', 'weather', 'world', 'downloader'].includes(
-        String(b.scrim || '').trim()
-      )
-        ? String(b.scrim).trim()
-        : 'default',
+      scrim: normalizeBannerScrim(b.scrim),
+      enabled: b.enabled !== false,
     }));
 }
 
@@ -608,9 +759,9 @@ export const DEFAULT_UTILITY_CONFIG = {
   callout: {
     icon: './assets/icons/menu-utilitas.svg',
     title: 'Menu Utilitas',
-    badge: '10 Fitur Gratis',
-    description:
-      'Jadwal Sholat · Cuaca · Jam Dunia & Globe · Speedtest · Downloader · Kompres HD · Konversi File · Cari Judul Lagu & Video · YT Music · Drama China',
+    badge: '14 Fitur Gratis',
+    description: '',
+    autoCountBadge: true,
   },
   musicHero: {
     icon: './assets/icons/tool-music.svg',
@@ -795,26 +946,48 @@ export function normalizeUtilityConfig(utilities = {}) {
   const rawCallout = safe.callout && typeof safe.callout === 'object' ? safe.callout : {};
   const rawMusicHero = safe.musicHero && typeof safe.musicHero === 'object' ? safe.musicHero : {};
   const rawItems = Array.isArray(safe.items) ? safe.items : [];
-  const rawItemMap = new Map(
-    rawItems
-      .filter((it) => it && typeof it === 'object' && it.id)
-      .map((it) => [String(it.id).trim(), it])
-  );
+  const defaultMap = new Map(DEFAULT_UTILITY_CONFIG.items.map((d) => [d.id, d]));
 
-  const items = DEFAULT_UTILITY_CONFIG.items.map((defItem) => {
-    const custom = rawItemMap.get(defItem.id) || {};
-    return {
-      id: defItem.id,
-      label: String(custom.label || defItem.label).trim() || defItem.label,
-      icon: String(custom.icon || defItem.icon).trim() || defItem.icon,
-      pageTitle: String(custom.pageTitle || defItem.pageTitle).trim() || defItem.pageTitle,
-      pageSubtitle: String(custom.pageSubtitle || defItem.pageSubtitle).trim() || defItem.pageSubtitle,
-      heroKicker: String(custom.heroKicker || defItem.heroKicker || '').trim() || defItem.heroKicker || '',
-      heroTitle: String(custom.heroTitle || defItem.heroTitle || '').trim() || defItem.heroTitle || '',
-      heroDescription:
-        String(custom.heroDescription || defItem.heroDescription || '').trim() || defItem.heroDescription || '',
-    };
+  const buildItem = (defItem, custom = {}) => ({
+    id: defItem.id,
+    enabled: custom.enabled !== false,
+    label: String(custom.label || defItem.label).trim() || defItem.label,
+    icon: String(custom.icon || defItem.icon).trim() || defItem.icon,
+    pageTitle: String(custom.pageTitle || defItem.pageTitle).trim() || defItem.pageTitle,
+    pageSubtitle: String(custom.pageSubtitle || defItem.pageSubtitle).trim() || defItem.pageSubtitle,
+    heroKicker: String(custom.heroKicker || defItem.heroKicker || '').trim() || defItem.heroKicker || '',
+    heroTitle: String(custom.heroTitle || defItem.heroTitle || '').trim() || defItem.heroTitle || '',
+    heroDescription:
+      String(custom.heroDescription || defItem.heroDescription || '').trim() || defItem.heroDescription || '',
   });
+
+  const seenIds = new Set();
+  const items = [];
+  for (const raw of rawItems) {
+    if (!raw || typeof raw !== 'object' || !raw.id) continue;
+    const id = String(raw.id).trim();
+    const defItem = defaultMap.get(id);
+    if (!defItem || seenIds.has(id)) continue;
+    seenIds.add(id);
+    items.push(buildItem(defItem, raw));
+  }
+  for (const defItem of DEFAULT_UTILITY_CONFIG.items) {
+    if (seenIds.has(defItem.id)) continue;
+    seenIds.add(defItem.id);
+    items.push(buildItem(defItem, {}));
+  }
+
+  const enabledCount = items.filter((it) => it.enabled !== false).length;
+  const autoCountBadge = rawCallout.autoCountBadge !== false;
+  const computedBadge = `${enabledCount} Fitur Gratis`;
+  const rawDesc =
+    rawCallout.description !== undefined
+      ? String(rawCallout.description).trim()
+      : rawCallout.subtitle !== undefined
+      ? String(rawCallout.subtitle).trim()
+      : '';
+  const isLegacyUtilityList = (rawDesc.match(/·/g) || []).length >= 5;
+  const cleanDescription = isLegacyUtilityList ? '' : rawDesc;
 
   return {
     callout: {
@@ -824,12 +997,11 @@ export function normalizeUtilityConfig(utilities = {}) {
       title:
         String(rawCallout.title || DEFAULT_UTILITY_CONFIG.callout.title).trim() ||
         DEFAULT_UTILITY_CONFIG.callout.title,
-      badge:
-        String(rawCallout.badge || DEFAULT_UTILITY_CONFIG.callout.badge).trim() ||
-        DEFAULT_UTILITY_CONFIG.callout.badge,
-      description:
-        String(rawCallout.description || rawCallout.subtitle || DEFAULT_UTILITY_CONFIG.callout.description).trim() ||
-        DEFAULT_UTILITY_CONFIG.callout.description,
+      badge: autoCountBadge
+        ? computedBadge
+        : String(rawCallout.badge || computedBadge).trim() || computedBadge,
+      description: cleanDescription,
+      autoCountBadge,
     },
     musicHero: {
       icon:
@@ -856,6 +1028,7 @@ export function upsertUtilityItemInCatalog(catalog, itemInput = {}) {
     if (it.id !== cleanId) return it;
     return {
       ...it,
+      enabled: itemInput.enabled !== undefined ? Boolean(itemInput.enabled) : it.enabled !== false,
       label: itemInput.label !== undefined ? String(itemInput.label).trim() || it.label : it.label,
       icon: itemInput.icon !== undefined ? String(itemInput.icon).trim() || it.icon : it.icon,
       pageTitle:
@@ -874,12 +1047,287 @@ export function upsertUtilityItemInCatalog(catalog, itemInput = {}) {
           : it.heroDescription,
     };
   });
+  const nextUtilities = normalizeUtilityConfig({
+    ...currentUtil,
+    items,
+  });
   return {
     ...catalog,
-    utilities: {
+    utilities: nextUtilities,
+  };
+}
+
+export function moveUtilityItemInCatalog(catalog, itemId, direction) {
+  const currentUtil = normalizeUtilityConfig(catalog?.utilities);
+  const items = currentUtil.items.map((it) => ({ ...it }));
+  const index = items.findIndex((it) => it.id === itemId);
+  if (index < 0 || items.length <= 1) {
+    return { ...catalog, utilities: currentUtil };
+  }
+  let targetIndex = index;
+  if (direction === 'up') targetIndex = Math.max(0, index - 1);
+  else if (direction === 'down') targetIndex = Math.min(items.length - 1, index + 1);
+  if (targetIndex === index) {
+    return { ...catalog, utilities: currentUtil };
+  }
+  const [moved] = items.splice(index, 1);
+  items.splice(targetIndex, 0, moved);
+  return {
+    ...catalog,
+    utilities: normalizeUtilityConfig({
       ...currentUtil,
       items,
+    }),
+  };
+}
+
+export function syncAllMenusAndBanners(catalog = {}) {
+  const normBrand = normalizeBrandConfig(catalog?.brand || {});
+  const normUtil = normalizeUtilityConfig(catalog?.utilities || {});
+  const activeUtilItems = normUtil.items.filter((it) => it.enabled !== false);
+  const activeUtilIds = new Set(activeUtilItems.map((it) => it.id));
+
+  const cleanedCallout = {
+    ...normUtil.callout,
+    autoCountBadge: true,
+    badge: `${activeUtilItems.length} Fitur Gratis`,
+    description:
+      (String(normUtil.callout.description || '').match(/·/g) || []).length >= 4
+        ? ''
+        : String(normUtil.callout.description || '').trim(),
+  };
+
+  const currentBanners = normalizeBanners(catalog?.banners);
+  const defaultBannerByUtil = new Map(
+    DEFAULT_BANNERS.filter((b) => b.utilityId).map((b) => [b.utilityId, b])
+  );
+  const defaultCatalogBanner = DEFAULT_BANNERS[0];
+
+  const LEGACY_BANNER_IMAGES = new Set([
+    '',
+    './assets/hero-banner.jpg',
+    './assets/banner-prayer.jpg',
+    './assets/banner-weather.jpg',
+    './assets/banner-worldclock.jpg',
+    './assets/banner-speedtest.jpg',
+  ]);
+
+  const existingByUtil = new Map();
+  const customNonUtilBanners = [];
+
+  for (const ban of currentBanners) {
+    const uid = inferBannerUtilityId(ban);
+    if (uid) {
+      if (!existingByUtil.has(uid)) {
+        existingByUtil.set(uid, ban);
+      }
+    } else {
+      const nextBan = { ...ban, utilityId: '', enabled: ban.enabled !== false };
+      if (nextBan.id === 'banner-katalog' && LEGACY_BANNER_IMAGES.has(nextBan.image)) {
+        nextBan.image = defaultCatalogBanner.image;
+      }
+      customNonUtilBanners.push(nextBan);
+    }
+  }
+
+  if (customNonUtilBanners.length === 0) {
+    customNonUtilBanners.push({ ...defaultCatalogBanner });
+  }
+
+  const syncedUtilityBanners = [];
+  for (const utilItem of activeUtilItems) {
+    if (!activeUtilIds.has(utilItem.id)) continue;
+    const existing = existingByUtil.get(utilItem.id);
+    const defBan = defaultBannerByUtil.get(utilItem.id);
+    if (existing) {
+      const upgradedImage =
+        LEGACY_BANNER_IMAGES.has(existing.image) && defBan?.image ? defBan.image : existing.image;
+      syncedUtilityBanners.push({
+        ...existing,
+        id: existing.id || `banner-${utilItem.id}`,
+        utilityId: utilItem.id,
+        href: `./tools.html?tab=${utilItem.id}`,
+        image: upgradedImage,
+        scrim: normalizeBannerScrim(existing.scrim || defBan?.scrim || 'default'),
+        enabled: true,
+      });
+    } else if (defBan) {
+      syncedUtilityBanners.push({
+        ...defBan,
+        utilityId: utilItem.id,
+        href: `./tools.html?tab=${utilItem.id}`,
+        enabled: true,
+      });
+    } else {
+      syncedUtilityBanners.push({
+        id: `banner-${utilItem.id}`,
+        utilityId: utilItem.id,
+        kicker: `Menu Utilitas · ${utilItem.label}`,
+        heading: utilItem.heroTitle || utilItem.pageTitle || utilItem.label,
+        sub: utilItem.pageSubtitle || '',
+        ctaLabel: `Buka ${utilItem.label} →`,
+        href: `./tools.html?tab=${utilItem.id}`,
+        image: `./assets/banners/banner-${utilItem.id}.jpg`,
+        scrim: 'default',
+        enabled: true,
+      });
+    }
+  }
+
+  return {
+    ...catalog,
+    brand: normBrand,
+    utilities: {
+      ...normUtil,
+      callout: cleanedCallout,
     },
+    banners: [...customNonUtilBanners, ...syncedUtilityBanners],
+    paymentOptions: syncPaymentOptionsWithBrand(catalog?.paymentOptions, normBrand),
+  };
+}
+
+export function computeAdminSyncStatus(
+  draftCatalog = {},
+  liveCatalog = null,
+  { source = 'remote', dirty = false, checkedAt = '' } = {}
+) {
+  const normUtil = normalizeUtilityConfig(draftCatalog?.utilities || {});
+  const totalUtilities = normUtil.items.length;
+  const activeUtilItems = normUtil.items.filter((it) => it.enabled !== false);
+  const activeUtilities = activeUtilItems.length;
+  const activeUtilIds = new Set(activeUtilItems.map((it) => it.id));
+
+  const banners = normalizeBanners(draftCatalog?.banners);
+  const activeBanners = banners.filter((b) => b.enabled !== false);
+  const bannerUtilIds = new Set(activeBanners.map((b) => inferBannerUtilityId(b)).filter(Boolean));
+
+  const missingUtilityBanners = activeUtilItems
+    .filter((it) => !bannerUtilIds.has(it.id))
+    .map((it) => it.label);
+  const extraDisabledUtilityBanners = activeBanners
+    .filter((b) => {
+      const uid = inferBannerUtilityId(b);
+      return uid && !activeUtilIds.has(uid);
+    })
+    .map((b) => b.heading || b.id);
+
+  const expectedBadge = `${activeUtilities} Fitur Gratis`;
+  const calloutBadgeSynced = normUtil.callout.badge === expectedBadge;
+  const calloutHasLegacyList = (String(normUtil.callout.description || '').match(/·/g) || []).length >= 5;
+
+  const products = Array.isArray(draftCatalog?.products) ? draftCatalog.products : [];
+  const activeProducts = products.filter((p) => !p.outOfStock).length;
+  const categories = Array.isArray(draftCatalog?.categories)
+    ? draftCatalog.categories.filter((c) => c && c.id !== 'all')
+    : [];
+
+  let changedAreas = [];
+  if (liveCatalog && typeof liveCatalog === 'object') {
+    const compare = (key, a, b) => {
+      if (JSON.stringify(a ?? null) !== JSON.stringify(b ?? null)) {
+        changedAreas.push(key);
+      }
+    };
+    compare('Produk', draftCatalog?.products, liveCatalog?.products);
+    compare('Kategori', draftCatalog?.categories, liveCatalog?.categories);
+    compare('Banner', banners, normalizeBanners(liveCatalog?.banners));
+    compare('Menu Utilitas', normUtil, normalizeUtilityConfig(liveCatalog?.utilities || {}));
+    compare('Brand', normalizeBrandConfig(draftCatalog?.brand || {}), normalizeBrandConfig(liveCatalog?.brand || {}));
+    compare('Voucher', draftCatalog?.vouchers, liveCatalog?.vouchers);
+    compare('FAQ', draftCatalog?.faqItems, liveCatalog?.faqItems);
+  }
+
+  const menuAndBannerNeedsSync =
+    missingUtilityBanners.length > 0 ||
+    extraDisabledUtilityBanners.length > 0 ||
+    !calloutBadgeSynced ||
+    calloutHasLegacyList;
+
+  const hasUnpublishedChanges = Boolean(dirty || source === 'preview' || changedAreas.length > 0);
+
+  let overallStatus = 'synced';
+  let overallLabel = 'Tersinkron Penuh';
+  if (menuAndBannerNeedsSync) {
+    overallStatus = 'attention';
+    overallLabel = 'Perlu Sinkronisasi Menu & Banner';
+  } else if (hasUnpublishedChanges) {
+    overallStatus = 'draft';
+    overallLabel =
+      changedAreas.length > 0
+        ? `Draft Lokal (${changedAreas.length} bagian berubah)`
+        : 'Ada Perubahan Belum Dipublikasikan';
+  }
+
+  const checks = [
+    {
+      id: 'catalog',
+      label: 'Menu Utama & Katalog',
+      status: calloutBadgeSynced && !calloutHasLegacyList ? 'ok' : 'warn',
+      value: `${activeProducts}/${products.length} Produk · ${categories.length} Kategori`,
+      detail: calloutBadgeSynced
+        ? `Kartu pintasan sinkron (${normUtil.callout.badge})`
+        : `Badge pintasan "${normUtil.callout.badge}" belum cocok (${expectedBadge})`,
+    },
+    {
+      id: 'utilities',
+      label: 'Menu Utilitas',
+      status: activeUtilities > 0 ? 'ok' : 'warn',
+      value: `${activeUtilities}/${totalUtilities} Menu Aktif`,
+      detail:
+        activeUtilities === totalUtilities
+          ? 'Seluruh menu utilitas aktif & sinkron di Header & Tools'
+          : `${totalUtilities - activeUtilities} menu dinonaktifkan sementara`,
+    },
+    {
+      id: 'banners',
+      label: 'Banner Carousel',
+      status: missingUtilityBanners.length === 0 && extraDisabledUtilityBanners.length === 0 ? 'ok' : 'warn',
+      value: `${activeBanners.length} Slide Aktif`,
+      detail:
+        missingUtilityBanners.length > 0
+          ? `${missingUtilityBanners.length} menu utilitas belum memiliki banner`
+          : extraDisabledUtilityBanners.length > 0
+          ? `${extraDisabledUtilityBanners.length} banner mengarah ke menu nonaktif`
+          : `100% terhubung ke Menu Utama & ${activeUtilities} Menu Utilitas`,
+    },
+    {
+      id: 'publish',
+      label: 'Status Publikasi',
+      status: hasUnpublishedChanges ? 'draft' : 'ok',
+      value: hasUnpublishedChanges
+        ? source === 'preview'
+          ? 'Pratinjau Lokal'
+          : 'Draft Belum Publish'
+        : source === 'github'
+        ? 'Sinkron GitHub Live'
+        : 'Sinkron catalog.json',
+      detail:
+        changedAreas.length > 0
+          ? `Perubahan pada: ${changedAreas.join(', ')}`
+          : 'Data Admin sama dengan katalog publik aktif',
+    },
+  ];
+
+  return {
+    overallStatus,
+    overallLabel,
+    checkedAt: checkedAt || new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }),
+    metrics: {
+      totalProducts: products.length,
+      activeProducts,
+      totalCategories: categories.length,
+      activeUtilities,
+      totalUtilities,
+      activeBanners: activeBanners.length,
+      expectedBanners: activeUtilities + 1,
+      calloutBadgeSynced,
+      calloutHasLegacyList,
+      missingUtilityBanners,
+      extraDisabledUtilityBanners,
+      pendingDiffCount: changedAreas.length,
+      changedAreas,
+    },
+    checks,
   };
 }
 
@@ -1110,16 +1558,14 @@ export function upsertBannerInCatalog(catalog, bannerInput = {}) {
   const cleanCta = String(bannerInput.ctaLabel || 'Selengkapnya').trim() || 'Selengkapnya';
   const cleanHref = String(bannerInput.href || '#katalog').trim() || '#katalog';
   const cleanImage = String(bannerInput.image ?? '').trim();
-  const cleanScrim = ['default', 'prayer', 'weather', 'world', 'downloader'].includes(
-    String(bannerInput.scrim || '').trim()
-  )
-    ? String(bannerInput.scrim).trim()
-    : 'default';
+  const cleanScrim = normalizeBannerScrim(bannerInput.scrim);
+  const cleanUtilityId = inferBannerUtilityId({ ...bannerInput, id: cleanId, href: cleanHref });
 
   const currentBanners = normalizeBanners(catalog?.banners);
   const existingIdx = currentBanners.findIndex((b) => b.id === cleanId);
   const entry = {
     id: cleanId,
+    utilityId: cleanUtilityId,
     kicker: cleanKicker,
     heading: cleanHeading,
     sub: cleanSub,
@@ -1127,6 +1573,7 @@ export function upsertBannerInCatalog(catalog, bannerInput = {}) {
     href: cleanHref,
     image: cleanImage,
     scrim: cleanScrim,
+    enabled: bannerInput.enabled !== false,
   };
 
   if (existingIdx >= 0) {

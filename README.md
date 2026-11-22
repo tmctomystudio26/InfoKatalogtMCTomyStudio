@@ -14,9 +14,9 @@ Platform web statis resmi **Manifestudio** (*by Tomy*) berbasis **100% Static HT
 
 ## 🌟 Fitur Utama
 
-1. **Katalog Top-Up Modern, Tombol Khusus Menu Utilitas & Multi-Banner Carousel Dinamis**:
-   - Slide banner interaktif yang sepenuhnya dapat ditambah, diubah teks/gambarnya, atau diatur urutannya lewat Panel Admin.
-   - Akses **Menu Utilitas (`#utilities-callout-card`)** terpisah di atas pencarian dengan ikon vektor khusus (`menu-utilitas.svg`).
+1. **Katalog Top-Up Modern, 15 Banner Maskot Visual Gen-Z & Kartu Menu Utilitas Ringkas (`v74`)**:
+   - **15 Slide Banner Maskot Gen-Z (`assets/banners/banner-*.jpg`)**: Setiap menu (Katalog Utama + 14 Menu Utilitas) memiliki ilustrasi maskot unik bergaya modern, scrim bertema, penghitung slide (`1 / 15`), serta sinkron penuh dengan Panel Admin.
+   - **Kartu Pintasan Menu Utilitas Ringkas (`#utilities-callout-card`)**: Tampil ramping tanpa daftar teks panjang dengan lencana **`14 Fitur Gratis`** yang otomatis mengikuti jumlah fitur aktif di Panel Admin.
    - Grid produk responsif (5 kolom desktop → 2 kolom mobile), pencarian instan, filter kategori dinamis, status stok, serta *FAQ* yang dapat diedit Admin.
 2. **Checkout Bersih, Voucher Berkuota Ketat, Biaya Layanan Fleksibel & Struk JPEG (`order.html`)**:
    - Validasi voucher ketat dengan kuota **1x Pakai**, **Maksimal N Kali**, atau **Tak Terbatas**.
@@ -40,8 +40,9 @@ Platform web statis resmi **Manifestudio** (*by Tomy*) berbasis **100% Static HT
      - Seluruh **17 platform short-drama original** (**DramaBox VIP/ForYou/Dubbing, PineDrama TikTok CDN, Melolo, NetShort, NunoMix Dub Indo, ReelShort, ShortMax, GoodShort, FlickReels, FreeReels, DramaWave, FlexTV, KalosTV, MoboReels, MyDrama, StardustTV, & Vigloo**) disatukan dalam **1 katalog terpadu** dengan warm-start `0ms` (92+ drama terverifikasi + sinkronisasi live 400–500+ judul) dan **0% Dailymotion**.
      - 100% pemutaran di pemutar vertikal 9:16 HTML5 `<video>` asli (Direct MP4 HD, HLS.js, WebCrypto CENC), **100% VIP Terbuka Ep 1–Tamat gratis**, fitur **🔥 Mode FYP TikTok (Full Ep Gratis)** dengan pengalih drama FYP instan, Layar Penuh + *Layar Bersih*, preloading episode berikutnya, subtitle Indonesia otomatis, serta pencari drama lintas-platform & klip AI.
    - **Jadwal Sholat Indonesia**, **Prakiraan Cuaca Presisi**, **Jam Dunia & Globe 3D**, **Speedtest Cloudflare**, **Downloader Sosmed All-in-One**, **Kompresor Media HD AI & Open-Source**, **Konversi Semua File (85+ Format)**, **Cari Judul Lagu & Sumber Video**, serta **Pemutar YT Music Bebas Iklan + Background Audio Anti-Mati**.
-4. **Panel Admin Terenkripsi AES-256-GCM (`admin.html`)**:
+4. **Panel Admin Terenkripsi AES-256-GCM + Dashboard Status Sinkronisasi (`admin.html`, `v74`)**:
    - Dilindungi PBKDF2-SHA256 + verifikasi token GitHub PAT.
+   - **Pusat Kontrol & Status Sinkronisasi real-time**: Menampilkan indikator sinkronisasi 4 area (*Menu Utama & Katalog*, *Menu Utilitas*, *Banner Carousel*, *Status Publikasi*), tombol 1-klik **`Sinkronkan Semua Menu & Banner`**, penghitung angka live di tab, serta kartu *collapsible* rapi dengan sakelar Aktif/Nonaktif & pengatur urutan untuk 15 banner dan 14 menu utilitas.
    - Kelola produk, sub-varian, harga, stok, kategori layanan custom, kuota pemakaian voucher, logo brand, tagline/footer, biaya layanan, kontak & logo sosmed, FAQ, OpenGraph Live, Slide Banner, serta Riwayat Perubahan Terperinci (maks 12 log + Restore 1-klik).
 
 ---

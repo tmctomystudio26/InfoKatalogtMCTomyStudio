@@ -4,7 +4,7 @@ import {
   PAY_LATER_SURCHARGE_RATE,
   getDefaultCatalogSnapshot,
   loadCatalogData,
-} from './data.js?v=60';
+} from './data.js?v=74';
 import {
   PENDING_ORDER_STORAGE_KEY,
   addToCart,
@@ -14,6 +14,7 @@ import {
   formatRupiah,
   generateOrderCode,
   getStartingPrice,
+  inferBannerUtilityId,
   normalizeBanners,
   normalizeBrandConfig,
   normalizeUtilityConfig,
@@ -22,9 +23,9 @@ import {
   syncPaymentOptionsWithBrand,
   updateCartQty,
   validateOrderForm,
-} from './store.js?v=60';
-import { initPwaManager } from './pwa.js?v=60';
-import { initMusicPlayer } from './music.js?v=60';
+} from './store.js?v=74';
+import { initPwaManager } from './pwa.js?v=74';
+import { initMusicPlayer } from './music.js?v=74';
 
 const THEME_STORAGE_KEY = 'manifestudio_theme_v1';
 const CART_STORAGE_KEY = 'manifestudio_cart_v1';
@@ -56,8 +57,24 @@ function getBrand() {
   return normalizeBrandConfig(state.catalog.brand || DEFAULT_BRAND);
 }
 
+function getUtilitiesConfig() {
+  return normalizeUtilityConfig(state.catalog?.utilities);
+}
+
 function getBanners() {
-  return normalizeBanners(state.catalog.banners);
+  const activeUtilIds = new Set(
+    (getUtilitiesConfig().items || [])
+      .filter((it) => it.enabled !== false)
+      .map((it) => it.id)
+  );
+  const allBanners = normalizeBanners(state.catalog.banners);
+  const filtered = allBanners.filter((b) => {
+    if (b.enabled === false) return false;
+    const uid = inferBannerUtilityId(b);
+    if (uid && !activeUtilIds.has(uid)) return false;
+    return true;
+  });
+  return filtered.length > 0 ? filtered : allBanners.slice(0, 1);
 }
 
 function getCategories() {
@@ -346,6 +363,7 @@ let applyBannerSlideFn = null;
 function renderBanners() {
   const track = document.getElementById('banner-track');
   const dotsContainer = document.getElementById('banner-dots');
+  const counterEl = document.getElementById('banner-slide-counter');
   if (!track) return;
 
   const banners = getBanners();
@@ -365,6 +383,7 @@ function renderBanners() {
         : '';
       const isCatalogAnchor = b.href === '#katalog';
       const btnClass = idx === 0 && isCatalogAnchor ? 'btn btn-primary btn-sm' : 'btn btn-outline-light btn-sm';
+      const HeadingTag = idx === 0 ? 'h1' : 'h2';
 
       return `
         <article
@@ -381,7 +400,8 @@ function renderBanners() {
                   alt="${escapeHtml(b.heading)}"
                   class="promo-banner-img"
                   width="1200"
-                  height="400"
+                  height="675"
+                  data-fallback-banner="./assets/banners/banner-katalog.jpg"
                   ${idx === 0 ? 'fetchpriority="high"' : 'loading="lazy"'}
                 />`
               : ''
@@ -390,7 +410,7 @@ function renderBanners() {
           <div class="promo-banner-content">
             <div class="promo-banner-copy">
               <span class="promo-kicker">${escapeHtml(b.kicker)}</span>
-              <h2 class="promo-heading">${escapeHtml(b.heading)}</h2>
+              <${HeadingTag} class="promo-heading">${escapeHtml(b.heading)}</${HeadingTag}>
               ${b.sub ? `<p class="promo-sub">${escapeHtml(b.sub)}</p>` : ''}
             </div>
             <div class="promo-banner-cta">
@@ -403,6 +423,19 @@ function renderBanners() {
       `;
     })
     .join('');
+
+  track.querySelectorAll('img[data-fallback-banner]').forEach((img) => {
+    img.addEventListener(
+      'error',
+      () => {
+        const fb = img.getAttribute('data-fallback-banner') || './assets/banners/banner-katalog.jpg';
+        if (img.getAttribute('src') !== fb) {
+          img.src = fb;
+        }
+      },
+      { once: true }
+    );
+  });
 
   if (dotsContainer) {
     dotsContainer.innerHTML = banners
@@ -418,6 +451,10 @@ function renderBanners() {
       `
       )
       .join('');
+  }
+
+  if (counterEl) {
+    counterEl.textContent = `${state.activeBannerSlide + 1} / ${banners.length}`;
   }
 
   if (typeof applyBannerSlideFn === 'function') {
@@ -468,6 +505,11 @@ function initBannerCarousel() {
       dot.classList.toggle('is-active', active);
       dot.setAttribute('aria-selected', String(active));
     });
+
+    const counterEl = document.getElementById('banner-slide-counter');
+    if (counterEl) {
+      counterEl.textContent = `${wrapped + 1} / ${totalSlides}`;
+    }
   }
 
   applyBannerSlideFn = applySlide;
@@ -861,6 +903,7 @@ function updateCartBadges() {
     floatCartCount.textContent = `${totals.itemCount} item`;
     floatCartTotal.textContent = formatRupiah(totals.total);
   }
+  document.body.classList.toggle('has-mobile-cart', totals.itemCount > 0);
 }
 
 function buildSummaryBreakdownHtml(totals) {
@@ -1526,10 +1569,37 @@ function renderBrandAndFooter() {
     }
   }
 
-  // Sync Storefront Utilities Callout Card from catalog.utilities.callout
-  const utilitiesCfg = normalizeUtilityConfig(state.catalog?.utilities);
+  // Sync Storefront Header Nav & Utilities Callout Card from catalog.utilities
+  const utilitiesCfg = getUtilitiesConfig();
+  const activeUtilItems = (utilitiesCfg.items || []).filter((it) => it.enabled !== false);
+
+  const headerNav = document.getElementById('header-nav-list');
+  if (headerNav) {
+    const linksHtml = activeUtilItems
+      .map(
+        (item) =>
+          `<a href="./tools.html?tab=${escapeHtml(item.id)}" class="header-nav-link">${escapeHtml(
+            item.label
+          )}</a>`
+      )
+      .join('');
+    headerNav.innerHTML = `
+      <button type="button" class="header-nav-link is-active" data-nav-target="catalog">Katalog</button>
+      ${linksHtml}
+    `;
+    headerNav.querySelector('[data-nav-target="catalog"]')?.addEventListener('click', () => {
+      state.category = 'all';
+      renderCategories();
+      renderCatalog();
+      document.getElementById('katalog')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+  }
+
   const calloutCard = document.getElementById('utilities-callout-card');
   if (calloutCard && utilitiesCfg.callout) {
+    calloutCard.hidden = activeUtilItems.length === 0;
+    const firstActiveTab = activeUtilItems[0]?.id || 'prayer';
+    calloutCard.setAttribute('href', `./tools.html?tab=${encodeURIComponent(firstActiveTab)}`);
     const iconImg = calloutCard.querySelector('img.utilities-callout-icon, .utilities-callout-icon img');
     if (iconImg && utilitiesCfg.callout.icon) {
       iconImg.src = utilitiesCfg.callout.icon;
@@ -1539,20 +1609,25 @@ function renderBrandAndFooter() {
       titleStrong.textContent = utilitiesCfg.callout.title;
     }
     const badgeSpan = calloutCard.querySelector('.utilities-callout-sub-tag, .utilities-callout-badge');
-    if (badgeSpan && utilitiesCfg.callout.badge) {
-      badgeSpan.textContent = utilitiesCfg.callout.badge;
+    const syncedBadge = utilitiesCfg.callout.badge || `${activeUtilItems.length} Fitur Gratis`;
+    if (badgeSpan) {
+      badgeSpan.textContent = syncedBadge;
     }
     const subP = calloutCard.querySelector('.utilities-callout-desc, .utilities-callout-copy p');
-    const calloutDesc = utilitiesCfg.callout.description || utilitiesCfg.callout.subtitle;
-    if (subP && calloutDesc) {
-      subP.textContent = calloutDesc;
+    const calloutDesc = String(utilitiesCfg.callout.description || '').trim();
+    if (subP) {
+      if (calloutDesc) {
+        subP.textContent = calloutDesc;
+        subP.hidden = false;
+      } else {
+        subP.textContent = '';
+        subP.hidden = true;
+      }
     }
-    if (utilitiesCfg.callout.title || calloutDesc) {
-      calloutCard.setAttribute(
-        'aria-label',
-        `Buka ${utilitiesCfg.callout.title || 'Menu Utilitas'}: ${calloutDesc || ''}`.trim()
-      );
-    }
+    calloutCard.setAttribute(
+      'aria-label',
+      `Buka ${utilitiesCfg.callout.title || 'Menu Utilitas'} — ${syncedBadge}`.trim()
+    );
   }
 }
 

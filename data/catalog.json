@@ -53,8 +53,9 @@
     "callout": {
       "icon": "./assets/icons/menu-utilitas.svg",
       "title": "Menu Utilitas",
-      "badge": "12 Fitur Gratis",
-      "description": "Jadwal Sholat · Cuaca · Jam Dunia & Globe · Speedtest · Downloader · Kompres HD · Konversi File · Cari Lagu · YT Music · Drama China · Audio Editor · Manifest AI"
+      "badge": "14 Fitur Gratis",
+      "description": "",
+      "autoCountBadge": true
     },
     "musicHero": {
       "icon": "https://thumb.wikimedia.org/wikipedia/commons/thumb/6/6a/Youtube_Music_icon.svg/3840px-Youtube_Music_icon.svg.png?utm_source=commons.wikimedia.org&utm_campaign=index&utm_content=thumbnail",
@@ -64,6 +65,7 @@
     "items": [
       {
         "id": "prayer",
+        "enabled": true,
         "label": "Jadwal Sholat",
         "icon": "./assets/icons/tool-prayer.svg",
         "pageTitle": "Jadwal Sholat & Imsakiyah",
@@ -74,6 +76,7 @@
       },
       {
         "id": "weather",
+        "enabled": true,
         "label": "Prakiraan Cuaca",
         "icon": "./assets/icons/tool-weather.svg",
         "pageTitle": "Prakiraan Cuaca Real-Time",
@@ -84,6 +87,7 @@
       },
       {
         "id": "worldclock",
+        "enabled": true,
         "label": "Jam Dunia & Globe",
         "icon": "./assets/icons/tool-world.svg",
         "pageTitle": "Jam Dunia UTC & Bola Dunia",
@@ -94,6 +98,7 @@
       },
       {
         "id": "speedtest",
+        "enabled": true,
         "label": "Speedtest",
         "icon": "./assets/icons/tool-speed.svg",
         "pageTitle": "Speedtest Internet Real-Time",
@@ -104,6 +109,7 @@
       },
       {
         "id": "downloader",
+        "enabled": true,
         "label": "Downloader",
         "icon": "./assets/icons/tool-downloader.svg",
         "pageTitle": "Downloader Video, Foto, Carousel & Story",
@@ -114,6 +120,7 @@
       },
       {
         "id": "compressor",
+        "enabled": true,
         "label": "Kompresor HD",
         "icon": "./assets/icons/tool-compressor.svg",
         "pageTitle": "Kompresor Foto & Video HD (Anti-Pecah Sosmed)",
@@ -124,6 +131,7 @@
       },
       {
         "id": "converter",
+        "enabled": true,
         "label": "Konversi File",
         "icon": "./assets/icons/tool-converter.svg",
         "pageTitle": "Konversi Semua Format File (All-in-One Converter)",
@@ -134,6 +142,7 @@
       },
       {
         "id": "songfinder",
+        "enabled": true,
         "label": "Cari Judul Lagu",
         "icon": "./assets/icons/tool-songfinder.svg",
         "pageTitle": "Cari Judul Lagu, Musik & Sumber Video (Multi-API & AI Identifier)",
@@ -144,6 +153,7 @@
       },
       {
         "id": "music",
+        "enabled": true,
         "label": "YT Music",
         "icon": "https://thumb.wikimedia.org/wikipedia/commons/thumb/6/6a/Youtube_Music_icon.svg/3840px-Youtube_Music_icon.svg.png?utm_source=commons.wikimedia.org&utm_campaign=index&utm_content=thumbnail",
         "pageTitle": "YT Music Player — Gratis Tanpa Iklan",
@@ -154,6 +164,7 @@
       },
       {
         "id": "dracin",
+        "enabled": true,
         "label": "Drama China",
         "icon": "./assets/icons/tool-dracin.svg",
         "pageTitle": "Drama China (Dracin) Gratis Tanpa Iklan — 20+ Platform",
@@ -164,6 +175,7 @@
       },
       {
         "id": "audioeditor",
+        "enabled": true,
         "label": "Audio Editor",
         "icon": "./assets/icons/tool-audioeditor.svg",
         "pageTitle": "Audio Editor Studio AI — Mastering, EQ & Pisah Vokal",
@@ -174,6 +186,7 @@
       },
       {
         "id": "manifestai",
+        "enabled": true,
         "label": "Manifest AI",
         "icon": "./assets/icons/tool-manifestai.svg",
         "pageTitle": "Manifest AI — Chat Multi-Model Gratis & API Key Pribadi",
@@ -184,6 +197,7 @@
       },
       {
         "id": "plagiarism",
+        "enabled": true,
         "label": "Cek Plagiarisme",
         "icon": "./assets/icons/tool-plagiarism.svg",
         "pageTitle": "Cek Plagiarisme Terpadu — Laporan Format Turnitin & Multi-AI",
@@ -194,6 +208,7 @@
       },
       {
         "id": "novel",
+        "enabled": true,
         "label": "Novel Terpadu",
         "icon": "./assets/icons/tool-novel.svg",
         "pageTitle": "Novel Terpadu — Baca Full Gratis Real-Time, 122+ Tema & Audiobook",
@@ -207,73 +222,183 @@
   "banners": [
     {
       "id": "banner-katalog",
-      "kicker": "Promo Otomatis · Garansi Penuh",
+      "utilityId": "",
+      "kicker": "Katalog Utama · Garansi Jelas",
       "heading": "Layanan Digital Siap Pakai dalam Hitungan Menit",
-      "sub": "Potongan otomatis Rp2.000 untuk transaksi mulai Rp50.000, dukungan kode voucher, dan opsi Bayar Nanti setelah akun diterima.",
+      "sub": "Potongan otomatis Rp2.000 mulai Rp50.000, dukung kode voucher, & opsi Bayar Nanti setelah akun aktif.",
       "ctaLabel": "Jelajahi Katalog →",
       "href": "#katalog",
-      "image": "./assets/hero-banner.jpg",
-      "scrim": "default"
+      "image": "./assets/banners/banner-katalog.jpg",
+      "scrim": "default",
+      "enabled": true
     },
     {
       "id": "banner-prayer",
-      "kicker": "Utilitas Muslim · 35+ Kota & GPS",
-      "heading": "Jadwal Sholat & Imsakiyah Real-Time",
-      "sub": "Hitung mundur waktu adzan berikutnya otomatis beserta jadwal Imsak, Subuh, Dzuhur, Ashar, Maghrib, dan Isya.",
+      "utilityId": "prayer",
+      "kicker": "Menu Utilitas · Kemenag RI",
+      "heading": "Jadwal Sholat & Imsakiyah Presisi Lokasi",
+      "sub": "Hitung mundur waktu adzan otomatis sesuai GPS & kecamatan se-Indonesia dari Imsak hingga Isya.",
       "ctaLabel": "Buka Jadwal Sholat →",
       "href": "./tools.html?tab=prayer",
-      "image": "./assets/banner-prayer.jpg",
-      "scrim": "default"
+      "image": "./assets/banners/banner-prayer.jpg",
+      "scrim": "emerald",
+      "enabled": true
     },
     {
       "id": "banner-weather",
-      "kicker": "Cuaca Akurat · Prakiraan 7 Hari",
-      "heading": "Pantau Cuaca, Suhu & Peluang Hujan",
-      "sub": "Data meteorologi presisi lengkap dengan kelembapan, indeks UV, kecepatan angin, dan prakiraan mingguan.",
-      "ctaLabel": "Cek Cuaca Sekarang →",
+      "utilityId": "weather",
+      "kicker": "Menu Utilitas · Radar Live",
+      "heading": "Pantau Cuaca Real-Time & Prakiraan 7 Hari",
+      "sub": "Cek suhu aktual, curah hujan per jam, kelembapan, UV, & kecepatan angin sebelum beraktivitas.",
+      "ctaLabel": "Cek Cuaca →",
       "href": "./tools.html?tab=weather",
-      "image": "./assets/banner-weather.jpg",
-      "scrim": "default"
+      "image": "./assets/banners/banner-weather.jpg",
+      "scrim": "weather",
+      "enabled": true
     },
     {
       "id": "banner-worldclock",
-      "kicker": "3D Globe Interaktif · WIB / WITA / WIT",
-      "heading": "Jam Dunia & Konverter Zona Waktu",
-      "sub": "Putar bola dunia 3D ke negara mana pun untuk membandingkan waktu lokal dengan kota internasional secara instan.",
+      "utilityId": "worldclock",
+      "kicker": "Menu Utilitas · Standar UTC",
+      "heading": "Putar Globe 3D & Konversi WIB / WITA / WIT",
+      "sub": "Klik negara di bola dunia interaktif untuk membandingkan zona waktu internasional secara instan.",
       "ctaLabel": "Buka Jam Dunia →",
       "href": "./tools.html?tab=worldclock",
-      "image": "./assets/banner-worldclock.jpg",
-      "scrim": "default"
+      "image": "./assets/banners/banner-worldclock.jpg",
+      "scrim": "world",
+      "enabled": true
     },
     {
       "id": "banner-speedtest",
-      "kicker": "Uji Jaringan · Download, Upload & Ping",
-      "heading": "Speedtest Internet & Kualitas Streaming",
-      "sub": "Ukur kecepatan unduh, unggah, ping, jitter, dan kesiapan streaming 4K atau gaming kompetitif Anda.",
+      "utilityId": "speedtest",
+      "kicker": "Menu Utilitas · Edge Speed",
+      "heading": "Uji Kecepatan Internet, Ping & Jitter Real-Time",
+      "sub": "Cek download, upload, latensi gaming, info ISP, dan server terdekat cukup sekali klik.",
       "ctaLabel": "Mulai Speedtest →",
       "href": "./tools.html?tab=speedtest",
-      "image": "./assets/banner-speedtest.jpg",
-      "scrim": "default"
+      "image": "./assets/banners/banner-speedtest.jpg",
+      "scrim": "prayer",
+      "enabled": true
     },
     {
       "id": "banner-downloader",
-      "kicker": "All-in-One · Tanpa Watermark",
+      "utilityId": "downloader",
+      "kicker": "Menu Utilitas · Tanpa Watermark",
       "heading": "Downloader Video, Foto, Story & Audio Sosmed",
-      "sub": "Unduh video HD tanpa watermark, postingan foto & slide carousel, story sosmed, salin caption, atau ekstrak MP3.",
+      "sub": "Simpan video HD TikTok, IG, YT, FB, slide carousel, & salin caption langsung tanpa watermark.",
       "ctaLabel": "Buka Downloader →",
       "href": "./tools.html?tab=downloader",
-      "image": "./assets/banner-speedtest.jpg",
-      "scrim": "default"
+      "image": "./assets/banners/banner-downloader.jpg",
+      "scrim": "downloader",
+      "enabled": true
     },
     {
       "id": "banner-compressor",
-      "kicker": "Zero Quality Loss · Anti-Pecah Sosmed",
-      "heading": "Kompres Foto & Video HD Tanpa Kurangi Kualitas",
-      "sub": "Optimalkan ukuran file dengan 4 metode lossless & pengunci bit-rate agar TikTok, IG, & WA tidak menurunkan ketajaman unggahan Anda.",
-      "ctaLabel": "Kompres Media HD →",
+      "utilityId": "compressor",
+      "kicker": "Menu Utilitas · Anti-Pecah Sosmed",
+      "heading": "Kompres Foto & Video HD Tanpa Turun Kualitas",
+      "sub": "Perkecil ukuran file secara nyata dengan AVIF/WebP & FFmpeg agar unggahan TikTok, IG & WA tetap tajam.",
+      "ctaLabel": "Kompres Media →",
       "href": "./tools.html?tab=compressor",
-      "image": "./assets/hero-banner.jpg",
-      "scrim": "default"
+      "image": "./assets/banners/banner-compressor.jpg",
+      "scrim": "emerald",
+      "enabled": true
+    },
+    {
+      "id": "banner-converter",
+      "utilityId": "converter",
+      "kicker": "Menu Utilitas · 85+ Format File",
+      "heading": "Konversi DOCX, PDF, Excel, Foto, Video & Audio",
+      "sub": "Deteksi format otomatis untuk ubah dokumen, gambar, arsip ZIP, hingga audio instan di browser.",
+      "ctaLabel": "Konversi File →",
+      "href": "./tools.html?tab=converter",
+      "image": "./assets/banners/banner-converter.jpg",
+      "scrim": "amber",
+      "enabled": true
+    },
+    {
+      "id": "banner-songfinder",
+      "utilityId": "songfinder",
+      "kicker": "Menu Utilitas · 9 Engine AI",
+      "heading": "Cari Judul Lagu & Sumber Video dari Potongan",
+      "sub": "Unggah rekaman audio atau klip video untuk lacak judul, lirik, & link resmi hingga ~100% akurat.",
+      "ctaLabel": "Cari Lagu →",
+      "href": "./tools.html?tab=songfinder",
+      "image": "./assets/banners/banner-songfinder.jpg",
+      "scrim": "violet",
+      "enabled": true
+    },
+    {
+      "id": "banner-music",
+      "utilityId": "music",
+      "kicker": "Menu Utilitas · Bebas Iklan",
+      "heading": "YT Music Hub — Streaming Musik Gratis Full",
+      "sub": "Putar lagu viral Indonesia & mancanegara tanpa iklan, lengkap pemutar mini mengambang.",
+      "ctaLabel": "Putar Musik →",
+      "href": "./tools.html?tab=music",
+      "image": "./assets/banners/banner-music.jpg",
+      "scrim": "crimson",
+      "enabled": true
+    },
+    {
+      "id": "banner-dracin",
+      "utilityId": "dracin",
+      "kicker": "Menu Utilitas · 20+ Platform Terpadu",
+      "heading": "Nonton Drama China Full Episode Gratis",
+      "sub": "Satukan drama populer dalam satu player bebas iklan, lompat episode bebas, & subtitle Indonesia.",
+      "ctaLabel": "Tonton Dracin →",
+      "href": "./tools.html?tab=dracin",
+      "image": "./assets/banners/banner-dracin.jpg",
+      "scrim": "crimson",
+      "enabled": true
+    },
+    {
+      "id": "banner-audioeditor",
+      "utilityId": "audioeditor",
+      "kicker": "Menu Utilitas · Studio DSP & AI",
+      "heading": "Audio Editor — EQ 10-Band, Pisah Vokal & Mix",
+      "sub": "Potong audio, hapus noise, ubah suara, pisah karaoke, & ekspor MP3/WAV/FLAC langsung di web.",
+      "ctaLabel": "Buka Studio →",
+      "href": "./tools.html?tab=audioeditor",
+      "image": "./assets/banners/banner-audioeditor.jpg",
+      "scrim": "violet",
+      "enabled": true
+    },
+    {
+      "id": "banner-manifestai",
+      "utilityId": "manifestai",
+      "kicker": "Menu Utilitas · Multi-Model AI",
+      "heading": "Manifest AI — Gabungan Model Cerdas Gratis",
+      "sub": "Ngobrol dengan ensemble AI modern, memori konsisten, failover otomatis, & dukung API Key pribadi.",
+      "ctaLabel": "Chat Manifest AI →",
+      "href": "./tools.html?tab=manifestai",
+      "image": "./assets/banners/banner-manifestai.jpg",
+      "scrim": "world",
+      "enabled": true
+    },
+    {
+      "id": "banner-plagiarism",
+      "utilityId": "plagiarism",
+      "kicker": "Menu Utilitas · Format Turnitin",
+      "heading": "Cek Plagiarisme Dokumen Asli + Laporan PDF",
+      "sub": "Pertahankan tata letak dokumen asli dengan sorotan warna sumber & unduh laporan ala Turnitin.",
+      "ctaLabel": "Cek Plagiarisme →",
+      "href": "./tools.html?tab=plagiarism",
+      "image": "./assets/banners/banner-plagiarism.jpg",
+      "scrim": "prayer",
+      "enabled": true
+    },
+    {
+      "id": "banner-novel",
+      "utilityId": "novel",
+      "kicker": "Menu Utilitas · 122+ Tema & Suara",
+      "heading": "Baca Novel Terpadu Gratis Penuh Real-Time",
+      "sub": "Katalog novel lintas platform bebas kunci VIP, cari dari cuplikan, tema animasi, & mode audiobook.",
+      "ctaLabel": "Baca Novel →",
+      "href": "./tools.html?tab=novel",
+      "image": "./assets/banners/banner-novel.jpg",
+      "scrim": "amber",
+      "enabled": true
     }
   ],
   "categories": [

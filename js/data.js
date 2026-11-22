@@ -1,4 +1,9 @@
-import { DEFAULT_UTILITY_CONFIG, normalizeUtilityConfig } from './store.js?v=67';
+import {
+  DEFAULT_BANNERS,
+  DEFAULT_UTILITY_CONFIG,
+  normalizeBanners,
+  normalizeUtilityConfig,
+} from './store.js?v=74';
 
 export const BRAND = {
   name: 'Manifestudio',
@@ -52,78 +57,7 @@ export const BRAND = {
   ],
 };
 
-export const BANNERS = [
-  {
-    id: 'banner-katalog',
-    kicker: 'Katalog Akun Premium · Harga Pelajar',
-    heading: 'Langganan Aplikasi Favorit, Aktif Dalam Hitungan Menit.',
-    sub: 'Pilih paket Sharing atau Privat bergaransi jelas. Checkout praktis langsung ke WhatsApp Admin.',
-    ctaLabel: 'Lihat Katalog',
-    href: '#katalog',
-    image: './assets/hero-banner.jpg',
-    scrim: 'default',
-  },
-  {
-    id: 'banner-prayer',
-    kicker: 'Menu Utilitas · Jadwal Sholat',
-    heading: 'Waktu Imsak & Sholat 5 Waktu Resmi Kemenag RI',
-    sub: 'Deteksi otomatis lokasi GPS/kecamatan kamu lengkap dengan hitung mundur waktu sholat berikutnya.',
-    ctaLabel: 'Buka Jadwal Sholat',
-    href: './tools.html?tab=prayer',
-    image: './assets/banner-prayer.jpg',
-    scrim: 'prayer',
-  },
-  {
-    id: 'banner-weather',
-    kicker: 'Menu Utilitas · Prakiraan Cuaca',
-    heading: 'Pantau Cuaca Real-Time & Prakiraan 7 Hari',
-    sub: 'Cek suhu, curah hujan aktual per jam, hembusan angin, dan prakiraan mingguan di kotamu.',
-    ctaLabel: 'Cek Cuaca',
-    href: './tools.html?tab=weather',
-    image: './assets/banner-weather.jpg',
-    scrim: 'weather',
-  },
-  {
-    id: 'banner-worldclock',
-    kicker: 'Menu Utilitas · Standar UTC',
-    heading: 'Putar Bola Dunia & Konversi WIB/WITA/WIT',
-    sub: 'Klik negara di globe interaktif untuk cek zona waktu & selisih jam Indonesia.',
-    ctaLabel: 'Putar Bola Dunia',
-    href: './tools.html?tab=worldclock',
-    image: './assets/banner-worldclock.jpg',
-    scrim: 'world',
-  },
-  {
-    id: 'banner-speedtest',
-    kicker: 'Menu Utilitas · Speedtest',
-    heading: 'Uji Kecepatan Internet & Ping Real-Time',
-    sub: 'Cek rata-rata download, upload, latensi, server, ISP, dan info perangkat dalam satu klik.',
-    ctaLabel: 'Mulai Speedtest',
-    href: './tools.html?tab=speedtest',
-    image: './assets/banner-speedtest.jpg',
-    scrim: 'weather',
-  },
-  {
-    id: 'banner-downloader',
-    kicker: 'Menu Utilitas · Downloader',
-    heading: 'Download Video, Foto, Story & Caption Sosmed Tanpa Watermark',
-    sub: 'Unduh video MP4 HD, slide foto TikTok/IG, Story, MP3, & salin caption otomatis.',
-    ctaLabel: 'Buka Downloader',
-    href: './tools.html?tab=downloader',
-    image: '',
-    scrim: 'downloader',
-  },
-  {
-    id: 'banner-compressor',
-    kicker: 'Menu Utilitas · Kompresor HD',
-    heading: 'Kompres Foto & Video Anti-Pecah untuk TikTok, IG & WA',
-    sub: 'Optimasi ukuran file tanpa mengurangi kualitas visual agar tidak dikompres ulang oleh sosmed.',
-    ctaLabel: 'Kompres Media HD',
-    href: './tools.html?tab=compressor',
-    image: '',
-    scrim: 'world',
-  },
-];
+export const BANNERS = DEFAULT_BANNERS.map((b) => ({ ...b }));
 
 export const CATEGORIES = [
   { id: 'all', label: 'Semua Layanan' },
@@ -434,10 +368,7 @@ function normalizeLoadedCatalog(fallback, rawCatalog = {}) {
     ...rawCatalog,
     brand: mergedBrand,
     utilities: mergedUtilities,
-    banners:
-      Array.isArray(rawCatalog.banners) && rawCatalog.banners.length > 0
-        ? rawCatalog.banners.map((b) => ({ ...b }))
-        : (fallback.banners || []).map((b) => ({ ...b })),
+    banners: normalizeBanners(rawCatalog.banners, fallback.banners),
     categories:
       Array.isArray(rawCatalog.categories) && rawCatalog.categories.length > 0
         ? rawCatalog.categories

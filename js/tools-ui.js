@@ -60,7 +60,7 @@ import { createAudioEditorController } from './audio-editor-ui.js?v=67';
 import { createManifestAiController } from './manifest-ai-ui.js?v=67';
 import { createPlagiarismController } from './plagiarism-ui.js?v=69';
 import { createNovelController } from './novel-ui.js?v=73';
-import { normalizeUtilityConfig } from './store.js?v=73';
+import { normalizeUtilityConfig } from './store.js?v=74';
 
 const PRAYER_CACHE_KEY = 'manifestudio_prayer_cache_v1';
 const MYQURAN_CITIES_KEY = 'manifestudio_myquran_cities_v1';
@@ -5432,7 +5432,13 @@ export function createToolsHubController({
         ? renderNovelPanel()
         : renderDownloaderPanel();
 
-    const subnavButtonsHtml = (toolState.utilities?.items || [])
+    const visibleUtilityItems = (toolState.utilities?.items || []).filter((it) => it.enabled !== false);
+    const navItems = visibleUtilityItems.length > 0 ? visibleUtilityItems : toolState.utilities?.items || [];
+    if (navItems.length > 0 && !navItems.some((it) => it.id === toolState.activeSubTab)) {
+      toolState.activeSubTab = navItems[0].id;
+    }
+
+    const subnavButtonsHtml = navItems
       .map(
         (item) => `
           <button
@@ -5451,7 +5457,7 @@ export function createToolsHubController({
 
     rootEl.innerHTML = `
       <div class="tools-hub">
-        <div class="tools-subnav" role="tablist" aria-label="Menu Tambahan">
+        <div class="tools-subnav" role="tablist" aria-label="Menu Utilitas">
           ${subnavButtonsHtml}
         </div>
 
