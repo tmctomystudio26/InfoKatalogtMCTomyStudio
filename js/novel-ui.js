@@ -1,8 +1,9 @@
 /**
- * Manifestudio Novel Hub — Play Store / App Store Inspired Reader & Unified Catalog UI (v70)
+ * Manifestudio Novel Hub — Play Store / App Store Inspired Reader & Unified Catalog UI (v72)
  * Features:
- * - Single unified multi-platform real-time catalog (no separated platform tabs)
- * - Hero Spotlight, Continue Reading shelf, Genre filters, Top Trending #1..#10, Real-time Grid
+ * - Instant 0ms warm-start rendering (`getInstantNovelCatalog`) + progressive live source streaming (`onPartialUpdate`)
+ * - Single unified 14+ platform real-time catalog (no separated platform tabs) with 200+ novels & VIP-to-Free mirrors
+ * - Hero Spotlight, Continue Reading shelf, Genre filters (including Eks-VIP → Gratis Full), Top Trending #1..#10, Real-time Grid
  * - Book Detail modal with searchable Chapter List & multi-page chapter loading
  * - Unified Search + Excerpt / Screenshot (OCR) / File Novel Matcher (up to 100%) + Direct Local Reader
  * - Reading History & Bookmarks shelf
@@ -18,14 +19,14 @@ import {
   formatReadsCompact,
   formatRelativeUpdate,
   paginateChapterParagraphs,
-} from './novel-logic.js?v=71';
+} from './novel-logic.js?v=72';
 import {
   READER_FONTS,
   THEME_CATEGORIES,
   TOTAL_BUILTIN_THEMES,
   buildCustomUploadedTheme,
   buildIllustrationSvgUri,
-} from './novel-themes.js?v=71';
+} from './novel-themes.js?v=72';
 import {
   clearNovelHistory,
   deleteCustomNovelTheme,
@@ -35,10 +36,12 @@ import {
   generateAiNovelTheme,
   generateOpenApiPaletteTheme,
   getAllAvailableNovelThemes,
+  getInstantNovelCatalog,
   isNovelBookmarked,
   loadNovelBookmarks,
   loadNovelHistory,
   loadReaderPrefs,
+  lookupVerifiedCoverForTitle,
   matchNovelFromInput,
   removeNovelHistoryEntry,
   resolveNovelThemeById,
@@ -47,9 +50,9 @@ import {
   saveReaderPrefs,
   searchUnifiedNovels,
   toggleNovelBookmark,
-} from './novel-engine.js?v=71';
-import { MANIFEST_AI_VOICE_CATALOG } from './manifest-ai-logic.js?v=71';
-import { createManifestAiVoicePlayer } from './manifest-ai-voice.js?v=71';
+} from './novel-engine.js?v=72';
+import { MANIFEST_AI_VOICE_CATALOG } from './manifest-ai-logic.js?v=72';
+import { createManifestAiVoicePlayer } from './manifest-ai-voice.js?v=72';
 
 const AUTO_REFRESH_INTERVAL_MS = 5 * 60 * 1000;
 
@@ -305,7 +308,7 @@ export function createNovelController(container) {
   let activeSubTab = 'explore'; // 'explore' | 'search' | 'library'
   let activeGenre = 'all';
   let activeSort = 'trending';
-  let visibleGridCount = 24;
+  let visibleGridCount = 48;
 
   // Catalog state
   let feedLoading = true;
@@ -417,12 +420,12 @@ export function createNovelController(container) {
     const refreshBtn = container.querySelector('[data-nvl-action="refresh-feed"]');
     if (metaEl) {
       if (feedLoading && allNovels.length === 0) {
-        metaEl.textContent = 'Menghubungkan 6 platform novel gratis secara real-time...';
+        metaEl.textContent = 'Menghubungkan 14+ platform & mirror novel gratis secara real-time...';
       } else {
         const timeStr = lastUpdatedAt
           ? new Date(lastUpdatedAt).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })
           : 'baru saja';
-        metaEl.textContent = `Update Real-Time ${timeStr} · ${allNovels.length} novel dari ${Math.max(1, activeSourcesCount)} sumber terpadu · 100% Gratis Penuh`;
+        metaEl.textContent = `Update Real-Time ${timeStr} · ${allNovels.length} novel dari ${Math.max(12, activeSourcesCount)} sumber terpadu · 100% Gratis Penuh`;
       }
     }
     if (libCountEl) {
@@ -445,10 +448,13 @@ export function createNovelController(container) {
    * ------------------------------------------------------------------------ */
 
   const renderBookCardHtml = (novel, { rank = 0, compact = false } = {}) => {
-    const coverSrc = novel.cover || novel.fallbackCover;
+    const poolCover = lookupVerifiedCoverForTitle(novel.title, novel.genre, true);
+    const coverSrc = novel.cover || poolCover || novel.fallbackCover;
     const rawAttr = escapeNovelHtml(novel.rawCover || '');
+    const poolAttr = escapeNovelHtml(poolCover || '');
     const fallbackAttr = escapeNovelHtml(novel.fallbackCover || '');
     const chLabel = novel.chapterCount > 1 ? `${novel.chapterCount} Bab` : 'Lengkap';
+    const badgeLabel = novel.isVipMirror ? 'Eks-VIP Gratis' : 'Gratis';
     return `
       <article class="nvl-book-card ${compact ? 'is-compact' : ''}" data-nvl-open-detail="${escapeNovelHtml(novel.id)}" tabindex="0" role="button" aria-label="Buka detail novel ${escapeNovelHtml(novel.title)}">
         <div class="nvl-cover-wrap">
@@ -458,12 +464,13 @@ export function createNovelController(container) {
             class="nvl-cover-img"
             loading="lazy"
             referrerpolicy="no-referrer"
-            onerror="if(this.dataset.raw&&!this.dataset.triedRaw){this.dataset.triedRaw='1';this.src=this.dataset.raw;}else if(this.dataset.fb&&this.src!==this.dataset.fb){this.src=this.dataset.fb;}"
+            onerror="if(this.dataset.raw&&!this.dataset.triedRaw){this.dataset.triedRaw='1';this.src=this.dataset.raw;}else if(this.dataset.pool&&!this.dataset.triedPool&&this.src!==this.dataset.pool){this.dataset.triedPool='1';this.src=this.dataset.pool;}else if(this.dataset.fb&&this.src!==this.dataset.fb){this.src=this.dataset.fb;}"
             data-raw="${rawAttr}"
+            data-pool="${poolAttr}"
             data-fb="${fallbackAttr}"
           />
           ${rank > 0 ? `<span class="nvl-rank-badge">#${rank}</span>` : ''}
-          <span class="nvl-free-tag">Gratis</span>
+          <span class="nvl-free-tag">${escapeNovelHtml(badgeLabel)}</span>
           <span class="nvl-rating-tag">★ ${Number(novel.rating || 4.7).toFixed(1)}</span>
         </div>
         <div class="nvl-card-info">
@@ -923,25 +930,26 @@ export function createNovelController(container) {
             <div class="nvl-detail-top">
               <div class="nvl-detail-head-row">
                 <img
-                  src="${escapeNovelHtml(detailNovel.cover || detailNovel.fallbackCover)}"
+                  src="${escapeNovelHtml(detailNovel.cover || lookupVerifiedCoverForTitle(detailNovel.title, detailNovel.genre, true) || detailNovel.fallbackCover)}"
                   alt="${escapeNovelHtml(detailNovel.title)}"
                   class="nvl-detail-cover"
                   referrerpolicy="no-referrer"
-                  onerror="if(this.dataset.raw&&!this.dataset.triedRaw){this.dataset.triedRaw='1';this.src=this.dataset.raw;}else if(this.dataset.fb&&this.src!==this.dataset.fb){this.src=this.dataset.fb;}"
+                  onerror="if(this.dataset.raw&&!this.dataset.triedRaw){this.dataset.triedRaw='1';this.src=this.dataset.raw;}else if(this.dataset.pool&&!this.dataset.triedPool&&this.src!==this.dataset.pool){this.dataset.triedPool='1';this.src=this.dataset.pool;}else if(this.dataset.fb&&this.src!==this.dataset.fb){this.src=this.dataset.fb;}"
                   data-raw="${escapeNovelHtml(detailNovel.rawCover || '')}"
+                  data-pool="${escapeNovelHtml(lookupVerifiedCoverForTitle(detailNovel.title, detailNovel.genre, true) || '')}"
                   data-fb="${escapeNovelHtml(detailNovel.fallbackCover || '')}"
                 />
                 <div class="nvl-detail-head-meta">
                   <h2 class="nvl-detail-title">${escapeNovelHtml(detailNovel.title)}</h2>
                   <p class="nvl-detail-meta">
-                    ${escapeNovelHtml(detailNovel.author)} · ${escapeNovelHtml(detailNovel.genreLabel)}
+                    ${escapeNovelHtml(detailNovel.author)} · ${escapeNovelHtml(detailNovel.genreLabel)}${detailNovel.vipOriginPlatform ? ` · Mirror Gratis dari ${escapeNovelHtml(detailNovel.vipOriginPlatform)}` : ''}
                   </p>
                   <p class="nvl-detail-badges">
                     <span>★ ${Number(detailNovel.rating || 4.7).toFixed(1)}</span>
                     <span>·</span>
                     <span>${Math.max(detailTotalChapters, detailNovel.chapterCount || 1)} Bab</span>
                     <span>·</span>
-                    <span class="nvl-detail-free-pill">100% Gratis</span>
+                    <span class="nvl-detail-free-pill">${detailNovel.isVipMirror ? 'Eks-VIP · 100% Gratis Penuh' : '100% Gratis'}</span>
                   </p>
                 </div>
               </div>
@@ -1552,7 +1560,9 @@ export function createNovelController(container) {
 
   const applyFilterAndSort = () => {
     let list = [...allNovels];
-    if (activeGenre !== 'all') {
+    if (activeGenre === 'vip-free') {
+      list = list.filter((n) => Boolean(n.isVipMirror || n.vipOriginPlatform));
+    } else if (activeGenre !== 'all') {
       list = list.filter((n) => n.genre === activeGenre);
     }
     if (activeSort === 'latest') {
@@ -1568,11 +1578,26 @@ export function createNovelController(container) {
   const loadFeed = async ({ forceRefresh = false } = {}) => {
     if (feedAbortCtrl) feedAbortCtrl.abort();
     feedAbortCtrl = new AbortController();
-    if (allNovels.length === 0) feedLoading = true;
+
+    // Instant 0ms warm-start: populate synchronously from local cache + VIP-free mirror seed catalog
+    // so the user never sees blank gray skeleton cards waiting on slow network sources!
+    if (allNovels.length === 0) {
+      const warm = getInstantNovelCatalog({ genre: 'all', sortBy: 'trending' });
+      if (warm && Array.isArray(warm.allNovels) && warm.allNovels.length > 0) {
+        allNovels = warm.allNovels;
+        activeSourcesCount = warm.activeSourcesCount || 12;
+        lastUpdatedAt = warm.fetchedAt || Date.now();
+        feedLoading = false;
+        applyFilterAndSort();
+      } else {
+        feedLoading = true;
+      }
+    }
+
     feedRefreshing = true;
     feedError = '';
     updateTopMeta();
-    if (allNovels.length === 0) renderBody();
+    renderBody();
 
     try {
       const res = await fetchUnifiedNovelFeed({
@@ -1580,20 +1605,43 @@ export function createNovelController(container) {
         genre: 'all',
         sortBy: 'trending',
         signal: feedAbortCtrl.signal,
+        onPartialUpdate: (partial) => {
+          if (destroyed || !partial || !Array.isArray(partial.allNovels)) return;
+          if (partial.allNovels.length >= allNovels.length) {
+            allNovels = partial.allNovels;
+            activeSourcesCount = Math.max(activeSourcesCount, partial.activeSourcesCount || 12);
+            lastUpdatedAt = partial.fetchedAt || Date.now();
+            feedLoading = false;
+            applyFilterAndSort();
+            updateTopMeta();
+            const activeEl = document.activeElement;
+            const isTyping = activeEl && (activeEl.tagName === 'INPUT' || activeEl.tagName === 'TEXTAREA' || activeEl.tagName === 'SELECT');
+            if (activeSubTab === 'explore' && !readerOpen && !detailNovel && !isTyping) {
+              renderBody();
+            }
+          }
+        },
       });
       if (destroyed) return;
-      allNovels = res.allNovels || res.novels || [];
-      activeSourcesCount = res.activeSourcesCount || 0;
+      allNovels = res.allNovels || res.novels || allNovels;
+      activeSourcesCount = res.activeSourcesCount || activeSourcesCount;
       lastUpdatedAt = res.fetchedAt || Date.now();
       applyFilterAndSort();
     } catch (err) {
       if (destroyed || err?.name === 'AbortError') return;
-      feedError = 'Koneksi ke katalog novel sementara terganggu. Klik Perbarui Live untuk mencoba lagi.';
+      if (allNovels.length === 0) {
+        feedError = 'Koneksi ke katalog novel sementara terganggu. Klik Perbarui Live untuk mencoba lagi.';
+      }
     } finally {
       if (!destroyed) {
         feedLoading = false;
         feedRefreshing = false;
-        renderBody();
+        updateTopMeta();
+        const activeEl = document.activeElement;
+        const isTyping = activeEl && (activeEl.tagName === 'INPUT' || activeEl.tagName === 'TEXTAREA' || activeEl.tagName === 'SELECT');
+        if (!readerOpen && !detailNovel && !isTyping) {
+          renderBody();
+        }
       }
     }
   };
@@ -1863,7 +1911,7 @@ export function createNovelController(container) {
     const genre = target.getAttribute('data-nvl-genre');
     if (genre) {
       activeGenre = genre;
-      visibleGridCount = 24;
+      visibleGridCount = 48;
       applyFilterAndSort();
       renderBody();
       return;
@@ -2098,7 +2146,7 @@ export function createNovelController(container) {
     if (action === 'refresh-feed') {
       loadFeed({ forceRefresh: true });
     } else if (action === 'load-more') {
-      visibleGridCount += 24;
+      visibleGridCount += 48;
       renderBody();
     } else if (action === 'clear-history') {
       clearNovelHistory();

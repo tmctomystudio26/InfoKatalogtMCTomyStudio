@@ -1,21 +1,44 @@
 /**
- * Manifestudio Novel Hub — Pure Domain Logic (v70)
+ * Manifestudio Novel Hub — Pure Domain Logic (v72)
  * - Unified multi-platform novel normalizer & strict free-only (zero VIP/paywall) filter
- * - Real-time feed merger & deduplicator across Wattpad, SakuraNovel, IndoWebNovel, SecondLife, Wikisource, Archive.org
+ * - Real-time feed merger & deduplicator across 14+ sources & VIP-to-Free full mirror networks
+ * - Anti-OCR/DjVu Anomaly Sanitizer (rejoins soft-hyphens `¬`, strips scanned book OCR noise, merges hard-wrapped lines)
  * - Chapter HTML sanitizer (XSS-safe prose paragraphs) & exact page-jump paginator
- * - Procedural Play Store-grade Book Cover SVG generator (fallback when a source has no cover art)
+ * - Procedural Play Store-grade Book Cover SVG generator (fallback when offline)
  * - 0%–100% Novel Matcher (Excerpt, OCR Screenshot text, or Uploaded Novel File)
  */
 
 export const NOVEL_GENRES = [
   { id: 'all', label: 'Semua Genre' },
-  { id: 'romance', label: 'Romansa' },
+  { id: 'vip-free', label: 'Eks-VIP → Gratis Full' },
+  { id: 'romance', label: 'Romansa & CEO' },
   { id: 'fantasy', label: 'Fantasi & Isekai' },
   { id: 'action', label: 'Aksi & Kultivasi' },
   { id: 'horror', label: 'Horor & Misteri' },
   { id: 'teen', label: 'Remaja & Fiksi' },
   { id: 'classic', label: 'Sastra & Klasik' },
 ];
+
+export const CANONICAL_NOVEL_TITLES = {
+  co: 'Cultivation Online (CO)',
+  og: 'Overgeared (OG)',
+  lotm: 'Lord of the Mysteries',
+  orv: "Omniscient Reader's Viewpoint",
+  tbate: 'The Beginning After The End',
+  rotssg: 'Reincarnation Of The Strongest Sword God',
+  atg: 'Against the Gods (Dewa Jahat Menentang Langit)',
+  mga: 'Martial God Asura',
+   'dominasi kaisar 1-2000': "Emperor's Domination (Dominasi Kaisar)",
+  'dominasi kaisar 2001-4000': "Emperor's Domination: Arc Pertengahan (Bab 2001–4000)",
+  'dominasi kaisar 4001-6000': "Emperor's Domination: Arc Puncak (Bab 4001–6000)",
+};
+
+export function expandCanonicalNovelTitle(rawTitle = '') {
+  const clean = decodeHtmlEntities(rawTitle || '').replace(/\s+/g, ' ').trim();
+  if (!clean) return 'Tanpa Judul';
+  const key = clean.toLowerCase();
+  return CANONICAL_NOVEL_TITLES[key] || clean;
+}
 
 export function escapeNovelHtml(str = '') {
   return String(str || '')
@@ -69,19 +92,19 @@ export function inferNovelGenre(title = '', tags = [], synopsis = '') {
   if (/(horor|horror|hantu|misteri|mystery|thriller|detektif|ghost|vampir|zombie|curse|kubur|pocong|kuntilanak|pembunuh)/.test(hay)) {
     return 'horror';
   }
-  if (/(romansa|romance|cinta|nikah|suami|istri|ceo|miliarder|billionaire|love|wife|husband|bride|villainess|alpha|omega|hati|rindu|mantan|pengantin|sweet)/.test(hay)) {
+  if (/(romansa|romance|cinta|nikah|suami|istri|ceo|miliarder|billionaire|love|wife|husband|bride|villainess|alpha|omega|hati|rindu|mantan|pengantin|sweet|presdir|pewaris)/.test(hay)) {
     return 'romance';
   }
-  if (/(martial|peak|cultivation|kultivasi|wuxia|xianxia|pedang|naga|system|sistem|level|dungeon|hunter|shadow|slave|survival|tower|war|sword|emperor|god|action|aksi|seni bela diri)/.test(hay)) {
+  if (/(martial|peak|cultivation|kultivasi|wuxia|xianxia|pedang|naga|system|sistem|level|dungeon|hunter|shadow|slave|survival|tower|war|sword|emperor|god|action|aksi|seni bela diri|sect|immortal|regressor|regression)/.test(hay)) {
     return 'action';
   }
-  if (/(fantasi|fantasy|isekai|magic|sihir|witch|penyihir|reincarnat|reinkarnasi|demon|iblis|dragon|elf|kingdom|kerajaan|aristocrat|knight|academy|akademi|monster|dungeon)/.test(hay)) {
+  if (/(fantasi|fantasy|isekai|magic|sihir|witch|penyihir|reincarnat|reinkarnasi|demon|iblis|dragon|elf|kingdom|kerajaan|aristocrat|knight|academy|akademi|monster|dungeon|grimoire|necromancer|summoner)/.test(hay)) {
     return 'fantasy';
   }
   if (/(klasik|classic|sastra|hikayat|balai pustaka|wikisource|gutenberg|roman|sejarah|historical|18\d\d|19[0-5]\d)/.test(hay)) {
     return 'classic';
   }
-  if (/(remaja|teen|sma|sekolah|kampus|senior|junior|sahabat|slice of life|komedi|comedy|high school)/.test(hay)) {
+  if (/(remaja|teen|sma|sekolah|kampus|senior|junior|sahabat|slice of life|komedi|comedy|high school|dilan|milea)/.test(hay)) {
     return 'teen';
   }
   return 'fantasy';
@@ -113,7 +136,7 @@ export function isNovelFreeFullAccess(raw = {}) {
 export function buildProxiedCoverUrl(rawUrl = '') {
   const clean = String(rawUrl || '').trim();
   if (!clean || !/^https?:\/\//i.test(clean)) return '';
-  if (/^https?:\/\/(wsrv\.nl|images\.weserv\.nl|s4\.anilist\.co|covers\.openlibrary\.org|archive\.org)/i.test(clean)) {
+  if (/^https?:\/\/(wsrv\.nl|images\.weserv\.nl|s4\.anilist\.co|covers\.openlibrary\.org|archive\.org|is[1-5]-ssl\.mzstatic\.com)/i.test(clean)) {
     return clean;
   }
   const stripped = clean.replace(/^https?:\/\//i, '');
@@ -134,7 +157,7 @@ export function buildProceduralBookCover(title = 'Novel', author = 'Manifestudio
     classic: ['#3b2412', '#92400e', '#fcd34d', '#fffbeb'],
   };
   const [c1, c2, c3, c4] = palettes[genre] || palettes.fantasy;
-  const cleanTitle = decodeHtmlEntities(title || 'Novel Pilihan').trim();
+  const cleanTitle = expandCanonicalNovelTitle(title || 'Novel Pilihan');
   const cleanAuthor = decodeHtmlEntities(author || 'Komunitas Novel').trim().slice(0, 24);
 
   // Word-wrap title into up to 4 crisp centered cover lines inside the middle safe zone
@@ -196,14 +219,15 @@ export function extractSeriesTitleFromChapter(rawTitle = '') {
     .replace(/\b(bahasa indonesia|sub indo|indo)\b/gi, '')
     .trim();
   const cut = clean.split(/\s*(?:[-–—|:]\s*)?(?:\bchapter\b|\bbab\b|\bch\.?\s*\d|\bvol\.?\s*\d|\bpart\b|\bepisode\b)/i)[0];
-  return (cut || clean).replace(/[-–—:|]+$/, '').trim();
+  const base = (cut || clean).replace(/[-–—:|]+$/, '').trim();
+  return expandCanonicalNovelTitle(base);
 }
 
 /**
  * Normalizes any provider's book object into a single unified Novel Hub schema.
  */
 export function normalizeUnifiedNovel(raw = {}) {
-  const title = decodeHtmlEntities(raw.title || 'Tanpa Judul').replace(/\s+/g, ' ').trim();
+  const title = expandCanonicalNovelTitle(raw.title || 'Tanpa Judul');
   const author = decodeHtmlEntities(raw.author || raw.platformLabel || 'Komunitas Penulis').trim();
   const rawSyn = stripHtmlToPlain(raw.synopsis || raw.description || '').slice(0, 620);
   const synopsis = /^(null|undefined|none|n\/a|-+)$/i.test(rawSyn.trim()) ? '' : rawSyn;
@@ -217,6 +241,13 @@ export function normalizeUnifiedNovel(raw = {}) {
   const sourceId = String(raw.sourceId || raw.source || 'unified');
   const sourceName = String(raw.sourceName || raw.platformLabel || 'Novel Terpadu');
   const meta = raw.meta && typeof raw.meta === 'object' ? raw.meta : raw.apiMeta && typeof raw.apiMeta === 'object' ? raw.apiMeta : {};
+  const vipOriginPlatform = String(raw.vipOriginPlatform || meta.vipOriginPlatform || '').trim();
+  const isVipMirror = Boolean(
+    raw.isVipMirror ||
+      meta.isVipMirror ||
+      vipOriginPlatform ||
+      /^(sakuranovel|indowebnovel|secondlife|vip-mirror|webnovel|kakaopage|goodnovel)/i.test(sourceId)
+  );
 
   return {
     id: String(raw.id || `${sourceId}-${title.toLowerCase().replace(/[^a-z0-9]+/g, '-').slice(0, 48)}`),
@@ -224,6 +255,8 @@ export function normalizeUnifiedNovel(raw = {}) {
     sourceId,
     sourceName,
     platformLabel: sourceName,
+    vipOriginPlatform: vipOriginPlatform || (isVipMirror ? 'WebNovel / Kakaopage / GoodNovel' : ''),
+    isVipMirror,
     sourceKey: String(raw.sourceKey || raw.slug || ''),
     sourceUrl: String(raw.sourceUrl || ''),
     slug: String(raw.slug || ''),
@@ -273,14 +306,20 @@ export function mergeUnifiedNovels(sourceBuckets = [], { sortBy = 'trending', ge
         interleaved.push(norm);
       } else if (
         norm.chapterCount > existing.chapterCount ||
-        (existing.cover === existing.fallbackCover && norm.cover !== norm.fallbackCover)
+        (existing.cover === existing.fallbackCover && norm.cover !== norm.fallbackCover) ||
+        (!existing.vipOriginPlatform && norm.vipOriginPlatform)
       ) {
-        // Upgrade entry if newer source has more chapters or a real book cover
         const upgraded = {
+          ...existing,
           ...norm,
           chapterCount: Math.max(norm.chapterCount, existing.chapterCount),
           reads: Math.max(norm.reads || 0, existing.reads || 0),
           cover: norm.cover !== norm.fallbackCover ? norm.cover : existing.cover,
+          rawCover: norm.rawCover || existing.rawCover,
+          vipOriginPlatform: norm.vipOriginPlatform || existing.vipOriginPlatform,
+          isVipMirror: Boolean(norm.isVipMirror || existing.isVipMirror),
+          meta: { ...(existing.meta || {}), ...(norm.meta || {}) },
+          apiMeta: { ...(existing.apiMeta || {}), ...(norm.apiMeta || {}) },
         };
         const idx = interleaved.indexOf(existing);
         if (idx !== -1) interleaved[idx] = upgraded;
@@ -291,7 +330,11 @@ export function mergeUnifiedNovels(sourceBuckets = [], { sortBy = 'trending', ge
 
   let list = interleaved;
   if (genre && genre !== 'all') {
-    list = list.filter((n) => n.genre === genre);
+    if (genre === 'vip-free') {
+      list = list.filter((n) => Boolean(n.isVipMirror || n.vipOriginPlatform));
+    } else {
+      list = list.filter((n) => n.genre === genre);
+    }
   }
 
   if (sortBy === 'latest') {
@@ -303,12 +346,153 @@ export function mergeUnifiedNovels(sourceBuckets = [], { sortBy = 'trending', ge
   return list;
 }
 
+const VALID_NOVEL_ABBR = /^(?:HTTPS?|ISBN|ISSN|SMA|SMK|SMP|SD|TK|PT|CV|TNI|PLN|KTP|SIM|MDP|DKI|DIY|WIB|WITA|WIT|HLM|TELP|FAKS|NO|JL|JLN|DR|IR|PROF|DRS|SH|MH|SE|MM|MPD|SPD|ST|MT|KH|HJ|NY|TN|SDR|BRL|RP|USD|BMKG|BPJS|KPK|DPR|MPR|KPU|OSIS|PMR|PRAMUKA|CEO|VIP|DNA|RNA|FBI|CIA|KGB|NPC|RPG|MMORPG|HP|MP|XP|LVL|ATK|DEF|AGI|INT|STR|OST|BAB|VOL|CH|RI|DKI)$/i;
+
 /**
- * Sanitizes chapter HTML from any novel platform into clean, readable prose paragraphs
- * (strips scripts, ads, navigation junk, and empty clutter).
+ * Detects OCR / DjVu scanner artifact lines (such as garbled cursive TOC lines,
+ * symbol noise `(p/vdA`, `/972 ~2o9t>`, `S^CiA/Uaa`, `furjjf fijlftj.`, or running page numbers `15 »2`).
+ */
+export function isOcrGarbageLine(line = '') {
+  const s = String(line || '').trim();
+  if (!s) return false;
+  // 1. Scanner page numbers / running markers like "13 9-2", "14 2", "15 »2", "16", ")5,"
+  if (/^[)\[(]?\d{1,4}(?:\s*[»«\-~*,.)\]]+\s*\d{0,4}|\s+\d{1,3})?[,.)\]]*$/.test(s)) return true;
+  // 2. Signature fake year range like ( 1972 - 2098 )
+  if (/^\(\s*\d{4}\s*-\s*20[4-9]\d\s*\)$/.test(s)) return true;
+  // 3. OCR noise symbols ^ ~ \ | < > » «
+  if (/[\^~\\|<>»«]/.test(s)) return true;
+  // 4. Leading punctuation noise like ",-A-yw", "/ 1 /S/I", "(p/vdA", "?4jPiq"
+  if (/^(?:[,;\-:/\\*?]+|[(\[]?[a-zA-Z]\/)/.test(s) && !/^(?:\.{3}|-\s*[A-Za-z"“]|--)/.test(s)) return true;
+  if (
+    /(?:^|\s)\/[A-Za-z0-9]|\([A-Za-z]\)\/|[A-Za-z]\/[A-Za-z]{1,4}(?:\s|$)/.test(s) &&
+    !/https?:\/\//i.test(s) &&
+    !/\b(?:d\/a|s\/d|u\/p|a\/n|km\/jam|m\/s)\b/i.test(s)
+  ) {
+    return true;
+  }
+  // 5. Analyze tokens for OCR camelCase / vowelless gibberish / consonant clusters
+  const tokens = s.split(/\s+/);
+  let weirdWords = 0;
+  for (const tok of tokens) {
+    if (/^(?:https?:\/\/|www\.|@[A-Za-z0-9_]+|[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+)/i.test(tok)) continue;
+    if (/[A-Za-z0-9'][&*$#@?\\^~][A-Za-z0-9']|[0-9][$@&*][0-9A-Za-z]/.test(tok)) {
+      weirdWords += 2;
+      continue;
+    }
+    const cleanW = tok.replace(/^[^A-Za-z0-9]+|[^A-Za-z0-9]+$/g, '');
+    if (!cleanW) continue;
+    const lettersOnly = cleanW.replace(/[^A-Za-z]/g, '');
+    if (/^[A-Za-z]+$/.test(cleanW) || (lettersOnly.length >= 4 && /[a-z][A-Z]/.test(lettersOnly))) {
+      if (VALID_NOVEL_ABBR.test(cleanW)) continue;
+      if (/[a-z][A-Z]/.test(lettersOnly) && !/^Mc[A-Z]/.test(lettersOnly)) {
+        weirdWords += 1;
+      } else if (/[jfqxzv]{2,}/i.test(cleanW)) {
+        weirdWords += 1;
+      } else if (
+        /[bcdfghjklmnpqrstvwxyz]{5,}/i.test(cleanW) &&
+        !/(?:ngstr|ngkr|nggl|nggr|ngkl|mpel|nyem|nstit|nstru|kspres|kstr)/i.test(cleanW)
+      ) {
+        weirdWords += 1;
+      } else if (cleanW.length >= 3 && !/[aiueoyAIUEOY]/.test(cleanW)) {
+        weirdWords += 1;
+      } else if (
+        /iii+|uuu+|jj|qq|vv|ww|xx|zz/i.test(cleanW) &&
+        !/^(?:uzz|jazz|pizza|fuzzy|dizzy|buzz|puzzle|muzzle|quizz|shiite|vacuum|continuum|aww|shh|hmm|zzz)$/i.test(cleanW)
+      ) {
+        weirdWords += 1;
+      }
+    } else if (/[A-Za-z]/.test(cleanW) && /[0-9]/.test(cleanW)) {
+      if (
+        !/^(?:\d+(?:st|nd|rd|th|km|m|cm|mm|kg|gr|g|mg|ml|l|gb|mb|kb|tb|px|pt|pct|ribu|juta|miliar|an|x)|ke-\d+|mp3|mp4|ps[1-5]|3g|4g|5g|v\d+|a[0-9]|b[0-9]|cb\d*|19\d\d[a-z]?|20\d\d[a-z]?)$/i.test(
+          cleanW
+        )
+      ) {
+        weirdWords += 1;
+      }
+    }
+  }
+  if (weirdWords >= 2 || (weirdWords === 1 && (tokens.length <= 4 || weirdWords / Math.max(1, tokens.length) >= 0.3))) {
+    return true;
+  }
+  // 6. TOC numbered OCR lines like "j, Moa 13", "21. foojdmuk 525"
+  if (/^[0-9jIl/,.)\]]{1,4}\s+[A-Za-z'&* ]{1,25}\s+\d{1,4}[)$q]?$/.test(s)) return true;
+  // 7. Short fragment line ending with isolated single consonant like "Mil r" or "3 WTH?"
+  if (s.length < 15 && (/\s+[bcdfghjklmnpqrstvwxyz]$/i.test(s) || /^\d+\s+[A-Z]{2,5}\??$/.test(s))) return true;
+  // 8. Very short meaningless fragment (1-4 chars)
+  if (s.length <= 4 && !/^(?:Bab|Ya\.?|Tidak|Oh\.?|Ah\.?|Eh\.?|Nah|Kok|Lho|Wah|Huh|Hmm|Iya|Yuk|Ayo|Dia|Aku|Kau|Dan|Itu|Ini)$/i.test(s)) {
+    return true;
+  }
+  return false;
+}
+
+/**
+ * Cleans raw DjVu / OCR / plain-text novel content:
+ * 1. Strips OCR garbage lines and scanner running page numbers
+ * 2. Rejoins soft-hyphenated words (`perem¬\npuan.` -> `perempuan.`)
+ * 3. Rejoins hard-wrapped physical book lines into coherent paragraphs
+ */
+export function cleanOcrAndDjvuText(rawText = '') {
+  const normalized = String(rawText || '').replace(/\r\n/g, '\n');
+  const hasSoftHyphensOrOcr = /\u00AC|[\^~\\|<>»«]|\(\s*\d{4}\s*-\s*20[4-9]\d\s*\)/.test(normalized);
+  const rawLines = normalized.split('\n');
+  const keptLines = [];
+
+  for (const line of rawLines) {
+    const t = line.trim();
+    if (!t) {
+      keptLines.push('');
+      continue;
+    }
+    if (isOcrGarbageLine(t)) continue;
+    keptLines.push(t);
+  }
+
+  let joined = keptLines.join('\n');
+  // Rejoin soft hyphens (¬ / \u00AC) across line breaks (even if blank lines from stripped page numbers intervened)
+  joined = joined.replace(/([A-Za-zÀ-ÿ])\s*\u00AC\s*(?:\n\s*)+([A-Za-zÀ-ÿ])/g, '$1$2');
+  joined = joined.replace(/([A-Za-zÀ-ÿ])\u00AC([A-Za-zÀ-ÿ])/g, '$1$2').replace(/\u00AC/g, '');
+  if (hasSoftHyphensOrOcr) {
+    // Rejoin words split with a regular hyphen at the end of a physical book line when the suffix isn't a reduplication
+    joined = joined.replace(/([a-z]{3,})-\s*\n\s*([a-z]{2,})\b/g, (full, p1, p2) => {
+      if (p1 === p2 || p1.endsWith(p2) || p2.startsWith(p1)) return `${p1}-${p2}`;
+      return `${p1}${p2}`;
+    });
+  }
+
+  // If the text comes from a multi-line wrapped book (has double-newline blocks or soft hyphens),
+  // join single newlines inside each paragraph block and merge blocks split across page numbers.
+  const hasDoubleNewlines = /\n\s*\n/.test(joined);
+  if (hasDoubleNewlines || hasSoftHyphensOrOcr) {
+    const blocks = joined.split(/\n\s*\n+/);
+    const rawParas = [];
+    for (const b of blocks) {
+      const p = b.replace(/\s*\n\s*/g, ' ').replace(/\s{2,}/g, ' ').trim();
+      if (p.length >= 2 && !isOcrGarbageLine(p)) rawParas.push(p);
+    }
+    const mergedParas = [];
+    for (const p of rawParas) {
+      if (
+        mergedParas.length > 0 &&
+        !/[.!?…"”'’)\]:]$/.test(mergedParas[mergedParas.length - 1]) &&
+        /^[a-z]/.test(p)
+      ) {
+        mergedParas[mergedParas.length - 1] += ` ${p}`;
+      } else {
+        mergedParas.push(p);
+      }
+    }
+    return mergedParas.join('\n\n');
+  }
+
+  return joined;
+}
+
+/**
+ * Sanitizes chapter HTML or DjVu/OCR text from any novel platform into clean, readable prose paragraphs
+ * (strips scripts, ads, navigation junk, OCR symbol garbage, and rejoins soft-hyphenated words).
  */
 export function sanitizeChapterToParagraphs(rawHtmlOrText = '') {
-  const cleaned = String(rawHtmlOrText || '')
+  const cleanedHtml = String(rawHtmlOrText || '')
     .replace(/<script[\s\S]*?<\/script>/gi, '')
     .replace(/<style[\s\S]*?<\/style>/gi, '')
     .replace(/<noscript[\s\S]*?<\/noscript>/gi, '')
@@ -319,12 +503,15 @@ export function sanitizeChapterToParagraphs(rawHtmlOrText = '') {
     .replace(/<\/(p|div|li|h[1-6]|blockquote)>/gi, '\n\n')
     .replace(/<[^>]+>/g, '');
 
-  const decoded = decodeHtmlEntities(cleaned);
-  const rawParas = decoded
+  const decoded = decodeHtmlEntities(cleanedHtml);
+  const ocrCleaned = cleanOcrAndDjvuText(decoded);
+
+  const rawParas = ocrCleaned
     .split(/\n{2,}|\r?\n/)
     .map((p) => p.replace(/\s+/g, ' ').trim())
     .filter((p) => {
       if (!p || p.length < 2) return false;
+      if (isOcrGarbageLine(p)) return false;
       if (/^(prev(ious)?\s*chapter|next\s*chapter|bab sebelumnya|bab selanjutnya|table of contents|daftar isi|share this|like loading|comment|tinggalkan balasan|baca juga|iklan|advertisement)$/i.test(p)) {
         return false;
       }

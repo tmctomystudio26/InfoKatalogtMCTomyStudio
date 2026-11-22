@@ -59,8 +59,8 @@ import { createDracinController } from './dracin-ui.js?v=71';
 import { createAudioEditorController } from './audio-editor-ui.js?v=67';
 import { createManifestAiController } from './manifest-ai-ui.js?v=67';
 import { createPlagiarismController } from './plagiarism-ui.js?v=69';
-import { createNovelController } from './novel-ui.js?v=71';
-import { normalizeUtilityConfig } from './store.js?v=71';
+import { createNovelController } from './novel-ui.js?v=72';
+import { normalizeUtilityConfig } from './store.js?v=72';
 
 const PRAYER_CACHE_KEY = 'manifestudio_prayer_cache_v1';
 const MYQURAN_CITIES_KEY = 'manifestudio_myquran_cities_v1';

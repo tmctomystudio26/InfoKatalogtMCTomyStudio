@@ -18,9 +18,12 @@ import {
   NOVEL_GENRES,
   buildProceduralBookCover,
   buildProxiedCoverUrl,
+  cleanOcrAndDjvuText,
+  expandCanonicalNovelTitle,
   extractNovelSearchQueries,
   extractSeriesTitleFromChapter,
   isNovelFreeFullAccess,
+  isOcrGarbageLine,
   mergeUnifiedNovels,
   normalizeUnifiedNovel,
   paginateChapterParagraphs,
@@ -306,4 +309,102 @@ test('v71 Drama China unified legal Full-Free filter accepts real C-dramas and b
   assert.equal(onlyFullFree.length, 1);
   assert.equal(onlyFullFree[0].id, fullDrama.id);
 });
+
+test('v72 Anti-OCR/DjVu Anomaly Cleaner removes Dilan 1991 OCR noise & rejoins soft-hyphenated words', () => {
+  const exactGarbageLines = [
+    '(p/vdA',
+    '( 1972 - 2098 )',
+    'i ^',
+    '/972 ~2o9t>',
+    '/ 1 /S/I',
+    'j, Moa 13',
+    'l. hUhJ JM* 2S',
+    "S^CiA/Uaa (j)/JLwn 'tjO",
+    '9,QsJkjL?\\ /L^-a F\\nKa&^ 199',
+    "12, (p'&JMzMV' 221",
+    '73 , 076^ 229',
+    ',-A-yw',
+    'IA \\/Si ^',
+    '^-i; Jnii',
+    'furjjf fijlftj.',
+    'if>u ftiitt',
+  ];
+
+  for (const noisy of exactGarbageLines) {
+    assert.equal(isOcrGarbageLine(noisy), true, `Expected OCR garbage line to be flagged: "${noisy}"`);
+  }
+
+  const rawDilanDump = [
+    ...exactGarbageLines,
+    '',
+    'Aku Milea. Milea Adnan Hussain.',
+    'Jenis kelamin perem\u00AC',
+    'puan. Lahir di Jakarta, tanggal 10',
+    'Oktober 1972 dan',
+    'sudah mandi.',
+    '',
+    'Sekarang, ayahku sudah pensiun dan tinggal di',
+    'Tarogong, Garut, bersama ibuku.',
+  ].join('\n');
+
+  const cleaned = cleanOcrAndDjvuText(rawDilanDump);
+  assert.ok(!cleaned.includes('furjjf'), 'OCR garbage furjjf must be stripped');
+  assert.ok(!cleaned.includes('if>u ftiitt'), 'OCR garbage if>u ftiitt must be stripped');
+  assert.ok(!cleaned.includes('\u00AC'), 'Soft hyphen ¬ must be stripped and word rejoined');
+  assert.ok(
+    cleaned.includes('Jenis kelamin perempuan. Lahir di Jakarta, tanggal 10 Oktober 1972 dan sudah mandi.'),
+    `Expected clean joined prose, got: ${cleaned}`
+  );
+
+  const paragraphs = sanitizeChapterToParagraphs(rawDilanDump);
+  assert.equal(paragraphs.length, 2);
+  assert.ok(paragraphs[0].includes('Jenis kelamin perempuan.'));
+  assert.ok(paragraphs[1].includes('Tarogong, Garut, bersama ibuku.'));
+});
+
+test('v72 Canonical novel abbreviation expander & VIP-to-Free mirror filter work accurately', () => {
+  assert.equal(expandCanonicalNovelTitle('CO'), 'Cultivation Online (CO)');
+  assert.equal(expandCanonicalNovelTitle('OG'), 'Overgeared (OG)');
+  assert.equal(expandCanonicalNovelTitle('Dilan 1991'), 'Dilan 1991');
+
+  assert.ok(NOVEL_GENRES.some((g) => g.id === 'vip-free'), 'NOVEL_GENRES must include vip-free filter');
+
+  const vipMirrorNovel = normalizeUnifiedNovel({
+    id: 'vipfree:sl',
+    sourceId: 'vipfree',
+    sourceName: 'Kakaopage VIP → Mirror Gratis',
+    title: 'Solo Leveling (Only I Level Up)',
+    vipOriginPlatform: 'Kakaopage / WebNovel VIP',
+    isVipMirror: true,
+    chapterCount: 270,
+    reads: 3100000,
+  });
+  const sakuraMirrorNovel = normalizeUnifiedNovel({
+    id: 'sakura:1',
+    sourceId: 'sakuranovel',
+    sourceName: 'SakuraNovel',
+    title: 'CO',
+    chapterCount: 2542,
+    reads: 1700000,
+  });
+  const publicDomainNovel = normalizeUnifiedNovel({
+    id: 'wikisource:1',
+    sourceId: 'wikisource',
+    sourceName: 'Wikisource Nusantara',
+    title: 'Siti Nurbaya',
+    chapterCount: 18,
+    reads: 95000,
+  });
+
+  assert.equal(sakuraMirrorNovel.title, 'Cultivation Online (CO)');
+  assert.equal(vipMirrorNovel.isVipMirror, true);
+  assert.equal(sakuraMirrorNovel.isVipMirror, true);
+  assert.equal(publicDomainNovel.isVipMirror, false);
+
+  const vipOnly = mergeUnifiedNovels([[vipMirrorNovel, sakuraMirrorNovel, publicDomainNovel]], { genre: 'vip-free' });
+  assert.equal(vipOnly.length, 2);
+  assert.ok(vipOnly.some((n) => n.id === 'vipfree:sl'));
+  assert.ok(vipOnly.some((n) => n.id === 'sakura:1'));
+});
+
 
