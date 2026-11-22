@@ -19,11 +19,11 @@
       rel="stylesheet"
     />
 
-    <link rel="stylesheet" href="./css/tokens.css?v=74" />
-    <link rel="stylesheet" href="./css/styles.css?v=74" />
+    <link rel="stylesheet" href="./css/tokens.css?v=75" />
+    <link rel="stylesheet" href="./css/styles.css?v=75" />
     <script>
       (function () {
-        var CURRENT_CACHE = 'manifestudio-cache-v74';
+        var CURRENT_CACHE = 'manifestudio-cache-v75';
         if ('caches' in window) {
           caches.keys().then(function (keys) {
             keys.forEach(function (k) {
@@ -32,7 +32,7 @@
           });
         }
         if ('serviceWorker' in navigator) {
-          navigator.serviceWorker.register('./sw.js?v=74').then(function (reg) {
+          navigator.serviceWorker.register('./sw.js?v=75').then(function (reg) {
             reg.update();
           }).catch(function () {});
         }
@@ -679,6 +679,7 @@
                     <option value="./assets/banners/banner-manifestai.jpg">Maskot Manifest AI (Burung Hantu)</option>
                     <option value="./assets/banners/banner-plagiarism.jpg">Maskot Cek Plagiarisme (Corgi)</option>
                     <option value="./assets/banners/banner-novel.jpg">Maskot Novel Terpadu (Rubah)</option>
+                    <option value="./assets/banners/banner-callerid.jpg">Maskot Cek Nomor & Anti-Spam (Shiba Guard)</option>
                     <option value="">Tanpa Gambar (Gradien Warna)</option>
                   </select>
                 </div>
@@ -1230,6 +1231,6 @@
 
     <div id="toast-notification" class="toast-notification" role="status" aria-live="polite" hidden></div>
 
-    <script type="module" src="./js/admin.js?v=74"></script>
+    <script type="module" src="./js/admin.js?v=75"></script>
   </body>
 </html>

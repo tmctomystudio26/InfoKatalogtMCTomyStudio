@@ -2,7 +2,7 @@ import {
   CATALOG_PREVIEW_STORAGE_KEY,
   getDefaultCatalogSnapshot,
   loadCatalogData,
-} from './data.js?v=74';
+} from './data.js?v=75';
 import {
   DEFAULT_UTILITY_CONFIG,
   MAX_HISTORY_LOGS,
@@ -42,12 +42,12 @@ import {
   upsertProductInCatalog,
   upsertSocialInCatalog,
   upsertUtilityItemInCatalog,
-} from './store.js?v=74';
+} from './store.js?v=75';
 import {
   decryptVault,
   encryptVault,
   verifyGitHubTokenAccess,
-} from './vault.js?v=74';
+} from './vault.js?v=75';
 
 const THEME_STORAGE_KEY = 'manifestudio_theme_v1';
 const ADMIN_VAULT_STORAGE_KEY = 'manifestudio_admin_vault_v1';
@@ -92,6 +92,7 @@ const BANNER_IMAGE_PRESETS = [
   { value: './assets/banners/banner-manifestai.jpg', label: 'Maskot Manifest AI' },
   { value: './assets/banners/banner-plagiarism.jpg', label: 'Maskot Cek Plagiarisme' },
   { value: './assets/banners/banner-novel.jpg', label: 'Maskot Novel Terpadu' },
+  { value: './assets/banners/banner-callerid.jpg', label: 'Maskot Cek Nomor & Anti-Spam' },
   { value: '', label: 'Tanpa Gambar (Hanya Gradien Warna)' },
 ];
 
@@ -123,6 +124,7 @@ const UTILITY_ICON_PRESETS = [
   { value: './assets/icons/tool-manifestai.svg', label: 'Ikon Manifest AI' },
   { value: './assets/icons/tool-plagiarism.svg', label: 'Ikon Cek Plagiarisme' },
   { value: './assets/icons/tool-novel.svg', label: 'Ikon Novel Terpadu' },
+  { value: './assets/icons/tool-callerid.svg', label: 'Ikon Cek Nomor & Anti-Spam' },
 ];
 
 const adminState = {

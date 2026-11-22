@@ -59,11 +59,11 @@
       rel="stylesheet"
     />
 
-    <link rel="stylesheet" href="./css/tokens.css?v=74" />
-    <link rel="stylesheet" href="./css/styles.css?v=74" />
+    <link rel="stylesheet" href="./css/tokens.css?v=75" />
+    <link rel="stylesheet" href="./css/styles.css?v=75" />
     <script>
       (function () {
-        var CURRENT_CACHE = 'manifestudio-cache-v74';
+        var CURRENT_CACHE = 'manifestudio-cache-v75';
         if ('caches' in window) {
           caches.keys().then(function (keys) {
             keys.forEach(function (k) {
@@ -72,7 +72,7 @@
           });
         }
         if ('serviceWorker' in navigator) {
-          navigator.serviceWorker.register('./sw.js?v=74').then(function (reg) {
+          navigator.serviceWorker.register('./sw.js?v=75').then(function (reg) {
             reg.update();
           }).catch(function () {});
         }
@@ -113,6 +113,7 @@
           <button type="button" class="header-nav-link" data-tools-nav="manifestai">Manifest AI</button>
           <button type="button" class="header-nav-link" data-tools-nav="plagiarism">Cek Plagiarisme</button>
           <button type="button" class="header-nav-link" data-tools-nav="novel">Novel</button>
+          <button type="button" class="header-nav-link" data-tools-nav="callerid">Cek Nomor</button>
         </nav>
 
         <div class="header-actions">
@@ -184,6 +185,6 @@
     </footer>
 
     <div id="toast-notification" class="toast-notification" role="status" aria-live="polite" hidden></div>
-    <script type="module" src="./js/tools-page.js?v=74"></script>
+    <script type="module" src="./js/tools-page.js?v=75"></script>
   </body>
 </html>

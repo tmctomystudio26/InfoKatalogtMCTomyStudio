@@ -520,7 +520,7 @@ export function inferBannerUtilityId(banner = {}) {
   const href = String(banner?.href || '').trim();
   const match = href.match(/[?&](?:tab|tool)=([a-z0-9_-]+)/i);
   if (match && match[1]) return match[1].toLowerCase();
-  const idMatch = String(banner?.id || '').match(/^banner-(prayer|weather|worldclock|speedtest|downloader|compressor|converter|songfinder|music|dracin|audioeditor|manifestai|plagiarism|novel)$/i);
+  const idMatch = String(banner?.id || '').match(/^banner-(prayer|weather|worldclock|speedtest|downloader|compressor|converter|songfinder|music|dracin|audioeditor|manifestai|plagiarism|novel|callerid)$/i);
   return idMatch ? idMatch[1].toLowerCase() : '';
 }
 
@@ -705,6 +705,18 @@ export const DEFAULT_BANNERS = [
     scrim: 'amber',
     enabled: true,
   },
+  {
+    id: 'banner-callerid',
+    utilityId: 'callerid',
+    kicker: 'Menu Utilitas · 5 API Open-Source',
+    heading: 'Cek Nomor, Caller ID & Anti-Spam Gratis',
+    sub: 'Lacak operator HLR, kode area, verifikasi hotline resmi Bank/OJK, & cek laporan spam tanpa login.',
+    ctaLabel: 'Cek Nomor →',
+    href: './tools.html?tab=callerid',
+    image: './assets/banners/banner-callerid.jpg',
+    scrim: 'emerald',
+    enabled: true,
+  },
 ];
 
 export function normalizeOpenGraphConfig(brand = {}) {
@@ -759,7 +771,7 @@ export const DEFAULT_UTILITY_CONFIG = {
   callout: {
     icon: './assets/icons/menu-utilitas.svg',
     title: 'Menu Utilitas',
-    badge: '14 Fitur Gratis',
+    badge: '15 Fitur Gratis',
     description: '',
     autoCountBadge: true,
   },
@@ -937,6 +949,18 @@ export const DEFAULT_UTILITY_CONFIG = {
       heroTitle: 'Pembaca Novel Terpadu — Gratis Penuh Tanpa Kunci VIP',
       heroDescription:
         'Nikmati ribuan bab novel populer lintas platform yang terintegrasi dalam satu katalog, lengkap dengan mode layar penuh, loncat halaman & bab, pencocokan novel dari cuplikan/screenshot/file hingga 100%, riwayat baca, 122+ tema halaman termasuk tema bergerak & request AI, serta mode suara audiobook.',
+    },
+    {
+      id: 'callerid',
+      label: 'Cek Nomor',
+      icon: './assets/icons/tool-callerid.svg',
+      pageTitle: 'Cek Nomor & Caller ID Anti-Spam (Multi-API Open-Source)',
+      pageSubtitle:
+        'Gabungkan Google libphonenumber-js, HLR Operator Indonesia, Direktori Resmi Bank/OJK, CallShield GitHub Spam DB, GitHub/HN OSINT, Wikidata, & Tag Komunitas tanpa login.',
+      heroKicker: '5 Mesin Open-Source Kolaboratif · Gratis Tanpa Login · Tag Komunitas',
+      heroTitle: 'Cek Nomor Telepon, Operator, Verifikasi Resmi & Anti-Spam',
+      heroDescription:
+        'Analisis format E.164 & HLR operator, verifikasi nomor resmi Bank/OJK/Polri/Ekspedisi, cek laporan spam CallShield GitHub & OSINT publik, serta kelola tag komunitas dan daftar blokir pribadi langsung di browser.',
     },
   ],
 };

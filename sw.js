@@ -1,4 +1,4 @@
-const CACHE_NAME = 'manifestudio-cache-v74';
+const CACHE_NAME = 'manifestudio-cache-v75';
 
 const PRECACHE_ASSETS = [
   './',
@@ -56,6 +56,9 @@ const PRECACHE_ASSETS = [
   './js/novel-logic.js',
   './js/novel-engine.js',
   './js/novel-ui.js',
+  './js/phone-logic.js',
+  './js/phone-engine.js',
+  './js/callerid-ui.js',
   './js/receipt.js',
   './js/vault.js',
   './js/pwa.js',
@@ -83,6 +86,7 @@ const PRECACHE_ASSETS = [
   './assets/banners/banner-manifestai.jpg',
   './assets/banners/banner-plagiarism.jpg',
   './assets/banners/banner-novel.jpg',
+  './assets/banners/banner-callerid.jpg',
   './assets/icons/brand-icon.svg',
   './assets/icons/menu-utilitas.svg',
   './assets/icons/social-whatsapp.svg',
@@ -104,6 +108,7 @@ const PRECACHE_ASSETS = [
   './assets/icons/tool-manifestai.svg',
   './assets/icons/tool-plagiarism.svg',
   './assets/icons/tool-novel.svg',
+  './assets/icons/tool-callerid.svg',
   './assets/icons/icon-192.png',
   './assets/icons/icon-512.png',
   './assets/icons/icon-maskable-512.png',

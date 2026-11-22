@@ -88,11 +88,11 @@ Dilengkapi Jadwal Sholat, Prakiraan Cuaca, Jam Dunia, Speedtest, Social Media Do
     />
 
     <!-- Styles -->
-    <link rel="stylesheet" href="./css/tokens.css?v=74" />
-    <link rel="stylesheet" href="./css/styles.css?v=74" />
+    <link rel="stylesheet" href="./css/tokens.css?v=75" />
+    <link rel="stylesheet" href="./css/styles.css?v=75" />
     <script>
       (function () {
-        var CURRENT_CACHE = 'manifestudio-cache-v74';
+        var CURRENT_CACHE = 'manifestudio-cache-v75';
         if ('caches' in window) {
           caches.keys().then(function (keys) {
             keys.forEach(function (k) {
@@ -101,7 +101,7 @@ Dilengkapi Jadwal Sholat, Prakiraan Cuaca, Jam Dunia, Speedtest, Social Media Do
           });
         }
         if ('serviceWorker' in navigator) {
-          navigator.serviceWorker.register('./sw.js?v=74').then(function (reg) {
+          navigator.serviceWorker.register('./sw.js?v=75').then(function (reg) {
             reg.update();
           }).catch(function () {});
         }
@@ -154,6 +154,7 @@ Dilengkapi Jadwal Sholat, Prakiraan Cuaca, Jam Dunia, Speedtest, Social Media Do
           <a href="./tools.html?tab=manifestai" class="header-nav-link">Manifest AI</a>
           <a href="./tools.html?tab=plagiarism" class="header-nav-link">Cek Plagiarisme</a>
           <a href="./tools.html?tab=novel" class="header-nav-link">Novel Terpadu</a>
+          <a href="./tools.html?tab=callerid" class="header-nav-link">Cek Nomor</a>
         </nav>
 
         <div class="header-actions">
@@ -512,6 +513,6 @@ Dilengkapi Jadwal Sholat, Prakiraan Cuaca, Jam Dunia, Speedtest, Social Media Do
     <div id="cart-drawer-root" class="drawer-root" hidden></div>
     <div id="toast-notification" class="toast-notification" role="status" aria-live="polite" hidden></div>
 
-    <script type="module" src="./js/app.js?v=74"></script>
+    <script type="module" src="./js/app.js?v=75"></script>
   </body>
 </html>

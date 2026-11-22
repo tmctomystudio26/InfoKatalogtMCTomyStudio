@@ -60,7 +60,8 @@ import { createAudioEditorController } from './audio-editor-ui.js?v=67';
 import { createManifestAiController } from './manifest-ai-ui.js?v=67';
 import { createPlagiarismController } from './plagiarism-ui.js?v=69';
 import { createNovelController } from './novel-ui.js?v=73';
-import { normalizeUtilityConfig } from './store.js?v=74';
+import { createCallerIdController } from './callerid-ui.js?v=75';
+import { normalizeUtilityConfig } from './store.js?v=75';
 
 const PRAYER_CACHE_KEY = 'manifestudio_prayer_cache_v1';
 const MYQURAN_CITIES_KEY = 'manifestudio_myquran_cities_v1';
@@ -480,6 +481,7 @@ export function createToolsHubController({
   let manifestAiCtrl = null;
   let plagiarismCtrl = null;
   let novelCtrl = null;
+  let callerIdCtrl = null;
   let isHubSeeking = false;
 
   function getUtilityItemConfig(id) {
@@ -4512,6 +4514,15 @@ export function createToolsHubController({
     `;
   }
 
+  function renderCallerIdPanel() {
+    return `
+      <section class="tool-panel callerid-panel" aria-label="Cek Nomor dan Caller ID Anti-Spam">
+        ${renderSubPanelIntro('callerid')}
+        <div id="callerid-hub-mount"></div>
+      </section>
+    `;
+  }
+
   function bindToolEvents() {
     rootEl.querySelectorAll('[data-tool-subtab]').forEach((btn) => {
       btn.addEventListener('click', () => {
@@ -5369,6 +5380,18 @@ export function createToolsHubController({
       novelCtrl.unmount();
       novelCtrl = null;
     }
+
+    if (toolState.activeSubTab === 'callerid') {
+      const cidMount = rootEl.querySelector('#callerid-hub-mount');
+      if (cidMount) {
+        if (!callerIdCtrl) {
+          callerIdCtrl = createCallerIdController({ onToast });
+        }
+        callerIdCtrl.mount(cidMount);
+      }
+    } else if (callerIdCtrl) {
+      callerIdCtrl.unmount();
+    }
   }
 
   function renderPrayerSearchResultsHtml(subDistrictResults = [], filteredCities = []) {
@@ -5430,6 +5453,8 @@ export function createToolsHubController({
         ? renderPlagiarismPanel()
         : toolState.activeSubTab === 'novel'
         ? renderNovelPanel()
+        : toolState.activeSubTab === 'callerid'
+        ? renderCallerIdPanel()
         : renderDownloaderPanel();
 
     const visibleUtilityItems = (toolState.utilities?.items || []).filter((it) => it.enabled !== false);
@@ -5508,7 +5533,8 @@ export function createToolsHubController({
         subTab === 'audioeditor' ||
         subTab === 'manifestai' ||
         subTab === 'plagiarism' ||
-        subTab === 'novel'
+        subTab === 'novel' ||
+        subTab === 'callerid'
       ) {
         toolState.activeSubTab = subTab;
       }
@@ -5564,6 +5590,9 @@ export function createToolsHubController({
         novelCtrl.unmount();
         novelCtrl = null;
       }
+      if (callerIdCtrl) {
+        callerIdCtrl.unmount();
+      }
       stopLiveTimers();
       if (rootEl) rootEl.innerHTML = '';
     },
@@ -5574,6 +5603,7 @@ export function createToolsHubController({
       manifestAiCtrl?.redrawTheme();
       plagiarismCtrl?.redrawTheme?.();
       novelCtrl?.redrawTheme?.();
+      callerIdCtrl?.redrawTheme?.();
     },
   };
 }
