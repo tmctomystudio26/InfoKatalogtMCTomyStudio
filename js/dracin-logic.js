@@ -32,6 +32,7 @@ export const DRACIN_PLATFORMS = [
 
 export const DRACIN_GENRES = [
   { id: 'all', label: 'Untuk Kamu' },
+  { id: 'full-free', label: 'Full Tamat Gratis' },
   { id: 'trending', label: 'Trending' },
   { id: 'ceo', label: 'CEO & Romantis' },
   { id: 'revenge', label: 'Balas Dendam' },
@@ -616,6 +617,11 @@ export function normalizeDracinItem(raw = {}, fallbackPlatformId = 'dramabox') {
 
   const rawPoster = String(raw.poster || raw.cover || raw.posterImg || raw.thumbnail_720_url || '').trim();
   const hasRealPoster = /^https?:\/\//i.test(rawPoster);
+  const proxiedPoster = hasRealPoster
+    ? /wsrv\.nl|dmcdn\.net|dailymotion\.com/i.test(rawPoster) && !/\.heic(\?|$)/i.test(rawPoster)
+      ? rawPoster
+      : `https://wsrv.nl/?url=${encodeURIComponent(rawPoster.replace(/^https?:\/\//i, ''))}&w=440&output=webp&q=82`
+    : fallbackPoster;
   const rawEpNum = Number(raw.totalEpisodes ?? raw.episodes ?? raw.episodeCount ?? raw.chapterCount);
   const hasKnownEpisodeCount = Number.isFinite(rawEpNum) && rawEpNum > 0;
   const safeTotalEpisodes = hasKnownEpisodeCount
@@ -639,6 +645,8 @@ export function normalizeDracinItem(raw = {}, fallbackPlatformId = 'dramabox') {
     genres,
     totalEpisodes: safeTotalEpisodes,
     hasKnownEpisodeCount,
+    isFullFree: Boolean(raw.isFullFree || (Array.isArray(raw.genres) && raw.genres.includes('full-free'))),
+    fullDurationMin: Number(raw.fullDurationMin) > 0 ? Math.round(Number(raw.fullDurationMin)) : 0,
     year: Number(raw.year) || 2026,
     rating: Number(raw.rating) > 0 ? Math.min(9.9, Number(raw.rating)) : 9.4,
     viewsLabel: String(raw.viewsLabel || formatCompactViews(raw.views_total || raw.favoriteCount || 1850000)),
@@ -651,7 +659,8 @@ export function normalizeDracinItem(raw = {}, fallbackPlatformId = 'dramabox') {
           ? 'Sulih Suara Indonesia'
           : 'Mandarin / Original')
     ),
-    poster: hasRealPoster ? rawPoster : fallbackPoster,
+    poster: proxiedPoster,
+    rawPoster: hasRealPoster ? rawPoster : '',
     hasRealPoster,
     fallbackPoster,
     accent,
@@ -1228,6 +1237,39 @@ export function mergeParallelDracinFeeds(apiBuckets = [], baseline = CURATED_DRA
   return merged;
 }
 
+const NON_DRAMA_NOISE_RE =
+  /\b(pm\s+modi|narendra\s+modi|asean|g20|summit|breaking\s+news|berita\s+terkini|cnn\s+indonesia|kompas\s*tv|tvone|metro\s*tv|presiden|pemilu|pilpres|bursa\s+saham|prabowo|jokowi|vlive|blackpink|bts\s+live|exo\s+live|twice\s+live|kpop|mnet|inkigayo|podcast|unboxing|review\s+hp|gameplay|mobile\s+legends|free\s+fire|pubg|valorant|fifa|liga\s+inggris|champions\s+league|highlight\s+bola|motogp|formula\s*1|cuaca\s+hari\s+ini|ramalan\s+zodiak|tutorial\s+excel|kajian\s+ustadz|ceramah)\b/i;
+
+const DRAMA_POSITIVE_SIGNAL_RE =
+  /\b(drama|dracin|dramabox|melolo|reelshort|shortmax|netshort|goodshort|flickreels|freereels|dramawave|moboreels|idrama|sub\s*indo|dub\s*indo|sulih\s*suara|full\s*ep|full\s*episode|full\s*movie|tamat|episode|ceo|presdir|miliarder|bos|nikah|suami|istri|menantu|mertua|kaisar|kerajaan|selir|permaisuri|jenderal|pendekar|kultivasi|donghua|anichin|reborn|balas\s*dendam|pewaris|cinta|romantis|keluarga|kembar|tabib|dokter|naga|putri|pangeran)\b/i;
+
+/**
+ * Strictly filters public video search results so non-drama clips (news, politics,
+ * sports, K-pop vlogs, gameplay) never leak into the unified Drama China catalog.
+ */
+export function isLikelyChineseDramaTitle(title = '', description = '') {
+  const cleanTitle = String(title || '').trim();
+  if (cleanTitle.length < 4) return false;
+  const hay = `${cleanTitle} ${String(description || '').slice(0, 260)}`;
+  if (NON_DRAMA_NOISE_RE.test(hay)) return false;
+  if (DRAMA_POSITIVE_SIGNAL_RE.test(hay)) return true;
+  // Also allow titles containing Chinese characters when not noise
+  if (/[\u4e00-\u9fff]{2,}/.test(cleanTitle)) return true;
+  return false;
+}
+
+/**
+ * Returns true if the drama provides a 100% free, uninterrupted Full-Episode
+ * stream from Episode 1 to Finale without any commercial VIP lock.
+ */
+export function isFullFreeDrama(drama = null) {
+  if (!drama || typeof drama !== 'object') return false;
+  if (drama.isFullFree) return true;
+  if (Array.isArray(drama.genres) && drama.genres.includes('full-free')) return true;
+  if (drama.apiProvider === 'dailymotion' && Number(drama.fullDurationMin || 0) >= 15) return true;
+  return false;
+}
+
 export function filterDracinCatalog(
   catalog = [],
   { platformId = 'all', genreId = 'all', query = '' } = {}
@@ -1246,10 +1288,14 @@ export function filterDracinCatalog(
       }
     }
     if (genreId && genreId !== 'all') {
-      const inGenre =
-        item.genre === genreId ||
-        (Array.isArray(item.genres) && item.genres.includes(genreId));
-      if (!inGenre) return false;
+      if (genreId === 'full-free') {
+        if (!isFullFreeDrama(item)) return false;
+      } else {
+        const inGenre =
+          item.genre === genreId ||
+          (Array.isArray(item.genres) && item.genres.includes(genreId));
+        if (!inGenre) return false;
+      }
     }
     if (tokens.length > 0) {
       const haystack = [

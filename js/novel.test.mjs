@@ -17,6 +17,7 @@ import {
 import {
   NOVEL_GENRES,
   buildProceduralBookCover,
+  buildProxiedCoverUrl,
   extractNovelSearchQueries,
   extractSeriesTitleFromChapter,
   isNovelFreeFullAccess,
@@ -26,6 +27,14 @@ import {
   sanitizeChapterToParagraphs,
   scoreNovelExcerptMatch,
 } from './novel-logic.js';
+
+import {
+  DRACIN_GENRES,
+  filterDracinCatalog,
+  isFullFreeDrama,
+  isLikelyChineseDramaTitle,
+  normalizeDracinItem,
+} from './dracin-logic.js';
 
 import { DEFAULT_UTILITY_CONFIG } from './store.js';
 
@@ -223,3 +232,78 @@ test('Utility #14 (novel) is registered cleanly in store.js and data/catalog.jso
   assert.ok(catItem, 'novel must be registered in data/catalog.json');
   assert.equal(catalog.utilities.items.length, 14);
 });
+
+test('v71 Novel cover proxy routes hotlink-protected covers via wsrv.nl and keeps procedural covers corner-clean', () => {
+  const hotlinked = buildProxiedCoverUrl('https://sakuranovel.id/wp-content/uploads/2026/cover.jpg');
+  assert.ok(hotlinked.startsWith('https://wsrv.nl/?url='), `Expected wsrv.nl proxy URL, got ${hotlinked}`);
+  assert.ok(hotlinked.includes('output=webp'));
+
+  const directAnilist = buildProxiedCoverUrl('https://s4.anilist.co/file/anilistcdn/media/manga/cover/large/bx1.jpg');
+  assert.equal(directAnilist, 'https://s4.anilist.co/file/anilistcdn/media/manga/cover/large/bx1.jpg');
+
+  const directOpenLib = buildProxiedCoverUrl('https://covers.openlibrary.org/b/id/12345-L.jpg');
+  assert.equal(directOpenLib, 'https://covers.openlibrary.org/b/id/12345-L.jpg');
+
+  const alreadyProxied = buildProxiedCoverUrl('https://wsrv.nl/?url=example.com/a.jpg&w=360');
+  assert.equal(alreadyProxied, 'https://wsrv.nl/?url=example.com/a.jpg&w=360');
+
+  const svgUri = buildProceduralBookCover('Shadow Slave', 'Guiltythree', 'action', 'SakuraNovel');
+  const decoded = decodeURIComponent(svgUri.replace('data:image/svg+xml,', ''));
+  assert.ok(decoded.includes('Shadow Slave'), 'Title must appear in center safe zone');
+  assert.ok(!decoded.includes('FULL AKSES GRATIS'), 'Corner badge text must not appear inside SVG cover');
+  assert.ok(!decoded.includes('SakuraNovel'), 'Bottom-left source label must not collide with rating badge');
+});
+
+test('v71 Drama China unified legal Full-Free filter accepts real C-dramas and blocks news/politics/vlog noise', () => {
+  assert.ok(DRACIN_GENRES.some((g) => g.id === 'full-free'), 'DRACIN_GENRES must include full-free');
+
+  assert.equal(
+    isLikelyChineseDramaTitle('Drama China Sub Indo Full Movie - Cinta Tak Terduga CEO Dingin', 'Drama China romantis sub indo full episode tamat'),
+    true
+  );
+  assert.equal(
+    isLikelyChineseDramaTitle('CDrama Full Episode 1-30 Sub Indo: Pewaris Naga Kembali', 'Short drama china'),
+    true
+  );
+  assert.equal(
+    isLikelyChineseDramaTitle('PM Modi arrives in Indonesia for ASEAN Summit live news', 'Breaking political news update'),
+    false
+  );
+  assert.equal(
+    isLikelyChineseDramaTitle('Berita Terkini Presiden Kunjungan Kerja & Konferensi Pers', 'Wawancara politik'),
+    false
+  );
+  assert.equal(
+    isLikelyChineseDramaTitle('VLIVE Kpop Dance Practice & Mukbang Vlog', 'Daily vlog'),
+    false
+  );
+
+  const fullDrama = normalizeDracinItem(
+    {
+      id: 'dm_full_1',
+      title: 'Cinta Rahasia Sang CEO (Full Tamat Sub Indo)',
+      isFullFree: true,
+      fullDurationMin: 82,
+      genres: ['romance', 'full-free'],
+      totalEpisodes: 1,
+    },
+    'dailymotion'
+  );
+  const regularDrama = normalizeDracinItem(
+    {
+      id: 'db_1',
+      title: 'Pewaris Rahasia',
+      genres: ['ceo', 'trending'],
+      totalEpisodes: 60,
+    },
+    'dramabox'
+  );
+
+  assert.equal(isFullFreeDrama(fullDrama), true);
+  assert.equal(isFullFreeDrama(regularDrama), false);
+
+  const onlyFullFree = filterDracinCatalog([fullDrama, regularDrama], { genreId: 'full-free' });
+  assert.equal(onlyFullFree.length, 1);
+  assert.equal(onlyFullFree[0].id, fullDrama.id);
+});
+

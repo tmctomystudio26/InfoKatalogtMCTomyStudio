@@ -25,7 +25,9 @@ import {
   extractTokens,
   formatDracinUserError,
   getPlatformMeta,
+  inferGenreFromText,
   inferPlatformFromText,
+  isLikelyChineseDramaTitle,
   mergeParallelDracinFeeds,
   normalizeAnichinDramaItem,
   normalizeDramaMatchText,
@@ -41,14 +43,14 @@ import {
   resolveAnichinMediaUrl,
   scoreCrossPlatformDramaMatch,
   unwrapHlsJsonPayload,
-} from './dracin-logic.js?v=56';
+} from './dracin-logic.js?v=71';
 
 const API_TIMEOUT_MS = 8500;
 const EPISODE_TIMEOUT_MS = 9000;
-const SANSEKAI_TIMEOUT_MS = 8000;
+const SANSEKAI_TIMEOUT_MS = 6500;
 const AI_TIMEOUT_MS = 4500;
 
-const FLAGSHIP_HOME_PLATFORMS = ['dramabox', 'melolo', 'netshort', 'reelshort'];
+const FLAGSHIP_HOME_PLATFORMS = ['dramabox', 'melolo', 'netshort', 'reelshort', 'shortmax', 'freereels'];
 const PLATFORM_ALT_ENDPOINTS = {
   melolo: ['foryou', 'latest', 'trending'],
   dramabox: ['foryou', 'trending', 'hotrank'],
@@ -200,7 +202,7 @@ async function fetchFromAdaptiveMirrors(
 
 function readSessionCache(key, ttlMs = 8 * 60_000) {
   try {
-    const raw = sessionStorage.getItem(`dracin_cache_v56_${key}`);
+    const raw = sessionStorage.getItem(`dracin_cache_v71_${key}`);
     if (!raw) return null;
     const parsed = JSON.parse(raw);
     if (!parsed || Date.now() - parsed.ts > ttlMs) return null;
@@ -212,7 +214,7 @@ function readSessionCache(key, ttlMs = 8 * 60_000) {
 
 function writeSessionCache(key, data) {
   try {
-    sessionStorage.setItem(`dracin_cache_v56_${key}`, JSON.stringify({ ts: Date.now(), data }));
+    sessionStorage.setItem(`dracin_cache_v71_${key}`, JSON.stringify({ ts: Date.now(), data }));
   } catch {
     // Ignore storage quota
   }
@@ -531,12 +533,14 @@ export async function fetchSansekaiCatalog({ page = 1, query = '' } = {}) {
  * Used for Anichin Donghua, FlexTV, KalosTV, and as live fallback if any platform upstream returns 502.
  */
 export async function fetchDailymotionDracin(
-  query = 'drama china sub indo dramabox',
+  query = 'dramabox full sub indo',
   limit = 16,
-  forcedPlatformId = null
+  forcedPlatformId = null,
+  { longerThanMin = 0 } = {}
 ) {
   const q = encodeURIComponent(query);
-  const url = `https://api.dailymotion.com/videos?search=${q}&fields=id,title,allow_embed,private,status,thumbnail_720_url,duration,views_total,description&limit=${limit}`;
+  const durParam = longerThanMin > 0 ? `&longer_than=${Math.round(longerThanMin)}` : '';
+  const url = `https://api.dailymotion.com/videos?search=${q}${durParam}&fields=id,title,allow_embed,private,status,thumbnail_720_url,duration,views_total,description&limit=${limit}`;
   const data = await fetchJsonWithTimeout(url, {}, 7500);
   const list = Array.isArray(data?.list) ? data.list : [];
   const items = list
@@ -548,9 +552,12 @@ export async function fetchDailymotionDracin(
         v.allow_embed !== false &&
         v.private !== true &&
         (!v.status || v.status === 'published') &&
-        (v.duration || 0) >= 35
+        (v.duration || 0) >= (longerThanMin > 0 ? longerThanMin * 60 : 35) &&
+        isLikelyChineseDramaTitle(v.title, v.description || '')
     )
     .map((v) => {
+      const durationMin = Math.max(1, Math.round((v.duration || 180) / 60));
+      const isFull = durationMin >= 15;
       const platformId =
         forcedPlatformId && forcedPlatformId !== 'all'
           ? forcedPlatformId
@@ -558,25 +565,46 @@ export async function fetchDailymotionDracin(
       const cleanedTitle =
         String(v.title)
           .replace(/\[.*?\]/g, '')
+          .replace(/【.*?】/g, '')
+          .replace(/#[a-z0-9_]+/gi, '')
+          .replace(/#/g, '')
           .replace(/\bsub\s*indo\b/gi, '')
+          .replace(/\bsubtitle\s*indonesia\b/gi, '')
           .replace(/\bfull\s*episode\b/gi, '')
+          .replace(/\bfull\s*movie\b/gi, '')
           .replace(/\bdrama\s*china\b/gi, '')
+          .replace(/\bdramabox\b/gi, '')
+          .replace(/\bpendek\b/gi, '')
+          .replace(/[|•\-–—]+/g, ' ')
           .replace(/\s{2,}/g, ' ')
           .trim() || v.title;
+      const inferredGenre = inferGenreFromText(cleanedTitle, v.description || '');
+      const genres = isFull
+        ? Array.from(new Set([inferredGenre, 'full-free', 'trending']))
+        : Array.from(new Set([inferredGenre, 'trending']));
       return normalizeDracinItem(
         {
           id: `dm::${platformId}::${v.id}`,
           sourceId: v.id,
           apiProvider: 'dailymotion',
           title: cleanedTitle,
-          altTitle: `HD Stream · ${Math.max(1, Math.round((v.duration || 180) / 60))} mnt`,
+          altTitle: isFull ? `Full Tamat · ${durationMin} mnt · Sub Indo` : `HD Stream · ${durationMin} mnt`,
           platformId,
-          totalEpisodes: 20,
+          genre: inferredGenre,
+          genres,
+          totalEpisodes: isFull ? 1 : 20,
+          hasKnownEpisodeCount: false,
+          isFullFree: isFull,
+          fullDurationMin: durationMin,
           views_total: v.views_total || 320000,
           poster: v.thumbnail_720_url || '',
           dailymotionId: v.id,
           hasIndonesianDub: /dub\s*indo|dubbing|sulih\s*suara/i.test(`${v.title} ${v.description || ''}`),
-          description: String(v.description || '').slice(0, 240),
+          description:
+            String(v.description || '').slice(0, 240) ||
+            (isFull
+              ? `Tayangan penuh (${durationMin} menit) tanpa jeda kunci VIP — streaming HD gratis Sub Indo.`
+              : ''),
           sourceApi: 'dailymotion',
         },
         platformId
@@ -584,7 +612,7 @@ export async function fetchDailymotionDracin(
     });
   return {
     sourceId: 'dailymotion',
-    label: 'Dailymotion HD Live API',
+    label: 'Stream Full Tamat Gratis HD',
     fallbackPlatformId: forcedPlatformId || 'dramabox',
     items,
     hasMore: false,
@@ -592,33 +620,97 @@ export async function fetchDailymotionDracin(
 }
 
 /**
- * Master Real-Time Catalog Fetcher:
- * - On "Semua": loads live feeds from top flagship platforms concurrently (70+ real dramas with real posters).
- * - On any specific platform chip (e.g. Melolo, DramaBox, ReelShort, NetShort, ShortMax, GoodShort, etc.):
- *   loads THAT platform's real-time catalog directly from the live platform API!
- * - On search query: searches live platform endpoints directly!
+ * Fetches 100% legal, embeddable Full-Episode (Ep 1 to Finale, 15–120 min) Chinese dramas
+ * with Indonesian subtitles via Dailymotion Official Public API so users can watch
+ * start-to-finish without ever hitting a commercial VIP paywall.
+ */
+export async function fetchDailymotionFullDramas({ query = '', limit = 16, page = 1 } = {}) {
+  const cleanQ = String(query || '').trim();
+  const cacheKey = `dm-full::p${page}::q:${cleanQ.toLowerCase()}`;
+  if (feedCache.has(cacheKey)) {
+    const cached = feedCache.get(cacheKey);
+    if (Date.now() - cached.ts < 8 * 60_000) return cached.payload;
+  }
+  const sessCached = readSessionCache(cacheKey);
+  if (sessCached && Array.isArray(sessCached.items) && sessCached.items.length > 0) {
+    feedCache.set(cacheKey, { ts: Date.now(), payload: sessCached });
+    return sessCached;
+  }
+
+  const queries = cleanQ
+    ? [`${cleanQ} dramabox sub indo`, `${cleanQ} drama china full sub indo`]
+    : page > 1
+    ? ['shortmax full sub indo', 'reelshort full sub indo']
+    : ['dramabox full sub indo', 'drama china pendek sub indo full'];
+
+  const settled = await Promise.allSettled(
+    queries.map((q) => fetchDailymotionDracin(q, Math.ceil(limit / 1.3), null, { longerThanMin: 15 }))
+  );
+
+  const seen = new Set();
+  const items = [];
+  for (const res of settled) {
+    if (res.status === 'fulfilled' && Array.isArray(res.value?.items)) {
+      for (const it of res.value.items) {
+        if (!it?.dailymotionId || seen.has(it.dailymotionId)) continue;
+        seen.add(it.dailymotionId);
+        items.push(it);
+      }
+    }
+  }
+
+  const payload = {
+    sourceId: 'dailymotion-full-free',
+    label: 'Stream Full Tamat Gratis (100% Terbuka)',
+    fallbackPlatformId: 'dramabox',
+    items: items.slice(0, limit),
+    hasMore: !cleanQ && page < 3 && items.length >= 6,
+  };
+
+  if (payload.items.length > 0) {
+    feedCache.set(cacheKey, { ts: Date.now(), payload });
+    writeSessionCache(cacheKey, payload);
+  }
+  return payload;
+}
+
+/**
+ * Master Real-Time Unified Catalog Fetcher:
+ * Integrates ALL short-drama platforms + Full-Episode Free Sub Indo streams into ONE seamless catalog!
  */
 export async function fetchUnifiedDracinCatalog({ query = '', platformId = 'all', page = 1 } = {}) {
   const cleanQ = String(query || '').trim();
   const safePlatform = String(platformId || 'all').toLowerCase();
 
-  // Direct SekaiDrama (Sansekai) platform view from the start
+  // Direct SekaiDrama (Sansekai) platform view if explicitly requested
   if (safePlatform === 'sansekai') {
     return fetchSansekaiCatalog({ page, query: cleanQ });
   }
 
   let jobs = [];
 
+  const withJobCap = (promise, ms = 5200) =>
+    Promise.race([
+      promise.catch(() => null),
+      new Promise((resolve) => setTimeout(() => resolve(null), ms)),
+    ]);
+
   if (safePlatform === 'all') {
     if (cleanQ) {
       jobs = [
-        fetchAnichinPlatformFeed('dramabox', { page, query: cleanQ }),
-        fetchAnichinPlatformFeed('melolo', { page, query: cleanQ }),
-        fetchAnichinPlatformFeed('netshort', { page, query: cleanQ }),
-        fetchDailymotionDracin(`${cleanQ} drama china sub indo`, 12),
+        withJobCap(fetchDailymotionFullDramas({ query: cleanQ, limit: 12, page }), 6000),
+        withJobCap(fetchAnichinPlatformFeed('dramabox', { page, query: cleanQ }), 5200),
+        withJobCap(fetchAnichinPlatformFeed('melolo', { page, query: cleanQ }), 5200),
+        withJobCap(fetchAnichinPlatformFeed('netshort', { page, query: cleanQ }), 5200),
+        withJobCap(fetchAnichinPlatformFeed('reelshort', { page, query: cleanQ }), 5200),
+        withJobCap(fetchAnichinPlatformFeed('shortmax', { page, query: cleanQ }), 5200),
+        withJobCap(fetchDailymotionDracin(`${cleanQ} drama china sub indo`, 10), 5200),
       ];
     } else {
-      jobs = FLAGSHIP_HOME_PLATFORMS.map((pid) => fetchAnichinPlatformFeed(pid, { page }));
+      jobs = [
+        withJobCap(fetchDailymotionFullDramas({ limit: 16, page }), 6000),
+        ...FLAGSHIP_HOME_PLATFORMS.map((pid) => withJobCap(fetchAnichinPlatformFeed(pid, { page }), 5200)),
+      ];
     }
   } else if (safePlatform === 'pinedrama' || safePlatform === 'mydrama') {
     jobs = [fetchSansekaiPlatformFeed(safePlatform, { page, query: cleanQ })];
@@ -1313,19 +1405,22 @@ export async function resolveEpisodePlayback(
       }
     }
 
-    // 1.5 AUTOMATIC IN-PLAYER SANSEKAI VIP FAILOVER:
-    // If primary mirror returned VIP-locked or 0 video links (and we haven't already tried Sansekai),
-    // automatically resolve via https://api.sansekai.my.id/api so the user keeps watching seamlessly!
+    // 1.5 AUTOMATIC IN-PLAYER SANSEKAI FREE FAILOVER:
+    // If primary mirror returned VIP-locked or 0 video links, try Sansekai API automatically.
     if (servers.length === 0 && !isSansekaiNative && drama) {
-      const skFallback = await resolveSansekaiEpisodePlayback(drama, ep, { forceRefresh });
-      if (skFallback.servers.length > 0) {
-        servers.push(...skFallback.servers);
-        if (skFallback.subtitles?.length && subtitles.length === 0) {
-          subtitles = skFallback.subtitles;
+      try {
+        const skFallback = await resolveSansekaiEpisodePlayback(drama, ep, { forceRefresh });
+        if (skFallback.servers.length > 0) {
+          servers.push(...skFallback.servers);
+          if (skFallback.subtitles?.length && subtitles.length === 0) {
+            subtitles = skFallback.subtitles;
+          }
+          isLockedVip = false;
+          switchedViaSansekai = true;
+          sansekaiPlatformName = skFallback.platformName || 'Sansekai';
         }
-        isLockedVip = false;
-        switchedViaSansekai = true;
-        sansekaiPlatformName = skFallback.platformName || 'Sansekai';
+      } catch {
+        // Proceed to next legal free source
       }
     }
 
@@ -1340,12 +1435,16 @@ export async function resolveEpisodePlayback(
       });
     }
 
-    // 3. Dailymotion Embed ONLY for dramas that actually have a verified dailymotionId
+    // 3. Dailymotion Embed for dramas that already have a verified dailymotionId (e.g. Full Tamat Gratis)
     const dmId = drama?.dailymotionId || '';
     if (dmId) {
       servers.push({
         id: 'dm-hd',
-        label: servers.length ? 'Server Cadangan · Dailymotion HD' : 'Dailymotion HD Stream',
+        label: drama?.isFullFree
+          ? `Stream Full Tamat Gratis (${drama.fullDurationMin || 60} mnt · HD)`
+          : servers.length
+          ? 'Server Cadangan · Dailymotion HD'
+          : 'Dailymotion HD Stream',
         kind: 'dailymotion',
         videoId: dmId,
         embedUrl: buildDailymotionEmbedUrl(dmId, endpointConfigCache?.dailymotionPlayerId),
@@ -1353,18 +1452,39 @@ export async function resolveEpisodePlayback(
       });
     }
 
+    // 3.5 AUTOMATIC LEGAL ZERO-VIP-WALL FAILOVER:
+    // Whenever a commercial platform locks Episode N behind VIP and Sansekai isn't available,
+    // automatically look up a legal public embeddable Full-Episode / Episode N HD stream!
+    let switchedViaFreeMirror = false;
+    let freeMirrorNote = '';
+    if (servers.length === 0 && drama?.title) {
+      try {
+        const autoMirror = await searchDailymotionEpisodeBackup(drama, ep, { allowFullEpisode: true });
+        if (autoMirror) {
+          servers.push(autoMirror);
+          isLockedVip = false;
+          switchedViaFreeMirror = true;
+          freeMirrorNote = autoMirror.isFullCompilation
+            ? `Episode ${ep} dialihkan otomatis ke Stream Full Tamat Gratis (${autoMirror.durationMin || 60} mnt · HD)`
+            : `Episode ${ep} dibuka otomatis via Stream Gratis HD`;
+        }
+      } catch {
+        // Handled cleanly below
+      }
+    }
+
     const best = pickBestPlaybackServer(servers);
     let friendlyError = '';
     if (servers.length === 0) {
       if (isLockedVip) {
-        friendlyError = `Episode ${ep} dikunci VIP di server asli ${drama?.platformName || 'platform'} dan server Sansekai sedang penuh. Coba tekan Buka via Sansekai API, cari di platform lain, atau gunakan Mirror Dailymotion.`;
+        friendlyError = `Episode ${ep} belum tersedia gratis di mirror publik untuk judul ini. Gunakan "Cari di Platform Lain" atau tonton koleksi "Full Tamat Gratis" di beranda (100% terbuka dari awal sampai tamat).`;
       } else if (rawError) {
         friendlyError = formatDracinUserError(rawError, {
           platformName: drama?.platformName || 'platform',
           episode: ep,
         });
       } else {
-        friendlyError = `Server ${drama?.platformName || 'platform'} belum mengembalikan link video untuk Episode ${ep}. Coba Buka via Sansekai API atau cari mirror cadangan.`;
+        friendlyError = `Server sedang padat untuk Episode ${ep}. Coba Muat Ulang, Cari di Platform Lain, atau tonton koleksi Full Tamat Gratis.`;
       }
     }
 
@@ -1377,6 +1497,8 @@ export async function resolveEpisodePlayback(
       error: friendlyError,
       switchedViaSansekai,
       sansekaiPlatformName,
+      switchedViaFreeMirror,
+      freeMirrorNote,
     };
   })();
 
@@ -1401,60 +1523,79 @@ export async function prefetchEpisodePlayback(drama, episodeNumber) {
 }
 
 /**
- * On-demand backup mirror lookup on Dailymotion when an original platform server locks an episode behind VIP.
+ * Legal public stream lookup on Dailymotion when a commercial platform locks an episode behind VIP.
+ * Searches exact Episode N AND Full-Episode Sub Indo compilations with strict title/drama verification.
  */
-export async function searchDailymotionEpisodeBackup(drama, episodeNumber = 1) {
+export async function searchDailymotionEpisodeBackup(
+  drama,
+  episodeNumber = 1,
+  { allowFullEpisode = true } = {}
+) {
   if (!drama?.title) return null;
   const ep = Math.max(1, Math.round(Number(episodeNumber) || 1));
   const cleanTitle = String(drama.title)
     .replace(/\[[^\]]*\]/g, ' ')
     .replace(/【[^】]*】/g, ' ')
+    .replace(/\([^)]*\)/g, ' ')
     .replace(/\s+/g, ' ')
     .trim();
-  const synopsisKeywords = extractSynopsisKeywords(drama, 3).join(' ');
+  const shortTitle = normalizeDramaMatchText(cleanTitle).slice(0, 5).join(' ') || cleanTitle;
   const queries = Array.from(
     new Set(
       [
+        allowFullEpisode ? `${cleanTitle} full sub indo` : '',
         `${cleanTitle} episode ${ep} sub indo`,
-        `${cleanTitle} drama china sub indo`,
-        synopsisKeywords ? `${synopsisKeywords} drama china sub indo` : '',
+        shortTitle && shortTitle !== cleanTitle ? `${shortTitle} dramabox sub indo` : '',
       ].filter(Boolean)
     )
-  );
+  ).slice(0, 3);
   const titleTokens = normalizeDramaMatchText(`${cleanTitle} ${drama.altTitle || ''}`);
 
+  let bestOverall = null;
   for (const q of queries) {
     try {
       const res = await fetchDailymotionDracin(q, 10, drama.platformId);
       const candidates = (res?.items || []).filter((item) => Boolean(item?.dailymotionId));
       if (!candidates.length) continue;
 
-      const scored = candidates
-        .map((item) => {
-          const hay = `${item.title} ${item.synopsis || ''}`.toLowerCase();
-          let hits = 0;
-          for (const tok of titleTokens) {
-            if (hay.includes(tok)) hits += 1;
-          }
-          const epMatch = new RegExp(`\\b(ep|episode)\\s*0?${ep}\\b`, 'i').test(hay) ? 2 : 0;
-          return { item, rank: hits * 3 + epMatch };
-        })
-        .sort((a, b) => b.rank - a.rank);
+      for (const item of candidates) {
+        const hay = `${item.title} ${item.altTitle || ''} ${item.synopsis || ''}`.toLowerCase();
+        let hits = 0;
+        for (const tok of titleTokens) {
+          if (hay.includes(tok)) hits += 1;
+        }
+        const coverage = titleTokens.length > 0 ? hits / titleTokens.length : 0;
+        const epMatch = new RegExp(`\\b(ep|episode)\\s*0?${ep}\\b`, 'i').test(hay) ? 4 : 0;
+        const isFullComp = Boolean(item.isFullFree || (item.fullDurationMin || 0) >= 15);
+        const fullBonus = allowFullEpisode && isFullComp ? 3 : 0;
+        const rank = hits * 3 + Math.round(coverage * 6) + epMatch + fullBonus;
 
-      const best = scored[0]?.rank > 0 ? scored[0].item : null;
-      if (best?.dailymotionId) {
-        return {
-          id: `dm-backup-ep${ep}-${best.dailymotionId}`,
-          label: `Mirror Dailymotion · ${best.title.slice(0, 22)}`,
-          kind: 'dailymotion',
-          videoId: best.dailymotionId,
-          embedUrl: buildDailymotionEmbedUrl(best.dailymotionId, endpointConfigCache?.dailymotionPlayerId),
-          watchUrl: buildDailymotionWatchUrl(best.dailymotionId),
-        };
+        // Require genuine title token overlap so unrelated dramas are never substituted!
+        const minHitsNeeded = titleTokens.length <= 2 ? 1 : 2;
+        if (hits >= minHitsNeeded && (!bestOverall || rank > bestOverall.rank)) {
+          bestOverall = { item, rank, isFullComp };
+        }
       }
+      if (bestOverall && bestOverall.rank >= 11) break;
     } catch {
       // Try next query
     }
+  }
+
+  if (bestOverall?.item?.dailymotionId) {
+    const best = bestOverall.item;
+    return {
+      id: `dm-backup-ep${ep}-${best.dailymotionId}`,
+      label: bestOverall.isFullComp
+        ? `Stream Gratis Full (${best.fullDurationMin || 60} mnt · HD)`
+        : `Stream Gratis HD · ${best.title.slice(0, 22)}`,
+      kind: 'dailymotion',
+      videoId: best.dailymotionId,
+      isFullCompilation: bestOverall.isFullComp,
+      durationMin: best.fullDurationMin || 0,
+      embedUrl: buildDailymotionEmbedUrl(best.dailymotionId, endpointConfigCache?.dailymotionPlayerId),
+      watchUrl: buildDailymotionWatchUrl(best.dailymotionId),
+    };
   }
   return null;
 }

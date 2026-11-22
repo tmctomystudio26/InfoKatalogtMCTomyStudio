@@ -107,8 +107,22 @@ export function isNovelFreeFullAccess(raw = {}) {
 }
 
 /**
+ * Wraps hotlink-protected external cover URLs with wsrv.nl fast WebP image proxy
+ * so mobile browsers never fail with 403/hotlink blocks, while keeping fast CDNs direct.
+ */
+export function buildProxiedCoverUrl(rawUrl = '') {
+  const clean = String(rawUrl || '').trim();
+  if (!clean || !/^https?:\/\//i.test(clean)) return '';
+  if (/^https?:\/\/(wsrv\.nl|images\.weserv\.nl|s4\.anilist\.co|covers\.openlibrary\.org|archive\.org)/i.test(clean)) {
+    return clean;
+  }
+  const stripped = clean.replace(/^https?:\/\//i, '');
+  return `https://wsrv.nl/?url=${encodeURIComponent(stripped)}&w=360&fit=cover&output=webp`;
+}
+
+/**
  * Generates a crisp Play Store / WebNovel-grade vector 2:3 book cover data URI
- * so novels without external cover artwork still display rich, legible covers.
+ * with clear safe zones at top & bottom corners so card badges (#1, Gratis, Rating) NEVER collide.
  */
 export function buildProceduralBookCover(title = 'Novel', author = 'Manifestudio', genre = 'fantasy') {
   const palettes = {
@@ -121,9 +135,9 @@ export function buildProceduralBookCover(title = 'Novel', author = 'Manifestudio
   };
   const [c1, c2, c3, c4] = palettes[genre] || palettes.fantasy;
   const cleanTitle = decodeHtmlEntities(title || 'Novel Pilihan').trim();
-  const cleanAuthor = decodeHtmlEntities(author || 'Komunitas Novel').trim().slice(0, 26);
+  const cleanAuthor = decodeHtmlEntities(author || 'Komunitas Novel').trim().slice(0, 24);
 
-  // Word-wrap title into up to 4 crisp cover lines
+  // Word-wrap title into up to 4 crisp centered cover lines inside the middle safe zone
   const words = cleanTitle.split(/\s+/).filter(Boolean);
   const lines = [];
   let cur = '';
@@ -139,10 +153,11 @@ export function buildProceduralBookCover(title = 'Novel', author = 'Manifestudio
   if (cur && lines.length < 4) lines.push(cur);
   if (lines.length === 0) lines.push('Novel Pilihan');
 
+  const startY = Math.round(218 - ((lines.length - 1) * 28) / 2);
   const titleSvg = lines
     .map(
       (ln, idx) =>
-        `<text x="32" y="${178 + idx * 30}" fill="${c4}" font-family="Georgia,serif" font-size="22" font-weight="700">${escapeNovelHtml(ln)}</text>`
+        `<text x="150" y="${startY + idx * 30}" text-anchor="middle" fill="${c4}" font-family="Georgia,serif" font-size="22" font-weight="700">${escapeNovelHtml(ln)}</text>`
     )
     .join('');
 
@@ -153,21 +168,19 @@ export function buildProceduralBookCover(title = 'Novel', author = 'Manifestudio
         <stop offset="100%" stop-color="${c2}"/>
       </linearGradient>
       <linearGradient id="sp" x1="0" y1="0" x2="1" y2="0">
-        <stop offset="0%" stop-color="#000" stop-opacity="0.35"/>
+        <stop offset="0%" stop-color="#000" stop-opacity="0.32"/>
         <stop offset="100%" stop-color="#fff" stop-opacity="0"/>
       </linearGradient>
     </defs>
     <rect width="300" height="450" fill="url(#g)"/>
-    <circle cx="245" cy="92" r="95" fill="${c3}" fill-opacity="0.14"/>
-    <circle cx="65" cy="390" r="110" fill="${c3}" fill-opacity="0.10"/>
-    <rect x="0" y="0" width="18" height="450" fill="url(#sp)"/>
-    <rect x="26" y="26" width="248" height="398" rx="8" fill="none" stroke="${c3}" stroke-opacity="0.34" stroke-width="1.2"/>
-    <text x="32" y="64" fill="${c3}" font-family="sans-serif" font-size="11" font-weight="700" letter-spacing="1.6">${escapeNovelHtml(getGenreLabel(genre).toUpperCase())}</text>
-    <line x1="32" y1="78" x2="96" y2="78" stroke="${c3}" stroke-opacity="0.65" stroke-width="2"/>
+    <circle cx="240" cy="110" r="90" fill="${c3}" fill-opacity="0.14"/>
+    <circle cx="65" cy="365" r="105" fill="${c3}" fill-opacity="0.10"/>
+    <rect x="0" y="0" width="16" height="450" fill="url(#sp)"/>
+    <rect x="24" y="84" width="252" height="276" rx="14" fill="#000000" fill-opacity="0.14" stroke="${c3}" stroke-opacity="0.32" stroke-width="1.2"/>
+    <line x1="112" y1="126" x2="188" y2="126" stroke="${c3}" stroke-opacity="0.7" stroke-width="2"/>
     ${titleSvg}
-    <line x1="32" y1="366" x2="268" y2="366" stroke="${c3}" stroke-opacity="0.28" stroke-width="1"/>
-    <text x="32" y="394" fill="${c3}" font-family="sans-serif" font-size="12" font-weight="600">${escapeNovelHtml(cleanAuthor)}</text>
-    <text x="32" y="412" fill="${c4}" fill-opacity="0.72" font-family="sans-serif" font-size="10">FULL AKSES GRATIS</text>
+    <line x1="112" y1="316" x2="188" y2="316" stroke="${c3}" stroke-opacity="0.35" stroke-width="1.2"/>
+    <text x="150" y="340" text-anchor="middle" fill="${c3}" font-family="sans-serif" font-size="11.5" font-weight="600">${escapeNovelHtml(cleanAuthor)}</text>
   </svg>`;
 
   return `data:image/svg+xml,${encodeURIComponent(svg.replace(/\s+/g, ' ').trim())}`;
@@ -197,7 +210,8 @@ export function normalizeUnifiedNovel(raw = {}) {
   const tags = Array.isArray(raw.tags) ? raw.tags.map((t) => decodeHtmlEntities(String(t)).trim()).filter(Boolean).slice(0, 8) : [];
   const genre = raw.genre || inferNovelGenre(title, tags, synopsis);
   const fallbackCover = buildProceduralBookCover(title, author, genre);
-  const cover = typeof raw.cover === 'string' && /^https?:\/\//i.test(raw.cover) ? raw.cover : fallbackCover;
+  const rawCover = typeof raw.cover === 'string' && /^https?:\/\//i.test(raw.cover) ? raw.cover.trim() : '';
+  const cover = rawCover ? buildProxiedCoverUrl(rawCover) : fallbackCover;
   const updatedMs = raw.updatedAt ? Date.parse(raw.updatedAt) || 0 : 0;
 
   const sourceId = String(raw.sourceId || raw.source || 'unified');
@@ -217,6 +231,7 @@ export function normalizeUnifiedNovel(raw = {}) {
     author,
     synopsis: synopsis || 'Novel lengkap dapat dibaca gratis penuh tanpa kunci bab atau langganan.',
     cover,
+    rawCover,
     fallbackCover,
     genre,
     genreLabel: getGenreLabel(genre),

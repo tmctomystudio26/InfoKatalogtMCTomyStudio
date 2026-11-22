@@ -18,14 +18,14 @@ import {
   formatReadsCompact,
   formatRelativeUpdate,
   paginateChapterParagraphs,
-} from './novel-logic.js?v=70';
+} from './novel-logic.js?v=71';
 import {
   READER_FONTS,
   THEME_CATEGORIES,
   TOTAL_BUILTIN_THEMES,
   buildCustomUploadedTheme,
   buildIllustrationSvgUri,
-} from './novel-themes.js?v=70';
+} from './novel-themes.js?v=71';
 import {
   clearNovelHistory,
   deleteCustomNovelTheme,
@@ -47,9 +47,9 @@ import {
   saveReaderPrefs,
   searchUnifiedNovels,
   toggleNovelBookmark,
-} from './novel-engine.js?v=70';
-import { MANIFEST_AI_VOICE_CATALOG } from './manifest-ai-logic.js?v=70';
-import { createManifestAiVoicePlayer } from './manifest-ai-voice.js?v=70';
+} from './novel-engine.js?v=71';
+import { MANIFEST_AI_VOICE_CATALOG } from './manifest-ai-logic.js?v=71';
+import { createManifestAiVoicePlayer } from './manifest-ai-voice.js?v=71';
 
 const AUTO_REFRESH_INTERVAL_MS = 5 * 60 * 1000;
 
@@ -399,8 +399,8 @@ export function createNovelController(container) {
           </div>
           <div class="nvl-subtabs" role="tablist" aria-label="Menu Novel">
             <button type="button" role="tab" class="nvl-subtab is-active" data-nvl-subtab="explore" aria-selected="true">Jelajah</button>
-            <button type="button" role="tab" class="nvl-subtab" data-nvl-subtab="search" aria-selected="false">Cari &amp; Cocokkan</button>
-            <button type="button" role="tab" class="nvl-subtab" data-nvl-subtab="library" aria-selected="false">Riwayat &amp; Rak <span class="nvl-tab-count" data-nvl-lib-count></span></button>
+            <button type="button" role="tab" class="nvl-subtab" data-nvl-subtab="search" aria-selected="false">Cari &amp; Match</button>
+            <button type="button" role="tab" class="nvl-subtab" data-nvl-subtab="library" aria-selected="false">Riwayat <span class="nvl-tab-count" data-nvl-lib-count></span></button>
           </div>
         </div>
 
@@ -446,6 +446,7 @@ export function createNovelController(container) {
 
   const renderBookCardHtml = (novel, { rank = 0, compact = false } = {}) => {
     const coverSrc = novel.cover || novel.fallbackCover;
+    const rawAttr = escapeNovelHtml(novel.rawCover || '');
     const fallbackAttr = escapeNovelHtml(novel.fallbackCover || '');
     const chLabel = novel.chapterCount > 1 ? `${novel.chapterCount} Bab` : 'Lengkap';
     return `
@@ -457,7 +458,8 @@ export function createNovelController(container) {
             class="nvl-cover-img"
             loading="lazy"
             referrerpolicy="no-referrer"
-            onerror="if(this.dataset.fb&&this.src!==this.dataset.fb){this.src=this.dataset.fb;}"
+            onerror="if(this.dataset.raw&&!this.dataset.triedRaw){this.dataset.triedRaw='1';this.src=this.dataset.raw;}else if(this.dataset.fb&&this.src!==this.dataset.fb){this.src=this.dataset.fb;}"
+            data-raw="${rawAttr}"
             data-fb="${fallbackAttr}"
           />
           ${rank > 0 ? `<span class="nvl-rank-badge">#${rank}</span>` : ''}
@@ -911,27 +913,39 @@ export function createNovelController(container) {
       : detailChapters;
 
     host.innerHTML = `
-      <div class="nvl-modal-backdrop" data-nvl-close-detail>
-        <div class="nvl-detail-modal" role="dialog" aria-modal="true" aria-label="Detail Novel" onclick="event.stopPropagation()">
+      <div class="nvl-modal-backdrop" data-nvl-modal-backdrop>
+        <div class="nvl-detail-modal" role="dialog" aria-modal="true" aria-label="Detail Novel">
           <div class="nvl-detail-header">
             <h3>Detail Novel</h3>
             <button type="button" class="nvl-icon-btn" data-nvl-close-detail aria-label="Tutup detail">✕</button>
           </div>
           <div class="nvl-detail-scroll">
             <div class="nvl-detail-top">
-              <img
-                src="${escapeNovelHtml(detailNovel.cover || detailNovel.fallbackCover)}"
-                alt="${escapeNovelHtml(detailNovel.title)}"
-                class="nvl-detail-cover"
-                referrerpolicy="no-referrer"
-                onerror="if(this.dataset.fb&&this.src!==this.dataset.fb){this.src=this.dataset.fb;}"
-                data-fb="${escapeNovelHtml(detailNovel.fallbackCover || '')}"
-              />
+              <div class="nvl-detail-head-row">
+                <img
+                  src="${escapeNovelHtml(detailNovel.cover || detailNovel.fallbackCover)}"
+                  alt="${escapeNovelHtml(detailNovel.title)}"
+                  class="nvl-detail-cover"
+                  referrerpolicy="no-referrer"
+                  onerror="if(this.dataset.raw&&!this.dataset.triedRaw){this.dataset.triedRaw='1';this.src=this.dataset.raw;}else if(this.dataset.fb&&this.src!==this.dataset.fb){this.src=this.dataset.fb;}"
+                  data-raw="${escapeNovelHtml(detailNovel.rawCover || '')}"
+                  data-fb="${escapeNovelHtml(detailNovel.fallbackCover || '')}"
+                />
+                <div class="nvl-detail-head-meta">
+                  <h2 class="nvl-detail-title">${escapeNovelHtml(detailNovel.title)}</h2>
+                  <p class="nvl-detail-meta">
+                    ${escapeNovelHtml(detailNovel.author)} · ${escapeNovelHtml(detailNovel.genreLabel)}
+                  </p>
+                  <p class="nvl-detail-badges">
+                    <span>★ ${Number(detailNovel.rating || 4.7).toFixed(1)}</span>
+                    <span>·</span>
+                    <span>${Math.max(detailTotalChapters, detailNovel.chapterCount || 1)} Bab</span>
+                    <span>·</span>
+                    <span class="nvl-detail-free-pill">100% Gratis</span>
+                  </p>
+                </div>
+              </div>
               <div class="nvl-detail-info">
-                <h2 class="nvl-detail-title">${escapeNovelHtml(detailNovel.title)}</h2>
-                <p class="nvl-detail-meta">
-                  ${escapeNovelHtml(detailNovel.author)} · ${escapeNovelHtml(detailNovel.genreLabel)} · ★ ${Number(detailNovel.rating || 4.7).toFixed(1)} · ${Math.max(detailTotalChapters, detailNovel.chapterCount || 1)} Bab · Gratis Penuh
-                </p>
                 <p class="nvl-detail-synopsis">${escapeNovelHtml(detailNovel.synopsis || 'Novel gratis tanpa kunci VIP siap dibaca penuh.')}</p>
                 <div class="nvl-detail-actions">
                   <button type="button" class="nvl-btn-primary" data-nvl-start-read="${historyItem ? historyItem.chapterIndex : 0}">
@@ -1765,6 +1779,11 @@ export function createNovelController(container) {
    * ------------------------------------------------------------------------ */
 
   const onKeyDown = (e) => {
+    if (!readerOpen && detailNovel && e.key === 'Escape') {
+      detailNovel = null;
+      renderDetailModal();
+      return;
+    }
     if (!readerOpen) return;
     const tag = (e.target?.tagName || '').toLowerCase();
     if (tag === 'input' || tag === 'textarea' || tag === 'select') return;
@@ -1822,6 +1841,13 @@ export function createNovelController(container) {
   };
 
   const handleClick = async (e) => {
+    // Backdrop click outside the detail modal closes it cleanly
+    if (e.target && e.target.hasAttribute && e.target.hasAttribute('data-nvl-modal-backdrop')) {
+      detailNovel = null;
+      renderDetailModal();
+      return;
+    }
+
     const target = e.target.closest('button, [data-nvl-open-detail], [data-nvl-resume-id], [data-nvl-close-detail], [data-nvl-para-idx]');
     if (!target) return;
 

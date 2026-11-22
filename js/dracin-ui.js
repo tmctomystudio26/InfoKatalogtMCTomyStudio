@@ -13,7 +13,6 @@
 
 import {
   DRACIN_GENRES,
-  DRACIN_PLATFORMS,
   DRACIN_PLAYBACK_SPEEDS,
   DRACIN_SUBTITLE_LANGS,
   buildEpisodeList,
@@ -21,11 +20,11 @@ import {
   clampEpisodeNumber,
   computePreloadEpisodeTargets,
   filterDracinCatalog,
-  filterDracinPlatforms,
   formatDracinUserError,
   getActiveSubtitleCue,
   getGenreLabel,
   getNextPrevEpisode,
+  isFullFreeDrama,
   pickBestPlaybackServer,
   resolveAutoSubtitleLang,
   resolveCleanScreenState,
@@ -33,7 +32,7 @@ import {
   shouldPreserveFullscreenOnEpisodeChange,
   toggleFavoriteDramaId,
   upsertWatchHistory,
-} from './dracin-logic.js?v=56';
+} from './dracin-logic.js?v=71';
 import {
   fetchAiDramaInsights,
   fetchDramaDetail,
@@ -45,11 +44,11 @@ import {
   resolveEpisodePlayback,
   resolveSansekaiEpisodePlayback,
   searchDailymotionEpisodeBackup,
-} from './dracin.js?v=56';
+} from './dracin.js?v=71';
 import {
   attachClearKeyEme,
   fetchAndDecryptCencMp4,
-} from './dracin-cenc.js?v=56';
+} from './dracin-cenc.js?v=71';
 
 const HISTORY_STORAGE_KEY = 'manifestudio_dracin_history_v1';
 const FAVORITES_STORAGE_KEY = 'manifestudio_dracin_favorites_v1';
@@ -63,7 +62,7 @@ function ensureHlsLibrary() {
   if (hlsScriptPromise) return hlsScriptPromise;
   hlsScriptPromise = new Promise((resolve, reject) => {
     const script = document.createElement('script');
-    script.src = './js/vendor/hls.min.js?v=56';
+    script.src = './js/vendor/hls.min.js?v=71';
     script.async = true;
     script.onload = () => resolve(window.Hls || null);
     script.onerror = () => {
@@ -122,8 +121,6 @@ export function createDracinController({ onToast = () => {} } = {}) {
     platformId: 'all',
     genreId: 'all',
     searchQuery: '',
-    platformDropdownOpen: false,
-    platformSearchQuery: '',
     continueDropdownOpen: false,
 
     // Active player state
@@ -1452,8 +1449,12 @@ export function createDracinController({ onToast = () => {} } = {}) {
     state.resolvingStream = Boolean(best);
 
     if (streamRes.switchedViaSansekai && best) {
-      onToast(`Episode ${safeEp} dibuka otomatis via Server Sansekai (${streamRes.sansekaiPlatformName || 'VIP-Free'})`);
-      showSwipeHint(`Auto-buka via Sansekai API · Ep ${safeEp}`);
+      onToast(`Episode ${safeEp} dibuka otomatis via Server Gratis (${streamRes.sansekaiPlatformName || 'HD'})`);
+      showSwipeHint(`Auto-buka Gratis · Ep ${safeEp}`);
+    } else if (streamRes.switchedViaFreeMirror && best) {
+      const note = streamRes.freeMirrorNote || `Episode ${safeEp} dibuka otomatis via Stream Gratis Penuh`;
+      onToast(note);
+      showSwipeHint(`Stream Gratis Penuh · Ep ${safeEp}`);
     }
 
     const needsIframe = best?.kind === 'dailymotion';
@@ -1705,25 +1706,11 @@ export function createDracinController({ onToast = () => {} } = {}) {
     }
   }
 
-  function onDocumentClick(e) {
-    if (!state.platformDropdownOpen || !hostEl) return;
-    const dropdown = hostEl.querySelector('#dracin-platform-dropdown');
-    if (dropdown && !dropdown.contains(e.target)) {
-      state.platformDropdownOpen = false;
-      dropdown.classList.remove('is-open');
-      const btn = hostEl.querySelector('#dracin-platform-dropdown-btn');
-      const panel = hostEl.querySelector('#dracin-platform-dropdown-panel');
-      if (btn) btn.setAttribute('aria-expanded', 'false');
-      if (panel) panel.hidden = true;
-    }
-  }
-
   function bindGlobalListeners() {
     if (globalListenersBound) return;
     globalListenersBound = true;
     document.addEventListener('keydown', onGlobalKeydown);
     document.addEventListener('fullscreenchange', onNativeFullscreenChange);
-    document.addEventListener('click', onDocumentClick);
   }
 
   function unbindGlobalListeners() {
@@ -1731,7 +1718,6 @@ export function createDracinController({ onToast = () => {} } = {}) {
     globalListenersBound = false;
     document.removeEventListener('keydown', onGlobalKeydown);
     document.removeEventListener('fullscreenchange', onNativeFullscreenChange);
-    document.removeEventListener('click', onDocumentClick);
     document.body.classList.remove('dracin-fs-lock');
   }
 
@@ -1956,7 +1942,12 @@ export function createDracinController({ onToast = () => {} } = {}) {
   function renderDramaCard(drama) {
     const isFav = state.favorites.includes(drama.id);
     const hist = state.history.find((h) => h.dramaId === drama.id);
-    const epBadge = drama.hasKnownEpisodeCount ? `${drama.totalEpisodes} Ep · HD` : 'Live HD';
+    const fullFree = isFullFreeDrama(drama);
+    const epBadge = fullFree
+      ? `Full Tamat · ${drama.fullDurationMin || 60} mnt`
+      : drama.hasKnownEpisodeCount
+      ? `${drama.totalEpisodes} Ep · Gratis`
+      : 'HD Gratis';
     return `
       <article class="dracin-card" data-dracin-card="${escapeHtml(drama.id)}">
         <button type="button" class="dracin-card-poster-btn" data-dracin-open="${escapeHtml(drama.id)}" aria-label="Tonton ${escapeHtml(drama.title)}">
@@ -1970,7 +1961,7 @@ export function createDracinController({ onToast = () => {} } = {}) {
             onerror="this.onerror=null;this.src='${escapeHtml(drama.fallbackPoster)}'"
           />
           <div class="dracin-card-scrim" aria-hidden="true"></div>
-          <span class="dracin-card-platform">${escapeHtml(drama.platformName)}</span>
+          <span class="dracin-card-platform ${fullFree ? 'is-full-free' : ''}">${fullFree ? '100% Gratis Full' : 'Gratis HD'}</span>
           <span class="dracin-card-epcount">${epBadge}</span>
           ${hist ? `<span class="dracin-card-resume">Lanjut Ep ${hist.episode}</span>` : ''}
         </button>
@@ -1985,7 +1976,7 @@ export function createDracinController({ onToast = () => {} } = {}) {
           </div>
           <div class="dracin-card-actions">
             <button type="button" class="btn btn-primary btn-xs dracin-watch-btn" data-dracin-open="${escapeHtml(drama.id)}">
-              ${hist ? `Lanjut Ep ${hist.episode}` : 'Tonton Gratis'}
+              ${hist ? `Lanjut Ep ${hist.episode}` : fullFree ? 'Tonton Full' : 'Tonton Gratis'}
             </button>
             <button
               type="button"
@@ -2021,44 +2012,35 @@ export function createDracinController({ onToast = () => {} } = {}) {
     `;
   }
 
-  function renderPlatformOptionsHtml(query = '') {
-    const matches = filterDracinPlatforms(query, DRACIN_PLATFORMS);
-    if (!matches.length) {
-      return `<div class="dracin-dropdown-empty">Platform "${escapeHtml(query)}" tidak ditemukan.</div>`;
-    }
-    return matches
-      .map(
-        (p) => `
-      <button
-        type="button"
-        role="option"
-        aria-selected="${state.platformId === p.id ? 'true' : 'false'}"
-        class="dracin-dropdown-item ${state.platformId === p.id ? 'is-active' : ''}"
-        data-dracin-platform="${escapeHtml(p.id)}"
-      >
-        <span class="dracin-dropdown-dot" style="background:${escapeHtml(p.accent || '#e11d48')}" aria-hidden="true"></span>
-        <span class="dracin-dropdown-item-name">${escapeHtml(p.name)}</span>
-        <span class="dracin-dropdown-item-region">${escapeHtml(p.region || '')}</span>
-        ${state.platformId === p.id ? `<span class="dracin-dropdown-check" aria-hidden="true">✓</span>` : ''}
-      </button>
-    `
-      )
-      .join('');
-  }
-
   function renderDiscoverView() {
     const filtered = filterDracinCatalog(state.catalog, {
-      platformId: state.platformId,
+      platformId: 'all',
       genreId: state.genreId,
       query: state.searchQuery,
     });
+    const fullFreeCount = state.catalog.filter(isFullFreeDrama).length;
     const recentHistory = state.history.slice(0, 6);
-    const activePlatformMeta =
-      DRACIN_PLATFORMS.find((p) => p.id === state.platformId) || DRACIN_PLATFORMS[0];
-    const platPageInfo = state.platformCatalogs[state.platformId] || { page: 1, hasMore: false };
+    const platPageInfo = state.platformCatalogs.all || { page: 1, hasMore: false };
 
     return `
       <div class="dracin-discover">
+        <div class="dracin-unified-header">
+          <div class="dracin-unified-copy">
+            <h2 class="dracin-unified-title">Drama China Terpadu</h2>
+            <p class="dracin-unified-sub" data-testid="dracin-catalog-count">
+              ${
+                state.loadingFeed
+                  ? 'Menghubungkan seluruh katalog drama & stream full tamat secara real-time...'
+                  : `${filtered.length} drama terpadu · ${fullFreeCount} Full Tamat Gratis · Semua platform bersatu 100% gratis`
+              }
+            </p>
+          </div>
+          <button type="button" class="btn btn-secondary btn-sm dracin-refresh-btn" id="dracin-refresh-live-btn" ${state.loadingFeed ? 'disabled' : ''}>
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" aria-hidden="true"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><polyline points="21 3 21 9 15 9"/></svg>
+            <span>${state.loadingFeed ? 'Memuat...' : 'Perbarui Live'}</span>
+          </button>
+        </div>
+
         <form id="dracin-search-form" class="dracin-search-row" role="search">
           <div class="dracin-search-input-wrap">
             <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
@@ -2067,7 +2049,7 @@ export function createDracinController({ onToast = () => {} } = {}) {
               id="dracin-search-input"
               class="dracin-search-input"
               value="${escapeHtml(state.searchQuery)}"
-              placeholder="Cari judul drama asli di ${escapeHtml(activePlatformMeta?.name || 'Semua Platform')}..."
+              placeholder="Cari judul drama di semua platform terpadu..."
               aria-label="Cari judul drama China"
             />
             ${
@@ -2076,81 +2058,21 @@ export function createDracinController({ onToast = () => {} } = {}) {
                 : ''
             }
           </div>
-          <button type="submit" class="btn btn-primary btn-sm dracin-search-submit">Cari Live</button>
-          <button type="button" class="btn btn-secondary btn-sm" data-dracin-view="clip">
-            Cari dari Klip
-          </button>
+          <div class="dracin-search-btns">
+            <button type="submit" class="btn btn-primary btn-sm dracin-search-submit">Cari Live</button>
+            <button type="button" class="btn btn-secondary btn-sm" data-dracin-view="clip">
+              Cari Klip
+            </button>
+          </div>
         </form>
 
         <div class="dracin-filter-section">
-          <div class="dracin-filter-head">
-            <span class="dracin-filter-label">Platform Short Drama Real-Time</span>
-            <span class="dracin-filter-meta" data-testid="dracin-catalog-count">
-              ${
-                state.loadingFeed
-                  ? `Menghubungkan ${escapeHtml(activePlatformMeta?.name || 'platform live')}...`
-                  : `${escapeHtml(activePlatformMeta?.name || 'Semua')} · ${filtered.length} drama asli`
-              }
-            </span>
-          </div>
-
-          <div class="dracin-platform-dropdown ${state.platformDropdownOpen ? 'is-open' : ''}" id="dracin-platform-dropdown">
-            <button
-              type="button"
-              id="dracin-platform-dropdown-btn"
-              class="dracin-dropdown-trigger"
-              aria-haspopup="listbox"
-              aria-expanded="${state.platformDropdownOpen ? 'true' : 'false'}"
-              aria-controls="dracin-platform-dropdown-panel"
-            >
-              <span class="dracin-dropdown-trigger-left">
-                <span class="dracin-dropdown-dot" style="background:${escapeHtml(activePlatformMeta.accent || '#e11d48')}" aria-hidden="true"></span>
-                <span class="dracin-dropdown-trigger-label">${escapeHtml(activePlatformMeta.name)}</span>
-                <span class="dracin-dropdown-trigger-sub">${escapeHtml(activePlatformMeta.region || '')}</span>
-              </span>
-              <svg class="dracin-dropdown-chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
-            </button>
-
-            <div
-              id="dracin-platform-dropdown-panel"
-              class="dracin-dropdown-menu"
-              ${state.platformDropdownOpen ? '' : 'hidden'}
-            >
-              <div class="dracin-dropdown-search-wrap">
-                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
-                <input
-                  type="search"
-                  id="dracin-platform-search-input"
-                  class="dracin-dropdown-search"
-                  value="${escapeHtml(state.platformSearchQuery)}"
-                  placeholder="Cari platform (SekaiDrama, Melolo, PineDrama, DramaBox...)"
-                  aria-label="Cari platform drama"
-                  autocomplete="off"
-                />
-              </div>
-              <div
-                id="dracin-platform-options"
-                class="dracin-dropdown-list"
-                role="listbox"
-                aria-label="Daftar platform short drama"
-              >
-                ${renderPlatformOptionsHtml(state.platformSearchQuery)}
-              </div>
-            </div>
-          </div>
-
-          ${
-            state.platformId === 'sansekai' && state.sansekaiFallbackNote
-              ? `<p class="dracin-sansekai-note" role="status">${escapeHtml(state.sansekaiFallbackNote)}</p>`
-              : ''
-          }
-
-          <div class="dracin-genre-strip" role="group" aria-label="Filter genre drama">
+          <div class="dracin-genre-strip" role="group" aria-label="Filter kategori drama terpadu">
             ${DRACIN_GENRES.map(
               (g) => `
               <button
                 type="button"
-                class="dracin-genre-btn ${state.genreId === g.id ? 'is-active' : ''}"
+                class="dracin-genre-btn ${g.id === 'full-free' ? 'is-highlight' : ''} ${state.genreId === g.id ? 'is-active' : ''}"
                 data-dracin-genre="${escapeHtml(g.id)}"
               >
                 ${escapeHtml(g.label)}
@@ -2217,11 +2139,11 @@ export function createDracinController({ onToast = () => {} } = {}) {
           <div class="dracin-empty-state">
             <p>${escapeHtml(
               state.feedError ||
-                `Belum ditemukan drama di ${activePlatformMeta?.name || 'platform ini'} untuk filter atau kata kunci "${state.searchQuery}".`
+                `Belum ditemukan drama untuk filter atau kata kunci "${state.searchQuery}".`
             )}</p>
             <div class="dracin-empty-actions">
               <button type="button" class="btn btn-primary btn-sm" id="dracin-retry-feed">Muat Ulang Live</button>
-              <button type="button" class="btn btn-secondary btn-sm" id="dracin-reset-filters">Tampilkan Semua Platform</button>
+              <button type="button" class="btn btn-secondary btn-sm" id="dracin-reset-filters">Tampilkan Semua Drama</button>
             </div>
           </div>
         `
@@ -2237,7 +2159,7 @@ export function createDracinController({ onToast = () => {} } = {}) {
                 ${
                   state.loadingMore
                     ? 'Memuat halaman berikutnya...'
-                    : `Muat Lebih Banyak Drama ${escapeHtml(activePlatformMeta?.short || '')}`
+                    : 'Muat Lebih Banyak Drama Terpadu'
                 }
               </button>
             </div>
@@ -2456,7 +2378,11 @@ export function createDracinController({ onToast = () => {} } = {}) {
                 ← Daftar
               </button>
               <div class="dracin-stage-title-wrap">
-                <span class="dracin-stage-ep-label">Ep ${state.currentEpisode} / ${drama.totalEpisodes}</span>
+                <span class="dracin-stage-ep-label">${
+                  isFullFreeDrama(drama)
+                    ? `Full Tamat · ${drama.fullDurationMin || 60} mnt`
+                    : `Ep ${state.currentEpisode} / ${drama.totalEpisodes}`
+                }</span>
                 <strong class="dracin-stage-title">${escapeHtml(drama.title)}</strong>
               </div>
               <div class="dracin-stage-top-actions">
@@ -2985,83 +2911,29 @@ export function createDracinController({ onToast = () => {} } = {}) {
       });
     });
 
-    // Search form
+    // Search form (unified across ALL platforms)
     hostEl.querySelector('#dracin-search-form')?.addEventListener('submit', (e) => {
       e.preventDefault();
       const input = hostEl.querySelector('#dracin-search-input');
       state.searchQuery = String(input?.value || '').trim();
-      refreshLiveCatalog({ query: state.searchQuery, platformId: state.platformId, page: 1 });
+      refreshLiveCatalog({ query: state.searchQuery, platformId: 'all', page: 1 });
     });
 
     hostEl.querySelector('#dracin-search-input')?.addEventListener('input', (e) => {
       state.searchQuery = String(e.target.value || '');
       if (!state.searchQuery) {
-        refreshLiveCatalog({ query: '', platformId: state.platformId, page: 1 });
+        refreshLiveCatalog({ query: '', platformId: 'all', page: 1 });
       }
     });
 
     hostEl.querySelector('#dracin-search-clear')?.addEventListener('click', () => {
       state.searchQuery = '';
-      refreshLiveCatalog({ query: '', platformId: state.platformId, page: 1 });
+      refreshLiveCatalog({ query: '', platformId: 'all', page: 1 });
     });
 
-    // Searchable Platform Dropdown -> FETCH REAL-TIME CATALOG FOR SELECTED PLATFORM!
-    const bindPlatformOptionClicks = (container) => {
-      if (!container) return;
-      container.querySelectorAll('[data-dracin-platform]').forEach((btn) => {
-        btn.addEventListener('click', () => {
-          const nextPlat = btn.getAttribute('data-dracin-platform') || 'all';
-          state.platformId = nextPlat;
-          state.genreId = 'all';
-          state.platformDropdownOpen = false;
-          state.platformSearchQuery = '';
-          const alreadyLoaded = state.platformCatalogs[nextPlat];
-          if (!alreadyLoaded || state.searchQuery) {
-            refreshLiveCatalog({ query: state.searchQuery, platformId: nextPlat, page: 1 });
-          } else {
-            render();
-          }
-        });
-      });
-    };
-
-    const platDropdown = hostEl.querySelector('#dracin-platform-dropdown');
-    const platBtn = hostEl.querySelector('#dracin-platform-dropdown-btn');
-    const platPanel = hostEl.querySelector('#dracin-platform-dropdown-panel');
-    const platSearch = hostEl.querySelector('#dracin-platform-search-input');
-    const platOptions = hostEl.querySelector('#dracin-platform-options');
-
-    if (platBtn && platPanel && platDropdown) {
-      platBtn.addEventListener('click', (e) => {
-        e.stopPropagation();
-        state.platformDropdownOpen = !state.platformDropdownOpen;
-        platDropdown.classList.toggle('is-open', state.platformDropdownOpen);
-        platBtn.setAttribute('aria-expanded', state.platformDropdownOpen ? 'true' : 'false');
-        platPanel.hidden = !state.platformDropdownOpen;
-        if (state.platformDropdownOpen && platSearch) {
-          setTimeout(() => platSearch.focus(), 10);
-        }
-      });
-    }
-
-    if (platSearch && platOptions) {
-      platSearch.addEventListener('input', (e) => {
-        state.platformSearchQuery = String(e.target.value || '');
-        platOptions.innerHTML = renderPlatformOptionsHtml(state.platformSearchQuery);
-        bindPlatformOptionClicks(platOptions);
-      });
-      platSearch.addEventListener('keydown', (e) => {
-        if (e.key === 'Escape') {
-          state.platformDropdownOpen = false;
-          if (platDropdown) platDropdown.classList.remove('is-open');
-          if (platBtn) platBtn.setAttribute('aria-expanded', 'false');
-          if (platPanel) platPanel.hidden = true;
-          platBtn?.focus();
-        }
-      });
-    }
-
-    bindPlatformOptionClicks(platOptions);
+    hostEl.querySelector('#dracin-refresh-live-btn')?.addEventListener('click', () => {
+      refreshLiveCatalog({ query: state.searchQuery, platformId: 'all', page: 1 });
+    });
 
     // Collapsible "Lanjutkan Menonton" Dropdown (toggles IN-PLACE)
     const continueDropdown = hostEl.querySelector('#dracin-continue-dropdown');
@@ -3085,23 +2957,21 @@ export function createDracinController({ onToast = () => {} } = {}) {
     });
 
     hostEl.querySelector('#dracin-retry-feed')?.addEventListener('click', () => {
-      refreshLiveCatalog({ query: state.searchQuery, platformId: state.platformId, page: 1 });
+      refreshLiveCatalog({ query: state.searchQuery, platformId: 'all', page: 1 });
     });
 
     hostEl.querySelector('#dracin-reset-filters')?.addEventListener('click', () => {
       state.platformId = 'all';
       state.genreId = 'all';
       state.searchQuery = '';
-      state.platformDropdownOpen = false;
-      state.platformSearchQuery = '';
       refreshLiveCatalog({ query: '', platformId: 'all', page: 1 });
     });
 
     hostEl.querySelector('#dracin-load-more-btn')?.addEventListener('click', () => {
-      const info = state.platformCatalogs[state.platformId] || { page: 1 };
+      const info = state.platformCatalogs.all || { page: 1 };
       refreshLiveCatalog({
         query: state.searchQuery,
-        platformId: state.platformId,
+        platformId: 'all',
         page: (info.page || 1) + 1,
         append: true,
       });

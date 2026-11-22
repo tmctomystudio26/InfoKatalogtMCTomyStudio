@@ -7,6 +7,7 @@
  */
 
 import {
+  buildProxiedCoverUrl,
   decodeHtmlEntities,
   extractNovelSearchQueries,
   extractSeriesTitleFromChapter,
@@ -16,14 +17,14 @@ import {
   sanitizeChapterToParagraphs,
   scoreNovelExcerptMatch,
   stripHtmlToPlain,
-} from './novel-logic.js?v=70';
+} from './novel-logic.js?v=71';
 import {
   BUILTIN_NOVEL_THEMES,
   compileThemeFromPrompt,
   fetchOpenApiPaletteTheme,
-} from './novel-themes.js?v=70';
-import { extractTextFromAnyFile } from './plagiarism-engine.js?v=70';
-import { sendManifestAiMessage } from './manifest-ai.js?v=70';
+} from './novel-themes.js?v=71';
+import { extractTextFromAnyFile } from './plagiarism-engine.js?v=71';
+import { sendManifestAiMessage } from './manifest-ai.js?v=71';
 
 export const NOVEL_STORAGE_KEYS = Object.freeze({
   HISTORY: 'manifestudio_novel_history_v1',
@@ -837,6 +838,144 @@ export async function fetchUnifiedNovelFeed({
     },
   ];
 
+/**
+ * Real-Time Multi-Source Cover Banner Enricher (v71):
+ * Resolves real cover images for novels whose WordPress REST API leaves featured_media=0
+ * using:
+ * 1) IndoWebNovel homepage image index (via r.jina.ai)
+ * 2) AniList GraphQL Page(perPage: 1) single-request batch lookup (up to 18 titles at once!)
+ * 3) OpenLibrary cover API for literary/classic novels
+ */
+async function enrichNovelCoversBatch(novels = [], signal = null) {
+  if (!Array.isArray(novels) || novels.length === 0) return novels;
+
+  const missing = novels.filter((n) => n && (!n.rawCover || n.cover === n.fallbackCover));
+  if (missing.length === 0) return novels;
+
+  const normalizeKey = (t = '') =>
+    String(t || '')
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '')
+      .slice(0, 36);
+
+  const applyCover = (novel, rawUrl) => {
+    const clean = String(rawUrl || '').trim();
+    if (!clean || !/^https?:\/\//i.test(clean)) return;
+    if (/favicon|cropped-phoenix|cropped-aps|logo|avatar|profile-picture/i.test(clean)) return;
+    novel.rawCover = clean;
+    novel.cover = buildProxiedCoverUrl(clean) || clean;
+  };
+
+  // Run IndoWebNovel live cover scrape + AniList batch GraphQL in parallel!
+  const anilistTargets = missing
+    .filter((n) => n.sourceId !== 'wikisource' && n.sourceId !== 'archive')
+    .slice(0, 18);
+
+  const jobs = [];
+
+  // Job 1: IndoWebNovel homepage real covers via r.jina.ai
+  jobs.push(
+    (async () => {
+      try {
+        const res = await fetchWithTimeout('https://r.jina.ai/https://indowebnovel.id/', {
+          signal,
+          timeoutMs: 6500,
+        });
+        if (!res.ok) return;
+        const txt = await res.text();
+        const coverMap = new Map();
+        const re = /!\[(?:Image\s*\d+:\s*)?([^\]]+)\]\((https?:\/\/[^)\s]+)\)/g;
+        let m;
+        while ((m = re.exec(txt)) !== null) {
+          const alt = String(m[1] || '').trim();
+          const url = String(m[2] || '').trim();
+          if (!alt || !url || /favicon|logo|icon|phoenix/i.test(url)) continue;
+          coverMap.set(normalizeKey(alt), url);
+        }
+        for (const n of missing) {
+          if (n.rawCover) continue;
+          const k = normalizeKey(n.title);
+          if (coverMap.has(k)) {
+            applyCover(n, coverMap.get(k));
+          } else {
+            for (const [ck, cu] of coverMap.entries()) {
+              if (ck.length >= 6 && (ck.includes(k) || k.includes(ck))) {
+                applyCover(n, cu);
+                break;
+              }
+            }
+          }
+        }
+      } catch {
+        // Optional enrichment
+      }
+    })()
+  );
+
+  // Job 2: AniList GraphQL batch query (single HTTP POST resolves up to 18 real HD covers!)
+  if (anilistTargets.length > 0) {
+    jobs.push(
+      (async () => {
+        try {
+          const fields = anilistTargets
+            .map((n, idx) => {
+              const safeTitle = String(n.title || '')
+                .replace(/["\\]/g, ' ')
+                .replace(/\s+/g, ' ')
+                .trim()
+                .slice(0, 60);
+              return `n${idx}: Page(perPage: 1) { media(search: "${safeTitle}") { title { romaji english } coverImage { large extraLarge } } }`;
+            })
+            .join(' ');
+          const res = await fetch('https://graphql.anilist.co', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+            body: JSON.stringify({ query: `query { ${fields} }` }),
+            signal: AbortSignal.timeout(6500),
+          });
+          if (!res.ok) return;
+          const json = await res.json();
+          const data = json?.data || {};
+          anilistTargets.forEach((n, idx) => {
+            if (n.rawCover) return;
+            const media = data[`n${idx}`]?.media?.[0];
+            const img = media?.coverImage?.large || media?.coverImage?.extraLarge || '';
+            if (img) applyCover(n, img);
+          });
+        } catch {
+          // Optional enrichment
+        }
+      })()
+    );
+  }
+
+  // Job 3: OpenLibrary cover lookup for classic/literary novels still missing covers
+  const classicTargets = missing.filter((n) => n.sourceId === 'wikisource').slice(0, 6);
+  for (const cn of classicTargets) {
+    jobs.push(
+      (async () => {
+        try {
+          const res = await fetchWithTimeout(
+            `https://openlibrary.org/search.json?title=${encodeURIComponent(cn.title)}&limit=1&fields=cover_i`,
+            { signal, timeoutMs: 5000 }
+          );
+          if (!res.ok) return;
+          const data = await res.json();
+          const coverId = data?.docs?.[0]?.cover_i;
+          if (coverId && !cn.rawCover) {
+            applyCover(cn, `https://covers.openlibrary.org/b/id/${coverId}-L.jpg`);
+          }
+        } catch {
+          // Optional enrichment
+        }
+      })()
+    );
+  }
+
+  await Promise.allSettled(jobs);
+  return novels;
+}
+
   const settled = await Promise.allSettled(jobs.map((j) => j.run()));
   const buckets = [];
   let activeSourcesCount = 0;
@@ -849,6 +988,7 @@ export async function fetchUnifiedNovelFeed({
   }
 
   const rawMerged = mergeUnifiedNovels(buckets, { sortBy: 'trending', genre: 'all' });
+  await enrichNovelCoversBatch(rawMerged, signal);
 
   // Persist snapshot for instant warm-start if offline later
   if (rawMerged.length > 0) {
@@ -1134,27 +1274,89 @@ export async function fetchNovelChapters(novel, { page = 1, signal = null } = {}
     }
   }
 
-  // 3) SecondLifeTranslations.com (WP REST posts matching novel title)
+  // 3) SecondLifeTranslations.com (WP REST categories by slug/title -> full chapter posts!)
   else if (novel.sourceId === 'secondlife') {
-    const q = encodeURIComponent(novel.meta?.novelTitle || novel.title);
-    const url = `https://secondlifetranslations.com/wp-json/wp/v2/posts?search=${q}&per_page=80&orderby=date&order=asc&_fields=id,date,title,link`;
-    const res = await fetchWithTimeout(url, { signal, timeoutMs: 10000 });
-    if (res.ok) {
-      const posts = await res.json();
-      if (Array.isArray(posts) && posts.length > 0) {
-        entry.chapters = posts.map((p, idx) => ({
-          id: `secondlife:post:${p.id}`,
-          postId: p.id,
-          index: idx,
-          title: decodeHtmlEntities(p?.title?.rendered || `Chapter ${idx + 1}`),
-          updatedAt: p?.date || '',
-          baseUrl: 'https://secondlifetranslations.com',
-        }));
-        entry.totalChapters = entry.chapters.length;
-        entry.totalPages = 1;
-        entry.loadedPages.add(1);
+    const baseSl = 'https://secondlifetranslations.com';
+    const rawTitle = String(novel.meta?.novelTitle || novel.title || '').trim();
+    const slug = String(novel.meta?.novelSlug || '').trim();
+    let catId = novel.meta?.categoryId || null;
+
+    // Step 3a: Resolve exact WP category for this novel (chapters live under category, not title!)
+    if (!catId) {
+      const catQueries = [
+        slug ? `${baseSl}/wp-json/wp/v2/categories?slug=${encodeURIComponent(slug)}&per_page=5` : '',
+        `${baseSl}/wp-json/wp/v2/categories?search=${encodeURIComponent(rawTitle.split(/\s+/).slice(0, 4).join(' '))}&per_page=8`,
+      ].filter(Boolean);
+
+      for (const cUrl of catQueries) {
+        try {
+          const cRes = await fetchWithTimeout(cUrl, { signal, timeoutMs: 7000 });
+          if (cRes.ok) {
+            const cats = await cRes.json();
+            if (Array.isArray(cats) && cats.length > 0) {
+              const normTitle = rawTitle.toLowerCase().replace(/[^a-z0-9]+/g, '');
+              const picked =
+                cats.find((c) => c.slug === slug) ||
+                cats.find((c) => {
+                  const cn = decodeHtmlEntities(c.name || '').toLowerCase().replace(/[^a-z0-9]+/g, '');
+                  return cn && (normTitle.includes(cn) || cn.includes(normTitle));
+                }) ||
+                cats.find((c) => Number(c.count || 0) > 0);
+              if (picked?.id) {
+                catId = picked.id;
+                if (novel.meta) novel.meta.categoryId = catId;
+                break;
+              }
+            }
+          }
+        } catch {
+          // Try next query
+        }
       }
     }
+
+    // Step 3b: Fetch chapters by WP category (or fallback to post search)
+    const postUrls = [
+      catId ? `${baseSl}/wp-json/wp/v2/posts?categories=${catId}&per_page=100&orderby=date&order=asc&page=${page}&_fields=id,date,title,link` : '',
+      `${baseSl}/wp-json/wp/v2/posts?search=${encodeURIComponent(rawTitle.split(/\s+/).slice(0, 3).join(' '))}&per_page=60&orderby=date&order=asc&_fields=id,date,title,link`,
+    ].filter(Boolean);
+
+    for (const pUrl of postUrls) {
+      try {
+        const res = await fetchWithTimeout(pUrl, { signal, timeoutMs: 9000 });
+        if (res.ok) {
+          const totalHeader = Number(res.headers.get('X-WP-Total') || 0);
+          const totalPagesHeader = Number(res.headers.get('X-WP-TotalPages') || 1);
+          const posts = await res.json();
+          if (Array.isArray(posts) && posts.length > 0) {
+            const offset = (page - 1) * 100;
+            const existingIds = new Set(entry.chapters.map((c) => c.id));
+            posts.forEach((p, idx) => {
+              const cid = `secondlife:post:${p.id}`;
+              if (!existingIds.has(cid)) {
+                entry.chapters.push({
+                  id: cid,
+                  postId: p.id,
+                  index: offset + idx,
+                  title: decodeHtmlEntities(p?.title?.rendered || `Chapter ${offset + idx + 1}`),
+                  updatedAt: p?.date || '',
+                  baseUrl: baseSl,
+                });
+              }
+            });
+            entry.chapters.sort((a, b) => a.index - b.index);
+            entry.totalChapters = Math.max(totalHeader, entry.chapters.length);
+            entry.totalPages = Math.max(1, totalPagesHeader);
+            entry.loadedPages.add(page);
+            break;
+          }
+        }
+      } catch {
+        // Try fallback
+      }
+    }
+
+    // Step 3c: Fallback to initialPost or novel overview text so chapter list is NEVER empty!
     if (entry.chapters.length === 0 && novel.meta?.initialPost) {
       const p = novel.meta.initialPost;
       entry.chapters = [
@@ -1164,7 +1366,19 @@ export async function fetchNovelChapters(novel, { page = 1, signal = null } = {}
           index: 0,
           title: p.title,
           updatedAt: p.updatedAt,
-          baseUrl: 'https://secondlifetranslations.com',
+          baseUrl: baseSl,
+        },
+      ];
+      entry.totalChapters = 1;
+      entry.loadedPages.add(1);
+    } else if (entry.chapters.length === 0) {
+      const novelIdNum = String(novel.sourceKey || '').replace(/^novel:/, '');
+      entry.chapters = [
+        {
+          id: `secondlife:novel:${novelIdNum || novel.id}`,
+          index: 0,
+          title: `${rawTitle} — Prologs & Ringkasan`,
+          fallbackText: novel.synopsis || 'Sinopsis dan pembuka novel tersedia untuk dibaca gratis.',
         },
       ];
       entry.totalChapters = 1;
@@ -1636,6 +1850,8 @@ export function saveNovelHistoryEntry({
       seriId: novel.meta?.seriId,
       storyId: novel.meta?.storyId,
       novelTitle: novel.meta?.novelTitle,
+      novelSlug: novel.meta?.novelSlug,
+      categoryId: novel.meta?.categoryId,
       pageTitle: novel.meta?.pageTitle,
       pageId: novel.meta?.pageId,
       identifier: novel.meta?.identifier,
