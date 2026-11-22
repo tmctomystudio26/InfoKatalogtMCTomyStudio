@@ -152,8 +152,24 @@ function createReaderParticleCanvas(canvasEl) {
     }
   };
 
-  const renderFrame = () => {
+  let lastFrameAt = 0;
+
+  const isLitePerf = () =>
+    typeof document !== 'undefined' && document.documentElement.dataset.perf === 'lite';
+
+  const renderFrame = (nowTs = 0) => {
     if (!canvasEl || activeType === 'none') return;
+    if (typeof document !== 'undefined' && document.hidden) {
+      rafId = requestAnimationFrame(renderFrame);
+      return;
+    }
+    const lite = isLitePerf();
+    if (lite && nowTs && nowTs - lastFrameAt < 48) {
+      rafId = requestAnimationFrame(renderFrame);
+      return;
+    }
+    lastFrameAt = nowTs || performance.now();
+
     const ctx = canvasEl.getContext('2d');
     if (!ctx) return;
     ctx.clearRect(0, 0, width, height);
@@ -169,7 +185,8 @@ function createReaderParticleCanvas(canvasEl) {
       ctx.fillStyle = grad1;
       ctx.beginPath();
       ctx.moveTo(0, height * 0.25);
-      for (let x = 0; x <= width; x += 60) {
+      const stepX = lite ? 90 : 60;
+      for (let x = 0; x <= width; x += stepX) {
         const y = height * 0.22 + Math.sin(x * 0.008 + tick * 0.018) * 42 + Math.cos(x * 0.004 - tick * 0.012) * 28;
         ctx.lineTo(x, y);
       }
@@ -222,8 +239,10 @@ function createReaderParticleCanvas(canvasEl) {
         const glow = 0.2 + Math.abs(Math.sin(p.phase)) * 0.65;
         ctx.fillStyle = activeColor;
         ctx.globalAlpha = glow;
-        ctx.shadowColor = activeColor;
-        ctx.shadowBlur = 12;
+        if (!lite) {
+          ctx.shadowColor = activeColor;
+          ctx.shadowBlur = 12;
+        }
         ctx.beginPath();
         ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
         ctx.fill();
@@ -241,8 +260,10 @@ function createReaderParticleCanvas(canvasEl) {
           ctx.stroke();
         } else {
           ctx.fillStyle = activeColor;
-          ctx.shadowColor = activeColor;
-          ctx.shadowBlur = 8;
+          if (!lite) {
+            ctx.shadowColor = activeColor;
+            ctx.shadowBlur = 8;
+          }
           ctx.beginPath();
           ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
           ctx.fill();
@@ -282,7 +303,7 @@ function createReaderParticleCanvas(canvasEl) {
     activeAccent = accent || '#3b82f6';
     if (!canvasEl || activeType === 'none' || prefersReducedMotion()) return;
     resize();
-    const count =
+    const baseCount =
       activeType === 'aurora'
         ? 0
         : activeType === 'rain'
@@ -292,7 +313,9 @@ function createReaderParticleCanvas(canvasEl) {
             : activeType === 'matrix'
               ? 30
               : 26;
+    const count = isLitePerf() ? Math.ceil(baseCount * 0.5) : baseCount;
     particles = Array.from({ length: count }, () => spawnParticle(activeType, true));
+    lastFrameAt = 0;
     rafId = requestAnimationFrame(renderFrame);
   };
 

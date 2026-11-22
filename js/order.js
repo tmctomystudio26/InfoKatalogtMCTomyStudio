@@ -1,7 +1,7 @@
-import { PENDING_ORDER_STORAGE_KEY, formatRupiah, normalizeBrandConfig } from './store.js?v=75';
-import { loadCatalogData } from './data.js?v=75';
-import { generateReceiptImage } from './receipt.js?v=75';
-import { initMusicPlayer } from './music.js?v=75';
+import { PENDING_ORDER_STORAGE_KEY, formatRupiah, normalizeBrandConfig } from './store.js?v=76';
+import { loadCatalogData } from './data.js?v=76';
+import { generateReceiptImage } from './receipt.js?v=76';
+import { initPerformanceClass, scheduleIdleTask } from './perf-guard.js?v=76';
 
 const THEME_STORAGE_KEY = 'manifestudio_theme_v1';
 
@@ -328,7 +328,10 @@ async function initOrderPage() {
     })
     .catch(() => {});
 
-  initMusicPlayer();
+  initPerformanceClass();
+  scheduleIdleTask(() => {
+    import('./music.js?v=76').then(({ initMusicPlayer }) => initMusicPlayer()).catch(() => {});
+  }, 1800);
 }
 
 initOrderPage();

@@ -1,7 +1,7 @@
-import { createToolsHubController } from './tools-ui.js?v=75';
-import { initMusicPlayer } from './music.js?v=75';
-import { loadCatalogData } from './data.js?v=75';
-import { normalizeBrandConfig, normalizeUtilityConfig } from './store.js?v=75';
+import { createToolsHubController } from './tools-ui.js?v=76';
+import { loadCatalogData } from './data.js?v=76';
+import { normalizeBrandConfig, normalizeUtilityConfig } from './store.js?v=76';
+import { initPerformanceClass, scheduleIdleTask } from './perf-guard.js?v=76';
 
 const THEME_STORAGE_KEY = 'manifestudio_theme_v1';
 const VALID_TABS = new Set(['prayer', 'weather', 'worldclock', 'speedtest', 'downloader', 'compressor', 'converter', 'songfinder', 'music', 'dracin', 'audioeditor', 'manifestai', 'plagiarism', 'novel', 'callerid']);
@@ -205,6 +205,7 @@ function applyBrandToToolsPage(brandRaw) {
 }
 
 async function bootstrap() {
+  initPerformanceClass();
   loadTheme();
   applyTheme();
 
@@ -235,7 +236,32 @@ async function bootstrap() {
     applyTheme();
   });
 
-  initMusicPlayer();
+  // Load floating YT Music bundle lazily when idle (or immediately if opening tab=music or resuming active audio)
+  let wasMusicPlaying = false;
+  try {
+    const raw = sessionStorage.getItem('manifestudio_music_session_v1');
+    if (raw) {
+      const s = JSON.parse(raw);
+      wasMusicPlaying = Boolean(s?.wasPlaying && !s?.explicitPaused);
+    }
+  } catch {
+    // Ignore
+  }
+  const isVideoOrAudioTab =
+    currentTab === 'dracin' ||
+    currentTab === 'audioeditor' ||
+    currentTab === 'songfinder' ||
+    currentTab === 'downloader';
+  const bootMusicLazy = () => {
+    import('./music.js?v=76')
+      .then((m) => m.initMusicPlayer?.())
+      .catch(() => {});
+  };
+  if (currentTab === 'music' || (wasMusicPlaying && !isVideoOrAudioTab)) {
+    bootMusicLazy();
+  } else {
+    scheduleIdleTask(bootMusicLazy, 2500);
+  }
 
   try {
     const loaded = await loadCatalogData({ allowLocalPreview: true });

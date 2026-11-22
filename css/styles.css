@@ -334,20 +334,65 @@ a {
 }
 
 .banner-track {
-  display: flex;
+  display: grid;
+  position: relative;
   width: 100%;
-  transition: transform 0.48s cubic-bezier(0.22, 1, 0.36, 1);
-  will-change: transform;
+  overflow: hidden;
 }
 
 .promo-banner-frame.banner-slide {
-  flex: 0 0 100%;
+  grid-area: 1 / 1;
   width: 100%;
-  min-width: 100%;
+  min-width: 0;
   border: none;
   border-radius: 0;
   box-shadow: none;
   min-height: 214px;
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  content-visibility: hidden;
+  z-index: 0;
+  transform: translate3d(0, 0, 0);
+  transition: opacity 0.26s ease, transform 0.26s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.promo-banner-frame.banner-slide.is-active {
+  opacity: 1;
+  visibility: visible;
+  pointer-events: auto;
+  content-visibility: visible;
+  z-index: 2;
+  transform: translate3d(0, 0, 0);
+}
+
+.promo-banner-frame.banner-slide.is-active.is-entering {
+  transition: none;
+  opacity: 0;
+}
+
+.promo-banner-frame.banner-slide.is-active.is-entering.is-dir-next {
+  transform: translate3d(24px, 0, 0);
+}
+
+.promo-banner-frame.banner-slide.is-active.is-entering.is-dir-prev {
+  transform: translate3d(-24px, 0, 0);
+}
+
+.promo-banner-frame.banner-slide.is-leaving {
+  opacity: 0;
+  visibility: visible;
+  pointer-events: none;
+  content-visibility: visible;
+  z-index: 1;
+}
+
+.promo-banner-frame.banner-slide.is-leaving.is-dir-next {
+  transform: translate3d(-16px, 0, 0);
+}
+
+.promo-banner-frame.banner-slide.is-leaving.is-dir-prev {
+  transform: translate3d(16px, 0, 0);
 }
 
 .banner-slide[data-banner-href] {
@@ -10107,11 +10152,10 @@ body.dracin-fs-lock {
   gap: 0.55rem;
   padding: 4.5rem 4.6rem 5.4rem 0.9rem;
   text-align: center;
-  background: rgba(2, 6, 23, 0.82);
+  background: rgba(2, 6, 23, 0.88);
   color: #f8fafc;
   font-size: 0.82rem;
   font-weight: 600;
-  backdrop-filter: blur(5px);
   overflow-y: auto;
 }
 
@@ -10422,13 +10466,12 @@ body.dracin-fs-lock {
   height: 62px;
   border-radius: 999px;
   border: 1px solid rgba(255, 255, 255, 0.35);
-  background: rgba(15, 23, 42, 0.62);
+  background: rgba(15, 23, 42, 0.82);
   color: #ffffff;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  backdrop-filter: blur(8px);
 }
 
 .dracin-stage-topbar {
@@ -10482,13 +10525,12 @@ body.dracin-fs-lock {
   padding: 0.32rem 0.62rem;
   border-radius: 10px;
   border: 1px solid rgba(255, 255, 255, 0.25);
-  background: rgba(15, 23, 42, 0.74);
+  background: rgba(15, 23, 42, 0.84);
   color: #ffffff;
   font-size: 0.73rem;
   font-weight: 600;
   white-space: nowrap;
   cursor: pointer;
-  backdrop-filter: blur(8px);
 }
 
 .dracin-clean-btn {
@@ -10525,13 +10567,12 @@ body.dracin-fs-lock {
   padding: 0.36rem 0.78rem;
   border-radius: 999px;
   border: 1px solid rgba(255, 255, 255, 0.28);
-  background: rgba(2, 6, 23, 0.58);
+  background: rgba(2, 6, 23, 0.78);
   color: rgba(255, 255, 255, 0.92);
   font-size: 0.75rem;
   font-weight: 600;
   cursor: pointer;
-  backdrop-filter: blur(8px);
-  opacity: 0.72;
+  opacity: 0.78;
   transition: opacity 150ms ease, background 150ms ease;
 }
 
@@ -10558,7 +10599,7 @@ body.dracin-fs-lock {
   padding: 0.28rem 0.18rem;
   border-radius: 12px;
   border: 1px solid rgba(255, 255, 255, 0.22);
-  background: rgba(2, 6, 23, 0.68);
+  background: rgba(2, 6, 23, 0.82);
   color: #ffffff;
   display: flex;
   flex-direction: column;
@@ -10566,7 +10607,6 @@ body.dracin-fs-lock {
   justify-content: center;
   gap: 0.14rem;
   cursor: pointer;
-  backdrop-filter: blur(8px);
 }
 
 .dracin-rail-btn span {
@@ -20413,6 +20453,84 @@ body.nvl-reader-locked {
     min-width: 0;
   }
 }
+
+/* ============================================================================
+ * v76 — Zero-Freeze Adaptive Performance Engine & Instant Tool Lazy Loader
+ * ========================================================================== */
+
+.tool-lazy-loading-card {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.75rem;
+  min-height: 150px;
+  padding: 2rem 1.25rem;
+  margin-top: 0.65rem;
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text-muted);
+  font-size: 0.92rem;
+  font-weight: 600;
+  box-shadow: var(--shadow-card);
+}
+
+.tool-lazy-spinner {
+  width: 22px;
+  height: 22px;
+  border-radius: 999px;
+  border: 2.5px solid var(--border);
+  border-top-color: var(--accent);
+  animation: toolLazySpin 0.72s linear infinite;
+  flex-shrink: 0;
+}
+
+@keyframes toolLazySpin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Off-screen paint skipping for large catalog/media grids (preserves exact UI!) */
+.product-tile,
+.dracin-card,
+.nvl-card {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 240px;
+}
+
+/* Adaptive low-spec mobile GPU guard: replaces costly live backdrop-filter
+ * blur compositing passes with crisp tinted translucent glass so visual craft
+ * stays intact while preventing GPU hangs on low-RAM Android phones. */
+html[data-perf="lite"] .site-header {
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  background-color: rgba(248, 250, 252, 0.96);
+}
+
+html[data-perf="lite"][data-theme="dark"] .site-header {
+  background-color: rgba(9, 13, 22, 0.96);
+}
+
+html[data-perf="lite"] .banner-nav-btn,
+html[data-perf="lite"] .banner-controls-bar {
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  background: rgba(10, 17, 34, 0.76);
+}
+
+html[data-perf="lite"] .music-fab,
+html[data-perf="lite"] .music-popover,
+html[data-perf="lite"] .modal-backdrop,
+html[data-perf="lite"] .drawer-backdrop {
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
+html[data-perf="lite"] .music-popover {
+  background: var(--surface);
+}
+
 
 
 

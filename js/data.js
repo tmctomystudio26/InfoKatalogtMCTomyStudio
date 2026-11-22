@@ -3,7 +3,7 @@ import {
   DEFAULT_UTILITY_CONFIG,
   normalizeBanners,
   normalizeUtilityConfig,
-} from './store.js?v=75';
+} from './store.js?v=76';
 
 export const BRAND = {
   name: 'Manifestudio',

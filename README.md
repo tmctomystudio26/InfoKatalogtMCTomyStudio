@@ -14,8 +14,9 @@ Platform web statis resmi **Manifestudio** (*by Tomy*) berbasis **100% Static HT
 
 ## 🌟 Fitur Utama
 
-1. **Katalog Top-Up Modern, 16 Banner Maskot Visual Gen-Z & Kartu Menu Utilitas Ringkas (`v75`)**:
-   - **16 Slide Banner Maskot Gen-Z (`assets/banners/banner-*.jpg`)**: Setiap menu (Katalog Utama + 15 Menu Utilitas) memiliki ilustrasi maskot unik bergaya modern, scrim bertema, penghitung slide (`1 / 16`), serta sinkron penuh dengan Panel Admin.
+1. **Katalog Top-Up Modern, 16 Banner Maskot Gen-Z & Mesin Performa Anti-Lag Semua Perangkat (`v76`)**:
+   - **16 Slide Banner Maskot Gen-Z (`assets/banners/banner-*.jpg`)**: Carousel grid 1-bingkai anti-freeze (transisi 1-langkah halus termasuk saat wrap `16 → 1`, hidrasi GPU ±1 slide) lengkap dengan ilustrasi maskot unik, scrim bertema, penghitung slide (`1 / 16`), serta sinkron penuh dengan Panel Admin.
+   - **Pemuatan Instan Menu Utilitas & *Zero-Freeze Engine* (`perf-guard.js`)**: *On-demand lazy loading* per tab, precache shell ringan `<250 KB` (`manifestudio-cache-v76`), anti-konflik `MediaCodec` Drama China, lazy YouTube music engine, serta mode adaptif perangkat ringan (`data-perf="lite"`) tanpa mengurangi kualitas visual maupun fitur.
    - **Kartu Pintasan Menu Utilitas Ringkas (`#utilities-callout-card`)**: Tampil ramping tanpa daftar teks panjang dengan lencana **`15 Fitur Gratis`** yang otomatis mengikuti jumlah fitur aktif di Panel Admin.
    - Grid produk responsif (5 kolom desktop → 2 kolom mobile), pencarian instan, filter kategori dinamis, status stok, serta *FAQ* yang dapat diedit Admin.
 2. **Checkout Bersih, Voucher Berkuota Ketat, Biaya Layanan Fleksibel & Struk JPEG (`order.html`)**:

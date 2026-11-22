@@ -49,6 +49,11 @@ import {
   attachClearKeyEme,
   fetchAndDecryptCencMp4,
 } from './dracin-cenc.js?v=73';
+import {
+  computeProgressiveRenderLimit,
+  detectLowEndDevice,
+  shouldEnableDualVideoPreload,
+} from './perf-guard.js?v=76';
 
 const HISTORY_STORAGE_KEY = 'manifestudio_dracin_history_v1';
 const FAVORITES_STORAGE_KEY = 'manifestudio_dracin_favorites_v1';
@@ -125,6 +130,7 @@ export function createDracinController({ onToast = () => {} } = {}) {
     platformId: 'all',
     genreId: 'all',
     searchQuery: '',
+    discoverLimit: 0,
     continueDropdownOpen: false,
 
     // TikTok FYP Mode state
@@ -436,11 +442,15 @@ export function createDracinController({ onToast = () => {} } = {}) {
           : `${formatClockTime(state.elapsedSec)} / --:--`;
     }
     if (playBtn) {
-      playBtn.setAttribute('aria-label', state.isPlaying ? 'Jeda video' : 'Putar video');
-      playBtn.classList.toggle('is-playing', state.isPlaying);
-      playBtn.innerHTML = state.isPlaying
-        ? `<svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="6" y="4" width="4" height="16" rx="1"/><rect x="14" y="4" width="4" height="16" rx="1"/></svg>`
-        : `<svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><polygon points="6 4 20 12 6 20 6 4"/></svg>`;
+      const playingFlag = String(Boolean(state.isPlaying));
+      if (playBtn.dataset.playing !== playingFlag) {
+        playBtn.dataset.playing = playingFlag;
+        playBtn.setAttribute('aria-label', state.isPlaying ? 'Jeda video' : 'Putar video');
+        playBtn.classList.toggle('is-playing', state.isPlaying);
+        playBtn.innerHTML = state.isPlaying
+          ? `<svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="6" y="4" width="4" height="16" rx="1"/><rect x="14" y="4" width="4" height="16" rx="1"/></svg>`
+          : `<svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><polygon points="6 4 20 12 6 20 6 4"/></svg>`;
+      }
     }
   }
 
@@ -876,6 +886,20 @@ export function createDracinController({ onToast = () => {} } = {}) {
       return;
     }
     if (!streamRes || !Array.isArray(streamRes.servers) || streamRes.servers.length === 0) {
+      return;
+    }
+
+    const isLowEnd =
+      (typeof document !== 'undefined' && document.documentElement.dataset.perf === 'lite') ||
+      detectLowEndDevice();
+    const isMobile =
+      typeof navigator !== 'undefined' &&
+      (/android|iphone|ipad|ipod|mobile/i.test(navigator.userAgent || '') ||
+        (typeof window !== 'undefined' && window.innerWidth <= 900));
+
+    // On mobile & low-end devices, keep lightweight JSON metadata prefetch above,
+    // but avoid attaching a second concurrent <video> / HLS decoder that starves hardware MediaCodec!
+    if (!shouldEnableDualVideoPreload({ isLowEnd, isMobile })) {
       return;
     }
 
@@ -1385,6 +1409,7 @@ export function createDracinController({ onToast = () => {} } = {}) {
     }
 
     destroyPreloadEngine();
+    const mySession = ++streamSessionToken;
     state.currentEpisode = safeEp;
     state.epRangeStart = Math.floor((safeEp - 1) / 20) * 20 + 1;
     state.elapsedSec = 0;
@@ -1425,9 +1450,8 @@ export function createDracinController({ onToast = () => {} } = {}) {
 
     if (announce) showSwipeHint(announce);
 
-    const mySession = streamSessionToken;
     const streamRes = await resolveEpisodePlayback(drama, safeEp, { forceRefresh });
-    if (mySession !== streamSessionToken || state.view !== 'player') return;
+    if (mySession !== streamSessionToken || state.view !== 'player' || state.activeDramaId !== drama.id) return;
 
     // Update exact totalEpisodes if NunoDrama watch page discovered more episodes!
     if (streamRes.totalEpisodes && streamRes.totalEpisodes > (drama.totalEpisodes || 0)) {
@@ -1505,7 +1529,9 @@ export function createDracinController({ onToast = () => {} } = {}) {
     const prevDramaId = state.activeDramaId;
     const isDifferentDrama = Boolean(prevDramaId && prevDramaId !== found.id);
     if (isDifferentDrama) {
+      streamSessionToken += 1;
       destroyPreloadEngine();
+      destroyActiveMediaEngine();
       clearDecryptedBlobCache();
     }
     state.fypMode = Boolean(fypMode);
@@ -1519,20 +1545,23 @@ export function createDracinController({ onToast = () => {} } = {}) {
     state.view = 'player';
     const hist = state.history.find((h) => h.dramaId === found.id);
     const startEp = episodeNumber ?? hist?.episode ?? 1;
+    const targetDramaId = found.id;
 
     const detailPromise = fetchDramaDetail(found).then((detail) => {
       if (!detail) return;
+      const baseDrama = state.activeDramaId === targetDramaId && state.activeDrama ? state.activeDrama : found;
       const updated = {
-        ...state.activeDrama,
-        title: detail.title || state.activeDrama.title,
-        poster: detail.poster || state.activeDrama.poster,
-        synopsis: detail.synopsis || state.activeDrama.synopsis,
-        totalEpisodes: detail.totalEpisodes || state.activeDrama.totalEpisodes,
+        ...baseDrama,
+        title: detail.title || baseDrama.title,
+        poster: detail.poster || baseDrama.poster,
+        synopsis: detail.synopsis || baseDrama.synopsis,
+        totalEpisodes: detail.totalEpisodes || baseDrama.totalEpisodes,
         hasKnownEpisodeCount: true,
-        altTitle: detail.tags?.length ? detail.tags.slice(0, 4).join(' · ') : state.activeDrama.altTitle,
+        altTitle: detail.tags?.length ? detail.tags.slice(0, 4).join(' · ') : baseDrama.altTitle,
       };
       upsertDramaInCatalog(updated);
       if (state.view === 'player' && state.activeDramaId === updated.id) {
+        state.activeDrama = updated;
         const pickerWrap = hostEl?.querySelector('#dracin-side-ep-wrap');
         if (pickerWrap) {
           pickerWrap.innerHTML = renderEpisodePickerGrid(updated, false);
@@ -2205,12 +2234,26 @@ export function createDracinController({ onToast = () => {} } = {}) {
             </div>
           </div>
         `
-            : `
-          <div class="dracin-catalog-grid" data-testid="dracin-catalog-grid">
-            ${filtered.map(renderDramaCard).join('')}
+            : (() => {
+                const isLowEnd =
+                  (typeof document !== 'undefined' && document.documentElement.dataset.perf === 'lite') ||
+                  detectLowEndDevice();
+                const pageMeta = computeProgressiveRenderLimit(filtered.length, state.discoverLimit, { isLowEnd });
+                const visibleItems = filtered.slice(0, pageMeta.visible);
+                return `
+          <div class="dracin-catalog-grid" data-testid="dracin-catalog-grid" data-visible-count="${visibleItems.length}" data-total-count="${filtered.length}">
+            ${visibleItems.map(renderDramaCard).join('')}
           </div>
           ${
-            platPageInfo.hasMore && state.genreId === 'all'
+            pageMeta.hasMore
+              ? `
+            <div class="dracin-load-more-wrap">
+              <button type="button" class="btn btn-secondary btn-sm" id="dracin-show-more-local-btn" data-next-limit="${pageMeta.nextLimit}">
+                Tampilkan Lebih Banyak (${pageMeta.remaining} drama lainnya)
+              </button>
+            </div>
+          `
+              : platPageInfo.hasMore && state.genreId === 'all'
               ? `
             <div class="dracin-load-more-wrap">
               <button type="button" class="btn btn-secondary btn-sm" id="dracin-load-more-btn" ${state.loadingMore ? 'disabled' : ''}>
@@ -2224,7 +2267,8 @@ export function createDracinController({ onToast = () => {} } = {}) {
           `
               : ''
           }
-        `
+        `;
+              })()
         }
       </div>
     `;
@@ -2997,6 +3041,7 @@ export function createDracinController({ onToast = () => {} } = {}) {
     hostEl.querySelectorAll('[data-dracin-genre]').forEach((btn) => {
       btn.addEventListener('click', () => {
         state.genreId = btn.getAttribute('data-dracin-genre') || 'all';
+        state.discoverLimit = 0;
         render();
       });
     });
@@ -3009,6 +3054,13 @@ export function createDracinController({ onToast = () => {} } = {}) {
       state.platformId = 'all';
       state.genreId = 'all';
       state.searchQuery = '';
+      state.discoverLimit = 0;
+      render();
+    });
+
+    hostEl.querySelector('#dracin-show-more-local-btn')?.addEventListener('click', (e) => {
+      const next = Number(e.currentTarget.getAttribute('data-next-limit')) || 48;
+      state.discoverLimit = next;
       render();
     });
 
@@ -3370,10 +3422,12 @@ export function createDracinController({ onToast = () => {} } = {}) {
       }
     },
     unmount() {
+      streamSessionToken += 1;
       destroyPreloadEngine();
       destroyActiveMediaEngine();
       clearDecryptedBlobCache();
       unbindGlobalListeners();
+      document.documentElement.classList.remove('dracin-fs-lock');
       hostEl = null;
     },
   };

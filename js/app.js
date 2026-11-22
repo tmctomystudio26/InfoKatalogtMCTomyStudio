@@ -4,7 +4,7 @@ import {
   PAY_LATER_SURCHARGE_RATE,
   getDefaultCatalogSnapshot,
   loadCatalogData,
-} from './data.js?v=75';
+} from './data.js?v=76';
 import {
   PENDING_ORDER_STORAGE_KEY,
   addToCart,
@@ -23,9 +23,14 @@ import {
   syncPaymentOptionsWithBrand,
   updateCartQty,
   validateOrderForm,
-} from './store.js?v=75';
-import { initPwaManager } from './pwa.js?v=75';
-import { initMusicPlayer } from './music.js?v=75';
+} from './store.js?v=76';
+import { initPwaManager } from './pwa.js?v=76';
+import {
+  computeBannerHydrationWindow,
+  initPerformanceClass,
+  resolveBannerTransition,
+  scheduleIdleTask,
+} from './perf-guard.js?v=76';
 
 const THEME_STORAGE_KEY = 'manifestudio_theme_v1';
 const CART_STORAGE_KEY = 'manifestudio_cart_v1';
@@ -371,6 +376,8 @@ function renderBanners() {
     state.activeBannerSlide = 0;
   }
 
+  const hydrateWindow = new Set(computeBannerHydrationWindow(state.activeBannerSlide, banners.length, 1));
+
   track.innerHTML = banners
     .map((b, idx) => {
       const scrimClass =
@@ -384,23 +391,27 @@ function renderBanners() {
       const isCatalogAnchor = b.href === '#katalog';
       const btnClass = idx === 0 && isCatalogAnchor ? 'btn btn-primary btn-sm' : 'btn btn-outline-light btn-sm';
       const HeadingTag = idx === 0 ? 'h1' : 'h2';
+      const isActive = idx === state.activeBannerSlide;
+      const shouldHydrate = hydrateWindow.has(idx);
 
       return `
         <article
-          class="promo-banner-frame banner-slide ${frameExtraClass}"
+          class="promo-banner-frame banner-slide ${frameExtraClass} ${isActive ? 'is-active' : ''}"
           data-slide-index="${idx}"
           data-banner-id="${escapeHtml(b.id)}"
           data-banner-href="${escapeHtml(b.href || '#katalog')}"
-          aria-hidden="${idx !== state.activeBannerSlide}"
+          aria-hidden="${!isActive}"
         >
           ${
             hasImage
               ? `<img
-                  src="${escapeHtml(b.image)}"
+                  ${shouldHydrate ? `src="${escapeHtml(b.image)}"` : ''}
+                  data-banner-src="${escapeHtml(b.image)}"
                   alt="${escapeHtml(b.heading)}"
                   class="promo-banner-img"
                   width="1200"
-                  height="675"
+                  height="670"
+                  decoding="async"
                   data-fallback-banner="./assets/banners/banner-katalog.jpg"
                   ${idx === 0 ? 'fetchpriority="high"' : 'loading="lazy"'}
                 />`
@@ -471,6 +482,8 @@ function initBannerCarousel() {
   if (!carousel || !track) return;
 
   let autoTimer = null;
+  let leaveCleanupTimer = null;
+  let isInViewport = true;
   let isPointerDown = false;
   let hasMoved = false;
   let dragStartX = 0;
@@ -485,19 +498,69 @@ function initBannerCarousel() {
     return Array.from(track.querySelectorAll('.banner-slide'));
   }
 
+  function hydrateAdjacentImages(slides, activeIdx) {
+    const windowIndices = computeBannerHydrationWindow(activeIdx, slides.length, 1);
+    for (const idx of windowIndices) {
+      const img = slides[idx]?.querySelector('img[data-banner-src]');
+      if (img && !img.getAttribute('src')) {
+        const src = img.getAttribute('data-banner-src');
+        if (src) img.setAttribute('src', src);
+      }
+    }
+  }
+
   function applySlide(index, { immediate = false } = {}) {
     const slides = getSlides();
     const totalSlides = slides.length;
     if (totalSlides === 0) return;
 
-    const wrapped = ((index % totalSlides) + totalSlides) % totalSlides;
+    const prevIdx = state.activeBannerSlide;
+    const transition = resolveBannerTransition(prevIdx, index, totalSlides);
+    const wrapped = transition.to;
     state.activeBannerSlide = wrapped;
-    track.style.transition = immediate ? 'none' : '';
-    track.style.transform = `translate3d(-${wrapped * 100}%, 0, 0)`;
+
+    hydrateAdjacentImages(slides, wrapped);
+
+    if (leaveCleanupTimer) {
+      clearTimeout(leaveCleanupTimer);
+      leaveCleanupTimer = null;
+    }
+
+    const dirClass = transition.direction < 0 ? 'is-dir-prev' : 'is-dir-next';
+    const shouldAnimate = !immediate && !prefersReducedMotion && prevIdx !== wrapped && Boolean(slides[prevIdx]);
 
     slides.forEach((slide, idx) => {
-      slide.setAttribute('aria-hidden', String(idx !== wrapped));
+      slide.style.transform = '';
+      slide.style.transition = '';
+      slide.classList.remove('is-leaving', 'is-entering', 'is-dir-next', 'is-dir-prev');
+      if (idx === wrapped) {
+        slide.classList.add('is-active');
+        slide.setAttribute('aria-hidden', 'false');
+        if (shouldAnimate) {
+          slide.classList.add('is-entering', dirClass);
+        }
+      } else if (shouldAnimate && idx === prevIdx) {
+        slide.classList.remove('is-active');
+        slide.classList.add('is-leaving', dirClass);
+        slide.setAttribute('aria-hidden', 'true');
+      } else {
+        slide.classList.remove('is-active');
+        slide.setAttribute('aria-hidden', 'true');
+      }
     });
+
+    if (shouldAnimate) {
+      const nextSlideEl = slides[wrapped];
+      const prevSlideEl = slides[prevIdx];
+      requestAnimationFrame(() => {
+        nextSlideEl?.classList.remove('is-entering');
+      });
+      leaveCleanupTimer = setTimeout(() => {
+        prevSlideEl?.classList.remove('is-leaving', 'is-dir-next', 'is-dir-prev');
+        nextSlideEl?.classList.remove('is-dir-next', 'is-dir-prev');
+        leaveCleanupTimer = null;
+      }, 280);
+    }
 
     dotsContainer?.querySelectorAll('[data-slide-dot]').forEach((dot) => {
       const dotIdx = Number(dot.getAttribute('data-slide-dot'));
@@ -518,7 +581,7 @@ function initBannerCarousel() {
     if (prefersReducedMotion) return;
     stopAutoSlide();
     autoTimer = setInterval(() => {
-      if (!document.hidden && !isPointerDown && getSlides().length > 1) {
+      if (!document.hidden && isInViewport && !isPointerDown && getSlides().length > 1) {
         applySlide(state.activeBannerSlide + 1);
       }
     }, 6500);
@@ -529,6 +592,16 @@ function initBannerCarousel() {
       clearInterval(autoTimer);
       autoTimer = null;
     }
+  }
+
+  if (typeof IntersectionObserver !== 'undefined') {
+    const io = new IntersectionObserver(
+      (entries) => {
+        isInViewport = Boolean(entries[0]?.isIntersecting);
+      },
+      { threshold: 0.1 }
+    );
+    io.observe(carousel);
   }
 
   function navigateToBannerTarget(href) {
@@ -612,13 +685,15 @@ function initBannerCarousel() {
       }
       hasMoved = true;
       stopAutoSlide();
-      track.style.transition = 'none';
       carousel.classList.add('is-dragging');
     }
 
-    const width = Math.max(1, carousel.clientWidth);
-    const offsetPercent = -(state.activeBannerSlide * 100) + (dragDeltaX / width) * 100;
-    track.style.transform = `translate3d(${offsetPercent}%, 0, 0)`;
+    const activeSlide = getSlides()[state.activeBannerSlide];
+    if (activeSlide) {
+      const clampedPx = Math.max(-72, Math.min(72, dragDeltaX * 0.42));
+      activeSlide.style.transition = 'none';
+      activeSlide.style.transform = `translate3d(${clampedPx}px, 0, 0)`;
+    }
   });
 
   const finishDrag = (e) => {
@@ -630,6 +705,12 @@ function initBannerCarousel() {
     hasMoved = false;
     dragSourceSlide = null;
     carousel.classList.remove('is-dragging');
+
+    const activeSlide = getSlides()[state.activeBannerSlide];
+    if (activeSlide) {
+      activeSlide.style.transition = '';
+      activeSlide.style.transform = '';
+    }
 
     if (wasTap && e?.type === 'pointerup' && !e.target.closest('button, a')) {
       const href = sourceSlide?.getAttribute('data-banner-href') || '';
@@ -649,7 +730,7 @@ function initBannerCarousel() {
     } else if (dragDeltaX >= threshold) {
       applySlide(state.activeBannerSlide - 1);
     } else {
-      applySlide(state.activeBannerSlide);
+      applySlide(state.activeBannerSlide, { immediate: true });
     }
     dragDeltaX = 0;
     dragDeltaY = 0;
@@ -1648,13 +1729,35 @@ function renderAllStorefrontViews() {
 }
 
 async function bootstrap() {
+  initPerformanceClass();
   loadPersistedState();
   applyTheme();
   initBannerCarousel();
   renderAllStorefrontViews();
   bindGlobalEvents();
   initPwaManager();
-  initMusicPlayer();
+
+  // Defer floating YT Music bundle until browser is idle (or immediately if music was playing across pages)
+  let wasMusicPlaying = false;
+  try {
+    const raw = sessionStorage.getItem('manifestudio_music_session_v1');
+    if (raw) {
+      const s = JSON.parse(raw);
+      wasMusicPlaying = Boolean(s?.wasPlaying && !s?.explicitPaused);
+    }
+  } catch {
+    // Ignore
+  }
+  const bootMusicLazy = () => {
+    import('./music.js?v=76')
+      .then((m) => m.initMusicPlayer?.())
+      .catch(() => {});
+  };
+  if (wasMusicPlaying) {
+    bootMusicLazy();
+  } else {
+    scheduleIdleTask(bootMusicLazy, 1800);
+  }
 
   document.getElementById('exit-preview-btn')?.addEventListener('click', async () => {
     try {

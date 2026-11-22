@@ -59,11 +59,17 @@
       rel="stylesheet"
     />
 
-    <link rel="stylesheet" href="./css/tokens.css?v=75" />
-    <link rel="stylesheet" href="./css/styles.css?v=75" />
+    <link rel="stylesheet" href="./css/tokens.css?v=76" />
+    <link rel="stylesheet" href="./css/styles.css?v=76" />
     <script>
       (function () {
-        var CURRENT_CACHE = 'manifestudio-cache-v75';
+        try {
+          var savedTheme = localStorage.getItem('manifestudio_theme_v1');
+          if (savedTheme === 'light' || savedTheme === 'dark') {
+            document.documentElement.setAttribute('data-theme', savedTheme);
+          }
+        } catch (e) {}
+        var CURRENT_CACHE = 'manifestudio-cache-v76';
         if ('caches' in window) {
           caches.keys().then(function (keys) {
             keys.forEach(function (k) {
@@ -72,9 +78,11 @@
           });
         }
         if ('serviceWorker' in navigator) {
-          navigator.serviceWorker.register('./sw.js?v=75').then(function (reg) {
-            reg.update();
-          }).catch(function () {});
+          window.addEventListener('load', function () {
+            navigator.serviceWorker.register('./sw.js?v=76').then(function (reg) {
+              reg.update();
+            }).catch(function () {});
+          });
         }
       })();
     </script>
@@ -126,7 +134,9 @@
             id="theme-toggle-btn"
             class="header-btn"
             aria-label="Ubah tema tampilan"
-          ></button>
+          >
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.93 4.93 1.41 1.41"/><path d="m17.66 17.66 1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="m6.34 17.66-1.41 1.41"/><path d="m19.07 4.93-1.41 1.41"/></svg><span class="hide-xs">Terang</span>
+          </button>
         </div>
       </div>
     </header>
@@ -136,13 +146,40 @@
         <div>
           <h1 id="tools-page-title" class="section-title">Menu Utilitas</h1>
           <p id="tools-page-subtitle" class="section-subtitle">
-            Jadwal sholat Kemenag RI, cuaca, jam dunia UTC, dan tes kecepatan internet.
+            15 fitur utilitas gratis: Sholat, Cuaca, Jam Dunia, Speedtest, Downloader, Drama China, Novel, AI &amp; Cek Nomor.
           </p>
         </div>
         <a href="./index.html" class="btn btn-secondary btn-sm">← Menu Utama</a>
       </div>
 
-      <div id="tools-hub-root"></div>
+      <div id="tools-hub-root">
+        <div class="tools-hub" data-ssr-shell="true">
+          <div class="tools-subnav" role="tablist" aria-label="Menu Utilitas">
+            <a href="./tools.html?tab=prayer" class="tools-subtab" data-tool-subtab="prayer"><img src="./assets/icons/tool-prayer.svg" alt="" width="28" height="28" class="tools-subtab-icon" decoding="async" /><span>Jadwal Sholat</span></a>
+            <a href="./tools.html?tab=weather" class="tools-subtab" data-tool-subtab="weather"><img src="./assets/icons/tool-weather.svg" alt="" width="28" height="28" class="tools-subtab-icon" decoding="async" /><span>Prakiraan Cuaca</span></a>
+            <a href="./tools.html?tab=worldclock" class="tools-subtab" data-tool-subtab="worldclock"><img src="./assets/icons/tool-world.svg" alt="" width="28" height="28" class="tools-subtab-icon" decoding="async" /><span>Jam Dunia &amp; Globe</span></a>
+            <a href="./tools.html?tab=speedtest" class="tools-subtab" data-tool-subtab="speedtest"><img src="./assets/icons/tool-speed.svg" alt="" width="28" height="28" class="tools-subtab-icon" decoding="async" /><span>Speedtest</span></a>
+            <a href="./tools.html?tab=downloader" class="tools-subtab" data-tool-subtab="downloader"><img src="./assets/icons/tool-downloader.svg" alt="" width="28" height="28" class="tools-subtab-icon" decoding="async" /><span>Downloader</span></a>
+            <a href="./tools.html?tab=compressor" class="tools-subtab" data-tool-subtab="compressor"><img src="./assets/icons/tool-compressor.svg" alt="" width="28" height="28" class="tools-subtab-icon" decoding="async" /><span>Kompresor HD</span></a>
+            <a href="./tools.html?tab=converter" class="tools-subtab" data-tool-subtab="converter"><img src="./assets/icons/tool-converter.svg" alt="" width="28" height="28" class="tools-subtab-icon" decoding="async" /><span>Konversi File</span></a>
+            <a href="./tools.html?tab=songfinder" class="tools-subtab" data-tool-subtab="songfinder"><img src="./assets/icons/tool-songfinder.svg" alt="" width="28" height="28" class="tools-subtab-icon" decoding="async" /><span>Cari Judul Lagu</span></a>
+            <a href="./tools.html?tab=music" class="tools-subtab" data-tool-subtab="music"><img src="./assets/icons/tool-music.svg" alt="" width="28" height="28" class="tools-subtab-icon" decoding="async" /><span>YT Music</span></a>
+            <a href="./tools.html?tab=dracin" class="tools-subtab" data-tool-subtab="dracin"><img src="./assets/icons/tool-dracin.svg" alt="" width="28" height="28" class="tools-subtab-icon" decoding="async" /><span>Drama China</span></a>
+            <a href="./tools.html?tab=audioeditor" class="tools-subtab" data-tool-subtab="audioeditor"><img src="./assets/icons/tool-audioeditor.svg" alt="" width="28" height="28" class="tools-subtab-icon" decoding="async" /><span>Audio Editor</span></a>
+            <a href="./tools.html?tab=manifestai" class="tools-subtab" data-tool-subtab="manifestai"><img src="./assets/icons/tool-manifestai.svg" alt="" width="28" height="28" class="tools-subtab-icon" decoding="async" /><span>Manifest AI</span></a>
+            <a href="./tools.html?tab=plagiarism" class="tools-subtab" data-tool-subtab="plagiarism"><img src="./assets/icons/tool-plagiarism.svg" alt="" width="28" height="28" class="tools-subtab-icon" decoding="async" /><span>Cek Plagiarisme</span></a>
+            <a href="./tools.html?tab=novel" class="tools-subtab" data-tool-subtab="novel"><img src="./assets/icons/tool-novel.svg" alt="" width="28" height="28" class="tools-subtab-icon" decoding="async" /><span>Novel Terpadu</span></a>
+            <a href="./tools.html?tab=callerid" class="tools-subtab" data-tool-subtab="callerid"><img src="./assets/icons/tool-callerid.svg" alt="" width="28" height="28" class="tools-subtab-icon" decoding="async" /><span>Cek Nomor</span></a>
+          </div>
+          <div class="tool-lazy-loading-card" aria-busy="true">
+            <div class="tool-lazy-spinner" aria-hidden="true"></div>
+            <div>
+              <strong>Menyiapkan modul utilitas...</strong>
+              <p>Menu siap dipilih — hanya modul yang Anda buka yang dimuat agar super ringan.</p>
+            </div>
+          </div>
+        </div>
+      </div>
     </main>
 
     <footer class="site-footer">
@@ -185,6 +222,6 @@
     </footer>
 
     <div id="toast-notification" class="toast-notification" role="status" aria-live="polite" hidden></div>
-    <script type="module" src="./js/tools-page.js?v=75"></script>
+    <script type="module" src="./js/tools-page.js?v=76"></script>
   </body>
 </html>

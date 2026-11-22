@@ -10,6 +10,7 @@
  * - Exposes a single shared controller (`getMusicController`) synced with Menu Utilitas (`tools.html?tab=music`).
  */
 
+import { shouldAllowAutoMusicTrigger } from './perf-guard.js?v=76';
 import {
   MIN_FULL_TRACK_SECONDS,
   MUSIC_LIBRARY_STORAGE_KEY,
@@ -2569,9 +2570,16 @@ export function initMusicPlayer() {
     }
   }
 
+  let ytEngineBootstrapped = false;
+
   function initYouTubeEngine() {
+    if (ytEngineBootstrapped) return;
+    ytEngineBootstrapped = true;
     ensureYouTubeIframeApi().then((YT) => {
-      if (!YT?.Player) return;
+      if (!YT?.Player) {
+        ytEngineBootstrapped = false;
+        return;
+      }
       try {
         ytPlayer = new YT.Player('yt-music-iframe-target', {
           width: '200',
@@ -2899,6 +2907,7 @@ export function initMusicPlayer() {
 
   function executePlaybackNow(track, { startSeconds = 0 } = {}) {
     if (!track) return;
+    initYouTubeEngine();
     hydrateTrackStreamFromCache(track);
     const isSameTrackRestart = currentTrack?.id === track.id;
     const targetStart = Math.max(0, Number(startSeconds) || 0);
@@ -5182,9 +5191,40 @@ export function initMusicPlayer() {
       if (root.contains(target) || target.closest('[data-music-control], .music-hub-panel')) {
         return;
       }
-      if (target.closest('video, audio')) return;
+      const isMediaElement = Boolean(target.closest('video, audio'));
+      const isBannerControl = Boolean(
+        target.closest('.banner-nav-btn, [data-slide-dot], .banner-slide, .banner-controls-bar, .banner-carousel')
+      );
+      const isVideoOrAudioTool = Boolean(
+        target.closest('.dracin-panel, .audioeditor-panel, .songfinder-panel, .downloader-panel, #dracin-hub-mount, #audioeditor-hub-mount')
+      );
+      const clickedToolTabEl = target.closest('[data-tool-subtab], [data-tools-nav]');
+      const clickedToolTab = (
+        clickedToolTabEl?.getAttribute('data-tool-subtab') ||
+        clickedToolTabEl?.getAttribute('data-tools-nav') ||
+        ''
+      ).toLowerCase();
+      const activeToolTab = (
+        clickedToolTab ||
+        document.querySelector('.tools-subtab.is-active')?.getAttribute('data-tool-subtab') ||
+        ''
+      ).toLowerCase();
+      if (
+        clickedToolTab === 'dracin' ||
+        clickedToolTab === 'audioeditor' ||
+        clickedToolTab === 'songfinder' ||
+        clickedToolTab === 'downloader'
+      ) {
+        if (isPlaying || isLoading) {
+          controller.pause({ external: true });
+        }
+        return;
+      }
+      if (!shouldAllowAutoMusicTrigger({ isBannerControl, isMediaElement, isVideoOrAudioTool, activeToolTab })) {
+        return;
+      }
       const interactive = target.closest(
-        'button, a, [role="button"], [role="tab"], input[type="button"], input[type="submit"], input[type="reset"], summary, label, .product-tile, [data-slide-dot], [data-tools-nav]'
+        'button, a, [role="button"], [role="tab"], input[type="button"], input[type="submit"], input[type="reset"], summary, label, .product-tile, [data-tools-nav]'
       );
       if (!interactive) return;
       if (explicitPaused || !autoClickPlayEnabled) return;
@@ -5225,21 +5265,40 @@ export function initMusicPlayer() {
   applyRootPosition();
   updateCartOverlapOffset();
   renderWidget();
-  initYouTubeEngine();
-  ensureTrackPool();
+
+  const urlTab = (() => {
+    try {
+      const p = new URLSearchParams(window.location.search);
+      return (p.get('tab') || p.get('tool') || '').toLowerCase();
+    } catch {
+      return '';
+    }
+  })();
+  const isMusicHubRoute = urlTab === 'music';
+  const isVideoOrAudioRoute =
+    urlTab === 'dracin' ||
+    urlTab === 'audioeditor' ||
+    urlTab === 'songfinder' ||
+    urlTab === 'downloader';
+
+  if (isMusicHubRoute) {
+    ensureTrackPool();
+  }
 
   // If user navigated from another page of the site while music was actively playing (and not paused),
-  // attempt seamless auto-resume immediately!
-  if (!explicitPaused && initialSession.wasPlaying && currentTrack) {
+  // attempt seamless auto-resume — EXCEPT when landing on a dedicated video/audio utility route
+  // so Drama China / Audio Editor never fight YouTube IFrame for Android MediaCodec & audio focus.
+  if (!explicitPaused && !isVideoOrAudioRoute && initialSession.wasPlaying && currentTrack) {
+    initYouTubeEngine();
+    ensureTrackPool();
     setTimeout(() => {
       if (!explicitPaused && !isPlaying && !isLoading && currentTrack) {
         const resumeSec = getResumeSecondsForTrack(currentTrack);
         executePlaybackNow(currentTrack, { startSeconds: resumeSec });
       }
     }, 180);
+    scheduleStreamPrewarm(1500);
   }
-
-  scheduleStreamPrewarm(1500);
 
   return controller;
 }

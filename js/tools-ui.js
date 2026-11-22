@@ -22,46 +22,74 @@ import {
   matchIndonesianCityQuery,
   planMediaCompression,
   resolveAccurateWeatherCondition,
-} from './tools-logic.js?v=59';
+} from './tools-logic.js?v=76';
 import {
   describeLocationSource,
   resolveUserLocation,
   searchCitiesOnline,
   setManualLocation,
-} from './location.js?v=59';
-import { createInteractiveGlobe } from './globe.js?v=59';
-import {
-  createSpeedometerGauge,
-  fetchSpeedtestEnvironment,
-  readClientDeviceTelemetry,
-  runInternetSpeedtest,
-} from './speedtest.js?v=59';
-import {
-  extractAudioFromVideoUrl,
-  fetchMediaDownload,
-  triggerBatchPhotoDownload,
-  triggerDirectMediaSave,
-} from './downloader.js?v=59';
-import { compressMediaFile, inspectMediaFile } from './compressor.js?v=59';
-import {
-  ALL_TARGET_FORMATS,
-  convertAnyFile,
-  detectSourceFormat,
-  getAvailableTargetFormats,
-} from './converter.js?v=59';
-import {
-  detectMediaFileKind,
-  identifyMediaSongAndVideo,
-} from './song-finder.js?v=59';
-import { formatAudioTime, getLoadingProgressMeta, isTrackInWatchLater } from './music-logic.js?v=59';
-import { MUSIC_PRESET_CATEGORIES, getMusicController, initMusicPlayer } from './music.js?v=59';
-import { createDracinController } from './dracin-ui.js?v=73';
-import { createAudioEditorController } from './audio-editor-ui.js?v=67';
-import { createManifestAiController } from './manifest-ai-ui.js?v=67';
-import { createPlagiarismController } from './plagiarism-ui.js?v=69';
-import { createNovelController } from './novel-ui.js?v=73';
-import { createCallerIdController } from './callerid-ui.js?v=75';
-import { normalizeUtilityConfig } from './store.js?v=75';
+} from './location.js?v=76';
+import { normalizeUtilityConfig } from './store.js?v=76';
+
+// On-demand cached dynamic module loaders (v76):
+// Keeps initial tools.html boot tiny (<100KB) even on slow 2G/3G mobile networks.
+let _globeMod = null;
+let _speedtestMod = null;
+let _downloaderMod = null;
+let _compressorMod = null;
+let _converterMod = null;
+let _songFinderMod = null;
+let _musicMods = null;
+let _dracinMod = null;
+let _audioEditorMod = null;
+let _manifestAiMod = null;
+let _plagiarismMod = null;
+let _novelMod = null;
+let _callerIdMod = null;
+
+const loadGlobeMod = () => (_globeMod ? Promise.resolve(_globeMod) : import('./globe.js?v=76').then((m) => (_globeMod = m)));
+const loadSpeedtestMod = () => (_speedtestMod ? Promise.resolve(_speedtestMod) : import('./speedtest.js?v=76').then((m) => (_speedtestMod = m)));
+const loadDownloaderMod = () => (_downloaderMod ? Promise.resolve(_downloaderMod) : import('./downloader.js?v=76').then((m) => (_downloaderMod = m)));
+const loadCompressorMod = () => (_compressorMod ? Promise.resolve(_compressorMod) : import('./compressor.js?v=76').then((m) => (_compressorMod = m)));
+const loadConverterMod = () => (_converterMod ? Promise.resolve(_converterMod) : import('./converter.js?v=76').then((m) => (_converterMod = m)));
+const loadSongFinderMod = () => (_songFinderMod ? Promise.resolve(_songFinderMod) : import('./song-finder.js?v=76').then((m) => (_songFinderMod = m)));
+const loadMusicMods = () =>
+  _musicMods
+    ? Promise.resolve(_musicMods)
+    : Promise.all([import('./music.js?v=76'), import('./music-logic.js?v=76')]).then(([music, logic]) => {
+        _musicMods = { music, logic };
+        return _musicMods;
+      });
+const loadDracinMod = () => (_dracinMod ? Promise.resolve(_dracinMod) : import('./dracin-ui.js?v=76').then((m) => (_dracinMod = m)));
+const loadAudioEditorMod = () => (_audioEditorMod ? Promise.resolve(_audioEditorMod) : import('./audio-editor-ui.js?v=76').then((m) => (_audioEditorMod = m)));
+const loadManifestAiMod = () => (_manifestAiMod ? Promise.resolve(_manifestAiMod) : import('./manifest-ai-ui.js?v=76').then((m) => (_manifestAiMod = m)));
+const loadPlagiarismMod = () => (_plagiarismMod ? Promise.resolve(_plagiarismMod) : import('./plagiarism-ui.js?v=76').then((m) => (_plagiarismMod = m)));
+const loadNovelMod = () => (_novelMod ? Promise.resolve(_novelMod) : import('./novel-ui.js?v=76').then((m) => (_novelMod = m)));
+const loadCallerIdMod = () => (_callerIdMod ? Promise.resolve(_callerIdMod) : import('./callerid-ui.js?v=76').then((m) => (_callerIdMod = m)));
+
+function renderLazyLoadingCard(label = 'Utilitas') {
+  return `
+    <div class="tool-lazy-loading-card" role="status" aria-live="polite">
+      <span class="tool-lazy-spinner" aria-hidden="true"></span>
+      <span>Memuat ${escapeHtml(label)}...</span>
+    </div>
+  `;
+}
+
+function readInitialDeviceTelemetryFallback() {
+  const conn = typeof navigator !== 'undefined' ? navigator.connection || navigator.mozConnection || navigator.webkitConnection : null;
+  const cores = typeof navigator !== 'undefined' && navigator.hardwareConcurrency ? `${navigator.hardwareConcurrency} Core` : 'Standar';
+  return {
+    connectionType: conn?.effectiveType ? String(conn.effectiveType).toUpperCase() : 'Otomatis',
+    downlinkHint: conn?.downlink ? `${conn.downlink} Mbps` : '—',
+    rttHint: conn?.rtt ? `${conn.rtt} ms` : '—',
+    saveData: Boolean(conn?.saveData),
+    cpuCores: cores,
+    memory: typeof navigator !== 'undefined' && navigator.deviceMemory ? `${navigator.deviceMemory} GB` : '—',
+    platform: typeof navigator !== 'undefined' ? navigator.platform || 'Perangkat Web' : 'Perangkat Web',
+    online: typeof navigator !== 'undefined' ? navigator.onLine !== false : true,
+  };
+}
 
 const PRAYER_CACHE_KEY = 'manifestudio_prayer_cache_v1';
 const MYQURAN_CITIES_KEY = 'manifestudio_myquran_cities_v1';
@@ -415,7 +443,7 @@ export function createToolsHubController({
     speedEnv: null,
     speedEnvLoading: false,
     speedError: '',
-    speedDevice: readClientDeviceTelemetry(),
+    speedDevice: readInitialDeviceTelemetryFallback(),
     dlUrl: '',
     dlLoading: false,
     dlConvPercent: 0,
@@ -483,6 +511,15 @@ export function createToolsHubController({
   let novelCtrl = null;
   let callerIdCtrl = null;
   let isHubSeeking = false;
+  let tabMountToken = 0;
+  let lastUtilitiesSignature = '';
+
+  function computeUtilitiesSignature(cfg) {
+    const items = (cfg?.items || []).map((it) => `${it.id}:${it.enabled !== false ? 1 : 0}:${it.label || ''}:${it.icon || ''}:${it.heroTitle || ''}`).join('|');
+    const mh = cfg?.musicHero ? `${cfg.musicHero.title || ''}|${cfg.musicHero.subtitle || ''}|${cfg.musicHero.icon || ''}` : '';
+    return `${items}##${mh}`;
+  }
+  lastUtilitiesSignature = computeUtilitiesSignature(toolState.utilities);
 
   function getUtilityItemConfig(id) {
     const items = toolState.utilities?.items || [];
@@ -523,7 +560,7 @@ export function createToolsHubController({
   }
 
   function updateDynamicTicks() {
-    if (!mounted) return;
+    if (!mounted || document.hidden) return;
     const now = new Date();
 
     if (toolState.activeSubTab === 'prayer' && toolState.prayerData?.timings) {
@@ -573,7 +610,13 @@ export function createToolsHubController({
   }
 
   function startLiveTimers() {
-    if (clockTimer) clearInterval(clockTimer);
+    if (clockTimer) {
+      clearInterval(clockTimer);
+      clockTimer = null;
+    }
+    if (toolState.activeSubTab !== 'prayer' && toolState.activeSubTab !== 'worldclock') {
+      return;
+    }
     updateDynamicTicks();
     clockTimer = setInterval(updateDynamicTicks, 1000);
   }
@@ -603,7 +646,9 @@ export function createToolsHubController({
     if (toolState.speedEnv || toolState.speedEnvLoading) return;
     toolState.speedEnvLoading = true;
     try {
-      const env = await fetchSpeedtestEnvironment();
+      const mod = await loadSpeedtestMod();
+      toolState.speedDevice = mod.readClientDeviceTelemetry();
+      const env = await mod.fetchSpeedtestEnvironment();
       toolState.speedEnv = env;
       if (mounted && toolState.activeSubTab === 'speedtest' && !toolState.speedRunning) {
         render();
@@ -2043,10 +2088,18 @@ export function createToolsHubController({
   }
 
   function renderConverterPanel() {
+    if (!_converterMod) {
+      return `
+        <section class="tool-panel converter-panel" aria-label="Konversi File Universal">
+          ${renderSubPanelIntro('converter')}
+          ${renderLazyLoadingCard('Konversi File')}
+        </section>
+      `;
+    }
     const sourceInfo = toolState.convSourceInfo;
     const availableTargets = sourceInfo
-      ? getAvailableTargetFormats(sourceInfo)
-      : ALL_TARGET_FORMATS;
+      ? _converterMod.getAvailableTargetFormats(sourceInfo)
+      : _converterMod.ALL_TARGET_FORMATS;
     const res = toolState.convResult;
 
     // Group target formats by their group category for clean <optgroup> dropdown rendering
@@ -2785,6 +2838,7 @@ export function createToolsHubController({
     render();
 
     try {
+      const { runInternetSpeedtest } = await loadSpeedtestMod();
       const result = await runInternetSpeedtest({
         signal: speedAbort.signal,
         onUpdate: (upd) => {
@@ -2853,6 +2907,7 @@ export function createToolsHubController({
     toolState.compProgressPct = 0;
     toolState.compProgressLabel = '';
     try {
+      const { inspectMediaFile } = await loadCompressorMod();
       const info = await inspectMediaFile(file);
       toolState.compFile = file;
       toolState.compInspect = info;
@@ -2874,6 +2929,7 @@ export function createToolsHubController({
     render();
 
     try {
+      const { compressMediaFile } = await loadCompressorMod();
       const result = await compressMediaFile(toolState.compFile, {
         methodId: toolState.compMethodId,
         presetId: toolState.compPresetId,
@@ -2908,8 +2964,9 @@ export function createToolsHubController({
     } catch {
       // Ignore header slice failure
     }
-    const info = detectSourceFormat(file.name, file.type, headerBytes);
-    const targets = getAvailableTargetFormats(info);
+    const convMod = await loadConverterMod();
+    const info = convMod.detectSourceFormat(file.name, file.type, headerBytes);
+    const targets = convMod.getAvailableTargetFormats(info);
     toolState.convFile = file;
     toolState.convSourceInfo = info;
     if (forcedTargetFormat && targets.some((t) => t.id === forcedTargetFormat)) {
@@ -2929,6 +2986,7 @@ export function createToolsHubController({
     render();
 
     try {
+      const { convertAnyFile } = await loadConverterMod();
       const result = await convertAnyFile(toolState.convFile, {
         targetFormat: toolState.convTargetFormat,
         onProgress: (p) => {
@@ -2982,6 +3040,7 @@ export function createToolsHubController({
     } catch {
       // Ignore
     }
+    const { detectMediaFileKind } = await loadSongFinderMod();
     toolState.sfFile = file;
     toolState.sfKindInfo = detectMediaFileKind(file.name, file.type, headerBytes);
     try {
@@ -3003,6 +3062,7 @@ export function createToolsHubController({
     render();
 
     try {
+      const { identifyMediaSongAndVideo } = await loadSongFinderMod();
       const result = await identifyMediaSongAndVideo(toolState.sfFile, {
         userHint: toolState.sfUserHint,
         onProgress: (p) => {
@@ -3024,7 +3084,28 @@ export function createToolsHubController({
   }
 
   function ensureMusicHubController() {
-    return getMusicController() || initMusicPlayer();
+    if (!_musicMods) return null;
+    return _musicMods.music.getMusicController() || _musicMods.music.initMusicPlayer();
+  }
+
+  function formatAudioTime(sec) {
+    if (_musicMods?.logic?.formatAudioTime) return _musicMods.logic.formatAudioTime(sec);
+    const s = Math.max(0, Math.floor(Number(sec) || 0));
+    return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+  }
+
+  function getLoadingProgressMeta(opts) {
+    if (_musicMods?.logic?.getLoadingProgressMeta) return _musicMods.logic.getLoadingProgressMeta(opts);
+    return { percent: 25, label: 'Memuat YT Music...' };
+  }
+
+  function isTrackInWatchLater(stateObj, track) {
+    if (_musicMods?.logic?.isTrackInWatchLater) return _musicMods.logic.isTrackInWatchLater(stateObj, track);
+    return false;
+  }
+
+  function getMusicPresetCategories() {
+    return _musicMods?.music?.MUSIC_PRESET_CATEGORIES || [];
   }
 
   function getRepeatLabel(mode) {
@@ -3092,7 +3173,7 @@ export function createToolsHubController({
     const categories =
       Array.isArray(mState.categories) && mState.categories.length > 0
         ? mState.categories
-        : MUSIC_PRESET_CATEGORIES;
+        : getMusicPresetCategories();
     const activeCat = categories.find((c) => c.id === mState.activeCategory) || categories[0];
     const isOpen = Boolean(toolState.musicCategoryDrawerOpen);
     const chips = Array.isArray(mState.liveTrendChips) ? mState.liveTrendChips : [];
@@ -3705,8 +3786,9 @@ export function createToolsHubController({
         : mState.searchQuery && !mState.isSearching
         ? []
         : mState.tracks || [];
+    const presetCats = getMusicPresetCategories();
     const activeCat =
-      MUSIC_PRESET_CATEGORIES.find((c) => c.id === mState.activeCategory) || MUSIC_PRESET_CATEGORIES[0];
+      presetCats.find((c) => c.id === mState.activeCategory) || presetCats[0] || { id: 'viral-indo', label: 'Viral Indonesia' };
 
     const selectedPlaylist =
       toolState.musicSelectedPlaylistId
@@ -3883,8 +3965,8 @@ export function createToolsHubController({
     const catList =
       Array.isArray(mState.categories) && mState.categories.length > 0
         ? mState.categories
-        : MUSIC_PRESET_CATEGORIES;
-    const activeCatInfo = catList.find((c) => c.id === mState.activeCategory) || catList[0];
+        : getMusicPresetCategories();
+    const activeCatInfo = catList.find((c) => c.id === mState.activeCategory) || catList[0] || { id: 'viral-indo', label: 'Viral Indonesia' };
     const progressMeta = getLoadingProgressMeta({
       isSearching: mState.isSearching,
       isLoading: false,
@@ -4400,6 +4482,13 @@ export function createToolsHubController({
   }
 
   function renderMusicPanel() {
+    if (!_musicMods) {
+      return `
+        <section class="tool-panel music-hub-panel" data-testid="music-hub-panel">
+          ${renderLazyLoadingCard('YT Music Hub')}
+        </section>
+      `;
+    }
     const ctrl = ensureMusicHubController();
     const mState = ctrl?.getState() || {
       tracks: [],
@@ -4671,19 +4760,27 @@ export function createToolsHubController({
     });
 
     // World clock & Globe
+    const currentMountToken = ++tabMountToken;
     if (toolState.activeSubTab === 'worldclock') {
       const canvas = rootEl.querySelector('#world-globe-canvas');
       if (canvas) {
-        globeInstance = createInteractiveGlobe(canvas, {
-          initialTargetId: toolState.selectedWorldId,
-          onSelectLocation: (loc) => {
-            toolState.selectedWorldId = loc.id;
-            render();
-          },
-        });
-        if (toolState.globeAutoRotate) {
-          globeInstance?.toggleAutoRotate(true);
-        }
+        loadGlobeMod()
+          .then(({ createInteractiveGlobe }) => {
+            if (!mounted || tabMountToken !== currentMountToken || toolState.activeSubTab !== 'worldclock') return;
+            const liveCanvas = rootEl.querySelector('#world-globe-canvas');
+            if (!liveCanvas) return;
+            globeInstance = createInteractiveGlobe(liveCanvas, {
+              initialTargetId: toolState.selectedWorldId,
+              onSelectLocation: (loc) => {
+                toolState.selectedWorldId = loc.id;
+                render();
+              },
+            });
+            if (toolState.globeAutoRotate) {
+              globeInstance?.toggleAutoRotate(true);
+            }
+          })
+          .catch(() => {});
       }
 
       rootEl.querySelector('#globe-focus-id-btn')?.addEventListener('click', () => {
@@ -4791,17 +4888,35 @@ export function createToolsHubController({
     if (toolState.activeSubTab === 'speedtest') {
       const gaugeCanvas = rootEl.querySelector('#speedtest-gauge-canvas');
       if (gaugeCanvas) {
-        gaugeInstance = createSpeedometerGauge(gaugeCanvas);
-        const initialGaugeVal = toolState.speedRunning
-          ? toolState.speedLiveMbps
-          : toolState.speedResult?.downloadMbps || 0;
-        const initialMode = toolState.speedRunning ? toolState.speedPhase : toolState.speedResult ? 'download' : 'idle';
-        gaugeInstance.setValue(initialGaugeVal, initialMode);
+        loadSpeedtestMod()
+          .then(({ createSpeedometerGauge, readClientDeviceTelemetry }) => {
+            if (!mounted || tabMountToken !== currentMountToken || toolState.activeSubTab !== 'speedtest') return;
+            toolState.speedDevice = readClientDeviceTelemetry();
+            const liveGauge = rootEl.querySelector('#speedtest-gauge-canvas');
+            if (!liveGauge) return;
+            gaugeInstance = createSpeedometerGauge(liveGauge);
+            const initialGaugeVal = toolState.speedRunning
+              ? toolState.speedLiveMbps
+              : toolState.speedResult?.downloadMbps || 0;
+            const initialMode = toolState.speedRunning ? toolState.speedPhase : toolState.speedResult ? 'download' : 'idle';
+            gaugeInstance.setValue(initialGaugeVal, initialMode);
+          })
+          .catch(() => {});
       }
       rootEl.querySelector('#speedtest-start-btn')?.addEventListener('click', startSpeedtest);
       rootEl.querySelector('#speedtest-cancel-btn')?.addEventListener('click', () => {
         if (speedAbort) speedAbort.abort();
       });
+    }
+
+    if (toolState.activeSubTab === 'converter' && !_converterMod) {
+      loadConverterMod()
+        .then(() => {
+          if (mounted && tabMountToken === currentMountToken && toolState.activeSubTab === 'converter') {
+            render();
+          }
+        })
+        .catch(() => {});
     }
 
     if (toolState.activeSubTab === 'downloader') {
@@ -4885,6 +5000,7 @@ export function createToolsHubController({
         render();
         rootEl.querySelector('#dl-conv-progress-card')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
         try {
+          const { fetchMediaDownload } = await loadDownloaderMod();
           const result = await fetchMediaDownload(url, updateConvProgressDom);
           toolState.dlResult = result;
           const photoCount = result.photos?.length || 0;
@@ -4930,6 +5046,7 @@ export function createToolsHubController({
         render();
         rootEl.querySelector('#dl-save-progress-card')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
         try {
+          const { triggerBatchPhotoDownload } = await loadDownloaderMod();
           await triggerBatchPhotoDownload(
             photos,
             `${toolState.dlResult.platform}-${toolState.dlResult.title}`,
@@ -4966,6 +5083,7 @@ export function createToolsHubController({
           render();
           rootEl.querySelector('#dl-save-progress-card')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
           try {
+            const { triggerDirectMediaSave } = await loadDownloaderMod();
             await triggerDirectMediaSave(
               url,
               `${toolState.dlResult?.platform || 'sosmed'}-foto-${idx + 1}`,
@@ -5006,14 +5124,15 @@ export function createToolsHubController({
           render();
           rootEl.querySelector('#dl-save-progress-card')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
           try {
+            const dlMod = await loadDownloaderMod();
             if (item.extractAudioFromVideo) {
-              await extractAudioFromVideoUrl(
+              await dlMod.extractAudioFromVideoUrl(
                 item.url,
                 `${toolState.dlResult.platform}-${toolState.dlResult.title}`,
                 updateSaveProgressDom
               );
             } else {
-              await triggerDirectMediaSave(
+              await dlMod.triggerDirectMediaSave(
                 item.url,
                 `${toolState.dlResult.platform}-${toolState.dlResult.title}`,
                 item.ext,
@@ -5230,103 +5349,128 @@ export function createToolsHubController({
     }
 
     if (toolState.activeSubTab === 'music') {
-      const ctrl = ensureMusicHubController();
-      if (ctrl) {
-        bindMusicStageAndQueueEvents(ctrl);
-        bindMusicCategoryDrawerEvents(ctrl);
-
-        const searchForm = rootEl.querySelector('#music-hub-search-form');
-        const searchInput = rootEl.querySelector('#music-hub-search-input');
-
-        searchForm?.addEventListener('submit', (e) => {
-          e.preventDefault();
-          e.stopPropagation();
-          toolState.musicBrowserTab = 'queue';
-          ctrl.search(searchInput?.value || '', { autoPlayFirst: false });
-        });
-
-        rootEl.querySelector('#music-hub-clear-search')?.addEventListener('click', (e) => {
-          e.stopPropagation();
-          if (searchInput) searchInput.value = '';
-          toolState.musicBrowserTab = 'queue';
-          ctrl.clearSearch();
-        });
-
-        if (musicUnsub) {
-          musicUnsub();
-          musicUnsub = null;
-        }
-        musicUnsub = ctrl.subscribe((nextState, kind) => {
-          if (!mounted || toolState.activeSubTab !== 'music') return;
-          if (kind === 'time' || kind === 'seek') {
-            syncMusicHubTimeDom(nextState);
-            return;
-          }
-          if (kind === 'init') return;
-
-          if (kind === 'progress') {
-            const pBanner = rootEl.querySelector('#music-hub-progress-banner');
-            const pct = Math.max(8, Math.min(99, Number(nextState.loadingProgress) || 32));
-            if (pBanner) {
-              const fill = pBanner.querySelector('.ytm-progress-fill');
-              const pctEl = pBanner.querySelector('.ytm-progress-pct');
-              const lbl = pBanner.querySelector('.ytm-progress-spin-wrap > span:last-child');
-              if (fill) fill.style.width = `${pct}%`;
-              if (pctEl) pctEl.textContent = `${pct}%`;
-              if (lbl && nextState.loadingLabel) lbl.textContent = nextState.loadingLabel;
+      if (!_musicMods) {
+        loadMusicMods()
+          .then(() => {
+            if (mounted && tabMountToken === currentMountToken && toolState.activeSubTab === 'music') {
+              render();
             }
-            const stageBuf = rootEl.querySelector('.ytm-stage-buffer-bar');
-            if (stageBuf && nextState.isLoading) {
-              const fill = stageBuf.querySelector('.ytm-progress-fill');
-              const pctEl = stageBuf.querySelector('.ytm-progress-pct');
-              if (fill) fill.style.width = `${pct}%`;
-              if (pctEl) pctEl.textContent = `${pct}%`;
-            }
-            const qPill = rootEl.querySelector('.ytm-queue-count .ytm-loading-pill');
-            if (qPill) {
-              qPill.innerHTML = `<span class="ytm-inline-spinner" aria-hidden="true"></span> ${pct}%`;
-            }
-            return;
-          }
-
-          const activeEl = document.activeElement;
-          const typingInStagePicker = Boolean(activeEl?.closest('#music-hub-stage-pl-picker'));
-          const typingInQueueInput = Boolean(
-            activeEl?.closest('#music-hub-queue-wrap') &&
-              (activeEl.tagName === 'INPUT' || activeEl.tagName === 'TEXTAREA')
-          );
-
-          const stageWrap = rootEl.querySelector('.music-hub-stage-wrap');
-          const catSlot = rootEl.querySelector('#music-hub-category-slot');
-          const queueWrap = rootEl.querySelector('#music-hub-queue-wrap');
-          if (
-            stageWrap &&
-            kind !== 'trends' &&
-            !isHubSeeking &&
-            !typingInStagePicker &&
-            activeEl?.id !== 'music-hub-volume-slider'
-          ) {
-            stageWrap.innerHTML = buildMusicHubStageHtml(nextState);
-          }
-          if (catSlot && (kind === 'trends' || kind === 'pool' || kind === 'search')) {
-            catSlot.innerHTML = buildMusicCategoryBarAndDrawerHtml(nextState);
-            bindMusicCategoryDrawerEvents(ctrl);
-          }
-          if (queueWrap && kind !== 'trends' && (!typingInQueueInput || kind === 'library')) {
-            queueWrap.innerHTML = buildMusicHubQueueHtml(nextState);
-          }
+          })
+          .catch(() => {});
+      } else {
+        const ctrl = ensureMusicHubController();
+        if (ctrl) {
           bindMusicStageAndQueueEvents(ctrl);
-        });
+          bindMusicCategoryDrawerEvents(ctrl);
+
+          const searchForm = rootEl.querySelector('#music-hub-search-form');
+          const searchInput = rootEl.querySelector('#music-hub-search-input');
+
+          searchForm?.addEventListener('submit', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            toolState.musicBrowserTab = 'queue';
+            ctrl.search(searchInput?.value || '', { autoPlayFirst: false });
+          });
+
+          rootEl.querySelector('#music-hub-clear-search')?.addEventListener('click', (e) => {
+            e.stopPropagation();
+            if (searchInput) searchInput.value = '';
+            toolState.musicBrowserTab = 'queue';
+            ctrl.clearSearch();
+          });
+
+          if (musicUnsub) {
+            musicUnsub();
+            musicUnsub = null;
+          }
+          musicUnsub = ctrl.subscribe((nextState, kind) => {
+            if (!mounted || toolState.activeSubTab !== 'music') return;
+            if (kind === 'time' || kind === 'seek') {
+              syncMusicHubTimeDom(nextState);
+              return;
+            }
+            if (kind === 'init') return;
+
+            if (kind === 'progress') {
+              const pBanner = rootEl.querySelector('#music-hub-progress-banner');
+              const pct = Math.max(8, Math.min(99, Number(nextState.loadingProgress) || 32));
+              if (pBanner) {
+                const fill = pBanner.querySelector('.ytm-progress-fill');
+                const pctEl = pBanner.querySelector('.ytm-progress-pct');
+                const lbl = pBanner.querySelector('.ytm-progress-spin-wrap > span:last-child');
+                if (fill) fill.style.width = `${pct}%`;
+                if (pctEl) pctEl.textContent = `${pct}%`;
+                if (lbl && nextState.loadingLabel) lbl.textContent = nextState.loadingLabel;
+              }
+              const stageBuf = rootEl.querySelector('.ytm-stage-buffer-bar');
+              if (stageBuf && nextState.isLoading) {
+                const fill = stageBuf.querySelector('.ytm-progress-fill');
+                const pctEl = stageBuf.querySelector('.ytm-progress-pct');
+                if (fill) fill.style.width = `${pct}%`;
+                if (pctEl) pctEl.textContent = `${pct}%`;
+              }
+              const qPill = rootEl.querySelector('.ytm-queue-count .ytm-loading-pill');
+              if (qPill) {
+                qPill.innerHTML = `<span class="ytm-inline-spinner" aria-hidden="true"></span> ${pct}%`;
+              }
+              return;
+            }
+
+            const activeEl = document.activeElement;
+            const typingInStagePicker = Boolean(activeEl?.closest('#music-hub-stage-pl-picker'));
+            const typingInQueueInput = Boolean(
+              activeEl?.closest('#music-hub-queue-wrap') &&
+                (activeEl.tagName === 'INPUT' || activeEl.tagName === 'TEXTAREA')
+            );
+
+            const stageWrap = rootEl.querySelector('.music-hub-stage-wrap');
+            const catSlot = rootEl.querySelector('#music-hub-category-slot');
+            const queueWrap = rootEl.querySelector('#music-hub-queue-wrap');
+            if (
+              stageWrap &&
+              kind !== 'trends' &&
+              !isHubSeeking &&
+              !typingInStagePicker &&
+              activeEl?.id !== 'music-hub-volume-slider'
+            ) {
+              stageWrap.innerHTML = buildMusicHubStageHtml(nextState);
+            }
+            if (catSlot && (kind === 'trends' || kind === 'pool' || kind === 'search')) {
+              catSlot.innerHTML = buildMusicCategoryBarAndDrawerHtml(nextState);
+              bindMusicCategoryDrawerEvents(ctrl);
+            }
+            if (queueWrap && kind !== 'trends' && (!typingInQueueInput || kind === 'library')) {
+              queueWrap.innerHTML = buildMusicHubQueueHtml(nextState);
+            }
+            bindMusicStageAndQueueEvents(ctrl);
+          });
+        }
       }
     }
 
     if (toolState.activeSubTab === 'dracin') {
       const dracinMount = rootEl.querySelector('#dracin-hub-mount');
       if (dracinMount) {
-        if (!dracinCtrl) {
-          dracinCtrl = createDracinController({ onToast });
+        if (dracinCtrl) {
+          dracinCtrl.mount(dracinMount);
+        } else {
+          dracinMount.innerHTML = renderLazyLoadingCard('Drama China (Dracin)');
+          loadDracinMod()
+            .then(({ createDracinController }) => {
+              if (!mounted || tabMountToken !== currentMountToken || toolState.activeSubTab !== 'dracin') return;
+              const liveMount = rootEl.querySelector('#dracin-hub-mount');
+              if (!liveMount) return;
+              if (!dracinCtrl) dracinCtrl = createDracinController({ onToast });
+              dracinCtrl.mount(liveMount);
+            })
+            .catch(() => {
+              if (mounted && tabMountToken === currentMountToken) {
+                const liveMount = rootEl.querySelector('#dracin-hub-mount');
+                if (liveMount) liveMount.innerHTML = '<div class="tool-error">Gagal memuat modul Drama China. Muat ulang halaman.</div>';
+              }
+            });
         }
-        dracinCtrl.mount(dracinMount);
       }
     } else if (dracinCtrl) {
       dracinCtrl.unmount();
@@ -5335,10 +5479,20 @@ export function createToolsHubController({
     if (toolState.activeSubTab === 'audioeditor') {
       const aeMount = rootEl.querySelector('#audioeditor-hub-mount');
       if (aeMount) {
-        if (!audioEditorCtrl) {
-          audioEditorCtrl = createAudioEditorController({ onToast });
+        if (audioEditorCtrl) {
+          audioEditorCtrl.mount(aeMount);
+        } else {
+          aeMount.innerHTML = renderLazyLoadingCard('Audio Editor Studio');
+          loadAudioEditorMod()
+            .then(({ createAudioEditorController }) => {
+              if (!mounted || tabMountToken !== currentMountToken || toolState.activeSubTab !== 'audioeditor') return;
+              const liveMount = rootEl.querySelector('#audioeditor-hub-mount');
+              if (!liveMount) return;
+              if (!audioEditorCtrl) audioEditorCtrl = createAudioEditorController({ onToast });
+              audioEditorCtrl.mount(liveMount);
+            })
+            .catch(() => {});
         }
-        audioEditorCtrl.mount(aeMount);
       }
     } else if (audioEditorCtrl) {
       audioEditorCtrl.unmount();
@@ -5347,10 +5501,20 @@ export function createToolsHubController({
     if (toolState.activeSubTab === 'manifestai') {
       const maiMount = rootEl.querySelector('#manifestai-hub-mount');
       if (maiMount) {
-        if (!manifestAiCtrl) {
-          manifestAiCtrl = createManifestAiController({ onToast });
+        if (manifestAiCtrl) {
+          manifestAiCtrl.mount(maiMount);
+        } else {
+          maiMount.innerHTML = renderLazyLoadingCard('Manifest AI');
+          loadManifestAiMod()
+            .then(({ createManifestAiController }) => {
+              if (!mounted || tabMountToken !== currentMountToken || toolState.activeSubTab !== 'manifestai') return;
+              const liveMount = rootEl.querySelector('#manifestai-hub-mount');
+              if (!liveMount) return;
+              if (!manifestAiCtrl) manifestAiCtrl = createManifestAiController({ onToast });
+              manifestAiCtrl.mount(liveMount);
+            })
+            .catch(() => {});
         }
-        manifestAiCtrl.mount(maiMount);
       }
     } else if (manifestAiCtrl) {
       manifestAiCtrl.unmount();
@@ -5359,10 +5523,20 @@ export function createToolsHubController({
     if (toolState.activeSubTab === 'plagiarism') {
       const plgMount = rootEl.querySelector('#plagiarism-hub-mount');
       if (plgMount) {
-        if (!plagiarismCtrl) {
-          plagiarismCtrl = createPlagiarismController({ onToast });
+        if (plagiarismCtrl) {
+          plagiarismCtrl.mount(plgMount);
+        } else {
+          plgMount.innerHTML = renderLazyLoadingCard('Cek Plagiarisme');
+          loadPlagiarismMod()
+            .then(({ createPlagiarismController }) => {
+              if (!mounted || tabMountToken !== currentMountToken || toolState.activeSubTab !== 'plagiarism') return;
+              const liveMount = rootEl.querySelector('#plagiarism-hub-mount');
+              if (!liveMount) return;
+              if (!plagiarismCtrl) plagiarismCtrl = createPlagiarismController({ onToast });
+              plagiarismCtrl.mount(liveMount);
+            })
+            .catch(() => {});
         }
-        plagiarismCtrl.mount(plgMount);
       }
     } else if (plagiarismCtrl) {
       plagiarismCtrl.unmount();
@@ -5373,8 +5547,21 @@ export function createToolsHubController({
       if (nvlMount) {
         if (novelCtrl) {
           novelCtrl.unmount();
+          novelCtrl = null;
         }
-        novelCtrl = createNovelController(nvlMount);
+        if (_novelMod) {
+          novelCtrl = _novelMod.createNovelController(nvlMount);
+        } else {
+          nvlMount.innerHTML = renderLazyLoadingCard('Novel Terpadu');
+          loadNovelMod()
+            .then(({ createNovelController }) => {
+              if (!mounted || tabMountToken !== currentMountToken || toolState.activeSubTab !== 'novel') return;
+              const liveMount = rootEl.querySelector('#novel-hub-mount');
+              if (!liveMount) return;
+              novelCtrl = createNovelController(liveMount);
+            })
+            .catch(() => {});
+        }
       }
     } else if (novelCtrl) {
       novelCtrl.unmount();
@@ -5384,10 +5571,20 @@ export function createToolsHubController({
     if (toolState.activeSubTab === 'callerid') {
       const cidMount = rootEl.querySelector('#callerid-hub-mount');
       if (cidMount) {
-        if (!callerIdCtrl) {
-          callerIdCtrl = createCallerIdController({ onToast });
+        if (callerIdCtrl) {
+          callerIdCtrl.mount(cidMount);
+        } else {
+          cidMount.innerHTML = renderLazyLoadingCard('Cek Nomor & Caller ID');
+          loadCallerIdMod()
+            .then(({ createCallerIdController }) => {
+              if (!mounted || tabMountToken !== currentMountToken || toolState.activeSubTab !== 'callerid') return;
+              const liveMount = rootEl.querySelector('#callerid-hub-mount');
+              if (!liveMount) return;
+              if (!callerIdCtrl) callerIdCtrl = createCallerIdController({ onToast });
+              callerIdCtrl.mount(liveMount);
+            })
+            .catch(() => {});
         }
-        callerIdCtrl.mount(cidMount);
       }
     } else if (callerIdCtrl) {
       callerIdCtrl.unmount();
@@ -5553,7 +5750,13 @@ export function createToolsHubController({
       }
     },
     setUtilitiesConfig(nextUtilities) {
-      toolState.utilities = normalizeUtilityConfig(nextUtilities);
+      const normalized = normalizeUtilityConfig(nextUtilities);
+      const nextSig = computeUtilitiesSignature(normalized);
+      toolState.utilities = normalized;
+      if (nextSig === lastUtilitiesSignature) {
+        return;
+      }
+      lastUtilitiesSignature = nextSig;
       if (
         mounted &&
         !toolState.dlLoading &&
