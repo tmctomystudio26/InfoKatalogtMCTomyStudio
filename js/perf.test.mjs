@@ -11,6 +11,13 @@ import {
   shouldEnableDualVideoPreload,
   shouldUseNativeDomFullscreen,
 } from './perf-guard.js';
+import {
+  filterDracinCatalog,
+  formatShortQualityBadge,
+  mergeParallelDracinFeeds,
+  parseServerResolutionHeight,
+  pickBestPlaybackServer,
+} from './dracin-logic.js';
 
 test('detectLowEndDevice identifies budget Android/low-RAM/saveData devices vs desktop workstations', () => {
   assert.equal(
@@ -157,7 +164,77 @@ test('tools-ui.js uses dynamic lazy imports instead of eager static imports for 
   // Verify Dracin & Novel fullscreen callers guard requestFullscreen via shouldUseNativeDomFullscreen
   const dracinUiSrc = fs.readFileSync(path.join(repoDir, 'js/dracin-ui.js'), 'utf8');
   const novelUiSrc = fs.readFileSync(path.join(repoDir, 'js/novel-ui.js'), 'utf8');
-  assert.match(dracinUiSrc, /shouldUseNativeDomFullscreen\(/, 'dracin-ui.js must guard requestFullscreen with shouldUseNativeDomFullscreen');
+  assert.match(dracinUiSrc, /shouldUseNativeDomFullscreen\(/, 'dracin-ui.js must guard requestFullscreen fallback with shouldUseNativeDomFullscreen');
+  assert.match(dracinUiSrc, /navigationUI:\s*'hide'/, 'dracin-ui.js must request true fullscreen with navigationUI: hide');
+  assert.match(dracinUiSrc, /dracin-rail-quality-btn/, 'dracin-ui.js must provide an in-fullscreen resolution switcher button');
   assert.match(dracinUiSrc, /window\.addEventListener\('popstate'/, 'dracin-ui.js must handle Android Back button via popstate in Cinema Fullscreen');
   assert.match(novelUiSrc, /shouldUseNativeDomFullscreen\(/, 'novel-ui.js must guard requestFullscreen with shouldUseNativeDomFullscreen');
+
+  // Verify CENC decryptor supports AbortSignal & micro-batch yielding to avoid 720P+ mobile freeze
+  const cencSrc = fs.readFileSync(path.join(repoDir, 'js/dracin-cenc.js'), 'utf8');
+  assert.match(cencSrc, /BATCH_SIZE\s*=\s*16/, 'dracin-cenc.js must batch sample decryption');
+  assert.match(cencSrc, /signal\?\.aborted/, 'dracin-cenc.js must honor AbortSignal during decryption');
+
+  // Verify live feed engine supports cache busting & unlimited keyword waves
+  const dracinSrc = fs.readFileSync(path.join(repoDir, 'js/dracin.js'), 'utf8');
+  assert.match(dracinSrc, /X-No-Cache/, 'dracin.js must bypass proxy cache on forceRefresh');
+  assert.match(dracinSrc, /LIVE_DISCOVERY_KEYWORDS/, 'dracin.js must support unlimited multi-keyword discovery waves');
+});
+
+test('v78 resolution helpers & mobile anti-freeze Auto-540P selector work accurately', () => {
+  const servers = [
+    { id: 's-1080', kind: 'cenc-mp4', qualityLabel: '1080P', label: 'Melolo Original 1080P (CENC HD)' },
+    { id: 's-720', kind: 'cenc-mp4', qualityLabel: '720P', label: 'Melolo Original 720P (CENC HD)' },
+    { id: 's-540', kind: 'cenc-mp4', qualityLabel: '540P', label: 'Melolo Original 540P (CENC HD)' },
+    { id: 's-480', kind: 'cenc-mp4', qualityLabel: '480P', label: 'Melolo Original 480P (CENC HD)' },
+  ];
+
+  assert.equal(parseServerResolutionHeight(servers[0]), 1080);
+  assert.equal(parseServerResolutionHeight(servers[2]), 540);
+  assert.equal(formatShortQualityBadge(servers[2]), '540P');
+  assert.equal(formatShortQualityBadge({ qualityLabel: '' }), 'HD');
+
+  // Mobile/low-end Auto defaults to smooth anti-freeze 540P instead of heavy 1080P/720P
+  assert.equal(
+    pickBestPlaybackServer(servers, null, { preferredQuality: 'auto', isMobile: true, isLowEnd: true })?.id,
+    's-540'
+  );
+  // Desktop Auto preserves highest default server (1080P / first entry)
+  assert.equal(
+    pickBestPlaybackServer(servers, null, { preferredQuality: 'auto', isMobile: false, isLowEnd: false })?.id,
+    's-1080'
+  );
+  // Explicit user selection always overrides mobile default (e.g. user chooses 720P or 480P in fullscreen)
+  assert.equal(
+    pickBestPlaybackServer(servers, null, { preferredQuality: '720p', isMobile: true, isLowEnd: true })?.id,
+    's-720'
+  );
+  assert.equal(
+    pickBestPlaybackServer(servers, null, { preferredQuality: '480p', isMobile: false, isLowEnd: false })?.id,
+    's-480'
+  );
+});
+
+test('v78 mergeParallelDracinFeeds liveFirst places fresh daily releases ahead of static baseline & latest filter works', () => {
+  const baseline = [
+    { id: 'old-1', title: 'Drama Lama Statis', platformId: 'dramabox', isLiveFresh: false },
+  ];
+  const liveBuckets = [
+    {
+      sourceId: 'nuno-dramabox-latest',
+      fallbackPlatformId: 'dramabox',
+      items: [
+        { id: 'new-1', title: 'Rilis Hari Ini CEO Pewaris', platformId: 'dramabox', liveSection: 'latest' },
+      ],
+    },
+  ];
+
+  const liveFirstList = mergeParallelDracinFeeds(liveBuckets, baseline, { liveFirst: true });
+  assert.equal(liveFirstList[0].title, 'Rilis Hari Ini CEO Pewaris');
+  assert.equal(liveFirstList[0].isLiveFresh, true);
+  assert.equal(liveFirstList[1].title, 'Drama Lama Statis');
+
+  const latestOnly = filterDracinCatalog(liveFirstList, { genreId: 'latest' });
+  assert.equal(latestOnly.length, 1);
+  assert.equal(latestOnly[0].title, 'Rilis Hari Ini CEO Pewaris');
 });

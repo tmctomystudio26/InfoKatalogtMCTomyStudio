@@ -21,10 +21,12 @@ import {
   computePreloadEpisodeTargets,
   filterDracinCatalog,
   formatDracinUserError,
+  formatShortQualityBadge,
   getActiveSubtitleCue,
   getGenreLabel,
   getNextPrevEpisode,
   isFullFreeDrama,
+  parseServerResolutionHeight,
   pickBestPlaybackServer,
   resolveAutoSubtitleLang,
   resolveCleanScreenState,
@@ -32,8 +34,9 @@ import {
   shouldPreserveFullscreenOnEpisodeChange,
   toggleFavoriteDramaId,
   upsertWatchHistory,
-} from './dracin-logic.js?v=73';
+} from './dracin-logic.js?v=78';
 import {
+  clearDracinFeedCaches,
   fetchAiDramaInsights,
   fetchDramaDetail,
   fetchUnifiedDracinCatalog,
@@ -44,20 +47,21 @@ import {
   prefetchEpisodePlayback,
   resolveEpisodePlayback,
   resolveSansekaiEpisodePlayback,
-} from './dracin.js?v=73';
+} from './dracin.js?v=78';
 import {
   attachClearKeyEme,
   fetchAndDecryptCencMp4,
-} from './dracin-cenc.js?v=73';
+} from './dracin-cenc.js?v=78';
 import {
   computeProgressiveRenderLimit,
   detectLowEndDevice,
   shouldEnableDualVideoPreload,
   shouldUseNativeDomFullscreen,
-} from './perf-guard.js?v=77';
+} from './perf-guard.js?v=78';
 
 const HISTORY_STORAGE_KEY = 'manifestudio_dracin_history_v1';
 const FAVORITES_STORAGE_KEY = 'manifestudio_dracin_favorites_v1';
+const QUALITY_STORAGE_KEY = 'manifestudio_dracin_quality_v1';
 
 let hlsScriptPromise = null;
 
@@ -159,6 +163,7 @@ export function createDracinController({ onToast = () => {} } = {}) {
     // Playback servers & real media state
     servers: [],
     activeServerId: '',
+    preferredQuality: readStorageJson(QUALITY_STORAGE_KEY, 'auto') || 'auto',
     apiSubtitles: [],
     resolvingStream: false,
     streamStatusText: '',
@@ -213,6 +218,8 @@ export function createDracinController({ onToast = () => {} } = {}) {
   let activeEmeCleanup = null;
   let activeMediaAbort = null;
   let streamSessionToken = 0;
+  let pendingSeekSec = 0;
+  let fsPendingResume = false;
 
   // Background dual-video preloader & Melolo CENC LRU decrypted blob cache
   let preloadHls = null;
@@ -220,6 +227,55 @@ export function createDracinController({ onToast = () => {} } = {}) {
   let preloadSessionToken = 0;
   let preloadSlot = null;
   const decryptedBlobCache = new Map();
+
+  function isMobileDeviceEnv() {
+    if (typeof navigator !== 'undefined' && /android|iphone|ipad|ipod|mobile/i.test(navigator.userAgent || '')) {
+      return true;
+    }
+    return typeof window !== 'undefined' && window.innerWidth <= 900;
+  }
+
+  function isLowEndDeviceEnv() {
+    return (
+      (typeof document !== 'undefined' && document.documentElement.dataset.perf === 'lite') ||
+      detectLowEndDevice()
+    );
+  }
+
+  function pickServerForDevice(servers = state.servers, preferredId = null) {
+    return pickBestPlaybackServer(servers, preferredId, {
+      preferredQuality: state.preferredQuality || 'auto',
+      isLowEnd: isLowEndDeviceEnv(),
+      isMobile: isMobileDeviceEnv(),
+    });
+  }
+
+  function switchActiveServer(srvId, { qualityPref = null, preserveTime = true, silentToast = false } = {}) {
+    const target = state.servers.find((s) => s.id === srvId);
+    if (!target) return;
+    if (qualityPref !== null) {
+      state.preferredQuality = qualityPref;
+      writeStorageJson(QUALITY_STORAGE_KEY, qualityPref);
+    }
+    const videoEl = hostEl?.querySelector('#dracin-html5-video');
+    if (preserveTime && videoEl && Number.isFinite(videoEl.currentTime) && videoEl.currentTime > 0.5) {
+      pendingSeekSec = videoEl.currentTime;
+    }
+    primeVideoAudioGesture();
+    state.activeServerId = target.id;
+    state.triedServerIds = new Set();
+    if (!silentToast) {
+      const badge = formatShortQualityBadge(target);
+      onToast(`Resolusi beralih ke ${badge} (${target.label})`);
+      showSwipeHint(`Resolusi ${badge} aktif`);
+    }
+    if (!hostEl?.querySelector('#dracin-player-stage')) {
+      render();
+    } else {
+      syncPlayerEpisodeUiInPlace(getActiveDrama());
+    }
+    attachMediaToActiveStage();
+  }
 
   function getFypQueue() {
     const fypPool = filterDracinCatalog(state.catalog, {
@@ -739,16 +795,12 @@ export function createDracinController({ onToast = () => {} } = {}) {
       btn.addEventListener('click', () => {
         const srvId = btn.getAttribute('data-dracin-server');
         if (!srvId || srvId === state.activeServerId) return;
-        primeVideoAudioGesture();
-        state.activeServerId = srvId;
-        state.triedServerIds = new Set();
-        onToast(`Beralih ke ${btn.textContent?.trim() || 'server lain'}`);
-        if (!hostEl?.querySelector('#dracin-player-stage')) {
-          render();
-        } else {
-          syncPlayerEpisodeUiInPlace(getActiveDrama());
-        }
-        attachMediaToActiveStage();
+        const target = state.servers.find((s) => s.id === srvId);
+        const h = parseServerResolutionHeight(target);
+        switchActiveServer(srvId, {
+          qualityPref: h > 0 ? `${h}p` : 'auto',
+          preserveTime: true,
+        });
       });
     });
     container.querySelector('#dracin-switch-sansekai-btn')?.addEventListener('click', () => {
@@ -762,7 +814,7 @@ export function createDracinController({ onToast = () => {} } = {}) {
     if (!stageEl) return;
     const nav = getNextPrevEpisode(state.currentEpisode, drama.totalEpisodes);
     const activeServer =
-      state.servers.find((s) => s.id === state.activeServerId) || pickBestPlaybackServer(state.servers);
+      state.servers.find((s) => s.id === state.activeServerId) || pickServerForDevice(state.servers);
 
     stageEl.setAttribute('data-episode', String(state.currentEpisode));
 
@@ -774,6 +826,9 @@ export function createDracinController({ onToast = () => {} } = {}) {
 
     const railEpSpan = stageEl.querySelector('#dracin-rail-episodes-btn span');
     if (railEpSpan) railEpSpan.textContent = `Ep ${state.currentEpisode}`;
+
+    const railQualityVal = stageEl.querySelector('#dracin-rail-quality-btn .dracin-rail-quality-val');
+    if (railQualityVal) railQualityVal.textContent = formatShortQualityBadge(activeServer);
 
     const srvLabelEl = stageEl.querySelector('#dracin-stage-server-label');
     if (srvLabelEl) srvLabelEl.textContent = activeServer?.label || 'Streaming Native HD';
@@ -828,10 +883,16 @@ export function createDracinController({ onToast = () => {} } = {}) {
       bindEpisodePickerEvents(pickerWrap);
     }
 
-    const drawerBody = stageEl.querySelector('.dracin-fs-drawer-body');
-    if (drawerBody) {
-      drawerBody.innerHTML = renderEpisodePickerGrid(drama, true);
-      bindEpisodePickerEvents(drawerBody);
+    const drawer = stageEl.querySelector('.dracin-fs-drawer');
+    const drawerBody = drawer?.querySelector('.dracin-fs-drawer-body');
+    if (drawer && drawerBody) {
+      if (drawer.getAttribute('data-drawer-kind') === 'quality') {
+        drawerBody.innerHTML = renderFullscreenQualityOptionsHtml(activeServer);
+        bindFullscreenQualityDrawerEvents(drawer);
+      } else {
+        drawerBody.innerHTML = renderEpisodePickerGrid(drama, true);
+        bindEpisodePickerEvents(drawerBody);
+      }
     }
 
     syncStageChromeInPlace();
@@ -1031,6 +1092,14 @@ export function createDracinController({ onToast = () => {} } = {}) {
       if (token !== streamSessionToken) return;
       if (Number.isFinite(videoEl.duration) && videoEl.duration > 0) {
         state.durationSec = videoEl.duration;
+        if (pendingSeekSec > 0.5 && pendingSeekSec < videoEl.duration - 1) {
+          try {
+            videoEl.currentTime = pendingSeekSec;
+          } catch {
+            // Ignore seek failure
+          }
+          pendingSeekSec = 0;
+        }
       }
       videoEl.playbackRate = state.playbackSpeed;
       if (!state.userMuted && !state.autoplayMutedNotice) {
@@ -1141,7 +1210,7 @@ export function createDracinController({ onToast = () => {} } = {}) {
     destroyActiveMediaEngine();
 
     const activeServer =
-      state.servers.find((s) => s.id === state.activeServerId) || pickBestPlaybackServer(state.servers);
+      state.servers.find((s) => s.id === state.activeServerId) || pickServerForDevice(state.servers);
 
     if (!activeServer) {
       if (!state.resolvingStream) {
@@ -1470,7 +1539,7 @@ export function createDracinController({ onToast = () => {} } = {}) {
     state.servers = streamRes.servers || [];
     state.apiSubtitles = streamRes.subtitles || [];
     state.streamLocked = Boolean(streamRes.locked);
-    const best = pickBestPlaybackServer(state.servers);
+    const best = pickServerForDevice(state.servers);
     state.activeServerId = best?.id || '';
     state.streamError = streamRes.error || '';
     state.resolvingStream = Boolean(best);
@@ -1624,6 +1693,7 @@ export function createDracinController({ onToast = () => {} } = {}) {
     page = 1,
     append = false,
     silent = false,
+    forceRefresh = false,
   } = {}) {
     if (append) {
       state.loadingMore = true;
@@ -1639,33 +1709,74 @@ export function createDracinController({ onToast = () => {} } = {}) {
       render();
     }
 
+    const prevCount = state.catalog.length;
+    const prevIds = new Set(state.catalog.map((d) => d.id));
+    const prevTitleKeys = new Set(
+      state.catalog.map((d) => String(d.title || '').toLowerCase().replace(/[^a-z0-9\u4e00-\u9fff]+/g, '').slice(0, 40))
+    );
+
     try {
-      const res = await fetchUnifiedDracinCatalog({ query, platformId, page });
+      const res = await fetchUnifiedDracinCatalog({ query, platformId, page, forceRefresh });
       if (!append) {
         state.sansekaiFallbackNote = res?.sansekaiFallbackNote || '';
       }
       if (res && Array.isArray(res.items) && res.items.length > 0) {
+        let addedCount = 0;
         if (append) {
-          const existingIds = new Set(state.catalog.map((d) => d.id));
-          const fresh = res.items.filter((d) => !existingIds.has(d.id));
+          const fresh = res.items.filter((d) => {
+            const tk = String(d.title || '').toLowerCase().replace(/[^a-z0-9\u4e00-\u9fff]+/g, '').slice(0, 40);
+            return !prevIds.has(d.id) && (!tk || !prevTitleKeys.has(tk));
+          });
+          addedCount = fresh.length;
           state.catalog = [...state.catalog, ...fresh];
+          if (state.discoverLimit > 0 && fresh.length > 0) {
+            state.discoverLimit += Math.min(24, fresh.length);
+          }
         } else {
           const incomingIds = new Set(res.items.map((d) => d.id));
-          const kept = state.catalog.filter(
-            (d) => !incomingIds.has(d.id) && (platformId === 'all' || platformId === 'sansekai' ? false : d.platformId !== platformId)
+          const incomingTitleKeys = new Set(
+            res.items.map((d) => String(d.title || '').toLowerCase().replace(/[^a-z0-9\u4e00-\u9fff]+/g, '').slice(0, 40))
           );
+          const kept = state.catalog.filter((d) => {
+            const tk = String(d.title || '').toLowerCase().replace(/[^a-z0-9\u4e00-\u9fff]+/g, '').slice(0, 40);
+            return !incomingIds.has(d.id) && (!tk || !incomingTitleKeys.has(tk));
+          });
+          addedCount = res.items.filter((d) => !prevIds.has(d.id)).length;
           state.catalog = [...res.items, ...kept];
+          if (forceRefresh) {
+            state.discoverLimit = 0;
+          }
         }
         state.platformCatalogs[platformId] = {
-          page,
+          page: append ? page : Math.max(page, state.platformCatalogs[platformId]?.page || 1),
           hasMore: Boolean(res.hasMore),
           count: state.catalog.length,
         };
         if (res.activeSources?.length) {
           state.activeSources = Array.from(new Set([...res.activeSources, ...state.activeSources])).slice(0, 8);
         }
+        if (forceRefresh) {
+          onToast(
+            addedCount > 0
+              ? `Katalog live diperbarui (+${addedCount} drama baru · Total ${state.catalog.length} drama)`
+              : `Katalog live tersinkron (${state.catalog.length} drama terbaru di atas)`
+          );
+        } else if (append) {
+          onToast(
+            addedCount > 0
+              ? `+${addedCount} drama baru dimuat (Total ${state.catalog.length} drama)`
+              : `Halaman ${page} selesai dipindai · Tekan lagi untuk gelombang berikutnya`
+          );
+        }
       } else if (!append && state.catalog.length === 0) {
         state.feedError = 'Server platform sedang padat. Coba tekan Muat Ulang.';
+      } else if (append && state.catalog.length === prevCount) {
+        state.platformCatalogs[platformId] = {
+          page,
+          hasMore: true,
+          count: state.catalog.length,
+        };
+        onToast(`Halaman ${page} sedang sibuk — tekan lagi untuk memuat gelombang berikutnya`);
       }
     } catch {
       if (!append && state.catalog.length === 0) {
@@ -1691,6 +1802,10 @@ export function createDracinController({ onToast = () => {} } = {}) {
     });
   }
 
+  function getActiveNativeFullscreenElement() {
+    return document.fullscreenElement || document.webkitFullscreenElement || null;
+  }
+
   async function toggleFullscreenMode(forceValue = null, { fromPopstate = false } = {}) {
     const next = typeof forceValue === 'boolean' ? forceValue : !state.isFullscreen;
     if (next === state.isFullscreen) return;
@@ -1698,10 +1813,47 @@ export function createDracinController({ onToast = () => {} } = {}) {
     fullscreenTransitionBusy = true;
     setTimeout(() => {
       fullscreenTransitionBusy = false;
-    }, 160);
+    }, 240);
 
+    const stageEl = hostEl?.querySelector('#dracin-player-stage');
     const videoEl = hostEl?.querySelector('#dracin-html5-video');
     const wasPlaying = Boolean(videoEl && !videoEl.paused && !videoEl.ended);
+
+    // Anti-Freeze 720P+ Mobile Guard:
+    // If user is on mobile/low-end in Auto mode and currently decoding >= 720P, gracefully downshift
+    // to smooth 540P/480P when entering fullscreen (user can always override via in-fullscreen Resolusi button).
+    let downshiftedToSmooth = false;
+    if (next && state.preferredQuality === 'auto' && (isMobileDeviceEnv() || isLowEndDeviceEnv())) {
+      const curSrv = state.servers.find((s) => s.id === state.activeServerId) || null;
+      const curH = parseServerResolutionHeight(curSrv);
+      if (curH >= 720) {
+        const smoothSrv = pickBestPlaybackServer(state.servers, null, {
+          preferredQuality: 'auto',
+          isLowEnd: true,
+          isMobile: true,
+        });
+        if (smoothSrv && smoothSrv.id !== curSrv?.id && parseServerResolutionHeight(smoothSrv) > 0 && parseServerResolutionHeight(smoothSrv) <= 540) {
+          downshiftedToSmooth = true;
+          if (videoEl && Number.isFinite(videoEl.currentTime) && videoEl.currentTime > 0.5) {
+            pendingSeekSec = videoEl.currentTime;
+          }
+          state.activeServerId = smoothSrv.id;
+          showSwipeHint(`Auto ${formatShortQualityBadge(smoothSrv)} agar layar penuh lancar · Ubah di Resolusi`);
+        }
+      }
+    }
+
+    // Pause-Before-Handoff:
+    // Pausing active hardware MediaCodec decoding right BEFORE requestFullscreen()/exitFullscreen()
+    // prevents Android Chrome's SurfaceFlinger Top-Layer surface reparent deadlock at 720P+!
+    if (videoEl && wasPlaying) {
+      try {
+        videoEl.pause();
+      } catch {
+        // Ignore pause error
+      }
+    }
+    fsPendingResume = wasPlaying && !downshiftedToSmooth;
 
     state.isFullscreen = next;
     state.fullscreenDrawerOpen = false;
@@ -1715,21 +1867,30 @@ export function createDracinController({ onToast = () => {} } = {}) {
     const drawer = hostEl?.querySelector('.dracin-fs-drawer');
     if (drawer) drawer.remove();
 
-    const useNativeDomFs = shouldUseNativeDomFullscreen();
-
     if (next) {
-      if (useNativeDomFs) {
+      let enteredNativeFs = false;
+      // ALWAYS attempt TRUE native fullscreen with navigationUI: 'hide' so Chrome address bar,
+      // tab strip, and Android navigation buttons genuinely hide on mobile & desktop!
+      if (stageEl && !getActiveNativeFullscreenElement()) {
         try {
-          const stageEl = hostEl?.querySelector('#dracin-player-stage');
-          if (stageEl?.requestFullscreen && !document.fullscreenElement) {
-            await stageEl.requestFullscreen();
+          if (typeof stageEl.requestFullscreen === 'function') {
+            try {
+              await stageEl.requestFullscreen({ navigationUI: 'hide' });
+            } catch {
+              await stageEl.requestFullscreen();
+            }
+            enteredNativeFs = Boolean(getActiveNativeFullscreenElement());
+          } else if (typeof stageEl.webkitRequestFullscreen === 'function') {
+            stageEl.webkitRequestFullscreen();
+            enteredNativeFs = true;
           }
         } catch {
-          // Fixed-viewport cinema fullscreen fallback remains seamlessly active
+          enteredNativeFs = false;
         }
-      } else {
-        // Zero-freeze Android/mobile Cinema Fullscreen: avoid Chromium Top-Layer SurfaceFlinger freeze
-        // and hook browser Back button via a lightweight history state entry.
+      }
+
+      // Only push Cinema Fullscreen history fallback when native Fullscreen API is unavailable (e.g. iOS Safari / iframe)
+      if (!enteredNativeFs && !shouldUseNativeDomFullscreen()) {
         try {
           if (!cinemaFsHistoryPushed && window.history?.pushState) {
             window.history.pushState({ ...(window.history.state || {}), dracinCinemaFs: true }, '');
@@ -1740,9 +1901,13 @@ export function createDracinController({ onToast = () => {} } = {}) {
         }
       }
     } else {
-      if (document.fullscreenElement) {
+      if (getActiveNativeFullscreenElement()) {
         try {
-          await document.exitFullscreen();
+          if (typeof document.exitFullscreen === 'function') {
+            await document.exitFullscreen();
+          } else if (typeof document.webkitExitFullscreen === 'function') {
+            document.webkitExitFullscreen();
+          }
         } catch {
           // Ignore exitFullscreen error
         }
@@ -1763,7 +1928,17 @@ export function createDracinController({ onToast = () => {} } = {}) {
       }
     }
 
-    preserveVideoPlaybackAcrossLayout(videoEl, wasPlaying);
+    if (downshiftedToSmooth) {
+      syncPlayerEpisodeUiInPlace(getActiveDrama());
+      attachMediaToActiveStage();
+    } else if (wasPlaying) {
+      setTimeout(() => {
+        if (fsPendingResume) {
+          fsPendingResume = false;
+          preserveVideoPlaybackAcrossLayout(videoEl, true);
+        }
+      }, 140);
+    }
   }
 
   function handleEpisodeStep(direction) {
@@ -1832,9 +2007,16 @@ export function createDracinController({ onToast = () => {} } = {}) {
   }
 
   function onNativeFullscreenChange() {
-    if (!document.fullscreenElement && state.isFullscreen && shouldUseNativeDomFullscreen()) {
-      const videoEl = hostEl?.querySelector('#dracin-html5-video');
-      const wasPlaying = Boolean(videoEl && !videoEl.paused && !videoEl.ended);
+    const fsEl = getActiveNativeFullscreenElement();
+    const videoEl = hostEl?.querySelector('#dracin-html5-video');
+    if (fsEl && fsPendingResume) {
+      fsPendingResume = false;
+      preserveVideoPlaybackAcrossLayout(videoEl, true);
+      return;
+    }
+    if (!fsEl && state.isFullscreen) {
+      const wasPlaying = Boolean(videoEl && !videoEl.paused && !videoEl.ended) || fsPendingResume;
+      fsPendingResume = false;
       state.isFullscreen = false;
       state.cleanScreen = false;
       state.fullscreenDrawerOpen = false;
@@ -1863,6 +2045,7 @@ export function createDracinController({ onToast = () => {} } = {}) {
     globalListenersBound = true;
     document.addEventListener('keydown', onGlobalKeydown);
     document.addEventListener('fullscreenchange', onNativeFullscreenChange);
+    document.addEventListener('webkitfullscreenchange', onNativeFullscreenChange);
     window.addEventListener('popstate', onWindowPopstate);
   }
 
@@ -1871,6 +2054,7 @@ export function createDracinController({ onToast = () => {} } = {}) {
     globalListenersBound = false;
     document.removeEventListener('keydown', onGlobalKeydown);
     document.removeEventListener('fullscreenchange', onNativeFullscreenChange);
+    document.removeEventListener('webkitfullscreenchange', onNativeFullscreenChange);
     window.removeEventListener('popstate', onWindowPopstate);
     document.documentElement.classList.remove('dracin-fs-lock');
     document.body.classList.remove('dracin-fs-lock');
@@ -2328,24 +2512,31 @@ export function createDracinController({ onToast = () => {} } = {}) {
             ${visibleItems.map(renderDramaCard).join('')}
           </div>
           ${
-            pageMeta.hasMore
+            pageMeta.hasMore || (platPageInfo.hasMore && !state.searchQuery)
               ? `
             <div class="dracin-load-more-wrap">
-              <button type="button" class="btn btn-secondary btn-sm" id="dracin-show-more-local-btn" data-next-limit="${pageMeta.nextLimit}">
-                Tampilkan Lebih Banyak (${pageMeta.remaining} drama lainnya)
-              </button>
-            </div>
-          `
-              : platPageInfo.hasMore && state.genreId === 'all'
-              ? `
-            <div class="dracin-load-more-wrap">
-              <button type="button" class="btn btn-secondary btn-sm" id="dracin-load-more-btn" ${state.loadingMore ? 'disabled' : ''}>
-                ${
-                  state.loadingMore
-                    ? 'Memuat halaman berikutnya...'
-                    : 'Muat Lebih Banyak Drama Terpadu'
-                }
-              </button>
+              ${
+                pageMeta.hasMore
+                  ? `
+                <button type="button" class="btn btn-secondary btn-sm" id="dracin-show-more-local-btn" data-next-limit="${pageMeta.nextLimit}">
+                  Tampilkan Lebih Banyak (${pageMeta.remaining} drama tersimpan)
+                </button>
+              `
+                  : ''
+              }
+              ${
+                platPageInfo.hasMore && !state.searchQuery
+                  ? `
+                <button type="button" class="btn btn-primary btn-sm" id="dracin-load-more-btn" data-testid="dracin-load-more-btn" ${state.loadingMore ? 'disabled' : ''}>
+                  ${
+                    state.loadingMore
+                      ? 'Menarik drama baru dari 17 platform...'
+                      : `🌐 Muat Lebih Banyak Drama Live (Hal. ${(platPageInfo.page || 1) + 1})`
+                  }
+                </button>
+              `
+                  : ''
+              }
             </div>
           `
               : ''
@@ -2465,7 +2656,7 @@ export function createDracinController({ onToast = () => {} } = {}) {
     const nav = getNextPrevEpisode(state.currentEpisode, drama.totalEpisodes);
     const isFav = state.favorites.includes(drama.id);
     const activeServer =
-      state.servers.find((s) => s.id === state.activeServerId) || pickBestPlaybackServer(state.servers);
+      state.servers.find((s) => s.id === state.activeServerId) || pickServerForDevice(state.servers);
     const activeCue = state.subtitleIsReal
       ? getActiveSubtitleCue(state.subtitleCues, state.elapsedSec, { loop: false })
       : null;
@@ -2631,6 +2822,11 @@ export function createDracinController({ onToast = () => {} } = {}) {
               <button type="button" class="dracin-rail-btn" id="dracin-rail-episodes-btn" aria-label="Pilih episode">
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
                 <span>Ep ${state.currentEpisode}</span>
+              </button>
+
+              <button type="button" class="dracin-rail-btn" id="dracin-rail-quality-btn" data-testid="dracin-rail-quality-btn" aria-label="Ubah resolusi video">
+                <span class="dracin-rail-quality-val">${escapeHtml(formatShortQualityBadge(activeServer))}</span>
+                <span>Resolusi</span>
               </button>
 
               <button type="button" class="dracin-rail-btn" id="dracin-rail-sub-btn" aria-label="Ganti bahasa subtitle">
@@ -3026,19 +3222,161 @@ export function createDracinController({ onToast = () => {} } = {}) {
     });
   }
 
+  function renderFullscreenQualityOptionsHtml(activeServer) {
+    const isAuto = (state.preferredQuality || 'auto') === 'auto';
+    const autoDesc = isMobileDeviceEnv() || isLowEndDeviceEnv()
+      ? 'Otomatis pilih 540P/480P anti-freeze di HP'
+      : 'Otomatis pilih kualitas terbaik perangkat';
+
+    const serverOptionsHtml = state.servers.length
+      ? state.servers
+          .map((srv) => {
+            const h = parseServerResolutionHeight(srv);
+            const badge = formatShortQualityBadge(srv);
+            const isCurrent = activeServer?.id === srv.id;
+            const hintTag =
+              h > 0 && h <= 540
+                ? '<span class="dracin-quality-badge is-smooth">⚡ Lancar Anti-Freeze</span>'
+                : h >= 720
+                ? '<span class="dracin-quality-badge is-hd">✨ HD Tajam</span>'
+                : '<span class="dracin-quality-badge">Original</span>';
+            return `
+              <button
+                type="button"
+                class="dracin-quality-option ${isCurrent ? 'is-active' : ''}"
+                data-dracin-fs-quality-server="${escapeHtml(srv.id)}"
+                data-dracin-fs-quality-pref="${h > 0 ? `${h}p` : 'auto'}"
+              >
+                <div class="dracin-quality-opt-main">
+                  <strong>${escapeHtml(badge)} · ${escapeHtml(srv.label)}</strong>
+                  <span>${
+                    h >= 720 && isMobileDeviceEnv()
+                      ? 'Resolusi tinggi — jika HP terasa berat, pilih 540P/480P'
+                      : h > 0 && h <= 540
+                      ? 'Ringan & hemat kuota, direkomendasikan untuk semua HP'
+                      : 'Stream aplikasi original tanpa watermark'
+                  }</span>
+                </div>
+                <div class="dracin-quality-opt-right">
+                  ${hintTag}
+                  ${isCurrent ? '<span class="dracin-quality-check" aria-label="Aktif">✓</span>' : ''}
+                </div>
+              </button>
+            `;
+          })
+          .join('')
+      : `<p class="dracin-toolbar-note">${
+          state.resolvingStream
+            ? 'Sedang memuat daftar resolusi episode ini...'
+            : 'Belum ada opsi resolusi lain untuk episode ini.'
+        }</p>`;
+
+    return `
+      <div class="dracin-quality-list" data-testid="dracin-quality-list">
+        <button
+          type="button"
+          class="dracin-quality-option ${isAuto ? 'is-active' : ''}"
+          data-dracin-fs-quality-auto="true"
+        >
+          <div class="dracin-quality-opt-main">
+            <strong>Auto (Direkomendasikan)</strong>
+            <span>${escapeHtml(autoDesc)}</span>
+          </div>
+          <div class="dracin-quality-opt-right">
+            <span class="dracin-quality-badge is-smooth">⚡ Pintar</span>
+            ${isAuto ? '<span class="dracin-quality-check" aria-label="Aktif">✓</span>' : ''}
+          </div>
+        </button>
+        ${serverOptionsHtml}
+      </div>
+    `;
+  }
+
+  function bindFullscreenQualityDrawerEvents(drawer) {
+    if (!drawer) return;
+    drawer.querySelector('[data-dracin-fs-quality-auto]')?.addEventListener('click', () => {
+      state.preferredQuality = 'auto';
+      writeStorageJson(QUALITY_STORAGE_KEY, 'auto');
+      const autoSrv = pickServerForDevice(state.servers, null);
+      drawer.remove();
+      state.fullscreenDrawerOpen = false;
+      if (autoSrv && autoSrv.id !== state.activeServerId) {
+        switchActiveServer(autoSrv.id, { qualityPref: 'auto', preserveTime: true });
+      } else {
+        onToast('Mode resolusi Auto aktif');
+        showSwipeHint('Resolusi Auto aktif');
+      }
+    });
+    drawer.querySelectorAll('[data-dracin-fs-quality-server]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const srvId = btn.getAttribute('data-dracin-fs-quality-server');
+        const qPref = btn.getAttribute('data-dracin-fs-quality-pref') || 'auto';
+        drawer.remove();
+        state.fullscreenDrawerOpen = false;
+        if (!srvId) return;
+        if (srvId === state.activeServerId) {
+          state.preferredQuality = qPref;
+          writeStorageJson(QUALITY_STORAGE_KEY, qPref);
+          onToast(`Resolusi tetap di ${qPref.toUpperCase()}`);
+          return;
+        }
+        switchActiveServer(srvId, { qualityPref: qPref, preserveTime: true });
+      });
+    });
+  }
+
+  function toggleFullscreenQualityDrawer() {
+    const stageEl = hostEl?.querySelector('#dracin-player-stage');
+    if (!stageEl) return;
+    const existing = stageEl.querySelector('.dracin-fs-drawer');
+    if (existing) {
+      const wasQuality = existing.getAttribute('data-drawer-kind') === 'quality';
+      existing.remove();
+      state.fullscreenDrawerOpen = false;
+      if (wasQuality) return;
+    }
+    const activeServer =
+      state.servers.find((s) => s.id === state.activeServerId) || pickServerForDevice(state.servers);
+
+    state.fullscreenDrawerOpen = true;
+    const drawer = document.createElement('div');
+    drawer.className = 'dracin-fs-drawer';
+    drawer.setAttribute('data-drawer-kind', 'quality');
+    drawer.setAttribute('data-testid', 'dracin-quality-drawer');
+    drawer.setAttribute('role', 'dialog');
+    drawer.setAttribute('aria-label', 'Pilih resolusi video');
+    drawer.innerHTML = `
+      <div class="dracin-fs-drawer-head">
+        <strong>Pilih Resolusi Video (${escapeHtml(formatShortQualityBadge(activeServer))})</strong>
+        <button type="button" class="dracin-stage-pill-btn" id="dracin-close-fs-drawer">Tutup</button>
+      </div>
+      <div class="dracin-fs-drawer-body">
+        ${renderFullscreenQualityOptionsHtml(activeServer)}
+      </div>
+    `;
+    stageEl.appendChild(drawer);
+    drawer.querySelector('#dracin-close-fs-drawer')?.addEventListener('click', () => {
+      drawer.remove();
+      state.fullscreenDrawerOpen = false;
+    });
+    bindFullscreenQualityDrawerEvents(drawer);
+  }
+
   function toggleFullscreenEpisodeDrawer() {
     const stageEl = hostEl?.querySelector('#dracin-player-stage');
     const drama = getActiveDrama();
     if (!stageEl || !drama) return;
     const existing = stageEl.querySelector('.dracin-fs-drawer');
     if (existing) {
+      const wasEpisodes = existing.getAttribute('data-drawer-kind') !== 'quality';
       existing.remove();
       state.fullscreenDrawerOpen = false;
-      return;
+      if (wasEpisodes) return;
     }
     state.fullscreenDrawerOpen = true;
     const drawer = document.createElement('div');
     drawer.className = 'dracin-fs-drawer';
+    drawer.setAttribute('data-drawer-kind', 'episodes');
     drawer.setAttribute('role', 'dialog');
     drawer.setAttribute('aria-label', 'Pilih episode layar penuh');
     drawer.innerHTML = `
@@ -3115,7 +3453,13 @@ export function createDracinController({ onToast = () => {} } = {}) {
     });
 
     hostEl.querySelector('#dracin-refresh-live-btn')?.addEventListener('click', () => {
-      refreshLiveCatalog({ query: state.searchQuery, platformId: 'all', page: 1 });
+      clearDracinFeedCaches();
+      refreshLiveCatalog({
+        query: state.searchQuery,
+        platformId: 'all',
+        page: 1,
+        forceRefresh: true,
+      });
     });
 
     const continueDropdown = hostEl.querySelector('#dracin-continue-dropdown');
@@ -3302,6 +3646,10 @@ export function createDracinController({ onToast = () => {} } = {}) {
       } else {
         hostEl.querySelector('.dracin-ep-picker')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
       }
+    });
+
+    hostEl.querySelector('#dracin-rail-quality-btn')?.addEventListener('click', () => {
+      toggleFullscreenQualityDrawer();
     });
 
     hostEl.querySelector('#dracin-rail-sub-btn')?.addEventListener('click', async () => {

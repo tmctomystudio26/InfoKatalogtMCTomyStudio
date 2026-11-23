@@ -37,6 +37,7 @@ export const DRACIN_PLATFORMS = [
 
 export const DRACIN_GENRES = [
   { id: 'all', label: 'Untuk Kamu' },
+  { id: 'latest', label: '✨ Terbaru Live' },
   { id: 'fyp-tiktok', label: '🔥 FYP TikTok Full' },
   { id: 'full-free', label: '🔓 VIP Terbuka (Full Ep)' },
   { id: 'dub-indo', label: '🎙️ Sulih Suara (Dub Indo)' },
@@ -794,6 +795,9 @@ export function normalizeDracinItem(raw = {}, fallbackPlatformId = 'dramabox') {
     hasKnownEpisodeCount,
     isFullFree,
     isVipUnlocked,
+    isLiveFresh: Boolean(raw.isLiveFresh),
+    liveSection: String(raw.liveSection || '').trim().toLowerCase(),
+    fetchedAt: Number(raw.fetchedAt) || 0,
     isTiktokFyp,
     cornerBadge: String(raw.corner || raw.Corner || raw.cornerBadge || '').trim(),
     fullDurationMin: Number(raw.fullDurationMin) > 0 ? Math.round(Number(raw.fullDurationMin)) : 0,
@@ -941,10 +945,35 @@ export function parseSubtitleText(rawText = '') {
 }
 
 /**
- * Selects the best real playable server (MP4 / HLS / CENC-MP4 / Dailymotion Embed),
- * ensuring real video+audio playback is ALWAYS chosen over any non-video fallback.
+ * Extracts numeric resolution height (e.g., 360, 480, 540, 720, 1080) from a server descriptor.
  */
-export function pickBestPlaybackServer(servers = [], preferredId = null) {
+export function parseServerResolutionHeight(server = null) {
+  if (!server || typeof server !== 'object') return 0;
+  const text = `${server.qualityLabel || ''} ${server.label || ''} ${server.id || ''}`;
+  const match = text.match(/\b(2160|1440|1080|720|540|480|360|240)\s*p?\b/i);
+  return match ? Number(match[1]) : 0;
+}
+
+/**
+ * Formats a concise resolution badge (e.g. "540P", "720P", "1080P", "480P", "HD") for player buttons.
+ */
+export function formatShortQualityBadge(server = null) {
+  const height = parseServerResolutionHeight(server);
+  if (height > 0) return `${height}P`;
+  const raw = String(server?.qualityLabel || '').trim().toUpperCase();
+  if (raw && raw.length <= 6) return raw;
+  return 'HD';
+}
+
+/**
+ * Selects the best real playable server (MP4 / HLS / CENC-MP4 / Dailymotion Embed),
+ * supporting explicit resolution preference AND anti-freeze mobile Auto-540P defaults.
+ */
+export function pickBestPlaybackServer(
+  servers = [],
+  preferredId = null,
+  { preferredQuality = 'auto', isLowEnd = false, isMobile = false } = {}
+) {
   const list = Array.isArray(servers) ? servers.filter(Boolean) : [];
   if (!list.length) return null;
   const realKinds = new Set(['video', 'mp4', 'hls', 'cenc-mp4', 'dailymotion']);
@@ -952,12 +981,44 @@ export function pickBestPlaybackServer(servers = [], preferredId = null) {
     const preferred = list.find((s) => s.id === preferredId && realKinds.has(s.kind));
     if (preferred) return preferred;
   }
+
   const priorityOrder = ['video', 'mp4', 'hls', 'cenc-mp4', 'dailymotion'];
+  const realServers = list.filter((s) => realKinds.has(s.kind));
+  const pool = realServers.length > 0 ? realServers : list;
+
+  // Group by highest-priority playable kind first (e.g. video/mp4/hls/cenc-mp4)
+  let primaryKindPool = pool;
   for (const kind of priorityOrder) {
-    const found = list.find((s) => s.kind === kind);
-    if (found) return found;
+    const matched = pool.filter((s) => s.kind === kind);
+    if (matched.length > 0) {
+      primaryKindPool = matched;
+      break;
+    }
   }
-  return list[0];
+
+  const qPref = String(preferredQuality || 'auto').trim().toLowerCase();
+  const explicitTargetMatch = qPref.match(/^(\d{3,4})p?$/);
+  if (explicitTargetMatch) {
+    const targetH = Number(explicitTargetMatch[1]);
+    const exact = primaryKindPool.find((s) => parseServerResolutionHeight(s) === targetH);
+    if (exact) return exact;
+    const withHeights = primaryKindPool
+      .map((s) => ({ s, h: parseServerResolutionHeight(s) }))
+      .filter((x) => x.h > 0)
+      .sort((a, b) => Math.abs(a.h - targetH) - Math.abs(b.h - targetH));
+    if (withHeights.length > 0) return withHeights[0].s;
+  }
+
+  // On mobile or low-end hardware in Auto mode, prefer smooth anti-freeze 540P -> 480P -> 360P -> 720P -> 1080P
+  if (qPref === 'auto' && (isLowEnd || isMobile)) {
+    const mobileOrder = [540, 480, 360, 720, 1080];
+    for (const h of mobileOrder) {
+      const match = primaryKindPool.find((s) => parseServerResolutionHeight(s) === h);
+      if (match) return match;
+    }
+  }
+
+  return primaryKindPool[0] || list[0];
 }
 
 /**
@@ -1350,8 +1411,14 @@ export function extractTokens(text = '') {
 /**
  * Merges multiple parallel API feeds cleanly, deduplicating by normalized title
  * while preserving the rich curated 18-platform baseline and live API results.
+ * When `{ liveFirst: true }`, freshly fetched live releases appear at the top (#1, #2, #3...)
+ * ahead of the static curated baseline so daily platform updates are immediately visible.
  */
-export function mergeParallelDracinFeeds(apiBuckets = [], baseline = CURATED_DRACIN_CATALOG) {
+export function mergeParallelDracinFeeds(
+  apiBuckets = [],
+  baseline = CURATED_DRACIN_CATALOG,
+  { liveFirst = false } = {}
+) {
   const seenKeys = new Set();
   const merged = [];
 
@@ -1366,26 +1433,40 @@ export function mergeParallelDracinFeeds(apiBuckets = [], baseline = CURATED_DRA
     merged.push(item);
   };
 
-  // Curated 18-platform flagship titles first so every platform always has rich verified dramas
-  for (const base of baseline || []) {
-    pushItem(base, base.platformId);
-  }
+  const pushLiveBuckets = () => {
+    const safeBuckets = Array.isArray(apiBuckets)
+      ? apiBuckets.filter((b) => b && Array.isArray(b.items) && b.items.length > 0)
+      : [];
+    const maxLen = safeBuckets.reduce((acc, b) => Math.max(acc, b.items.length), 0);
 
-  // Merge live API buckets round-robin so multiple APIs combine seamlessly
-  const safeBuckets = Array.isArray(apiBuckets)
-    ? apiBuckets.filter((b) => b && Array.isArray(b.items) && b.items.length > 0)
-    : [];
-  const maxLen = safeBuckets.reduce((acc, b) => Math.max(acc, b.items.length), 0);
-
-  for (let i = 0; i < maxLen; i += 1) {
-    for (const bucket of safeBuckets) {
-      if (bucket.items[i]) {
-        pushItem(
-          { ...bucket.items[i], sourceApi: bucket.sourceId || bucket.items[i].sourceApi },
-          bucket.fallbackPlatformId || 'dramabox'
-        );
+    for (let i = 0; i < maxLen; i += 1) {
+      for (const bucket of safeBuckets) {
+        if (bucket.items[i]) {
+          pushItem(
+            {
+              ...bucket.items[i],
+              isLiveFresh: true,
+              sourceApi: bucket.sourceId || bucket.items[i].sourceApi,
+            },
+            bucket.fallbackPlatformId || 'dramabox'
+          );
+        }
       }
     }
+  };
+
+  const pushBaseline = () => {
+    for (const base of baseline || []) {
+      pushItem(base, base.platformId);
+    }
+  };
+
+  if (liveFirst) {
+    pushLiveBuckets();
+    pushBaseline();
+  } else {
+    pushBaseline();
+    pushLiveBuckets();
   }
 
   return merged;
@@ -1442,7 +1523,14 @@ export function filterDracinCatalog(
       }
     }
     if (genreId && genreId !== 'all') {
-      if (genreId === 'full-free') {
+      if (genreId === 'latest') {
+        const isLatest =
+          Boolean(item.isLiveFresh) ||
+          ['latest', 'new', 'hot', 'trending', 'pop', 'coming_soon'].includes(
+            String(item.liveSection || '').toLowerCase()
+          );
+        if (!isLatest) return false;
+      } else if (genreId === 'full-free') {
         if (!isFullFreeDrama(item)) return false;
       } else if (genreId === 'fyp-tiktok') {
         const isFyp =
@@ -2996,6 +3084,8 @@ export function extractNunoSectionItems(rawTextOrJson, platformId = 'dramabox', 
           corner,
           isFullFree: true,
           isVipUnlocked: true,
+          isLiveFresh: true,
+          liveSection: String(section || 'foryou').toLowerCase(),
           isTiktokFyp,
           hasIndonesianDub:
             itemPlat === 'nunomix' ||

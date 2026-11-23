@@ -22,14 +22,14 @@ import {
   matchIndonesianCityQuery,
   planMediaCompression,
   resolveAccurateWeatherCondition,
-} from './tools-logic.js?v=77';
+} from './tools-logic.js?v=78';
 import {
   describeLocationSource,
   resolveUserLocation,
   searchCitiesOnline,
   setManualLocation,
-} from './location.js?v=77';
-import { normalizeUtilityConfig } from './store.js?v=77';
+} from './location.js?v=78';
+import { normalizeUtilityConfig } from './store.js?v=78';
 
 // On-demand cached dynamic module loaders (v76):
 // Keeps initial tools.html boot tiny (<100KB) even on slow 2G/3G mobile networks.
@@ -47,25 +47,25 @@ let _plagiarismMod = null;
 let _novelMod = null;
 let _callerIdMod = null;
 
-const loadGlobeMod = () => (_globeMod ? Promise.resolve(_globeMod) : import('./globe.js?v=77').then((m) => (_globeMod = m)));
-const loadSpeedtestMod = () => (_speedtestMod ? Promise.resolve(_speedtestMod) : import('./speedtest.js?v=77').then((m) => (_speedtestMod = m)));
-const loadDownloaderMod = () => (_downloaderMod ? Promise.resolve(_downloaderMod) : import('./downloader.js?v=77').then((m) => (_downloaderMod = m)));
-const loadCompressorMod = () => (_compressorMod ? Promise.resolve(_compressorMod) : import('./compressor.js?v=77').then((m) => (_compressorMod = m)));
-const loadConverterMod = () => (_converterMod ? Promise.resolve(_converterMod) : import('./converter.js?v=77').then((m) => (_converterMod = m)));
-const loadSongFinderMod = () => (_songFinderMod ? Promise.resolve(_songFinderMod) : import('./song-finder.js?v=77').then((m) => (_songFinderMod = m)));
+const loadGlobeMod = () => (_globeMod ? Promise.resolve(_globeMod) : import('./globe.js?v=78').then((m) => (_globeMod = m)));
+const loadSpeedtestMod = () => (_speedtestMod ? Promise.resolve(_speedtestMod) : import('./speedtest.js?v=78').then((m) => (_speedtestMod = m)));
+const loadDownloaderMod = () => (_downloaderMod ? Promise.resolve(_downloaderMod) : import('./downloader.js?v=78').then((m) => (_downloaderMod = m)));
+const loadCompressorMod = () => (_compressorMod ? Promise.resolve(_compressorMod) : import('./compressor.js?v=78').then((m) => (_compressorMod = m)));
+const loadConverterMod = () => (_converterMod ? Promise.resolve(_converterMod) : import('./converter.js?v=78').then((m) => (_converterMod = m)));
+const loadSongFinderMod = () => (_songFinderMod ? Promise.resolve(_songFinderMod) : import('./song-finder.js?v=78').then((m) => (_songFinderMod = m)));
 const loadMusicMods = () =>
   _musicMods
     ? Promise.resolve(_musicMods)
-    : Promise.all([import('./music.js?v=77'), import('./music-logic.js?v=77')]).then(([music, logic]) => {
+    : Promise.all([import('./music.js?v=78'), import('./music-logic.js?v=78')]).then(([music, logic]) => {
         _musicMods = { music, logic };
         return _musicMods;
       });
-const loadDracinMod = () => (_dracinMod ? Promise.resolve(_dracinMod) : import('./dracin-ui.js?v=77').then((m) => (_dracinMod = m)));
-const loadAudioEditorMod = () => (_audioEditorMod ? Promise.resolve(_audioEditorMod) : import('./audio-editor-ui.js?v=77').then((m) => (_audioEditorMod = m)));
-const loadManifestAiMod = () => (_manifestAiMod ? Promise.resolve(_manifestAiMod) : import('./manifest-ai-ui.js?v=77').then((m) => (_manifestAiMod = m)));
-const loadPlagiarismMod = () => (_plagiarismMod ? Promise.resolve(_plagiarismMod) : import('./plagiarism-ui.js?v=77').then((m) => (_plagiarismMod = m)));
-const loadNovelMod = () => (_novelMod ? Promise.resolve(_novelMod) : import('./novel-ui.js?v=77').then((m) => (_novelMod = m)));
-const loadCallerIdMod = () => (_callerIdMod ? Promise.resolve(_callerIdMod) : import('./callerid-ui.js?v=77').then((m) => (_callerIdMod = m)));
+const loadDracinMod = () => (_dracinMod ? Promise.resolve(_dracinMod) : import('./dracin-ui.js?v=78').then((m) => (_dracinMod = m)));
+const loadAudioEditorMod = () => (_audioEditorMod ? Promise.resolve(_audioEditorMod) : import('./audio-editor-ui.js?v=78').then((m) => (_audioEditorMod = m)));
+const loadManifestAiMod = () => (_manifestAiMod ? Promise.resolve(_manifestAiMod) : import('./manifest-ai-ui.js?v=78').then((m) => (_manifestAiMod = m)));
+const loadPlagiarismMod = () => (_plagiarismMod ? Promise.resolve(_plagiarismMod) : import('./plagiarism-ui.js?v=78').then((m) => (_plagiarismMod = m)));
+const loadNovelMod = () => (_novelMod ? Promise.resolve(_novelMod) : import('./novel-ui.js?v=78').then((m) => (_novelMod = m)));
+const loadCallerIdMod = () => (_callerIdMod ? Promise.resolve(_callerIdMod) : import('./callerid-ui.js?v=78').then((m) => (_callerIdMod = m)));
 
 function renderLazyLoadingCard(label = 'Utilitas') {
   return `

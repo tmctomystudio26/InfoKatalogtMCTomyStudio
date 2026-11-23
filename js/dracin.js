@@ -49,36 +49,117 @@ import {
   resolveNunoPlatformId,
   scoreCrossPlatformDramaMatch,
   unwrapHlsJsonPayload,
-} from './dracin-logic.js?v=73';
+} from './dracin-logic.js?v=78';
 
 const API_TIMEOUT_MS = 8500;
 const EPISODE_TIMEOUT_MS = 9000;
 const NUNO_TIMEOUT_MS = 8500;
 const SANSEKAI_TIMEOUT_MS = 6500;
 const AI_TIMEOUT_MS = 4500;
-const WARM_CATALOG_STORAGE_KEY = 'manifestudio_dracin_warm_catalog_v73';
+const WARM_CATALOG_STORAGE_KEY = 'manifestudio_dracin_warm_catalog_v78';
+const LEGACY_WARM_CATALOG_STORAGE_KEY = 'manifestudio_dracin_warm_catalog_v73';
 
-const NUNO_DEFAULT_LIVE_SECTIONS = [
+// Verified live daily-updated sections on nunodrama.my.id (Page 1)
+const NUNO_DAILY_LATEST_SECTIONS = [
+  { platform: 'dramabox', section: 'foryou', page: 1 },
+  { platform: 'melolo', section: 'latest' },
+  { platform: 'pinedrama', section: 'latest' },
+  { platform: 'netshort', section: 'latest' },
   { platform: 'dramabox', section: 'vip' },
-  { platform: 'pinedrama', section: 'foryou' },
-  { platform: 'dramabox', section: 'foryou' },
-  { platform: 'dramabox', section: 'dubbing' },
-  { platform: 'melolo', section: 'foryou' },
-  { platform: 'netshort', section: 'foryou' },
-  { platform: 'nunomix', section: 'foryou' },
-  { platform: 'reelshort', section: 'foryou' },
-  { platform: 'shortmax', section: 'foryou' },
-  { platform: 'goodshort', section: 'foryou' },
-  { platform: 'flickreels', section: 'foryou' },
-  { platform: 'freereels', section: 'foryou' },
-  { platform: 'dramawave', section: 'foryou' },
-  { platform: 'flextv', section: 'foryou' },
-  { platform: 'kalostv', section: 'foryou' },
-  { platform: 'moboreels', section: 'foryou' },
-  { platform: 'mydrama', section: 'foryou' },
-  { platform: 'stardust', section: 'foryou' },
-  { platform: 'vigloo', section: 'foryou' },
+  { platform: 'flextv', section: 'latest' },
+  { platform: 'reelshort', section: 'new' },
+  { platform: 'stardust', section: 'hot' },
+  { platform: 'freereels', section: 'new' },
+  { platform: 'dramawave', section: 'trending' },
+  { platform: 'goodshort', section: 'trending' },
+  { platform: 'flickreels', section: 'latest' },
+  { platform: 'shortmax', section: 'new' },
+  { platform: 'moboreels', section: 'latest' },
+  { platform: 'mydrama', section: 'latest' },
+  { platform: 'nunomix', section: 'latest' },
+  { platform: 'vigloo', section: 'latest' },
+  { platform: 'kalostv', section: 'latest' },
 ];
+
+// Verified live secondary & paginated sections (Page 2)
+const NUNO_PAGE2_SECTIONS = [
+  { platform: 'dramabox', section: 'foryou', page: 2 },
+  { platform: 'dramabox', section: 'pop' },
+  { platform: 'dramabox', section: 'completed' },
+  { platform: 'dramabox', section: 'dubbing' },
+  { platform: 'dramabox', section: 'coming_soon' },
+  { platform: 'dramabox', section: 'classify' },
+  { platform: 'melolo', section: 'new' },
+  { platform: 'melolo', section: 'rank' },
+  { platform: 'netshort', section: 'trending' },
+  { platform: 'reelshort', section: 'rank' },
+  { platform: 'reelshort', section: 'dubbing' },
+  { platform: 'freereels', section: 'trending' },
+  { platform: 'freereels', section: 'dubbing' },
+  { platform: 'dramawave', section: 'vip' },
+  { platform: 'flextv', section: 'new' },
+  { platform: 'stardust', section: 'new' },
+  { platform: 'vigloo', section: 'hot' },
+  { platform: 'moboreels', section: 'new' },
+  { platform: 'mydrama', section: 'new' },
+  { platform: 'nunomix', section: 'new' },
+];
+
+// Rotating high-yield keywords for unlimited Page 3+ discovery across all 17 platforms
+const LIVE_DISCOVERY_KEYWORDS = [
+  'cinta',
+  'ceo',
+  'nikah',
+  'balas',
+  'kaisar',
+  'naga',
+  'dokter',
+  'pewaris',
+  'jenderal',
+  'istri',
+  'suami',
+  'raja',
+  'putri',
+  'keluarga',
+  'dewa',
+  'bos',
+  'mafia',
+  'reborn',
+  'sihir',
+  'miliarder',
+  'presdir',
+  'sistem',
+  'kembar',
+  'tabib',
+  'pendekar',
+  'ratu',
+  'pangeran',
+  'menantu',
+  'mertua',
+  'takdir',
+  'kaya',
+  'rahasia',
+];
+
+async function runWithConcurrency(taskFactories = [], concurrency = 4) {
+  const results = new Array(taskFactories.length);
+  let cursor = 0;
+  const workerCount = Math.max(1, Math.min(concurrency, taskFactories.length));
+  const workers = Array.from({ length: workerCount }, async () => {
+    while (cursor < taskFactories.length) {
+      const idx = cursor;
+      cursor += 1;
+      try {
+        const value = await taskFactories[idx]();
+        results[idx] = { status: 'fulfilled', value };
+      } catch (reason) {
+        results[idx] = { status: 'rejected', reason };
+      }
+    }
+  });
+  await Promise.all(workers);
+  return results;
+}
 
 const NUNO_SEARCH_PRIORITY_PLATFORMS = [
   'dramabox',
@@ -147,7 +228,9 @@ export function getWarmDracinCatalog() {
   let cachedItems = [];
   try {
     if (typeof localStorage !== 'undefined') {
-      const raw = localStorage.getItem(WARM_CATALOG_STORAGE_KEY);
+      const raw =
+        localStorage.getItem(WARM_CATALOG_STORAGE_KEY) ||
+        localStorage.getItem(LEGACY_WARM_CATALOG_STORAGE_KEY);
       if (raw) {
         const parsed = JSON.parse(raw);
         if (Array.isArray(parsed)) {
@@ -164,7 +247,11 @@ export function getWarmDracinCatalog() {
   if (cachedItems.length === 0) {
     return [...CURATED_DRACIN_CATALOG];
   }
-  return mergeParallelDracinFeeds([{ sourceId: 'warm-cache', items: cachedItems }], CURATED_DRACIN_CATALOG);
+  return mergeParallelDracinFeeds(
+    [{ sourceId: 'warm-cache', items: cachedItems }],
+    CURATED_DRACIN_CATALOG,
+    { liveFirst: true }
+  );
 }
 
 function persistWarmDracinCatalog(items = []) {
@@ -172,10 +259,32 @@ function persistWarmDracinCatalog(items = []) {
     if (typeof localStorage === 'undefined' || !Array.isArray(items) || items.length === 0) return;
     const clean = items
       .filter((it) => it && it.id && it.title && !it.dailymotionId && it.apiProvider !== 'dailymotion')
-      .slice(0, 180);
+      .slice(0, 450);
     localStorage.setItem(WARM_CATALOG_STORAGE_KEY, JSON.stringify(clean));
   } catch {
     // Ignore storage quota
+  }
+}
+
+/**
+ * Clears in-memory and sessionStorage Dracin feed caches so "Perbarui Live"
+ * genuinely fetches brand-new daily releases from upstream platforms.
+ */
+export function clearDracinFeedCaches() {
+  feedCache.clear();
+  try {
+    if (typeof sessionStorage !== 'undefined') {
+      const toRemove = [];
+      for (let i = 0; i < sessionStorage.length; i += 1) {
+        const k = sessionStorage.key(i);
+        if (k && k.startsWith('dracin_cache_')) toRemove.push(k);
+      }
+      for (const k of toRemove) {
+        sessionStorage.removeItem(k);
+      }
+    }
+  } catch {
+    // Ignore storage restrictions
   }
 }
 
@@ -411,25 +520,28 @@ function extractItemsArray(json) {
 export async function fetchNunoPlatformSection(
   platformId = 'dramabox',
   section = 'foryou',
-  { query = '', timeoutMs = NUNO_TIMEOUT_MS } = {}
+  { page = 1, query = '', timeoutMs = NUNO_TIMEOUT_MS, forceRefresh = false } = {}
 ) {
   const nunoPlat = resolveNunoPlatformId(platformId);
   if (!nunoPlat) {
     return { sourceId: `nuno-${platformId}`, platformId, items: [], hasMore: false };
   }
 
+  const safePage = Math.max(1, Math.round(Number(page) || 1));
   const cleanQ = String(query || '').trim();
   const cleanSec = cleanQ ? 'search' : String(section || 'foryou').toLowerCase();
-  const cacheKey = `nuno::${nunoPlat}::${cleanSec}::q:${cleanQ.toLowerCase()}`;
+  const cacheKey = `nuno::${nunoPlat}::${cleanSec}::p${safePage}::q:${cleanQ.toLowerCase()}`;
 
-  if (feedCache.has(cacheKey)) {
-    const cached = feedCache.get(cacheKey);
-    if (Date.now() - cached.ts < 8 * 60_000) return cached.payload;
-  }
-  const sessCached = readSessionCache(cacheKey);
-  if (sessCached && Array.isArray(sessCached.items) && sessCached.items.length > 0) {
-    feedCache.set(cacheKey, { ts: Date.now(), payload: sessCached });
-    return sessCached;
+  if (!forceRefresh) {
+    if (feedCache.has(cacheKey)) {
+      const cached = feedCache.get(cacheKey);
+      if (Date.now() - cached.ts < 8 * 60_000) return cached.payload;
+    }
+    const sessCached = readSessionCache(cacheKey);
+    if (sessCached && Array.isArray(sessCached.items) && sessCached.items.length > 0) {
+      feedCache.set(cacheKey, { ts: Date.now(), payload: sessCached });
+      return sessCached;
+    }
   }
 
   const cfg = await loadEndpointConfig();
@@ -437,30 +549,47 @@ export async function fetchNunoPlatformSection(
     cfg?.nunodrama?.corsBridgeUrl || 'https://r.jina.ai/https://nunodrama.my.id'
   ).replace(/\/+$/, '');
 
+  const pageQuery = safePage > 1 ? `?page=${safePage}` : '';
   const targetPath = cleanQ
     ? `/api/search/${encodeURIComponent(nunoPlat)}?q=${encodeURIComponent(cleanQ)}`
-    : `/api/section/${encodeURIComponent(nunoPlat)}/${encodeURIComponent(cleanSec)}`;
+    : `/api/section/${encodeURIComponent(nunoPlat)}/${encodeURIComponent(cleanSec)}${pageQuery}`;
 
   const url = `${bridgeBase}${targetPath}`;
   let items = [];
 
   try {
-    const rawText = await fetchTextWithTimeout(url, timeoutMs, {
+    const reqHeaders = {
       'X-Return-Format': 'text',
-    });
-    items = extractNunoSectionItems(rawText, nunoPlat, cleanSec);
+      ...(forceRefresh ? { 'X-No-Cache': 'true' } : {}),
+    };
+    const rawText = await fetchTextWithTimeout(url, timeoutMs, reqHeaders);
+    const nowTs = Date.now();
+    items = extractNunoSectionItems(rawText, nunoPlat, cleanSec).map((it) => ({
+      ...it,
+      isLiveFresh: true,
+      liveSection: cleanSec,
+      fetchedAt: nowTs,
+    }));
   } catch {
     // Graceful fallback handled by caller
   }
 
   const platMeta = getPlatformMeta(nunoPlat === 'stardust' ? 'stardusttv' : nunoPlat);
   const payload = {
-    sourceId: `nuno-${nunoPlat}-${cleanSec}`,
+    sourceId: `nuno-${nunoPlat}-${cleanSec}-p${safePage}`,
     platformId: platMeta.id,
-    label: `${platMeta.name} (${cleanSec === 'vip' ? 'VIP Terbuka' : cleanSec === 'dubbing' ? 'Dub Indo' : 'Native HD'})`,
+    label: `${platMeta.name} (${
+      cleanSec === 'vip'
+        ? 'VIP Terbuka'
+        : cleanSec === 'dubbing'
+        ? 'Dub Indo'
+        : cleanSec === 'latest' || cleanSec === 'new'
+        ? 'Rilis Terbaru'
+        : 'Native HD'
+    })`,
     fallbackPlatformId: platMeta.id,
     items,
-    hasMore: false,
+    hasMore: true,
   };
 
   if (items.length > 0) {
@@ -729,108 +858,202 @@ export async function fetchDailymotionFullDramas() {
 }
 
 /**
- * Master Real-Time Unified Catalog Fetcher (v73):
- * - 100% Native Short-Drama Platforms (DramaBox VIP/ForYou/Dubbing, PineDrama TikTok FYP,
- *   Melolo, NetShort, NunoMix Dub Indo, ReelShort, ShortMax, GoodShort, FlickReels, FreeReels,
- *   DramaWave, FlexTV, KalosTV, MoboReels, MyDrama, StardustTV, Vigloo).
- * - ZERO Dailymotion screen-recording items!
- * - Always merges with CURATED_DRACIN_CATALOG (92+ verified native items) and persists to warm cache.
+ * Master Real-Time Unified Catalog Fetcher (v78):
+ * - Polite concurrency wave runner (4 parallel requests max) to eliminate r.jina.ai HTTP 429 drops.
+ * - True cache-busting `forceRefresh` ("Perbarui Live") + live-first ordering so brand-new daily
+ *   releases immediately appear at #1, #2, #3 ahead of static fallback entries.
+ * - Real `?page=N` pagination + verified daily sections (`latest`/`new`/`hot`/`pop`/`completed`/`vip`)
+ *   + unlimited Page 3+ multi-keyword discovery waves across all 17 platforms (removes ~612 item cap!).
  */
-export async function fetchUnifiedDracinCatalog({ query = '', platformId = 'all', page = 1 } = {}) {
+export async function fetchUnifiedDracinCatalog({
+  query = '',
+  platformId = 'all',
+  page = 1,
+  forceRefresh = false,
+} = {}) {
   const cleanQ = String(query || '').trim();
   const safePlatform = String(platformId || 'all').toLowerCase();
+  const safePage = Math.max(1, Math.round(Number(page) || 1));
 
-  if (safePlatform === 'sansekai') {
-    return fetchSansekaiCatalog({ page, query: cleanQ });
+  if (forceRefresh) {
+    clearDracinFeedCaches();
   }
 
-  const withJobCap = (promise, ms = 6800) =>
+  if (safePlatform === 'sansekai') {
+    return fetchSansekaiCatalog({ page: safePage, query: cleanQ });
+  }
+
+  const withJobCap = (promise, ms = 7200) =>
     Promise.race([
       promise.catch(() => null),
       new Promise((resolve) => setTimeout(() => resolve(null), ms)),
     ]);
 
-  let jobs = [];
+  const taskFactories = [];
 
   if (safePlatform === 'all') {
     if (cleanQ) {
-      jobs = [
-        ...NUNO_SEARCH_PRIORITY_PLATFORMS.slice(0, 10).map((pid) =>
-          withJobCap(fetchNunoPlatformSection(pid, 'search', { query: cleanQ, timeoutMs: 6500 }), 6800)
-        ),
-        withJobCap(fetchAnichinPlatformFeed('dramabox', { page, query: cleanQ }), 5500),
-        withJobCap(fetchAnichinPlatformFeed('melolo', { page, query: cleanQ }), 5500),
-        withJobCap(fetchAnichinPlatformFeed('netshort', { page, query: cleanQ }), 5500),
-        withJobCap(fetchAnichinPlatformFeed('reelshort', { page, query: cleanQ }), 5500),
-        withJobCap(fetchAnichinPlatformFeed('shortmax', { page, query: cleanQ }), 5500),
-      ];
+      for (const pid of NUNO_SEARCH_PRIORITY_PLATFORMS.slice(0, 12)) {
+        taskFactories.push(() =>
+          withJobCap(
+            fetchNunoPlatformSection(pid, 'search', {
+              query: cleanQ,
+              timeoutMs: 6500,
+              forceRefresh,
+            }),
+            7000
+          )
+        );
+      }
+      for (const pid of ['dramabox', 'melolo', 'netshort', 'reelshort', 'shortmax']) {
+        taskFactories.push(() =>
+          withJobCap(fetchAnichinPlatformFeed(pid, { page: safePage, query: cleanQ }), 5500)
+        );
+      }
+    } else if (safePage === 1) {
+      for (const entry of NUNO_DAILY_LATEST_SECTIONS) {
+        taskFactories.push(() =>
+          withJobCap(
+            fetchNunoPlatformSection(entry.platform, entry.section, {
+              page: entry.page || 1,
+              timeoutMs: 6800,
+              forceRefresh,
+            }),
+            7200
+          )
+        );
+      }
+      for (const pid of FLAGSHIP_HOME_PLATFORMS) {
+        taskFactories.push(() => withJobCap(fetchAnichinPlatformFeed(pid, { page: 1 }), 5500));
+      }
+    } else if (safePage === 2) {
+      for (const entry of NUNO_PAGE2_SECTIONS) {
+        taskFactories.push(() =>
+          withJobCap(
+            fetchNunoPlatformSection(entry.platform, entry.section, {
+              page: entry.page || 1,
+              timeoutMs: 6800,
+              forceRefresh,
+            }),
+            7200
+          )
+        );
+      }
+      for (const pid of FLAGSHIP_HOME_PLATFORMS) {
+        taskFactories.push(() => withJobCap(fetchAnichinPlatformFeed(pid, { page: 2 }), 5500));
+      }
     } else {
-      const nunoSlice =
-        page > 1
-          ? [
-              { platform: 'dramabox', section: 'trending' },
-              { platform: 'dramabox', section: 'latest' },
-              { platform: 'pinedrama', section: 'foryou' },
-              { platform: 'melolo', section: 'trending' },
-              { platform: 'netshort', section: 'foryou' },
-              { platform: 'nunomix', section: 'foryou' },
-              { platform: 'reelshort', section: 'foryou' },
-              { platform: 'shortmax', section: 'foryou' },
-              { platform: 'goodshort', section: 'foryou' },
-              { platform: 'flickreels', section: 'foryou' },
-              { platform: 'freereels', section: 'foryou' },
-              { platform: 'dramawave', section: 'foryou' },
-            ]
-          : NUNO_DEFAULT_LIVE_SECTIONS;
-
-      jobs = [
-        ...nunoSlice.map((entry) =>
-          withJobCap(fetchNunoPlatformSection(entry.platform, entry.section, { timeoutMs: 6800 }), 7000)
-        ),
-        ...FLAGSHIP_HOME_PLATFORMS.map((pid) =>
-          withJobCap(fetchAnichinPlatformFeed(pid, { page }), 5500)
-        ),
-      ];
+      // Page 3+ Unlimited Live Discovery Wave:
+      // 1) True server pagination (?page=N) on flagship feeds
+      const paginatedPlatforms = ['dramabox', 'melolo', 'reelshort', 'shortmax', 'flextv', 'stardust'];
+      for (const pid of paginatedPlatforms) {
+        taskFactories.push(() =>
+          withJobCap(
+            fetchNunoPlatformSection(pid, 'foryou', {
+              page: safePage,
+              timeoutMs: 6800,
+              forceRefresh,
+            }),
+            7200
+          )
+        );
+      }
+      // 2) Rotating multi-keyword live search across 17 platforms so catalog scales to thousands
+      const waveOffset = safePage - 3;
+      const kw1 = LIVE_DISCOVERY_KEYWORDS[(waveOffset * 2) % LIVE_DISCOVERY_KEYWORDS.length];
+      const kw2 = LIVE_DISCOVERY_KEYWORDS[(waveOffset * 2 + 1) % LIVE_DISCOVERY_KEYWORDS.length];
+      const startPlatIdx = (waveOffset * 5) % NUNO_SEARCH_PRIORITY_PLATFORMS.length;
+      for (let i = 0; i < 6; i += 1) {
+        const pid1 = NUNO_SEARCH_PRIORITY_PLATFORMS[(startPlatIdx + i) % NUNO_SEARCH_PRIORITY_PLATFORMS.length];
+        const pid2 = NUNO_SEARCH_PRIORITY_PLATFORMS[(startPlatIdx + i + 6) % NUNO_SEARCH_PRIORITY_PLATFORMS.length];
+        taskFactories.push(() =>
+          withJobCap(
+            fetchNunoPlatformSection(pid1, 'search', {
+              query: kw1,
+              timeoutMs: 6500,
+              forceRefresh,
+            }),
+            7000
+          )
+        );
+        taskFactories.push(() =>
+          withJobCap(
+            fetchNunoPlatformSection(pid2, 'search', {
+              query: kw2,
+              timeoutMs: 6500,
+              forceRefresh,
+            }),
+            7000
+          )
+        );
+      }
+      for (const pid of FLAGSHIP_HOME_PLATFORMS) {
+        taskFactories.push(() => withJobCap(fetchAnichinPlatformFeed(pid, { page: safePage }), 5500));
+      }
     }
   } else {
     const nunoPlat = resolveNunoPlatformId(safePlatform);
     if (nunoPlat) {
       if (cleanQ) {
-        jobs.push(withJobCap(fetchNunoPlatformSection(nunoPlat, 'search', { query: cleanQ }), 6800));
+        taskFactories.push(() =>
+          withJobCap(
+            fetchNunoPlatformSection(nunoPlat, 'search', { query: cleanQ, forceRefresh }),
+            6800
+          )
+        );
       } else {
-        jobs.push(withJobCap(fetchNunoPlatformSection(nunoPlat, 'foryou'), 6800));
+        taskFactories.push(() =>
+          withJobCap(
+            fetchNunoPlatformSection(nunoPlat, 'foryou', { page: safePage, forceRefresh }),
+            6800
+          )
+        );
         if (nunoPlat === 'dramabox') {
-          jobs.push(withJobCap(fetchNunoPlatformSection('dramabox', 'vip'), 6800));
-          jobs.push(withJobCap(fetchNunoPlatformSection('dramabox', 'dubbing'), 6800));
+          taskFactories.push(() =>
+            withJobCap(fetchNunoPlatformSection('dramabox', 'vip', { forceRefresh }), 6800)
+          );
+          taskFactories.push(() =>
+            withJobCap(fetchNunoPlatformSection('dramabox', 'dubbing', { forceRefresh }), 6800)
+          );
+        } else {
+          taskFactories.push(() =>
+            withJobCap(fetchNunoPlatformSection(nunoPlat, 'latest', { forceRefresh }), 6800)
+          );
         }
       }
     }
     if (ANICHIN_UNIFIED_SOURCES.has(safePlatform)) {
-      jobs.push(withJobCap(fetchAnichinPlatformFeed(safePlatform, { page, query: cleanQ }), 5500));
+      taskFactories.push(() =>
+        withJobCap(fetchAnichinPlatformFeed(safePlatform, { page: safePage, query: cleanQ }), 5500)
+      );
     }
     if (SANSEKAI_SUPPORTED_PLATFORMS.has(safePlatform)) {
-      jobs.push(withJobCap(fetchSansekaiPlatformFeed(safePlatform, { page, query: cleanQ }), 5500));
+      taskFactories.push(() =>
+        withJobCap(fetchSansekaiPlatformFeed(safePlatform, { page: safePage, query: cleanQ }), 5500)
+      );
     }
   }
 
-  const settled = await Promise.allSettled(jobs);
+  const settled = await runWithConcurrency(taskFactories, 4);
   const buckets = [];
   const activeSources = [];
-  let hasMore = page < 3;
 
   for (const s of settled) {
     if (s.status === 'fulfilled' && s.value && Array.isArray(s.value.items) && s.value.items.length > 0) {
       buckets.push(s.value);
       activeSources.push(s.value.label || s.value.sourceId);
-      if (s.value.hasMore) hasMore = true;
     }
   }
 
-  // Merge live native feeds with our 92+ verified native baseline so the catalog is always rich & 100% playable
-  const baseline = cleanQ ? CURATED_DRACIN_CATALOG : getWarmDracinCatalog();
-  const merged = mergeParallelDracinFeeds(buckets, baseline);
+  // Live-first merge so brand-new daily releases ALWAYS appear at #1, #2, #3 ahead of static fallback!
+  const baseline = cleanQ
+    ? CURATED_DRACIN_CATALOG
+    : safePage > 1
+    ? []
+    : getWarmDracinCatalog();
+  const merged = mergeParallelDracinFeeds(buckets, baseline, { liveFirst: true });
 
-  if (!cleanQ && merged.length > 0) {
+  if (!cleanQ && safePage === 1 && merged.length > 0) {
     persistWarmDracinCatalog(merged);
   }
 
@@ -838,9 +1061,10 @@ export async function fetchUnifiedDracinCatalog({ query = '', platformId = 'all'
     items: merged,
     activeSources: Array.from(new Set(activeSources)),
     liveCount: merged.length,
-    hasMore,
+    freshBucketItemsCount: buckets.reduce((acc, b) => acc + (b.items?.length || 0), 0),
+    hasMore: !cleanQ,
     platformId: safePlatform,
-    page,
+    page: safePage,
     fetchedAt: Date.now(),
   };
 }

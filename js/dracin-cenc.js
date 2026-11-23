@@ -205,9 +205,12 @@ function incrementCtrCounter(counter, blocks) {
  * Decrypts an ISO-BMFF CENC AES-128-CTR progressive MP4 ArrayBuffer in-place
  * using WebCrypto subtle.decrypt and patches encv/enca -> original codec tag + removes sinf.
  */
-export async function decryptCencMp4Buffer(arrayBuffer, contentKeyHex) {
+export async function decryptCencMp4Buffer(arrayBuffer, contentKeyHex, signal = null) {
   if (!arrayBuffer || !contentKeyHex || typeof crypto === 'undefined' || !crypto.subtle) {
     throw new Error('WebCrypto tidak tersedia untuk dekripsi video');
+  }
+  if (signal?.aborted) {
+    throw new DOMException('Dekripsi dibatalkan', 'AbortError');
   }
   const keyBytes = hexToBytes(contentKeyHex);
   if (keyBytes.length !== 16) {
@@ -224,12 +227,67 @@ export async function decryptCencMp4Buffer(arrayBuffer, contentKeyHex) {
 
   const buf = new Uint8Array(arrayBuffer);
   const moov = findBox(buf, 0, buf.length, 'moov');
-  if (!moov) return buf;
+  if (!moov) return { buffer: buf, decrypted: false };
 
   const traks = findBoxes(buf, moov.dataStart, moov.end, 'trak');
   let decryptedAny = false;
 
+  const decryptSingleSample = async (loc, info) => {
+    if (!loc || !info || loc.offset + loc.size > buf.length) return false;
+    const counter = buildCtrCounter(info.iv);
+
+    if (info.subsamples && info.subsamples.length > 0) {
+      let totalEnc = 0;
+      for (const sub of info.subsamples) totalEnc += sub.encBytes;
+      if (totalEnc === 0) return false;
+
+      const cipher = new Uint8Array(totalEnc);
+      let cursor = loc.offset;
+      let outCursor = 0;
+      for (const sub of info.subsamples) {
+        cursor += sub.clearBytes;
+        if (sub.encBytes > 0 && cursor + sub.encBytes <= buf.length) {
+          cipher.set(buf.subarray(cursor, cursor + sub.encBytes), outCursor);
+          outCursor += sub.encBytes;
+        }
+        cursor += sub.encBytes;
+      }
+
+      const plainBuf = await crypto.subtle.decrypt(
+        { name: 'AES-CTR', counter, length: 64 },
+        cryptoKey,
+        cipher
+      );
+      const plain = new Uint8Array(plainBuf);
+
+      cursor = loc.offset;
+      outCursor = 0;
+      for (const sub of info.subsamples) {
+        cursor += sub.clearBytes;
+        if (sub.encBytes > 0 && cursor + sub.encBytes <= buf.length) {
+          buf.set(plain.subarray(outCursor, outCursor + sub.encBytes), cursor);
+          outCursor += sub.encBytes;
+        }
+        cursor += sub.encBytes;
+      }
+      return true;
+    }
+
+    const cipher = buf.subarray(loc.offset, loc.offset + loc.size);
+    const plainBuf = await crypto.subtle.decrypt(
+      { name: 'AES-CTR', counter, length: 64 },
+      cryptoKey,
+      cipher
+    );
+    buf.set(new Uint8Array(plainBuf), loc.offset);
+    incrementCtrCounter(counter, Math.ceil(loc.size / 16));
+    return true;
+  };
+
   for (const trak of traks) {
+    if (signal?.aborted) {
+      throw new DOMException('Dekripsi dibatalkan', 'AbortError');
+    }
     const mdia = findBox(buf, trak.dataStart, trak.end, 'mdia');
     const minf = mdia ? findBox(buf, mdia.dataStart, mdia.end, 'minf') : null;
     const stbl = minf ? findBox(buf, minf.dataStart, minf.end, 'stbl') : null;
@@ -280,60 +338,21 @@ export async function decryptCencMp4Buffer(arrayBuffer, contentKeyHex) {
     const sencEntries = parseSencBox(buf, senc, defaultIvSize);
     const count = Math.min(sampleLocs.length, sencEntries.length);
 
-    for (let i = 0; i < count; i += 1) {
-      const loc = sampleLocs[i];
-      const info = sencEntries[i];
-      if (!loc || !info || loc.offset + loc.size > buf.length) continue;
-
-      const counter = buildCtrCounter(info.iv);
-
-      if (info.subsamples && info.subsamples.length > 0) {
-        // CENC subsample encryption: concatenate encrypted slices, decrypt once, write back
-        let totalEnc = 0;
-        for (const sub of info.subsamples) totalEnc += sub.encBytes;
-        if (totalEnc === 0) continue;
-
-        const cipher = new Uint8Array(totalEnc);
-        let cursor = loc.offset;
-        let outCursor = 0;
-        for (const sub of info.subsamples) {
-          cursor += sub.clearBytes;
-          if (sub.encBytes > 0 && cursor + sub.encBytes <= buf.length) {
-            cipher.set(buf.subarray(cursor, cursor + sub.encBytes), outCursor);
-            outCursor += sub.encBytes;
-          }
-          cursor += sub.encBytes;
-        }
-
-        const plainBuf = await crypto.subtle.decrypt(
-          { name: 'AES-CTR', counter, length: 64 },
-          cryptoKey,
-          cipher
-        );
-        const plain = new Uint8Array(plainBuf);
-
-        cursor = loc.offset;
-        outCursor = 0;
-        for (const sub of info.subsamples) {
-          cursor += sub.clearBytes;
-          if (sub.encBytes > 0 && cursor + sub.encBytes <= buf.length) {
-            buf.set(plain.subarray(outCursor, outCursor + sub.encBytes), cursor);
-            outCursor += sub.encBytes;
-          }
-          cursor += sub.encBytes;
-        }
-        decryptedAny = true;
-      } else {
-        // Full-sample encryption
-        const cipher = buf.subarray(loc.offset, loc.offset + loc.size);
-        const plainBuf = await crypto.subtle.decrypt(
-          { name: 'AES-CTR', counter, length: 64 },
-          cryptoKey,
-          cipher
-        );
-        buf.set(new Uint8Array(plainBuf), loc.offset);
-        incrementCtrCounter(counter, Math.ceil(loc.size / 16));
-        decryptedAny = true;
+    // Process samples in parallel micro-batches of 16 and yield every 64 samples so 720P/1080P never freezes mobile UI
+    const BATCH_SIZE = 16;
+    for (let i = 0; i < count; i += BATCH_SIZE) {
+      if (signal?.aborted) {
+        throw new DOMException('Dekripsi dibatalkan', 'AbortError');
+      }
+      const endIdx = Math.min(count, i + BATCH_SIZE);
+      const tasks = [];
+      for (let j = i; j < endIdx; j += 1) {
+        tasks.push(decryptSingleSample(sampleLocs[j], sencEntries[j]));
+      }
+      const results = await Promise.all(tasks);
+      if (results.some(Boolean)) decryptedAny = true;
+      if (i > 0 && i % 64 === 0) {
+        await new Promise((resolve) => setTimeout(resolve, 0));
       }
     }
 
@@ -360,7 +379,10 @@ export async function fetchAndDecryptCencMp4(url, contentKeyHex, signal = null) 
   const res = await fetch(url, { signal });
   if (!res.ok) throw new Error(`Gagal memuat video (${res.status})`);
   const arr = await res.arrayBuffer();
-  const { buffer } = await decryptCencMp4Buffer(arr, contentKeyHex);
+  if (signal?.aborted) {
+    throw new DOMException('Dekripsi dibatalkan', 'AbortError');
+  }
+  const { buffer } = await decryptCencMp4Buffer(arr, contentKeyHex, signal);
   const blob = new Blob([buffer], { type: 'video/mp4' });
   return URL.createObjectURL(blob);
 }
