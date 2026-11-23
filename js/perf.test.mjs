@@ -12,12 +12,19 @@ import {
   shouldUseNativeDomFullscreen,
 } from './perf-guard.js';
 import {
+  CURATED_DRACIN_CATALOG,
+  DRACIN_GENRES,
+  extractNunoWatchPayload,
   filterDracinCatalog,
   formatShortQualityBadge,
+  isIndonesianShortDrama,
   mergeParallelDracinFeeds,
   parseServerResolutionHeight,
+  parseSubtitleText,
   pickBestPlaybackServer,
+  unwrapNunoSubtitleUrl,
 } from './dracin-logic.js';
+import { normalizeBanners, normalizeUtilityConfig } from './store.js';
 
 test('detectLowEndDevice identifies budget Android/low-RAM/saveData devices vs desktop workstations', () => {
   assert.equal(
@@ -238,3 +245,106 @@ test('v78 mergeParallelDracinFeeds liveFirst places fresh daily releases ahead o
   assert.equal(latestOnly.length, 1);
   assert.equal(latestOnly[0].title, 'Rilis Hari Ini CEO Pewaris');
 });
+
+test('v79 unwrapNunoSubtitleUrl, multi-format parseSubtitleText (VTT/SRT/ASS/JSON/Jina), and extractNunoWatchPayload subtitle extraction', () => {
+  const proxiedNetShort =
+    '/api/proxy/video?url=https%3A%2F%2Fns-aws-cdn.netshort.com%2Fsub%2Fep1_id.vtt&sub=1';
+  assert.equal(
+    unwrapNunoSubtitleUrl(proxiedNetShort),
+    'https://ns-aws-cdn.netshort.com/sub/ep1_id.vtt'
+  );
+  const proxiedDramaWave =
+    'https://nunodrama.my.id/api/proxy/video?url=https%3A%2F%2Fvideo-v81.mydramawave.com%2Fvt%2F1.srt';
+  assert.equal(
+    unwrapNunoSubtitleUrl(proxiedDramaWave),
+    'https://video-v81.mydramawave.com/vt/1.srt'
+  );
+
+  // Extract unwrapped CORS CDN URL from watch page HTML while preserving proxyUrl fallback
+  const fakeHtml = `
+    <video id="player" data-src="https://cdn.example.com/v.mp4" data-kind="mp4"></video>
+    <button data-sub-option data-lang="off" data-url=""></button>
+    <button data-sub-option data-lang="id_ID" data-label="Indonesia" data-url="/api/proxy/video?url=https%3A%2F%2Fns-aws-cdn.netshort.com%2Fid.vtt&amp;sub=1"></button>
+  `;
+  const payload = extractNunoWatchPayload(fakeHtml, 'netshort', 1);
+  assert.equal(payload.subtitles.length, 1);
+  assert.equal(payload.subtitles[0].url, 'https://ns-aws-cdn.netshort.com/id.vtt');
+  assert.ok(payload.subtitles[0].proxyUrl.includes('nunodrama.my.id/api/proxy/video'));
+
+  // Parse r.jina.ai-wrapped WebVTT
+  const jinaVtt = `Title: sub\nURL Source: https://ns-aws-cdn.netshort.com/id.vtt\n\nMarkdown Content:\nWEBVTT\n\n00:00:02.750 --> 00:00:03.875\nTerlalu lambat, Nak!\n\n00:00:04.100 --> 00:00:06.000\nAyo cepat!`;
+  const vttCues = parseSubtitleText(jinaVtt);
+  assert.equal(vttCues.length, 2);
+  assert.equal(vttCues[0].text, 'Terlalu lambat, Nak!');
+
+  // Parse SRT
+  const srt = `1\n00:00:01,000 --> 00:00:03,500\nHalo Indonesia!\n\n2\n00:00:04,000 --> 00:00:06,200\nDrama pendek gratis.`;
+  const srtCues = parseSubtitleText(srt);
+  assert.equal(srtCues.length, 2);
+  assert.equal(srtCues[1].text, 'Drama pendek gratis.');
+
+  // Parse ASS/SSA
+  const ass = `[Events]\nDialogue: 0,0:00:01.20,0:00:04.50,Default,,0,0,0,,{\\an8}Selamat datang\\Ndi Jakarta`;
+  const assCues = parseSubtitleText(ass);
+  assert.equal(assCues.length, 1);
+  assert.equal(assCues[0].text, 'Selamat datang\ndi Jakarta');
+
+  // Parse JSON cues
+  const jsonCues = parseSubtitleText(JSON.stringify([{ start: 1.5, end: 4.0, text: 'Baris JSON' }]));
+  assert.equal(jsonCues.length, 1);
+  assert.equal(jsonCues[0].text, 'Baris JSON');
+});
+
+test('v79 Indonesian short dramas (100% free Ep 1-Finale), scroll-to-player guard, subtitle drawer, and Drama Pendek global sync', () => {
+  assert.ok(DRACIN_GENRES.some((g) => g.id === 'indonesia'), 'DRACIN_GENRES must include indonesia filter');
+  const indoSeed = CURATED_DRACIN_CATALOG.filter((d) => isIndonesianShortDrama(d));
+  assert.ok(indoSeed.length >= 16, `Expected >= 16 verified Indonesian short dramas, got ${indoSeed.length}`);
+  assert.ok(
+    indoSeed.every((d) => d.isFullFree === true && d.isVipUnlocked === true && d.totalEpisodes >= 40),
+    'All seeded Indonesian short dramas must be 100% free Ep 1 to Finale'
+  );
+
+  const normalizedPool = mergeParallelDracinFeeds([], CURATED_DRACIN_CATALOG);
+  const filteredIndo = filterDracinCatalog(normalizedPool, { genreId: 'indonesia' });
+  assert.ok(filteredIndo.length >= 16, `Expected >= 16 filtered Indonesian short dramas, got ${filteredIndo.length}`);
+
+  // Legacy localStorage migration: Drama China -> Drama Pendek
+  const migratedUtil = normalizeUtilityConfig({
+    items: [
+      {
+        id: 'dracin',
+        label: 'Drama China',
+        pageTitle: 'Drama China (Dracin) Gratis Tanpa Iklan — 20+ Platform',
+        heroTitle: 'Nonton Drama China Pendek Gratis Tanpa Iklan',
+      },
+    ],
+  });
+  const migratedDracin = migratedUtil.items.find((i) => i.id === 'dracin');
+  assert.equal(migratedDracin?.label, 'Drama Pendek');
+  assert.match(migratedDracin?.heroTitle || '', /Drama Pendek/);
+
+  const migratedBanners = normalizeBanners([
+    {
+      id: 'banner-dracin',
+      utilityId: 'dracin',
+      heading: 'Nonton Drama China Full Episode Gratis',
+      ctaLabel: 'Tonton Dracin →',
+      href: './tools.html?tab=dracin',
+    },
+  ]);
+  assert.equal(migratedBanners[0].heading, 'Nonton Drama Pendek Full Episode Gratis');
+  assert.equal(migratedBanners[0].ctaLabel, 'Tonton Drama →');
+
+  // Verify static UI guards for bottom-scroll fix, subtitle drawer, and Drama Pendek rename
+  const repoDir = path.resolve(path.dirname(new URL(import.meta.url).pathname), '..');
+  const dracinUiSrc = fs.readFileSync(path.join(repoDir, 'js/dracin-ui.js'), 'utf8');
+  assert.match(dracinUiSrc, /function scrollPlayerStageToTop\(/, 'dracin-ui.js must implement scrollPlayerStageToTop');
+  assert.match(dracinUiSrc, /function toggleFullscreenSubtitleDrawer\(/, 'dracin-ui.js must implement in-stage Subtitle Drawer');
+  assert.match(dracinUiSrc, /Asisten AI Drama Pendek/, 'dracin-ui.js must rename Asisten AI Dracin to Asisten AI Drama Pendek');
+
+  const indexHtml = fs.readFileSync(path.join(repoDir, 'index.html'), 'utf8');
+  const toolsHtml = fs.readFileSync(path.join(repoDir, 'tools.html'), 'utf8');
+  assert.equal(indexHtml.includes('>Drama China<'), false, 'index.html must not contain stale Drama China nav label');
+  assert.equal(toolsHtml.includes('>Drama China<'), false, 'tools.html must not contain stale Drama China tab label');
+});
+

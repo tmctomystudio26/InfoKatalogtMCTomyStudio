@@ -47,25 +47,25 @@ let _plagiarismMod = null;
 let _novelMod = null;
 let _callerIdMod = null;
 
-const loadGlobeMod = () => (_globeMod ? Promise.resolve(_globeMod) : import('./globe.js?v=78').then((m) => (_globeMod = m)));
-const loadSpeedtestMod = () => (_speedtestMod ? Promise.resolve(_speedtestMod) : import('./speedtest.js?v=78').then((m) => (_speedtestMod = m)));
-const loadDownloaderMod = () => (_downloaderMod ? Promise.resolve(_downloaderMod) : import('./downloader.js?v=78').then((m) => (_downloaderMod = m)));
-const loadCompressorMod = () => (_compressorMod ? Promise.resolve(_compressorMod) : import('./compressor.js?v=78').then((m) => (_compressorMod = m)));
-const loadConverterMod = () => (_converterMod ? Promise.resolve(_converterMod) : import('./converter.js?v=78').then((m) => (_converterMod = m)));
-const loadSongFinderMod = () => (_songFinderMod ? Promise.resolve(_songFinderMod) : import('./song-finder.js?v=78').then((m) => (_songFinderMod = m)));
+const loadGlobeMod = () => (_globeMod ? Promise.resolve(_globeMod) : import('./globe.js?v=79').then((m) => (_globeMod = m)));
+const loadSpeedtestMod = () => (_speedtestMod ? Promise.resolve(_speedtestMod) : import('./speedtest.js?v=79').then((m) => (_speedtestMod = m)));
+const loadDownloaderMod = () => (_downloaderMod ? Promise.resolve(_downloaderMod) : import('./downloader.js?v=79').then((m) => (_downloaderMod = m)));
+const loadCompressorMod = () => (_compressorMod ? Promise.resolve(_compressorMod) : import('./compressor.js?v=79').then((m) => (_compressorMod = m)));
+const loadConverterMod = () => (_converterMod ? Promise.resolve(_converterMod) : import('./converter.js?v=79').then((m) => (_converterMod = m)));
+const loadSongFinderMod = () => (_songFinderMod ? Promise.resolve(_songFinderMod) : import('./song-finder.js?v=79').then((m) => (_songFinderMod = m)));
 const loadMusicMods = () =>
   _musicMods
     ? Promise.resolve(_musicMods)
-    : Promise.all([import('./music.js?v=78'), import('./music-logic.js?v=78')]).then(([music, logic]) => {
+    : Promise.all([import('./music.js?v=79'), import('./music-logic.js?v=79')]).then(([music, logic]) => {
         _musicMods = { music, logic };
         return _musicMods;
       });
-const loadDracinMod = () => (_dracinMod ? Promise.resolve(_dracinMod) : import('./dracin-ui.js?v=78').then((m) => (_dracinMod = m)));
-const loadAudioEditorMod = () => (_audioEditorMod ? Promise.resolve(_audioEditorMod) : import('./audio-editor-ui.js?v=78').then((m) => (_audioEditorMod = m)));
-const loadManifestAiMod = () => (_manifestAiMod ? Promise.resolve(_manifestAiMod) : import('./manifest-ai-ui.js?v=78').then((m) => (_manifestAiMod = m)));
-const loadPlagiarismMod = () => (_plagiarismMod ? Promise.resolve(_plagiarismMod) : import('./plagiarism-ui.js?v=78').then((m) => (_plagiarismMod = m)));
-const loadNovelMod = () => (_novelMod ? Promise.resolve(_novelMod) : import('./novel-ui.js?v=78').then((m) => (_novelMod = m)));
-const loadCallerIdMod = () => (_callerIdMod ? Promise.resolve(_callerIdMod) : import('./callerid-ui.js?v=78').then((m) => (_callerIdMod = m)));
+const loadDracinMod = () => (_dracinMod ? Promise.resolve(_dracinMod) : import('./dracin-ui.js?v=79').then((m) => (_dracinMod = m)));
+const loadAudioEditorMod = () => (_audioEditorMod ? Promise.resolve(_audioEditorMod) : import('./audio-editor-ui.js?v=79').then((m) => (_audioEditorMod = m)));
+const loadManifestAiMod = () => (_manifestAiMod ? Promise.resolve(_manifestAiMod) : import('./manifest-ai-ui.js?v=79').then((m) => (_manifestAiMod = m)));
+const loadPlagiarismMod = () => (_plagiarismMod ? Promise.resolve(_plagiarismMod) : import('./plagiarism-ui.js?v=79').then((m) => (_plagiarismMod = m)));
+const loadNovelMod = () => (_novelMod ? Promise.resolve(_novelMod) : import('./novel-ui.js?v=79').then((m) => (_novelMod = m)));
+const loadCallerIdMod = () => (_callerIdMod ? Promise.resolve(_callerIdMod) : import('./callerid-ui.js?v=79').then((m) => (_callerIdMod = m)));
 
 function renderLazyLoadingCard(label = 'Utilitas') {
   return `
@@ -4560,7 +4560,7 @@ export function createToolsHubController({
 
   function renderDracinPanel() {
     return `
-      <section class="tool-panel dracin-panel" aria-label="Drama China (Dracin) Gratis Tanpa Iklan">
+      <section class="tool-panel dracin-panel" aria-label="Drama Pendek Gratis Tanpa Iklan">
         ${renderSubPanelIntro('dracin')}
         <div id="dracin-hub-mount"></div>
       </section>
@@ -5455,7 +5455,7 @@ export function createToolsHubController({
         if (dracinCtrl) {
           dracinCtrl.mount(dracinMount);
         } else {
-          dracinMount.innerHTML = renderLazyLoadingCard('Drama China (Dracin)');
+          dracinMount.innerHTML = renderLazyLoadingCard('Drama Pendek');
           loadDracinMod()
             .then(({ createDracinController }) => {
               if (!mounted || tabMountToken !== currentMountToken || toolState.activeSubTab !== 'dracin') return;
@@ -5467,7 +5467,7 @@ export function createToolsHubController({
             .catch(() => {
               if (mounted && tabMountToken === currentMountToken) {
                 const liveMount = rootEl.querySelector('#dracin-hub-mount');
-                if (liveMount) liveMount.innerHTML = '<div class="tool-error">Gagal memuat modul Drama China. Muat ulang halaman.</div>';
+                if (liveMount) liveMount.innerHTML = '<div class="tool-error">Gagal memuat modul Drama Pendek. Muat ulang halaman.</div>';
               }
             });
         }

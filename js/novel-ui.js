@@ -20,7 +20,7 @@ import {
   formatRelativeUpdate,
   paginateChapterParagraphs,
 } from './novel-logic.js?v=72';
-import { shouldUseNativeDomFullscreen } from './perf-guard.js?v=78';
+import { shouldUseNativeDomFullscreen } from './perf-guard.js?v=79';
 import {
   READER_FONTS,
   THEME_CATEGORIES,

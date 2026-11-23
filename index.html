@@ -88,8 +88,8 @@ Dilengkapi Jadwal Sholat, Prakiraan Cuaca, Jam Dunia, Speedtest, Social Media Do
     />
 
     <!-- Styles -->
-    <link rel="stylesheet" href="./css/tokens.css?v=78" />
-    <link rel="stylesheet" href="./css/styles.css?v=78" />
+    <link rel="stylesheet" href="./css/tokens.css?v=79" />
+    <link rel="stylesheet" href="./css/styles.css?v=79" />
     <script>
       (function () {
         try {
@@ -98,7 +98,7 @@ Dilengkapi Jadwal Sholat, Prakiraan Cuaca, Jam Dunia, Speedtest, Social Media Do
             document.documentElement.setAttribute('data-theme', savedTheme);
           }
         } catch (e) {}
-        var CURRENT_CACHE = 'manifestudio-cache-v78';
+        var CURRENT_CACHE = 'manifestudio-cache-v79';
         window.addEventListener('load', function () {
           if ('caches' in window) {
             caches.keys().then(function (keys) {
@@ -108,7 +108,7 @@ Dilengkapi Jadwal Sholat, Prakiraan Cuaca, Jam Dunia, Speedtest, Social Media Do
             });
           }
           if ('serviceWorker' in navigator) {
-            navigator.serviceWorker.register('./sw.js?v=78').then(function (reg) {
+            navigator.serviceWorker.register('./sw.js?v=79').then(function (reg) {
               reg.update();
             }).catch(function () {});
           }
@@ -157,7 +157,7 @@ Dilengkapi Jadwal Sholat, Prakiraan Cuaca, Jam Dunia, Speedtest, Social Media Do
           <a href="./tools.html?tab=converter" class="header-nav-link">Konversi File</a>
           <a href="./tools.html?tab=songfinder" class="header-nav-link">Cari Lagu</a>
           <a href="./tools.html?tab=music" class="header-nav-link">YT Music</a>
-          <a href="./tools.html?tab=dracin" class="header-nav-link">Drama China</a>
+          <a href="./tools.html?tab=dracin" class="header-nav-link">Drama Pendek</a>
           <a href="./tools.html?tab=audioeditor" class="header-nav-link">Audio Editor</a>
           <a href="./tools.html?tab=manifestai" class="header-nav-link">Manifest AI</a>
           <a href="./tools.html?tab=plagiarism" class="header-nav-link">Cek Plagiarisme</a>
@@ -400,6 +400,6 @@ Dilengkapi Jadwal Sholat, Prakiraan Cuaca, Jam Dunia, Speedtest, Social Media Do
     <div id="cart-drawer-root" class="drawer-root" hidden></div>
     <div id="toast-notification" class="toast-notification" role="status" aria-live="polite" hidden></div>
 
-    <script type="module" src="./js/app.js?v=78"></script>
+    <script type="module" src="./js/app.js?v=79"></script>
   </body>
 </html>

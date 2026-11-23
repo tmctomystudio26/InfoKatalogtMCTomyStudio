@@ -38,6 +38,7 @@ export const DRACIN_PLATFORMS = [
 export const DRACIN_GENRES = [
   { id: 'all', label: 'Untuk Kamu' },
   { id: 'latest', label: '✨ Terbaru Live' },
+  { id: 'indonesia', label: '🇮🇩 Drama Indonesia' },
   { id: 'fyp-tiktok', label: '🔥 FYP TikTok Full' },
   { id: 'full-free', label: '🔓 VIP Terbuka (Full Ep)' },
   { id: 'dub-indo', label: '🎙️ Sulih Suara (Dub Indo)' },
@@ -129,7 +130,7 @@ export const DRACIN_API_SOURCES = [
  * when an upstream API poster fails to load or for offline resilience.
  */
 export function buildDracinPosterSvgDataUri({
-  title = 'Drama China',
+  title = 'Drama Pendek',
   genreLabel = 'Romantis',
   accent = '#e11d48',
   accent2 = '#1e1b4b',
@@ -734,12 +735,14 @@ export function normalizeDracinItem(raw = {}, fallbackPlatformId = 'dramabox') {
       (Array.isArray(raw.genres) && raw.genres.includes('full-free'))
   );
 
+  const isIndonesianDrama = isIndonesianShortDrama(raw);
   const baseGenres = Array.isArray(raw.genres) && raw.genres.length
     ? raw.genres.map((g) => String(g).toLowerCase())
     : [genre, 'trending'];
   if (isFullFree && !baseGenres.includes('full-free')) baseGenres.push('full-free');
   if (isTiktokFyp && !baseGenres.includes('fyp-tiktok')) baseGenres.push('fyp-tiktok');
   if (hasIndonesianDub && !baseGenres.includes('dub-indo')) baseGenres.push('dub-indo');
+  if (isIndonesianDrama && !baseGenres.includes('indonesia')) baseGenres.push('indonesia');
   const genres = Array.from(new Set(baseGenres));
 
   const id = String(
@@ -795,6 +798,7 @@ export function normalizeDracinItem(raw = {}, fallbackPlatformId = 'dramabox') {
     hasKnownEpisodeCount,
     isFullFree,
     isVipUnlocked,
+    isIndonesianDrama,
     isLiveFresh: Boolean(raw.isLiveFresh),
     liveSection: String(raw.liveSection || '').trim().toLowerCase(),
     fetchedAt: Number(raw.fetchedAt) || 0,
@@ -807,7 +811,11 @@ export function normalizeDracinItem(raw = {}, fallbackPlatformId = 'dramabox') {
     hasIndonesianDub,
     originalAudio: String(
       raw.originalAudio ||
-        (hasIndonesianDub ? 'Sulih Suara Indonesia' : 'Mandarin / Original')
+        (isIndonesianDrama
+          ? 'Bahasa Indonesia'
+          : hasIndonesianDub
+          ? 'Sulih Suara Indonesia'
+          : 'Mandarin / Original')
     ),
     poster: proxiedPoster,
     rawPoster: hasRealPoster ? rawPoster : '',
@@ -819,7 +827,7 @@ export function normalizeDracinItem(raw = {}, fallbackPlatformId = 'dramabox') {
     dailymotionId: String(raw.dailymotionId || raw.dmId || '').trim(),
     youtubeId: String(raw.youtubeId || raw.ytId || '').trim(),
     directVideoUrl: String(raw.directVideoUrl || raw.streamUrl || '').trim(),
-    searchQuery: String(raw.searchQuery || `${title} drama china sub indo`).trim(),
+    searchQuery: String(raw.searchQuery || `${title} drama pendek sub indo`).trim(),
     keywords: Array.isArray(raw.keywords) && raw.keywords.length ? raw.keywords : extractTokens(title),
     cast: Array.isArray(raw.cast) && raw.cast.length ? raw.cast : [],
     synopsis:
@@ -867,7 +875,7 @@ export function normalizeAnichinDramaItem(raw = {}, platformId = 'dramabox') {
       sourceId,
       apiProvider: 'anichin-unified',
       sourceApi: `live-${safePlatform}`,
-      title: title || 'Drama China HD',
+      title: title || 'Drama Pendek HD',
       altTitle: categories.slice(0, 3).join(' · '),
       platformId: safePlatform,
       genre: inferredGenre,
@@ -886,7 +894,37 @@ export function normalizeAnichinDramaItem(raw = {}, platformId = 'dramabox') {
 }
 
 /**
- * Parses a WebVTT or SRT timestamp (e.g. "00:01:23.450" or "00:01:23,450" or "01:23.450") into seconds.
+ * Unwraps NunoDrama same-origin proxy subtitle URLs (`/api/proxy/video?url=...&sub=1`)
+ * into their direct CORS-enabled CDN URL (`Access-Control-Allow-Origin: *`) so browser
+ * fetch() succeeds reliably for NetShort (.vtt), DramaWave (.srt), and other platforms.
+ */
+export function unwrapNunoSubtitleUrl(rawUrl = '') {
+  const clean = String(rawUrl || '')
+    .trim()
+    .replace(/&amp;/gi, '&');
+  if (!clean) return '';
+  const absolute = clean.startsWith('//')
+    ? `https:${clean}`
+    : clean.startsWith('/')
+    ? `https://nunodrama.my.id${clean}`
+    : clean;
+  try {
+    const parsed = new URL(absolute);
+    if (/\/api\/proxy\/(video|sub|subtitle)/i.test(parsed.pathname)) {
+      const inner = String(parsed.searchParams.get('url') || '').trim();
+      if (/^https?:\/\//i.test(inner)) {
+        return inner;
+      }
+    }
+    return parsed.href;
+  } catch {
+    return absolute;
+  }
+}
+
+/**
+ * Parses a WebVTT, SRT, or ASS/SSA timestamp (e.g. "00:01:23.450", "00:01:23,450",
+ * "01:23.450", or "0:01:23.45") into seconds.
  */
 export function parseSubtitleTimestamp(ts = '') {
   const clean = String(ts || '').trim().replace(',', '.');
@@ -898,16 +936,83 @@ export function parseSubtitleTimestamp(ts = '') {
 }
 
 /**
- * Parses real WebVTT (.vtt) or SubRip (.srt) subtitle files into sorted timed cue objects.
+ * Parses real WebVTT (.vtt), SubRip (.srt), ASS/SSA (.ass), or JSON subtitle payloads
+ * (including responses wrapped with r.jina.ai text headers) into sorted timed cue objects.
  */
 export function parseSubtitleText(rawText = '') {
-  const normalized = String(rawText || '')
+  let normalized = String(rawText || '')
     .replace(/^\uFEFF/, '')
     .replace(/\r\n/g, '\n')
     .replace(/\r/g, '\n')
     .trim();
   if (!normalized) return [];
 
+  // Strip r.jina.ai preamble if present ("Title: ...\nURL Source: ...\nMarkdown Content:\n...")
+  const jinaMarker = normalized.match(/\nMarkdown Content:\s*\n/i);
+  if (jinaMarker && typeof jinaMarker.index === 'number') {
+    normalized = normalized.slice(jinaMarker.index + jinaMarker[0].length).trim();
+  }
+  // Unwrap fenced code block if a proxy returned ```vtt ... ```
+  if (/^```[a-z0-9_-]*\n/i.test(normalized)) {
+    normalized = normalized.replace(/^```[a-z0-9_-]*\n/i, '').replace(/\n```$/i, '').trim();
+  }
+  if (!normalized) return [];
+
+  // 1. JSON cue array fallback (e.g. [{ start, end, text }] or { cues: [...] })
+  if (normalized.startsWith('[') || normalized.startsWith('{')) {
+    try {
+      const parsed = JSON.parse(normalized);
+      const arr = Array.isArray(parsed)
+        ? parsed
+        : Array.isArray(parsed?.cues)
+        ? parsed.cues
+        : Array.isArray(parsed?.subtitles)
+        ? parsed.subtitles
+        : [];
+      const jsonCues = [];
+      for (const item of arr) {
+        if (!item || typeof item !== 'object') continue;
+        const startRaw = item.start ?? item.startTime ?? item.from ?? item.s;
+        const endRaw = item.end ?? item.endTime ?? item.to ?? item.e;
+        const start = typeof startRaw === 'number' ? startRaw : parseSubtitleTimestamp(startRaw);
+        const end = typeof endRaw === 'number' ? endRaw : parseSubtitleTimestamp(endRaw);
+        const text = String(item.text ?? item.content ?? item.line ?? '')
+          .replace(/<[^>]+>/g, '')
+          .trim();
+        if (Number.isFinite(start) && Number.isFinite(end) && end > start && text) {
+          jsonCues.push({ start, end, text });
+        }
+      }
+      if (jsonCues.length > 0) {
+        return jsonCues.sort((a, b) => a.start - b.start);
+      }
+    } catch {
+      // Not valid JSON; continue to VTT/SRT/ASS parsers
+    }
+  }
+
+  // 2. ASS / SSA Dialogue lines ("Dialogue: 0,0:00:01.20,0:00:04.50,Default,,0,0,0,,Text")
+  if (/^Dialogue:/im.test(normalized)) {
+    const assCues = [];
+    for (const line of normalized.split('\n')) {
+      const m = line.match(/^Dialogue:\s*[^,]*,\s*([0-9:.]+)\s*,\s*([0-9:.]+)\s*,(?:[^,]*,){6}(.*)$/i);
+      if (!m) continue;
+      const start = parseSubtitleTimestamp(m[1]);
+      const end = parseSubtitleTimestamp(m[2]);
+      const text = String(m[3] || '')
+        .replace(/\\N|\\n/g, '\n')
+        .replace(/\{[^}]*\}/g, '')
+        .trim();
+      if (Number.isFinite(start) && Number.isFinite(end) && end > start && text) {
+        assCues.push({ start, end, text });
+      }
+    }
+    if (assCues.length > 0) {
+      return assCues.sort((a, b) => a.start - b.start);
+    }
+  }
+
+  // 3. Standard WebVTT & SRT blocks
   const blocks = normalized.split(/\n{2,}/);
   const cues = [];
 
@@ -1493,6 +1598,31 @@ export function isLikelyChineseDramaTitle(title = '', description = '') {
   return false;
 }
 
+const INDONESIAN_DRAMA_SIGNAL_RE =
+  /\b(drama\s+indonesia|jakarta|bandung|surabaya|yogyakarta|jogja|bali|medan|pesantren|santri|kyai|kampung|juragan|pak\s+(?:sutanto|rt|rw|kades)|dimas\s+(?:pratama|santoso)|nadya\s+lestari|raka\s+wirawan|intan\s+(?:permata|sari)|kupu-kupu\s+malam|putri\s+ayu|yuni\s+(?:halim|kusuma)|keluarga\s+(?:salim|halim)|grup\s+(?:surya|perkasa)|hati\s+dimas|keluarga\s+dimas|aliansi\s+kuat\s+dimas|mengejar\s+hati\s+dimas|menyembuhkan\s+dimas|identitas\s+aisha|gadis\s+desa\s+yang\s+berani|putri\s+kaya\s+jakarta)\b/i;
+
+/**
+ * Returns true if the short drama is an Indonesian-produced or Indonesia-localized
+ * short drama (free full access Episode 1 to Finale).
+ */
+export function isIndonesianShortDrama(drama = null) {
+  if (!drama || typeof drama !== 'object') return false;
+  if (drama.isIndonesianDrama) return true;
+  if (Array.isArray(drama.genres) && drama.genres.includes('indonesia')) return true;
+  const hay = [
+    drama.title,
+    drama.altTitle,
+    drama.corner,
+    drama.cornerBadge,
+    drama.synopsis,
+    drama.description,
+    drama.originalAudio,
+  ]
+    .filter(Boolean)
+    .join(' ');
+  return INDONESIAN_DRAMA_SIGNAL_RE.test(hay);
+}
+
 /**
  * Returns true if the drama provides a 100% free, uninterrupted Full-Episode
  * stream from Episode 1 to Finale without any commercial VIP lock.
@@ -1530,6 +1660,8 @@ export function filterDracinCatalog(
             String(item.liveSection || '').toLowerCase()
           );
         if (!isLatest) return false;
+      } else if (genreId === 'indonesia') {
+        if (!isIndonesianShortDrama(item)) return false;
       } else if (genreId === 'full-free') {
         if (!isFullFreeDrama(item)) return false;
       } else if (genreId === 'fyp-tiktok') {
@@ -3264,25 +3396,61 @@ export function extractNunoWatchPayload(
     });
   }
 
-  // 3. Extract subtitle options (<button data-sub-option ...> & <track ...>)
+  // 3. Extract subtitle options (<button data-sub-option ...>, <track ...>, & inline .vtt/.srt URLs)
+  const pushSubtitleTrack = (rawSubUrl, rawLang = 'id', rawLabel = '') => {
+    const proxyUrl = resolveNunoStreamUrl(rawSubUrl);
+    if (!proxyUrl) return;
+    const directUrl = unwrapNunoSubtitleUrl(proxyUrl) || proxyUrl;
+    const dedupeKey = directUrl.toLowerCase();
+    if (seenSubUrls.has(dedupeKey)) return;
+    seenSubUrls.add(dedupeKey);
+    const lang = String(rawLang || 'id').trim().toLowerCase();
+    if (lang === 'off' || lang === 'none') return;
+    const label =
+      String(rawLabel || '').trim() ||
+      (lang.startsWith('id') || lang === 'in'
+        ? 'Indonesia'
+        : lang.startsWith('en')
+        ? 'English'
+        : lang.toUpperCase());
+    subtitles.push({
+      label,
+      language: lang,
+      url: directUrl,
+      proxyUrl: proxyUrl !== directUrl ? proxyUrl : '',
+    });
+  };
+
   const subButtons = html.match(/<button[^>]*\bdata-sub-option\b[^>]*>/gi) || [];
   for (const btn of subButtons) {
-    const sUrl = resolveNunoStreamUrl(readHtmlAttr(btn, 'data-url'));
-    if (!sUrl || seenSubUrls.has(sUrl)) continue;
-    seenSubUrls.add(sUrl);
-    const lang = (readHtmlAttr(btn, 'data-lang') || 'id').toLowerCase();
-    const label = readHtmlAttr(btn, 'data-label') || (lang === 'id' ? 'Indonesia' : lang.toUpperCase());
-    subtitles.push({ label, language: lang, url: sUrl });
+    pushSubtitleTrack(
+      readHtmlAttr(btn, 'data-url'),
+      readHtmlAttr(btn, 'data-lang') || 'id',
+      readHtmlAttr(btn, 'data-label')
+    );
   }
 
   const trackTags = html.match(/<track[^>]*\bsrc=["'][^"']+["'][^>]*>/gi) || [];
   for (const tr of trackTags) {
-    const sUrl = resolveNunoStreamUrl(readHtmlAttr(tr, 'src'));
-    if (!sUrl || seenSubUrls.has(sUrl)) continue;
-    seenSubUrls.add(sUrl);
-    const lang = (readHtmlAttr(tr, 'srclang') || 'id').toLowerCase();
-    const label = readHtmlAttr(tr, 'label') || (lang === 'id' ? 'Indonesia' : lang.toUpperCase());
-    subtitles.push({ label, language: lang, url: sUrl });
+    pushSubtitleTrack(
+      readHtmlAttr(tr, 'src'),
+      readHtmlAttr(tr, 'srclang') || 'id',
+      readHtmlAttr(tr, 'label')
+    );
+  }
+
+  // Fallback scan for direct .vtt / .srt subtitle URLs embedded inside inline scripts/JSON
+  if (subtitles.length === 0) {
+    const inlineSubMatches = html.match(/https?:\/\/[^"'\\\s<>]+?\.(?:vtt|srt)(?:\?[^"'\\\s<>]*)?/gi) || [];
+    for (const foundUrl of inlineSubMatches.slice(0, 6)) {
+      const lower = foundUrl.toLowerCase();
+      const inferredLang = /(?:^|[/_.-])(id|id_id|id-id|indo|ind)(?:[/_.-]|$)/.test(lower)
+        ? 'id'
+        : /(?:^|[/_.-])(en|en_us|en-us|eng)(?:[/_.-]|$)/.test(lower)
+        ? 'en'
+        : 'id';
+      pushSubtitleTrack(foundUrl, inferredLang, inferredLang === 'id' ? 'Indonesia' : 'English');
+    }
   }
 
   // 4. Extract total episodes ("74 Episode Tersedia")

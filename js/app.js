@@ -4,7 +4,7 @@ import {
   PAY_LATER_SURCHARGE_RATE,
   getDefaultCatalogSnapshot,
   loadCatalogData,
-} from './data.js?v=78';
+} from './data.js?v=79';
 import {
   PENDING_ORDER_STORAGE_KEY,
   addToCart,
@@ -23,14 +23,14 @@ import {
   syncPaymentOptionsWithBrand,
   updateCartQty,
   validateOrderForm,
-} from './store.js?v=78';
-import { initPwaManager } from './pwa.js?v=78';
+} from './store.js?v=79';
+import { initPwaManager } from './pwa.js?v=79';
 import {
   computeBannerHydrationWindow,
   initPerformanceClass,
   resolveBannerTransition,
   scheduleIdleTask,
-} from './perf-guard.js?v=78';
+} from './perf-guard.js?v=79';
 
 const THEME_STORAGE_KEY = 'manifestudio_theme_v1';
 const CART_STORAGE_KEY = 'manifestudio_cart_v1';
@@ -1749,7 +1749,7 @@ async function bootstrap() {
     // Ignore
   }
   const bootMusicLazy = () => {
-    import('./music.js?v=78')
+    import('./music.js?v=79')
       .then((m) => m.initMusicPlayer?.())
       .catch(() => {});
   };

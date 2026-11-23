@@ -649,9 +649,9 @@ export const DEFAULT_BANNERS = [
     id: 'banner-dracin',
     utilityId: 'dracin',
     kicker: 'Menu Utilitas · 20+ Platform Terpadu',
-    heading: 'Nonton Drama China Full Episode Gratis',
-    sub: 'Satukan drama populer dalam satu player bebas iklan, lompat episode bebas, & subtitle Indonesia.',
-    ctaLabel: 'Tonton Dracin →',
+    heading: 'Nonton Drama Pendek Full Episode Gratis',
+    sub: 'Satukan drama pendek Indonesia, China & global dalam satu player bebas iklan, lompat episode bebas, & subtitle Indonesia.',
+    ctaLabel: 'Tonton Drama →',
     href: './tools.html?tab=dracin',
     image: './assets/banners/banner-dracin.jpg',
     scrim: 'crimson',
@@ -751,20 +751,33 @@ export function normalizeBanners(banners, fallbackBanners = DEFAULT_BANNERS) {
 
   return source
     .filter((b) => b && (String(b.heading || '').trim() || String(b.kicker || '').trim()))
-    .map((b, idx) => ({
-      id: String(b.id || `banner-${idx + 1}`).trim(),
-      utilityId: inferBannerUtilityId(b),
-      kicker: String(b.kicker || 'Promo & Info')
-        .trim()
-        .replace(/^Menu Lainnya\b/i, 'Menu Utilitas'),
-      heading: String(b.heading || 'Manifestudio').trim(),
-      sub: String(b.sub || '').trim(),
-      ctaLabel: String(b.ctaLabel || 'Selengkapnya').trim() || 'Selengkapnya',
-      href: String(b.href || '#katalog').trim() || '#katalog',
-      image: String(b.image ?? '').trim(),
-      scrim: normalizeBannerScrim(b.scrim),
-      enabled: b.enabled !== false,
-    }));
+    .map((b, idx) => {
+      const utilityId = inferBannerUtilityId(b);
+      const rawHeading = String(b.heading || 'Manifestudio').trim();
+      const rawCta = String(b.ctaLabel || 'Selengkapnya').trim() || 'Selengkapnya';
+      const heading =
+        utilityId === 'dracin' && /^Nonton Drama China Full Episode Gratis$/i.test(rawHeading)
+          ? 'Nonton Drama Pendek Full Episode Gratis'
+          : rawHeading;
+      const ctaLabel =
+        utilityId === 'dracin' && /^Tonton Dracin\s*→?$/i.test(rawCta)
+          ? 'Tonton Drama →'
+          : rawCta;
+      return {
+        id: String(b.id || `banner-${idx + 1}`).trim(),
+        utilityId,
+        kicker: String(b.kicker || 'Promo & Info')
+          .trim()
+          .replace(/^Menu Lainnya\b/i, 'Menu Utilitas'),
+        heading,
+        sub: String(b.sub || '').trim(),
+        ctaLabel,
+        href: String(b.href || '#katalog').trim() || '#katalog',
+        image: String(b.image ?? '').trim(),
+        scrim: normalizeBannerScrim(b.scrim),
+        enabled: b.enabled !== false,
+      };
+    });
 }
 
 export const DEFAULT_UTILITY_CONFIG = {
@@ -892,15 +905,15 @@ export const DEFAULT_UTILITY_CONFIG = {
     },
     {
       id: 'dracin',
-      label: 'Drama China',
+      label: 'Drama Pendek',
       icon: './assets/icons/tool-dracin.svg',
-      pageTitle: 'Drama China (Dracin) Gratis Tanpa Iklan — 20+ Platform',
+      pageTitle: 'Drama Pendek Gratis Tanpa Iklan — Indonesia, China & Global (20+ Platform)',
       pageSubtitle:
-        'SekaiDrama (Sansekai), DramaBox, ReelShort, ShortMax, NetShort, Melolo, PineDrama, MyDrama & 12+ platform lain bebas lompat episode, auto-switch server VIP-free, & subtitle Indonesia otomatis.',
-      heroKicker: '20+ Platform Short Drama · Sansekai VIP-Free Failover & Multi-API',
-      heroTitle: 'Nonton Drama China Pendek Gratis Tanpa Iklan',
+        'Drama Pendek Indonesia, China & global dari DramaBox, Melolo, PineDrama, NetShort, GoodShort, FlickReels, ReelShort, ShortMax & 12+ platform lain bebas lompat episode 100% gratis & subtitle Indonesia.',
+      heroKicker: '20+ Platform Drama Pendek · Indonesia, China & Global · Full Gratis',
+      heroTitle: 'Nonton Drama Pendek Gratis Tanpa Iklan',
       heroDescription:
-        'Satukan SekaiDrama (Sansekai), DramaBox, ReelShort, ShortMax, NetShort, GoodShort, DramaWave, FlickReels, FreeReels, PineDrama, MyDrama, Melolo, StardustTV, iDrama, DramaNova, StarShort, DramaBite, MoboReels, FlexTV, KalosTV & Anichin dengan auto-failover anti kunci VIP.',
+        'Satukan Drama Pendek Indonesia, DramaBox, Melolo, PineDrama, NetShort, GoodShort, FlickReels, FreeReels, ReelShort, ShortMax, DramaWave, MyDrama, StardustTV, FlexTV, KalosTV, Vigloo & Anichin full episode gratis tanpa VIP.',
     },
     {
       id: 'audioeditor',
@@ -972,18 +985,31 @@ export function normalizeUtilityConfig(utilities = {}) {
   const rawItems = Array.isArray(safe.items) ? safe.items : [];
   const defaultMap = new Map(DEFAULT_UTILITY_CONFIG.items.map((d) => [d.id, d]));
 
-  const buildItem = (defItem, custom = {}) => ({
-    id: defItem.id,
-    enabled: custom.enabled !== false,
-    label: String(custom.label || defItem.label).trim() || defItem.label,
-    icon: String(custom.icon || defItem.icon).trim() || defItem.icon,
-    pageTitle: String(custom.pageTitle || defItem.pageTitle).trim() || defItem.pageTitle,
-    pageSubtitle: String(custom.pageSubtitle || defItem.pageSubtitle).trim() || defItem.pageSubtitle,
-    heroKicker: String(custom.heroKicker || defItem.heroKicker || '').trim() || defItem.heroKicker || '',
-    heroTitle: String(custom.heroTitle || defItem.heroTitle || '').trim() || defItem.heroTitle || '',
-    heroDescription:
-      String(custom.heroDescription || defItem.heroDescription || '').trim() || defItem.heroDescription || '',
-  });
+  const buildItem = (defItem, custom = {}) => {
+    const rawLabel = String(custom.label || defItem.label).trim() || defItem.label;
+    const rawPageTitle = String(custom.pageTitle || defItem.pageTitle).trim() || defItem.pageTitle;
+    const rawHeroTitle = String(custom.heroTitle || defItem.heroTitle || '').trim() || defItem.heroTitle || '';
+    const isLegacyDracinDefault = defItem.id === 'dracin';
+    return {
+      id: defItem.id,
+      enabled: custom.enabled !== false,
+      label:
+        isLegacyDracinDefault && /^Drama China$/i.test(rawLabel) ? defItem.label : rawLabel,
+      icon: String(custom.icon || defItem.icon).trim() || defItem.icon,
+      pageTitle:
+        isLegacyDracinDefault && /^Drama China\s*\(Dracin\)/i.test(rawPageTitle)
+          ? defItem.pageTitle
+          : rawPageTitle,
+      pageSubtitle: String(custom.pageSubtitle || defItem.pageSubtitle).trim() || defItem.pageSubtitle,
+      heroKicker: String(custom.heroKicker || defItem.heroKicker || '').trim() || defItem.heroKicker || '',
+      heroTitle:
+        isLegacyDracinDefault && /^Nonton Drama China Pendek Gratis Tanpa Iklan$/i.test(rawHeroTitle)
+          ? defItem.heroTitle
+          : rawHeroTitle,
+      heroDescription:
+        String(custom.heroDescription || defItem.heroDescription || '').trim() || defItem.heroDescription || '',
+    };
+  };
 
   const seenIds = new Set();
   const items = [];

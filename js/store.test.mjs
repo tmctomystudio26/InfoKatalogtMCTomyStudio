@@ -1829,7 +1829,7 @@ test('normalizeUtilityConfig, upsertUtilityItemInCatalog, and describeCatalogCha
   assert.equal(util.items.some((i) => i.id === 'downloader' && i.label === 'Downloader'), true);
   assert.equal(util.items.some((i) => i.id === 'converter' && i.label === 'Konversi File'), true);
   assert.equal(util.items.some((i) => i.id === 'songfinder' && i.label === 'Cari Judul Lagu'), true);
-  assert.equal(util.items.some((i) => i.id === 'dracin' && i.label === 'Drama China'), true);
+  assert.equal(util.items.some((i) => i.id === 'dracin' && i.label === 'Drama Pendek'), true);
   assert.equal(util.items.some((i) => i.id === 'audioeditor' && i.label === 'Audio Editor'), true);
   assert.equal(util.items.some((i) => i.id === 'manifestai' && i.label === 'Manifest AI'), true);
   assert.equal(util.items.some((i) => i.id === 'plagiarism' && i.label === 'Cek Plagiarisme'), true);
@@ -3281,7 +3281,7 @@ test('v51 Drama China (Dracin) unifies 15+ short-drama platforms, parallel APIs,
   assert.ok(utilCfg.items.length >= 13);
   const dracinTool = utilCfg.items.find((it) => it.id === 'dracin');
   assert.ok(dracinTool);
-  assert.equal(dracinTool.label, 'Drama China');
+  assert.equal(dracinTool.label, 'Drama Pendek');
 
   // 2. 15+ named short-drama platforms (excluding 'all' = 18 platforms!)
   const realPlatforms = DRACIN_PLATFORMS.filter((p) => p.id !== 'all');

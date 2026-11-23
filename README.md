@@ -1,6 +1,6 @@
 # Manifestudio — Storefront Katalog Digital, Utility Hub (15 Fitur) & Panel Admin Statis
 
-Platform web statis resmi **Manifestudio** (*by Tomy*) berbasis **100% Static HTML/CSS + Native ES Modules (GitHub Pages & PWA Ready)** yang memadukan katalog akun premium, konfirmasi pesanan WhatsApp + struk Canvas 2D, Panel Admin terenkripsi AES-256-GCM penuh fitur, pemutar musik *full version* bebas iklan, serta halaman utilitas terpisah **Menu Utilitas** (`tools.html`) dengan **15 utilitas gratis** termasuk **Cek Nomor & Caller ID Anti-Spam**, **Novel Terpadu**, **Cek Plagiarisme Terpadu**, **Manifest AI**, **Audio Editor Studio DAW**, dan **Drama China Hub**.
+Platform web statis resmi **Manifestudio** (*by Tomy*) berbasis **100% Static HTML/CSS + Native ES Modules (GitHub Pages & PWA Ready)** yang memadukan katalog akun premium, konfirmasi pesanan WhatsApp + struk Canvas 2D, Panel Admin terenkripsi AES-256-GCM penuh fitur, pemutar musik *full version* bebas iklan, serta halaman utilitas terpisah **Menu Utilitas** (`tools.html`) dengan **15 utilitas gratis** termasuk **Cek Nomor & Caller ID Anti-Spam**, **Novel Terpadu**, **Cek Plagiarisme Terpadu**, **Manifest AI**, **Audio Editor Studio DAW**, dan **Drama Pendek Hub**.
 
 ---
 
@@ -8,15 +8,15 @@ Platform web statis resmi **Manifestudio** (*by Tomy*) berbasis **100% Static HT
 
 - Menyediakan toko produk digital statis zero-backend (`https://manifestudio.my.id/`) yang cepat, ringan, dan siap instal sebagai PWA di desktop maupun seluler.
 - Memberikan kendali operasional penuh kepada Admin langsung lewat peramban terenkripsi tanpa menyentuh kode sumber.
-- Menghadirkan ekosistem 15 utilitas harian gratis & bebas iklan bagi pengunjung: **Jadwal Sholat**, **Cuaca Presisi**, **Jam Dunia 3D**, **Speedtest**, **Downloader All-in-One**, **Kompresor Media HD AI**, **Konversi Semua File**, **Cari Judul Lagu & Video**, **YT Music Player**, **Drama China (Dracin)**, **Audio Editor Studio AI**, **Manifest AI (Multi-Model Chat AI)**, **Cek Plagiarisme Terpadu (Format Turnitin Terbaru)**, **Novel Terpadu Real-Time (Gratis Penuh & 122+ Tema)**, dan **Cek Nomor & Caller ID Anti-Spam (Multi-API Open-Source Tanpa Login)**.
+- Menghadirkan ekosistem 15 utilitas harian gratis & bebas iklan bagi pengunjung: **Jadwal Sholat**, **Cuaca Presisi**, **Jam Dunia 3D**, **Speedtest**, **Downloader All-in-One**, **Kompresor Media HD AI**, **Konversi Semua File**, **Cari Judul Lagu & Video**, **YT Music Player**, **Drama Pendek (Indonesia, China & Global)**, **Audio Editor Studio AI**, **Manifest AI (Multi-Model Chat AI)**, **Cek Plagiarisme Terpadu (Format Turnitin Terbaru)**, **Novel Terpadu Real-Time (Gratis Penuh & 122+ Tema)**, dan **Cek Nomor & Caller ID Anti-Spam (Multi-API Open-Source Tanpa Login)**.
 
 ---
 
 ## 🌟 Fitur Utama
 
-1. **Katalog Top-Up Modern, 16 Banner Maskot Gen-Z & Mesin Performa Anti-Lag Semua Perangkat (`v76`)**:
+1. **Katalog Top-Up Modern, 16 Banner Maskot Gen-Z & Mesin Performa Anti-Lag Semua Perangkat (`v76–v79`)**:
    - **16 Slide Banner Maskot Gen-Z (`assets/banners/banner-*.jpg`)**: Carousel grid 1-bingkai anti-freeze (transisi 1-langkah halus termasuk saat wrap `16 → 1`, hidrasi GPU ±1 slide) lengkap dengan ilustrasi maskot unik, scrim bertema, penghitung slide (`1 / 16`), serta sinkron penuh dengan Panel Admin.
-   - **Pemuatan Instan Menu Utilitas & *Zero-Freeze Engine* (`perf-guard.js`)**: *On-demand lazy loading* per tab, precache shell ringan `<250 KB` (`manifestudio-cache-v76`), anti-konflik `MediaCodec` Drama China, lazy YouTube music engine, serta mode adaptif perangkat ringan (`data-perf="lite"`) tanpa mengurangi kualitas visual maupun fitur.
+   - **Pemuatan Instan Menu Utilitas & *Zero-Freeze Engine* (`perf-guard.js`)**: *On-demand lazy loading* per tab, precache shell ringan `<250 KB` (`manifestudio-cache-v79`), anti-konflik `MediaCodec` Drama Pendek, lazy YouTube music engine, serta mode adaptif perangkat ringan (`data-perf="lite"`) tanpa mengurangi kualitas visual maupun fitur.
    - **Kartu Pintasan Menu Utilitas Ringkas (`#utilities-callout-card`)**: Tampil ramping tanpa daftar teks panjang dengan lencana **`15 Fitur Gratis`** yang otomatis mengikuti jumlah fitur aktif di Panel Admin.
    - Grid produk responsif (5 kolom desktop → 2 kolom mobile), pencarian instan, filter kategori dinamis, status stok, serta *FAQ* yang dapat diedit Admin.
 2. **Checkout Bersih, Voucher Berkuota Ketat, Biaya Layanan Fleksibel & Struk JPEG (`order.html`)**:
@@ -40,9 +40,9 @@ Platform web statis resmi **Manifestudio** (*by Tomy*) berbasis **100% Static HT
      - **Auto-Update Model Real-Time & Riwayat Chat Lengkap**: Sinkronisasi otomatis model flagship terbaru dari OpenRouter, Models.dev, dan LLM7 + multi-thread history & ekspor `.md`.
    - **Audio Editor Studio AI (`tools.html?tab=audioeditor`, `v58–v67`)**:
      - Pemotong presisi (*Keep* & *Potong Tengah*), *10-Band Parametric Equalizer*, *Bass Boost & Stereo Virtualizer*, *Voice Changer*, penjernih & perbaikan audio, pemisah vokal/karaoke, *Multi-Track Mixer*, editor tag resmi ID3v2/RIFF + iTunes/MusicBrainz, Undo/Redo stack, asisten mastering Multi-AI, tata letak Gen Z mobile anti-offside, serta ekspor MP3/WAV/AAC/M4A/OGG/FLAC/OPUS dengan preset kualitas & estimasi ukuran file.
-   - **Drama China Terpadu 17 Platform Original — 100% VIP Terbuka & Mode FYP TikTok (`tools.html?tab=dracin`, `v50–v73`)**:
-     - Seluruh **17 platform short-drama original** (**DramaBox VIP/ForYou/Dubbing, PineDrama TikTok CDN, Melolo, NetShort, NunoMix Dub Indo, ReelShort, ShortMax, GoodShort, FlickReels, FreeReels, DramaWave, FlexTV, KalosTV, MoboReels, MyDrama, StardustTV, & Vigloo**) disatukan dalam **1 katalog terpadu** dengan warm-start `0ms` (92+ drama terverifikasi + sinkronisasi live 400–500+ judul) dan **0% Dailymotion**.
-     - 100% pemutaran di pemutar vertikal 9:16 HTML5 `<video>` asli (Direct MP4 HD, HLS.js, WebCrypto CENC), **100% VIP Terbuka Ep 1–Tamat gratis**, fitur **🔥 Mode FYP TikTok (Full Ep Gratis)** dengan pengalih drama FYP instan, Layar Penuh + *Layar Bersih*, preloading episode berikutnya, subtitle Indonesia otomatis, serta pencari drama lintas-platform & klip AI.
+   - **Drama Pendek Terpadu (Indonesia, China & Global · 17 Platform Original · 100% Gratis, `tools.html?tab=dracin`, `v50–v79`)**:
+     - Seluruh **17 platform short-drama original** (**Drama Pendek Indonesia, DramaBox VIP/ForYou/Dubbing, PineDrama TikTok CDN, Melolo, NetShort, NunoMix Dub Indo, ReelShort, ShortMax, GoodShort, FlickReels, FreeReels, DramaWave, FlexTV, KalosTV, MoboReels, MyDrama, StardustTV, & Vigloo**) disatukan dalam **1 katalog terpadu** dengan warm-start `0ms` (108+ drama terverifikasi termasuk **16+ Drama Pendek Indonesia 100% Gratis Ep 1–Tamat** + pembaruan live tanpa batas).
+     - 100% pemutaran di pemutar vertikal 9:16 HTML5 `<video>` asli (Direct MP4 HD, HLS.js, WebCrypto CENC), **anti-scroll lompat ke bawah** saat buka drama & keluar layar penuh, **subtitle eksternal CORS-unwrapped VTT/SRT/ASS/JSON + laci pilih subtitle in-stage + terjemahan otomatis penuh**, tombol ubah resolusi di layar penuh, **🔥 Mode FYP TikTok**, serta pencari drama lintas-platform & klip AI.
    - **Jadwal Sholat Indonesia**, **Prakiraan Cuaca Presisi**, **Jam Dunia & Globe 3D**, **Speedtest Cloudflare**, **Downloader Sosmed All-in-One**, **Kompresor Media HD AI & Open-Source**, **Konversi Semua File (85+ Format)**, **Cari Judul Lagu & Sumber Video**, serta **Pemutar YT Music Bebas Iklan + Background Audio Anti-Mati**.
 4. **Panel Admin Terenkripsi AES-256-GCM + Dashboard Status Sinkronisasi (`admin.html`, `v75`)**:
    - Dilindungi PBKDF2-SHA256 + verifikasi token GitHub PAT.

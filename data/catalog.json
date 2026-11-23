@@ -165,13 +165,13 @@
       {
         "id": "dracin",
         "enabled": true,
-        "label": "Drama China",
+        "label": "Drama Pendek",
         "icon": "./assets/icons/tool-dracin.svg",
-        "pageTitle": "Drama China (Dracin) Gratis Tanpa Iklan — 20+ Platform",
-        "pageSubtitle": "SekaiDrama (Sansekai), DramaBox, ReelShort, ShortMax, NetShort, Melolo, PineDrama, MyDrama & 12+ platform lain bebas lompat episode, auto-switch server VIP-free, & subtitle Indonesia otomatis.",
-        "heroKicker": "20+ Platform Short Drama · Sansekai VIP-Free Failover & Multi-API",
-        "heroTitle": "Nonton Drama China Pendek Gratis Tanpa Iklan",
-        "heroDescription": "Satukan SekaiDrama (Sansekai), DramaBox, ReelShort, ShortMax, NetShort, GoodShort, DramaWave, FlickReels, FreeReels, PineDrama, MyDrama, Melolo, StardustTV, iDrama, DramaNova, StarShort, DramaBite, MoboReels, FlexTV, KalosTV & Anichin dengan auto-failover anti kunci VIP."
+        "pageTitle": "Drama Pendek Gratis Tanpa Iklan — Indonesia, China & Global (20+ Platform)",
+        "pageSubtitle": "Drama Pendek Indonesia, China & global dari DramaBox, Melolo, PineDrama, NetShort, GoodShort, FlickReels, ReelShort, ShortMax & 12+ platform lain bebas lompat episode 100% gratis & subtitle Indonesia.",
+        "heroKicker": "20+ Platform Drama Pendek · Indonesia, China & Global · Full Gratis",
+        "heroTitle": "Nonton Drama Pendek Gratis Tanpa Iklan",
+        "heroDescription": "Satukan Drama Pendek Indonesia, DramaBox, Melolo, PineDrama, NetShort, GoodShort, FlickReels, FreeReels, ReelShort, ShortMax, DramaWave, MyDrama, StardustTV, FlexTV, KalosTV, Vigloo & Anichin full episode gratis tanpa VIP."
       },
       {
         "id": "audioeditor",
@@ -355,9 +355,9 @@
       "id": "banner-dracin",
       "utilityId": "dracin",
       "kicker": "Menu Utilitas · 20+ Platform Terpadu",
-      "heading": "Nonton Drama China Full Episode Gratis",
-      "sub": "Satukan drama populer dalam satu player bebas iklan, lompat episode bebas, & subtitle Indonesia.",
-      "ctaLabel": "Tonton Dracin →",
+      "heading": "Nonton Drama Pendek Full Episode Gratis",
+      "sub": "Satukan drama pendek Indonesia, China & global dalam satu player bebas iklan, lompat episode bebas, & subtitle Indonesia.",
+      "ctaLabel": "Tonton Drama →",
       "href": "./tools.html?tab=dracin",
       "image": "./assets/banners/banner-dracin.jpg",
       "scrim": "crimson",

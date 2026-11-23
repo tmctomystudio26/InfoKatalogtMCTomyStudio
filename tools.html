@@ -59,8 +59,8 @@
       rel="stylesheet"
     />
 
-    <link rel="stylesheet" href="./css/tokens.css?v=78" />
-    <link rel="stylesheet" href="./css/styles.css?v=78" />
+    <link rel="stylesheet" href="./css/tokens.css?v=79" />
+    <link rel="stylesheet" href="./css/styles.css?v=79" />
     <script>
       (function () {
         try {
@@ -69,7 +69,7 @@
             document.documentElement.setAttribute('data-theme', savedTheme);
           }
         } catch (e) {}
-        var CURRENT_CACHE = 'manifestudio-cache-v78';
+        var CURRENT_CACHE = 'manifestudio-cache-v79';
         if ('caches' in window) {
           caches.keys().then(function (keys) {
             keys.forEach(function (k) {
@@ -79,7 +79,7 @@
         }
         if ('serviceWorker' in navigator) {
           window.addEventListener('load', function () {
-            navigator.serviceWorker.register('./sw.js?v=78').then(function (reg) {
+            navigator.serviceWorker.register('./sw.js?v=79').then(function (reg) {
               reg.update();
             }).catch(function () {});
           });
@@ -116,7 +116,7 @@
           <button type="button" class="header-nav-link" data-tools-nav="converter">Konversi File</button>
           <button type="button" class="header-nav-link" data-tools-nav="songfinder">Cari Lagu</button>
           <button type="button" class="header-nav-link" data-tools-nav="music">Musik YT</button>
-          <button type="button" class="header-nav-link" data-tools-nav="dracin">Drama China</button>
+          <button type="button" class="header-nav-link" data-tools-nav="dracin">Drama Pendek</button>
           <button type="button" class="header-nav-link" data-tools-nav="audioeditor">Audio Editor</button>
           <button type="button" class="header-nav-link" data-tools-nav="manifestai">Manifest AI</button>
           <button type="button" class="header-nav-link" data-tools-nav="plagiarism">Cek Plagiarisme</button>
@@ -146,7 +146,7 @@
         <div>
           <h1 id="tools-page-title" class="section-title">Menu Utilitas</h1>
           <p id="tools-page-subtitle" class="section-subtitle">
-            15 fitur utilitas gratis: Sholat, Cuaca, Jam Dunia, Speedtest, Downloader, Drama China, Novel, AI &amp; Cek Nomor.
+            15 fitur utilitas gratis: Sholat, Cuaca, Jam Dunia, Speedtest, Downloader, Drama Pendek, Novel, AI &amp; Cek Nomor.
           </p>
         </div>
         <a href="./index.html" class="btn btn-secondary btn-sm">← Menu Utama</a>
@@ -164,7 +164,7 @@
             <a href="./tools.html?tab=converter" class="tools-subtab" data-tool-subtab="converter"><img src="./assets/icons/tool-converter.svg" alt="" width="28" height="28" class="tools-subtab-icon" decoding="async" /><span>Konversi File</span></a>
             <a href="./tools.html?tab=songfinder" class="tools-subtab" data-tool-subtab="songfinder"><img src="./assets/icons/tool-songfinder.svg" alt="" width="28" height="28" class="tools-subtab-icon" decoding="async" /><span>Cari Judul Lagu</span></a>
             <a href="./tools.html?tab=music" class="tools-subtab" data-tool-subtab="music"><img src="./assets/icons/tool-music.svg" alt="" width="28" height="28" class="tools-subtab-icon" decoding="async" /><span>YT Music</span></a>
-            <a href="./tools.html?tab=dracin" class="tools-subtab" data-tool-subtab="dracin"><img src="./assets/icons/tool-dracin.svg" alt="" width="28" height="28" class="tools-subtab-icon" decoding="async" /><span>Drama China</span></a>
+            <a href="./tools.html?tab=dracin" class="tools-subtab" data-tool-subtab="dracin"><img src="./assets/icons/tool-dracin.svg" alt="" width="28" height="28" class="tools-subtab-icon" decoding="async" /><span>Drama Pendek</span></a>
             <a href="./tools.html?tab=audioeditor" class="tools-subtab" data-tool-subtab="audioeditor"><img src="./assets/icons/tool-audioeditor.svg" alt="" width="28" height="28" class="tools-subtab-icon" decoding="async" /><span>Audio Editor</span></a>
             <a href="./tools.html?tab=manifestai" class="tools-subtab" data-tool-subtab="manifestai"><img src="./assets/icons/tool-manifestai.svg" alt="" width="28" height="28" class="tools-subtab-icon" decoding="async" /><span>Manifest AI</span></a>
             <a href="./tools.html?tab=plagiarism" class="tools-subtab" data-tool-subtab="plagiarism"><img src="./assets/icons/tool-plagiarism.svg" alt="" width="28" height="28" class="tools-subtab-icon" decoding="async" /><span>Cek Plagiarisme</span></a>
@@ -222,6 +222,6 @@
     </footer>
 
     <div id="toast-notification" class="toast-notification" role="status" aria-live="polite" hidden></div>
-    <script type="module" src="./js/tools-page.js?v=78"></script>
+    <script type="module" src="./js/tools-page.js?v=79"></script>
   </body>
 </html>

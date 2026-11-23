@@ -10014,11 +10014,23 @@ body.dracin-fs-lock .site-header {
 }
 
 /* Vertical Short-Drama Player & 2-Column Desktop Cinema Layout */
+.dracin-app,
+.dracin-discover {
+  overflow-anchor: none;
+}
+
+.dracin-card-platform.is-indo {
+  background: linear-gradient(135deg, #dc2626 0%, #991b1b 100%);
+  color: #ffffff;
+  border: 1px solid rgba(254, 202, 202, 0.45);
+}
+
 .dracin-player-layout {
   display: grid;
   grid-template-columns: minmax(0, 420px) minmax(0, 1fr);
   gap: 1.15rem;
   align-items: start;
+  overflow-anchor: none;
 }
 
 .dracin-player-col {
@@ -10026,6 +10038,7 @@ body.dracin-fs-lock .site-header {
   flex-direction: column;
   gap: 0.85rem;
   min-width: 0;
+  overflow-anchor: none;
 }
 
 .dracin-fyp-banner {
@@ -10870,6 +10883,29 @@ body.dracin-fs-lock .site-header {
   display: flex;
   flex-direction: column;
   gap: 0.55rem;
+}
+
+.dracin-sub-status-banner {
+  margin-bottom: 0.65rem;
+  padding: 0.58rem 0.78rem;
+  border-radius: 10px;
+  font-size: 0.78rem;
+  line-height: 1.4;
+  background: rgba(30, 41, 59, 0.9);
+  border: 1px solid rgba(148, 163, 184, 0.28);
+  color: #cbd5e1;
+}
+
+.dracin-sub-status-banner.is-active {
+  background: rgba(16, 185, 129, 0.18);
+  border-color: rgba(52, 211, 153, 0.45);
+  color: #a7f3d0;
+}
+
+.dracin-sub-status-banner.is-hardsub {
+  background: rgba(245, 158, 11, 0.16);
+  border-color: rgba(251, 191, 36, 0.38);
+  color: #fde68a;
 }
 
 .dracin-quality-option {

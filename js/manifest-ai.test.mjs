@@ -55,7 +55,7 @@ test('Manifest AI v64 knows its creator Tomy & real Manifestudio products while 
   assert.ok(knowledge.includes('Tomy'));
   assert.ok(knowledge.includes('Capcut Pro') || knowledge.includes('CapCut Pro'));
   assert.ok(knowledge.includes('Netflix Premium'));
-  assert.ok(knowledge.includes('Drama China'));
+  assert.ok(knowledge.includes('Drama Pendek'));
   assert.ok(knowledge.includes('Audio Editor'));
   assert.ok(knowledge.includes('footer'));
   assert.ok(knowledge.includes('62xxxxxxxxxx'));

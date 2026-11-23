@@ -2,7 +2,7 @@
   "version": "73.0.0",
   "updatedAt": "2026-11-22T13:10:00Z",
   "dailymotionPlayerId": "x8lr5",
-  "notes": "Self-updating Drama China multi-platform native stream registry (v73) with NunoDrama 17-platform VIP-unlocked native MP4/HLS/CENC engine + TikTok FYP PineDrama CDN.",
+  "notes": "Self-updating Drama Pendek (Indonesia, China & Global) multi-platform native stream registry (v79) with NunoDrama 17-platform VIP-unlocked native MP4/HLS/CENC engine + direct CORS subtitle unwrapping + TikTok FYP PineDrama CDN.",
   "nunodrama": {
     "baseUrl": "https://nunodrama.my.id",
     "corsBridgeUrl": "https://r.jina.ai/https://nunodrama.my.id",

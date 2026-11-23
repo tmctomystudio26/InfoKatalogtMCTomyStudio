@@ -1,7 +1,7 @@
-import { createToolsHubController } from './tools-ui.js?v=78';
-import { loadCatalogData } from './data.js?v=78';
-import { normalizeBrandConfig, normalizeUtilityConfig } from './store.js?v=78';
-import { initPerformanceClass, scheduleIdleTask } from './perf-guard.js?v=78';
+import { createToolsHubController } from './tools-ui.js?v=79';
+import { loadCatalogData } from './data.js?v=79';
+import { normalizeBrandConfig, normalizeUtilityConfig } from './store.js?v=79';
+import { initPerformanceClass, scheduleIdleTask } from './perf-guard.js?v=79';
 
 const THEME_STORAGE_KEY = 'manifestudio_theme_v1';
 const VALID_TABS = new Set(['prayer', 'weather', 'worldclock', 'speedtest', 'downloader', 'compressor', 'converter', 'songfinder', 'music', 'dracin', 'audioeditor', 'manifestai', 'plagiarism', 'novel', 'callerid']);
@@ -110,7 +110,7 @@ const CONCISE_HEADER_NAV_LABELS = {
   converter: 'Konversi File',
   songfinder: 'Cari Lagu',
   music: 'Musik YT',
-  dracin: 'Drama China',
+  dracin: 'Drama Pendek',
   audioeditor: 'Audio Editor',
   manifestai: 'Manifest AI',
   plagiarism: 'Cek Plagiarisme',
@@ -253,7 +253,7 @@ async function bootstrap() {
     currentTab === 'songfinder' ||
     currentTab === 'downloader';
   const bootMusicLazy = () => {
-    import('./music.js?v=78')
+    import('./music.js?v=79')
       .then((m) => m.initMusicPlayer?.())
       .catch(() => {});
   };

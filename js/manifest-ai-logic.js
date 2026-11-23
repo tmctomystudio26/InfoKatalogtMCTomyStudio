@@ -33,7 +33,7 @@ export const DEFAULT_MANIFESTUDIO_PROFILE = Object.freeze({
     'Konversi Semua File (85+ format: DOCX, Excel, PDF, foto, video, audio, ZIP)',
     'Cari Judul Lagu, Musik & Sumber Video (AudD, Whisper lirik AI, kemiripan video)',
     'YT Music Player (gratis tanpa iklan)',
-    'Drama China / Dracin (20+ platform short drama gratis tanpa iklan, sub Indo, anti-VIP)',
+    'Drama Pendek (Indonesia, China & Global · 20+ platform short drama gratis tanpa iklan, sub Indo, full episode gratis)',
     'Audio Editor Studio AI (potong audio, 10-Band EQ, Voice Changer, pisah vokal/karaoke, mixer multi-trek, tag ID3, ekspor MP3/WAV/M4A/OGG/FLAC)',
     'Manifest AI (chat AI multi-model gratis tanpa API key & dukungan multi-API key pribadi)',
   ],
@@ -62,7 +62,7 @@ export const DEFAULT_MANIFESTUDIO_PROFILE = Object.freeze({
 
 export const MANIFEST_AI_SYSTEM_PROMPT = [
   'Kamu adalah Manifest AI, asisten AI resmi milik Manifestudio (https://manifestudio.my.id/) yang dibuat dan dikelola oleh Tomy.',
-  'Identitas resmi Manifestudio: Platform katalog akun premium & layanan digital murah bergaransi (seperti CapCut Pro, Netflix, Canva Pro, YouTube Premium, Spotify, Viu, Vidio, Alight Motion, WeTV, Prime Video, Cek Turnitin, Zoom Pro, Bstation, Picsart, Wink, Remini, Gemini AI) sekaligus Menu Utilitas berisi 12 fitur gratis tanpa iklan (Jadwal Sholat, Cuaca, Jam Dunia 3D, Speedtest, Downloader Sosmed, Kompresor HD, Konversi File, Cari Judul Lagu, YT Music, Drama China/Dracin, Audio Editor Studio AI, dan Manifest AI).',
+  'Identitas resmi Manifestudio: Platform katalog akun premium & layanan digital murah bergaransi (seperti CapCut Pro, Netflix, Canva Pro, YouTube Premium, Spotify, Viu, Vidio, Alight Motion, WeTV, Prime Video, Cek Turnitin, Zoom Pro, Bstation, Picsart, Wink, Remini, Gemini AI) sekaligus Menu Utilitas berisi 15 fitur gratis tanpa iklan (Jadwal Sholat, Cuaca, Jam Dunia 3D, Speedtest, Downloader Sosmed, Kompresor HD, Konversi File, Cari Judul Lagu, YT Music, Drama Pendek, Audio Editor Studio AI, Manifest AI, Cek Plagiarisme, Novel Terpadu, dan Cek Nomor).',
   'Aturan WAJIB:',
   '1. Selalu jawab PESAN TERAKHIR pengguna secara langsung. Jika pengguna mengganti topik ke hal baru, segera ikuti topik baru dan JANGAN memaksa kembali ke topik lama.',
   '2. Jika pengguna mengirim sapaan singkat (seperti "P", "Halo", "Hai", "Tes"), balas singkat dan ramah menanyakan apa yang bisa dibantu.',
@@ -72,7 +72,7 @@ export const MANIFEST_AI_SYSTEM_PROMPT = [
 ].join('\n');
 
 const MANIFESTUDIO_QUERY_RE =
-  /\b(man[ie]f[eu]s?t?studio|manifest\s*studio|manifest\s*ai|tomy|tmctomystudio|tuan|pemilik|pembuat|pencipta|siapa\s+(kamu|anda|pembuat|pemilik|tuan)|kamu\s+siapa|anda\s+siapa|katalog|akun\s+premium|menu\s+utilitas|fitur\s+di\s+sini|kontak\s+admin|whatsapp\s+admin|wa\s+admin|whatsapp\s+owner|wa\s+owner|sosmed|media\s+sosial|instagram|tiktok|cara\s+order|cara\s+pesan|bayar\s+nanti|bayar\s+belakangan|capcut|netflix|canva|turnitin|dracin|drama\s+china|audio\s+editor)\b/i;
+  /\b(man[ie]f[eu]s?t?studio|manifest\s*studio|manifest\s*ai|tomy|tmctomystudio|tuan|pemilik|pembuat|pencipta|siapa\s+(kamu|anda|pembuat|pemilik|tuan)|kamu\s+siapa|anda\s+siapa|katalog|akun\s+premium|menu\s+utilitas|fitur\s+di\s+sini|kontak\s+admin|whatsapp\s+admin|wa\s+admin|whatsapp\s+owner|wa\s+owner|sosmed|media\s+sosial|instagram|tiktok|cara\s+order|cara\s+pesan|bayar\s+nanti|bayar\s+belakangan|capcut|netflix|canva|turnitin|dracin|drama\s+china|drama\s+pendek|audio\s+editor)\b/i;
 
 export function isManifestudioQuery(text = '') {
   return MANIFESTUDIO_QUERY_RE.test(String(text || ''));
@@ -381,7 +381,7 @@ export function buildLocalManifestudioFallback(prompt = '', catalogData = null) 
     : ['CapCut Pro', 'Netflix Premium', 'Canva Pro', 'YouTube Premium', 'Spotify Premium', 'Viu', 'Vidio', 'Alight Motion', 'WeTV', 'Prime Video', 'Cek Turnitin', 'Zoom Pro', 'Gemini AI'];
   const utilities = Array.isArray(catalogData?.utilities?.items) && catalogData.utilities.items.length > 0
     ? catalogData.utilities.items.map((u) => u.label)
-    : ['Jadwal Sholat', 'Prakiraan Cuaca', 'Jam Dunia & Globe', 'Speedtest', 'Downloader', 'Kompresor HD', 'Konversi File', 'Cari Judul Lagu', 'YT Music', 'Drama China', 'Audio Editor', 'Manifest AI'];
+    : ['Jadwal Sholat', 'Prakiraan Cuaca', 'Jam Dunia & Globe', 'Speedtest', 'Downloader', 'Kompresor HD', 'Konversi File', 'Cari Judul Lagu', 'YT Music', 'Drama Pendek', 'Audio Editor', 'Manifest AI'];
 
   return [
     'Halo! Saya **Manifest AI**, asisten resmi milik **Manifestudio** (*by Tomy*) di [manifestudio.my.id](https://manifestudio.my.id/).',

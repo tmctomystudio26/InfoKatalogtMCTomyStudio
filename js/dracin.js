@@ -49,15 +49,16 @@ import {
   resolveNunoPlatformId,
   scoreCrossPlatformDramaMatch,
   unwrapHlsJsonPayload,
-} from './dracin-logic.js?v=78';
+  unwrapNunoSubtitleUrl,
+} from './dracin-logic.js?v=79';
 
 const API_TIMEOUT_MS = 8500;
 const EPISODE_TIMEOUT_MS = 9000;
 const NUNO_TIMEOUT_MS = 8500;
 const SANSEKAI_TIMEOUT_MS = 6500;
 const AI_TIMEOUT_MS = 4500;
-const WARM_CATALOG_STORAGE_KEY = 'manifestudio_dracin_warm_catalog_v78';
-const LEGACY_WARM_CATALOG_STORAGE_KEY = 'manifestudio_dracin_warm_catalog_v73';
+const WARM_CATALOG_STORAGE_KEY = 'manifestudio_dracin_warm_catalog_v79';
+const LEGACY_WARM_CATALOG_STORAGE_KEY = 'manifestudio_dracin_warm_catalog_v78';
 
 // Verified live daily-updated sections on nunodrama.my.id (Page 1)
 const NUNO_DAILY_LATEST_SECTIONS = [
@@ -139,6 +140,13 @@ const LIVE_DISCOVERY_KEYWORDS = [
   'takdir',
   'kaya',
   'rahasia',
+  'jakarta',
+  'dimas',
+  'intan',
+  'desa',
+  'kampung',
+  'pesantren',
+  'bandung',
 ];
 
 async function runWithConcurrency(taskFactories = [], concurrency = 4) {
@@ -936,6 +944,24 @@ export async function fetchUnifiedDracinCatalog({
               forceRefresh,
             }),
             7200
+          )
+        );
+      }
+      // Live Indonesian short-drama expansion wave (Melolo, GoodShort, FlickReels)
+      const indoLiveSearches = [
+        { platform: 'melolo', query: 'dimas' },
+        { platform: 'goodshort', query: 'raka' },
+        { platform: 'flickreels', query: 'jakarta' },
+      ];
+      for (const qItem of indoLiveSearches) {
+        taskFactories.push(() =>
+          withJobCap(
+            fetchNunoPlatformSection(qItem.platform, 'search', {
+              query: qItem.query,
+              timeoutMs: 6500,
+              forceRefresh,
+            }),
+            7000
           )
         );
       }
@@ -2066,6 +2092,93 @@ export async function translateTextParallel(text = '', targetLang = 'id') {
   return clean;
 }
 
+async function fetchSubtitleTextWithFallback(track) {
+  const rawUrl = String(track?.url || '').trim();
+  const proxyUrl = String(track?.proxyUrl || '').trim();
+  const directUrl = unwrapNunoSubtitleUrl(rawUrl) || rawUrl;
+  if (!directUrl) return { rawText: '', cues: [] };
+
+  const cached = subtitleTextCache.get(directUrl);
+  if (cached) {
+    const cachedCues = parseSubtitleText(cached);
+    if (cachedCues.length > 0) return { rawText: cached, cues: cachedCues };
+  }
+
+  const attempts = [
+    () => fetchTextWithTimeout(directUrl, 6000),
+    () => fetchTextViaJina(directUrl, 7000),
+  ];
+  if (proxyUrl && proxyUrl !== directUrl) {
+    attempts.push(() => fetchTextViaJina(proxyUrl, 7000));
+  }
+  attempts.push(() =>
+    fetchTextWithTimeout(`https://api.allorigins.win/raw?url=${encodeURIComponent(directUrl)}`, 6500)
+  );
+
+  for (const runAttempt of attempts) {
+    try {
+      const text = await runAttempt();
+      const cues = parseSubtitleText(text);
+      if (cues.length > 0) {
+        subtitleTextCache.set(directUrl, text);
+        return { rawText: text, cues };
+      }
+    } catch {
+      // Try next CORS/proxy bridge
+    }
+  }
+
+  return { rawText: '', cues: [] };
+}
+
+async function translateSubtitleCuesBatched(cues = [], targetLang = 'id') {
+  const safeCues = Array.isArray(cues) ? cues : [];
+  const total = Math.min(160, safeCues.length);
+  if (!total) return safeCues;
+
+  const translated = safeCues.map((c) => ({ ...c }));
+  const chunkSize = 18;
+  const tasks = [];
+
+  for (let start = 0; start < total; start += chunkSize) {
+    const end = Math.min(total, start + chunkSize);
+    tasks.push(async () => {
+      const slice = translated.slice(start, end);
+      const payload = slice
+        .map((c, idx) => `[${idx}] ${c.text.replace(/\s*\n+\s*/g, ' ')}`)
+        .join('\n');
+      try {
+        const out = await translateTextParallel(payload, targetLang);
+        const lineMatches = [...String(out || '').matchAll(/\[(\d+)\]\s*([^\n\r]+)/g)];
+        if (lineMatches.length >= Math.ceil(slice.length * 0.5)) {
+          for (const m of lineMatches) {
+            const relIdx = Number(m[1]);
+            const textVal = String(m[2] || '').trim();
+            if (relIdx >= 0 && relIdx < slice.length && textVal) {
+              translated[start + relIdx] = { ...translated[start + relIdx], text: textVal };
+            }
+          }
+        } else {
+          const fallbackLines = String(out || '')
+            .split(/\r?\n/)
+            .map((l) => l.replace(/^\[\d+\]\s*/, '').trim())
+            .filter(Boolean);
+          if (fallbackLines.length === slice.length) {
+            for (let i = 0; i < slice.length; i += 1) {
+              translated[start + i] = { ...translated[start + i], text: fallbackLines[i] };
+            }
+          }
+        }
+      } catch {
+        // Keep real source cues for this chunk if translator fails
+      }
+    });
+  }
+
+  await runWithConcurrency(tasks, 3);
+  return translated;
+}
+
 export async function getEpisodeSubtitles(drama, episodeNumber = 1, lang = 'id', apiSubtitles = []) {
   if (lang === 'off') {
     return { cues: [], isRealTrack: false, reason: 'Subtitle dimatikan' };
@@ -2078,63 +2191,50 @@ export async function getEpisodeSubtitles(drama, episodeNumber = 1, lang = 'id',
       isRealTrack: false,
       reason: drama?.hasIndonesianDub
         ? 'Sulih Suara Indonesia aktif pada audio video'
-        : 'Subtitle Bahasa Indonesia sudah tertanam langsung (hardsub) di dalam video',
+        : 'Subtitle tertanam langsung (hardsub) di dalam video',
     };
   }
 
   const langMatch = (track, target) => {
     const code = `${track.language || ''} ${track.label || ''}`.toLowerCase();
-    if (target === 'id') return /\b(id|in|ind|id_id|id-id|indo|indonesian)\b/.test(code);
+    if (target === 'id') return /\b(id|in|ind|id_id|id-id|indo|indonesian|indonesia)\b/.test(code);
+    if (target === 'en') return /\b(en|eng|en_us|en-us|en_gb|english|inggris)\b/.test(code);
+    if (target === 'ms') return /\b(ms|my|ms_my|ms-my|melayu|malay)\b/.test(code);
+    if (target === 'zh') return /\b(zh|cn|zh_cn|zh-cn|zh_tw|mandarin|chinese)\b/.test(code);
     return code.startsWith(target) || code.includes(`_${target}`) || code.includes(`-${target}`);
   };
 
-  let picked = tracks.find((t) => langMatch(t, lang));
-  let needsTranslate = false;
-  if (!picked) {
-    picked = tracks.find((t) => langMatch(t, 'en')) || tracks[0];
-    needsTranslate = Boolean(picked && !langMatch(picked, lang));
-  }
+  // Order candidate tracks: exact language match first, then English, then Indonesia, then all others
+  const orderedCandidates = [];
+  const pushUnique = (t) => {
+    if (t && !orderedCandidates.includes(t)) orderedCandidates.push(t);
+  };
+  tracks.filter((t) => langMatch(t, lang)).forEach(pushUnique);
+  tracks.filter((t) => langMatch(t, 'en')).forEach(pushUnique);
+  tracks.filter((t) => langMatch(t, 'id')).forEach(pushUnique);
+  tracks.forEach(pushUnique);
 
-  try {
-    let rawSub = subtitleTextCache.get(picked.url);
-    if (!rawSub) {
-      rawSub = await fetchTextWithTimeout(picked.url, 6000);
-      subtitleTextCache.set(picked.url, rawSub);
-    }
-    const cues = parseSubtitleText(rawSub);
-    if (cues.length > 0) {
-      if (needsTranslate && lang === 'id') {
-        const translated = [...cues];
-        const batchSize = Math.min(25, translated.length);
-        const joined = translated
-          .slice(0, batchSize)
-          .map((c) => c.text.replace(/\n+/g, ' '))
-          .join('\n|||\n');
-        try {
-          const out = await translateTextParallel(joined, 'id');
-          const parts = out.split(/\s*\|\|\|\s*/);
-          if (parts.length === batchSize) {
-            for (let i = 0; i < batchSize; i += 1) {
-              if (parts[i]) translated[i] = { ...translated[i], text: parts[i].trim() };
-            }
-          }
-        } catch {
-          // Keep original real cues
-        }
-        return {
-          cues: translated,
-          isRealTrack: true,
-          reason: `Subtitle asli (${picked.label}) diterjemahkan otomatis ke Bahasa Indonesia`,
-        };
-      }
+  for (const picked of orderedCandidates) {
+    const { cues } = await fetchSubtitleTextWithFallback(picked);
+    if (!cues.length) continue;
+
+    const exactMatch = langMatch(picked, lang);
+    if (!exactMatch && lang && lang !== 'off') {
+      const translatedCues = await translateSubtitleCuesBatched(cues, lang);
       return {
-        cues,
+        cues: translatedCues,
         isRealTrack: true,
-        reason: `Subtitle resmi ${picked.label} aktif (${cues.length} baris dialog)`,
+        sourceTrack: picked,
+        reason: `Subtitle asli (${picked.label}) diterjemahkan otomatis ke ${lang.toUpperCase()} (${translatedCues.length} baris)`,
       };
     }
-  } catch {
-    // External subtitle file blocked by CORS or unavailable
+
+    return {
+      cues,
+      isRealTrack: true,
+      sourceTrack: picked,
+      reason: `Subtitle resmi ${picked.label} aktif (${cues.length} baris dialog)`,
+    };
   }
 
   return {
@@ -2146,7 +2246,7 @@ export async function getEpisodeSubtitles(drama, episodeNumber = 1, lang = 'id',
 
 export async function queryKeylessMultiAi(
   prompt,
-  systemPrompt = 'Anda adalah asisten ahli Drama China (Dracin) dari 18 platform short drama. Jawab ringkas dalam Bahasa Indonesia.'
+  systemPrompt = 'Anda adalah asisten ahli Drama Pendek (Indonesia, China & Global) dari 18 platform short drama. Jawab ringkas dalam Bahasa Indonesia.'
 ) {
   const providers = [
     {
@@ -2338,8 +2438,8 @@ export async function identifyDracinFromMedia({
   const cleanClue = String(clueText || '').trim();
 
   report(48, 'Menjalankan Multi-AI & pencarian live lintas 17 platform...');
-  const aiPrompt = `Identifikasi Drama China pendek (Dracin dari DramaBox, PineDrama TikTok, Melolo, ReelShort, ShortMax, NetShort, GoodShort, FlickReels, FreeReels) berdasarkan data ini:
-- Nama file: "${fileName || 'cuplikan_dracin'}"
+  const aiPrompt = `Identifikasi Drama Pendek (Indonesia, China & Global dari DramaBox, PineDrama TikTok, Melolo, ReelShort, ShortMax, NetShort, GoodShort, FlickReels, FreeReels) berdasarkan data ini:
+- Nama file: "${fileName || 'cuplikan_drama'}"
 - Deskripsi/teks subtitle/adegan dari user: "${cleanClue || 'cuplikan drama pendek vertikal'}"
 - Profil visual: ${
     visualProfile
@@ -2348,7 +2448,7 @@ export async function identifyDracinFromMedia({
         }`
       : 'tidak ada'
   }
-Balas singkat JSON: {"summary":"analisis singkat Bahasa Indonesia 1-2 kalimat","genre":"ceo|revenge|fantasy|historical|family|donghua","keywords":["kata1","kata2","kata3"]}`;
+Balas singkat JSON: {"summary":"analisis singkat Bahasa Indonesia 1-2 kalimat","genre":"ceo|revenge|fantasy|historical|family|donghua|indonesia","keywords":["kata1","kata2","kata3"]}`;
 
   const searchSeed = cleanClue || fileName.replace(/\.[^.]+$/, '');
   const [aiResult, dbSearch, pdSearch, mlSearch, nsSearch] = await Promise.allSettled([
@@ -2398,7 +2498,7 @@ Balas singkat JSON: {"summary":"analisis singkat Bahasa Indonesia 1-2 kalimat","
 }
 
 export async function fetchAiDramaInsights(drama, catalog = []) {
-  const prompt = `Berikan ringkasan daya tarik Drama China "${drama?.title}" (${drama?.platformName}, genre ${drama?.genre}) dalam 2 kalimat singkat Bahasa Indonesia yang menarik tanpa spoiler akhir.`;
+  const prompt = `Berikan ringkasan daya tarik Drama Pendek "${drama?.title}" (${drama?.platformName}, genre ${drama?.genre}) dalam 2 kalimat singkat Bahasa Indonesia yang menarik tanpa spoiler akhir.`;
   const aiRes = await queryKeylessMultiAi(prompt);
 
   const similar = (catalog || [])
