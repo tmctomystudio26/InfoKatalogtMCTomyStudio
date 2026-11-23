@@ -1,7 +1,7 @@
-import { createToolsHubController } from './tools-ui.js?v=76';
-import { loadCatalogData } from './data.js?v=76';
-import { normalizeBrandConfig, normalizeUtilityConfig } from './store.js?v=76';
-import { initPerformanceClass, scheduleIdleTask } from './perf-guard.js?v=76';
+import { createToolsHubController } from './tools-ui.js?v=77';
+import { loadCatalogData } from './data.js?v=77';
+import { normalizeBrandConfig, normalizeUtilityConfig } from './store.js?v=77';
+import { initPerformanceClass, scheduleIdleTask } from './perf-guard.js?v=77';
 
 const THEME_STORAGE_KEY = 'manifestudio_theme_v1';
 const VALID_TABS = new Set(['prayer', 'weather', 'worldclock', 'speedtest', 'downloader', 'compressor', 'converter', 'songfinder', 'music', 'dracin', 'audioeditor', 'manifestai', 'plagiarism', 'novel', 'callerid']);
@@ -253,7 +253,7 @@ async function bootstrap() {
     currentTab === 'songfinder' ||
     currentTab === 'downloader';
   const bootMusicLazy = () => {
-    import('./music.js?v=76')
+    import('./music.js?v=77')
       .then((m) => m.initMusicPlayer?.())
       .catch(() => {});
   };

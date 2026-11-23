@@ -9233,8 +9233,16 @@ a {
    Drama China (Dracin) Gratis Tanpa Iklan — 18+ Platform Short-Drama Cinema
    ========================================================================== */
 
+html.dracin-fs-lock,
 body.dracin-fs-lock {
-  overflow: hidden;
+  overflow: hidden !important;
+  overscroll-behavior: none;
+}
+
+body.dracin-fs-lock .ytm-mini-fab,
+body.dracin-fs-lock .ytm-mini-player,
+body.dracin-fs-lock .site-header {
+  display: none !important;
 }
 
 .dracin-app {
@@ -10094,16 +10102,48 @@ body.dracin-fs-lock {
 .dracin-stage.is-fullscreen {
   position: fixed;
   inset: 0;
-  z-index: 9999;
-  width: 100vw;
+  z-index: 99999;
+  width: 100%;
+  height: 100vh;
   height: 100dvh;
   max-height: none;
   aspect-ratio: auto;
   border-radius: 0;
   border: 0;
-  background: #020617;
-  touch-action: none;
+  background: #000000;
+  touch-action: pan-x;
   overscroll-behavior: contain;
+  contain: layout style;
+}
+
+.dracin-stage:fullscreen {
+  position: relative;
+  inset: auto;
+  width: 100%;
+  height: 100%;
+  max-height: none;
+  aspect-ratio: auto;
+  border-radius: 0;
+  border: 0;
+  background: #000000;
+}
+
+.dracin-stage.is-fullscreen .dracin-stage-tap-layer {
+  touch-action: none;
+}
+
+.dracin-stage.is-fullscreen .dracin-stage-topbar,
+.dracin-stage.is-fullscreen .dracin-action-rail,
+.dracin-stage.is-fullscreen .dracin-stage-bottom {
+  touch-action: manipulation;
+}
+
+.dracin-stage.is-fullscreen .dracin-stage-topbar {
+  padding-top: max(0.75rem, env(safe-area-inset-top));
+}
+
+.dracin-stage.is-fullscreen .dracin-fs-drawer {
+  touch-action: pan-y;
 }
 
 .dracin-stage-iframe,

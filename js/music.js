@@ -10,7 +10,7 @@
  * - Exposes a single shared controller (`getMusicController`) synced with Menu Utilitas (`tools.html?tab=music`).
  */
 
-import { shouldAllowAutoMusicTrigger } from './perf-guard.js?v=76';
+import { shouldAllowAutoMusicTrigger } from './perf-guard.js?v=77';
 import {
   MIN_FULL_TRACK_SECONDS,
   MUSIC_LIBRARY_STORAGE_KEY,

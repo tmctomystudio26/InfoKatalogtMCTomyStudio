@@ -139,6 +139,41 @@ export function shouldEnableDualVideoPreload({ isLowEnd = false, isMobile = fals
   return !isLowEnd && !isMobile;
 }
 
+/**
+ * Android Chrome / WebView mobile GPUs frequently deadlock or freeze the SurfaceFlinger
+ * compositor when calling Element.requestFullscreen() on a complex <div> wrapping an actively
+ * playing hardware-decoded <video> + floating HUD overlays (recovering only on OS Back press).
+ * On mobile/touch or low-end devices, use zero-freeze fixed-viewport Cinema Fullscreen +
+ * History popstate Back-button integration; reserve native DOM Fullscreen API for desktop.
+ */
+export function shouldUseNativeDomFullscreen(env = {}) {
+  const nav =
+    env && typeof env === 'object' && Object.keys(env).length > 0
+      ? env
+      : typeof navigator !== 'undefined'
+        ? {
+            hardwareConcurrency: navigator.hardwareConcurrency,
+            deviceMemory: navigator.deviceMemory,
+            saveData: navigator.connection?.saveData,
+            effectiveType: navigator.connection?.effectiveType,
+            userAgent: navigator.userAgent,
+            maxTouchPoints: navigator.maxTouchPoints,
+            innerWidth: typeof window !== 'undefined' ? window.innerWidth : undefined,
+          }
+        : {};
+
+  const ua = String(nav.userAgent || '').toLowerCase();
+  const isMobileUa =
+    /android|iphone|ipad|ipod|mobile|xiaomi|redmi|oppo|vivo|realme|infinix|tecno|itel|samsung|wv\b/i.test(ua);
+  const isTouch = Number(nav.maxTouchPoints || 0) > 0;
+  const innerWidth = Number(nav.innerWidth);
+  const isNarrowTouch = isTouch && Number.isFinite(innerWidth) && innerWidth > 0 && innerWidth <= 1024;
+
+  if (isMobileUa || isNarrowTouch) return false;
+  if (detectLowEndDevice(nav)) return false;
+  return true;
+}
+
 export function initPerformanceClass() {
   if (typeof document === 'undefined') return 'standard';
   const lowEnd = detectLowEndDevice();

@@ -59,8 +59,8 @@
       rel="stylesheet"
     />
 
-    <link rel="stylesheet" href="./css/tokens.css?v=76" />
-    <link rel="stylesheet" href="./css/styles.css?v=76" />
+    <link rel="stylesheet" href="./css/tokens.css?v=77" />
+    <link rel="stylesheet" href="./css/styles.css?v=77" />
     <script>
       (function () {
         try {
@@ -69,7 +69,7 @@
             document.documentElement.setAttribute('data-theme', savedTheme);
           }
         } catch (e) {}
-        var CURRENT_CACHE = 'manifestudio-cache-v76';
+        var CURRENT_CACHE = 'manifestudio-cache-v77';
         if ('caches' in window) {
           caches.keys().then(function (keys) {
             keys.forEach(function (k) {
@@ -79,7 +79,7 @@
         }
         if ('serviceWorker' in navigator) {
           window.addEventListener('load', function () {
-            navigator.serviceWorker.register('./sw.js?v=76').then(function (reg) {
+            navigator.serviceWorker.register('./sw.js?v=77').then(function (reg) {
               reg.update();
             }).catch(function () {});
           });
@@ -222,6 +222,6 @@
     </footer>
 
     <div id="toast-notification" class="toast-notification" role="status" aria-live="polite" hidden></div>
-    <script type="module" src="./js/tools-page.js?v=76"></script>
+    <script type="module" src="./js/tools-page.js?v=77"></script>
   </body>
 </html>

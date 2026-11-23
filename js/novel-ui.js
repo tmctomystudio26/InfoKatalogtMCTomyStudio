@@ -20,6 +20,7 @@ import {
   formatRelativeUpdate,
   paginateChapterParagraphs,
 } from './novel-logic.js?v=72';
+import { shouldUseNativeDomFullscreen } from './perf-guard.js?v=77';
 import {
   READER_FONTS,
   THEME_CATEGORIES,
@@ -1813,12 +1814,14 @@ export function createNovelController(container) {
     const overlay = container.querySelector('[data-nvl-reader-overlay]');
     if (!readerFullscreen) {
       readerFullscreen = true;
-      try {
-        if (overlay && overlay.requestFullscreen && !document.fullscreenElement) {
-          await overlay.requestFullscreen();
+      if (shouldUseNativeDomFullscreen()) {
+        try {
+          if (overlay && overlay.requestFullscreen && !document.fullscreenElement) {
+            await overlay.requestFullscreen();
+          }
+        } catch {
+          // CSS fixed-inset fullscreen works reliably even inside restricted iframes!
         }
-      } catch {
-        // CSS fixed-inset fullscreen works reliably even inside restricted iframes!
       }
     } else {
       readerFullscreen = false;

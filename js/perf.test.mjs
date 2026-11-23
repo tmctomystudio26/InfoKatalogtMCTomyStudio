@@ -9,6 +9,7 @@ import {
   resolveBannerTransition,
   shouldAllowAutoMusicTrigger,
   shouldEnableDualVideoPreload,
+  shouldUseNativeDomFullscreen,
 } from './perf-guard.js';
 
 test('detectLowEndDevice identifies budget Android/low-RAM/saveData devices vs desktop workstations', () => {
@@ -90,6 +91,37 @@ test('shouldAllowAutoMusicTrigger & shouldEnableDualVideoPreload guard against l
   assert.equal(shouldEnableDualVideoPreload({ isLowEnd: true, isMobile: true }), false);
   assert.equal(shouldEnableDualVideoPreload({ isLowEnd: false, isMobile: true }), false);
   assert.equal(shouldEnableDualVideoPreload({ isLowEnd: false, isMobile: false }), true);
+
+  // Android / mobile touch & low-spec devices must avoid Chromium Top-Layer div.requestFullscreen() freezes
+  assert.equal(
+    shouldUseNativeDomFullscreen({
+      userAgent: 'Mozilla/5.0 (Linux; Android 13; CPH2477) AppleWebKit/537.36 Chrome/126.0.0.0 Mobile Safari/537.36',
+      hardwareConcurrency: 8,
+      deviceMemory: 8,
+      maxTouchPoints: 5,
+      innerWidth: 390,
+    }),
+    false
+  );
+  assert.equal(
+    shouldUseNativeDomFullscreen({
+      userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 Mobile',
+      maxTouchPoints: 5,
+      innerWidth: 390,
+    }),
+    false
+  );
+  assert.equal(
+    shouldUseNativeDomFullscreen({
+      userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/126.0.0.0',
+      hardwareConcurrency: 8,
+      deviceMemory: 16,
+      maxTouchPoints: 0,
+      innerWidth: 1440,
+      prefersReducedMotion: false,
+    }),
+    true
+  );
 });
 
 test('tools-ui.js uses dynamic lazy imports instead of eager static imports for heavy utilities', () => {
@@ -121,4 +153,11 @@ test('tools-ui.js uses dynamic lazy imports instead of eager static imports for 
   assert.ok(precacheMatch, 'PRECACHE_ASSETS must exist in sw.js');
   const items = precacheMatch[1].match(/'\.\/[^']+'/g) || [];
   assert.ok(items.length > 5 && items.length <= 30, `PRECACHE_ASSETS should stay lean (got ${items.length})`);
+
+  // Verify Dracin & Novel fullscreen callers guard requestFullscreen via shouldUseNativeDomFullscreen
+  const dracinUiSrc = fs.readFileSync(path.join(repoDir, 'js/dracin-ui.js'), 'utf8');
+  const novelUiSrc = fs.readFileSync(path.join(repoDir, 'js/novel-ui.js'), 'utf8');
+  assert.match(dracinUiSrc, /shouldUseNativeDomFullscreen\(/, 'dracin-ui.js must guard requestFullscreen with shouldUseNativeDomFullscreen');
+  assert.match(dracinUiSrc, /window\.addEventListener\('popstate'/, 'dracin-ui.js must handle Android Back button via popstate in Cinema Fullscreen');
+  assert.match(novelUiSrc, /shouldUseNativeDomFullscreen\(/, 'novel-ui.js must guard requestFullscreen with shouldUseNativeDomFullscreen');
 });

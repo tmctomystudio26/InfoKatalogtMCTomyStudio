@@ -53,7 +53,8 @@ import {
   computeProgressiveRenderLimit,
   detectLowEndDevice,
   shouldEnableDualVideoPreload,
-} from './perf-guard.js?v=76';
+  shouldUseNativeDomFullscreen,
+} from './perf-guard.js?v=77';
 
 const HISTORY_STORAGE_KEY = 'manifestudio_dracin_history_v1';
 const FAVORITES_STORAGE_KEY = 'manifestudio_dracin_favorites_v1';
@@ -204,6 +205,9 @@ export function createDracinController({ onToast = () => {} } = {}) {
   let touchStartY = null;
   let hasInitialFetched = false;
   let globalListenersBound = false;
+  let cinemaFsHistoryPushed = false;
+  let ignoreNextPopstate = false;
+  let fullscreenTransitionBusy = false;
   let activeHls = null;
   let activeBlobUrl = '';
   let activeEmeCleanup = null;
@@ -1677,28 +1681,89 @@ export function createDracinController({ onToast = () => {} } = {}) {
     }
   }
 
-  async function toggleFullscreenMode(forceValue = null) {
+  function preserveVideoPlaybackAcrossLayout(videoEl, wasPlaying) {
+    if (!videoEl || !wasPlaying) return;
+    requestAnimationFrame(() => {
+      if (!videoEl.isConnected) return;
+      if (videoEl.paused && !videoEl.ended) {
+        videoEl.play().catch(() => {});
+      }
+    });
+  }
+
+  async function toggleFullscreenMode(forceValue = null, { fromPopstate = false } = {}) {
     const next = typeof forceValue === 'boolean' ? forceValue : !state.isFullscreen;
+    if (next === state.isFullscreen) return;
+    if (fullscreenTransitionBusy && !fromPopstate) return;
+    fullscreenTransitionBusy = true;
+    setTimeout(() => {
+      fullscreenTransitionBusy = false;
+    }, 160);
+
+    const videoEl = hostEl?.querySelector('#dracin-html5-video');
+    const wasPlaying = Boolean(videoEl && !videoEl.paused && !videoEl.ended);
+
     state.isFullscreen = next;
     state.fullscreenDrawerOpen = false;
     if (!next) {
       state.cleanScreen = false;
     }
+
+    document.documentElement.classList.toggle('dracin-fs-lock', next);
     document.body.classList.toggle('dracin-fs-lock', next);
     syncStageChromeInPlace();
     const drawer = hostEl?.querySelector('.dracin-fs-drawer');
     if (drawer) drawer.remove();
 
-    try {
-      const stageEl = hostEl?.querySelector('#dracin-player-stage');
-      if (next && stageEl?.requestFullscreen && !document.fullscreenElement) {
-        await stageEl.requestFullscreen();
-      } else if (!next && document.fullscreenElement) {
-        await document.exitFullscreen();
+    const useNativeDomFs = shouldUseNativeDomFullscreen();
+
+    if (next) {
+      if (useNativeDomFs) {
+        try {
+          const stageEl = hostEl?.querySelector('#dracin-player-stage');
+          if (stageEl?.requestFullscreen && !document.fullscreenElement) {
+            await stageEl.requestFullscreen();
+          }
+        } catch {
+          // Fixed-viewport cinema fullscreen fallback remains seamlessly active
+        }
+      } else {
+        // Zero-freeze Android/mobile Cinema Fullscreen: avoid Chromium Top-Layer SurfaceFlinger freeze
+        // and hook browser Back button via a lightweight history state entry.
+        try {
+          if (!cinemaFsHistoryPushed && window.history?.pushState) {
+            window.history.pushState({ ...(window.history.state || {}), dracinCinemaFs: true }, '');
+            cinemaFsHistoryPushed = true;
+          }
+        } catch {
+          // Ignore restricted iframe history errors
+        }
       }
-    } catch {
-      // Fixed-viewport cinema fullscreen fallback remains seamlessly active
+    } else {
+      if (document.fullscreenElement) {
+        try {
+          await document.exitFullscreen();
+        } catch {
+          // Ignore exitFullscreen error
+        }
+      }
+      if (cinemaFsHistoryPushed) {
+        cinemaFsHistoryPushed = false;
+        if (!fromPopstate) {
+          try {
+            ignoreNextPopstate = true;
+            window.history.back();
+            setTimeout(() => {
+              ignoreNextPopstate = false;
+            }, 250);
+          } catch {
+            ignoreNextPopstate = false;
+          }
+        }
+      }
     }
+
+    preserveVideoPlaybackAcrossLayout(videoEl, wasPlaying);
   }
 
   function handleEpisodeStep(direction) {
@@ -1767,14 +1832,29 @@ export function createDracinController({ onToast = () => {} } = {}) {
   }
 
   function onNativeFullscreenChange() {
-    if (!document.fullscreenElement && state.isFullscreen) {
+    if (!document.fullscreenElement && state.isFullscreen && shouldUseNativeDomFullscreen()) {
+      const videoEl = hostEl?.querySelector('#dracin-html5-video');
+      const wasPlaying = Boolean(videoEl && !videoEl.paused && !videoEl.ended);
       state.isFullscreen = false;
       state.cleanScreen = false;
       state.fullscreenDrawerOpen = false;
+      document.documentElement.classList.remove('dracin-fs-lock');
       document.body.classList.remove('dracin-fs-lock');
       syncStageChromeInPlace();
       const drawer = hostEl?.querySelector('.dracin-fs-drawer');
       if (drawer) drawer.remove();
+      preserveVideoPlaybackAcrossLayout(videoEl, wasPlaying);
+    }
+  }
+
+  function onWindowPopstate() {
+    if (ignoreNextPopstate) {
+      ignoreNextPopstate = false;
+      return;
+    }
+    if (state.isFullscreen) {
+      cinemaFsHistoryPushed = false;
+      toggleFullscreenMode(false, { fromPopstate: true });
     }
   }
 
@@ -1783,6 +1863,7 @@ export function createDracinController({ onToast = () => {} } = {}) {
     globalListenersBound = true;
     document.addEventListener('keydown', onGlobalKeydown);
     document.addEventListener('fullscreenchange', onNativeFullscreenChange);
+    window.addEventListener('popstate', onWindowPopstate);
   }
 
   function unbindGlobalListeners() {
@@ -1790,6 +1871,8 @@ export function createDracinController({ onToast = () => {} } = {}) {
     globalListenersBound = false;
     document.removeEventListener('keydown', onGlobalKeydown);
     document.removeEventListener('fullscreenchange', onNativeFullscreenChange);
+    window.removeEventListener('popstate', onWindowPopstate);
+    document.documentElement.classList.remove('dracin-fs-lock');
     document.body.classList.remove('dracin-fs-lock');
   }
 
@@ -2388,6 +2471,11 @@ export function createDracinController({ onToast = () => {} } = {}) {
       : null;
     const pct = state.durationSec > 0 ? Math.min(100, (state.elapsedSec / state.durationSec) * 100) : 0;
 
+    const allowDualPreloadEl = shouldEnableDualVideoPreload({
+      isLowEnd: detectLowEndDevice(),
+      isMobile: typeof navigator !== 'undefined' && /android|iphone|ipad|ipod|mobile/i.test(navigator.userAgent || ''),
+    });
+
     const mediaSurfaceHtml = `
       <video
         id="dracin-html5-video"
@@ -2399,16 +2487,20 @@ export function createDracinController({ onToast = () => {} } = {}) {
         preload="auto"
         data-testid="dracin-html5-video"
       ></video>
-      <video
+      ${
+        allowDualPreloadEl
+          ? `<video
         id="dracin-preload-video"
         class="dracin-stage-video is-preload-standby"
         referrerpolicy="no-referrer"
         muted
         playsinline
         webkit-playsinline
-        preload="auto"
+        preload="metadata"
         aria-hidden="true"
-      ></video>
+      ></video>`
+          : ''
+      }
       <div id="dracin-stage-tap-layer" class="dracin-stage-tap-layer" aria-hidden="true"></div>
     `;
 
