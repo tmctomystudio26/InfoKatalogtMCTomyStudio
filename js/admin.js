@@ -612,7 +612,7 @@ function renderStoreVaultStatusUi(data, errMsg = '') {
 }
 
 async function refreshStoreVaultStatus() {
-  if (!adminState.unlocked || !adminState.gh?.token) return;
+  if (!adminState.unlocked || !adminState.ghConfig?.token) return;
   const msgEl = document.getElementById('store-vault-action-msg');
   try {
     const res = await fetch(STORE_VAULT_API.adminUrl, {
@@ -620,7 +620,7 @@ async function refreshStoreVaultStatus() {
       credentials: 'same-origin',
       cache: 'no-store',
       headers: {
-        Authorization: `Bearer ${adminState.gh.token}`,
+        Authorization: `Bearer ${adminState.ghConfig.token}`,
       },
     });
     const data = await res.json().catch(() => ({}));
@@ -4096,7 +4096,7 @@ function bindEvents() {
   });
 
   document.getElementById('store-access-save-vault-btn')?.addEventListener('click', async () => {
-    if (!adminState.unlocked || !adminState.gh?.token) {
+    if (!adminState.unlocked || !adminState.ghConfig?.token) {
       showToast('Buka Brankas Admin dengan token GitHub terlebih dahulu.');
       return;
     }
@@ -4124,7 +4124,7 @@ function bindEvents() {
         credentials: 'same-origin',
         headers: {
           'Content-Type': 'application/json',
-          Authorization: `Bearer ${adminState.gh.token}`,
+          Authorization: `Bearer ${adminState.ghConfig.token}`,
           [STORE_VAULT_API.csrfHeaderName]: STORE_VAULT_API.csrfHeaderValue,
         },
         body: JSON.stringify({
@@ -4168,7 +4168,7 @@ function bindEvents() {
   });
 
   document.getElementById('store-access-revoke-btn')?.addEventListener('click', async () => {
-    if (!adminState.unlocked || !adminState.gh?.token) return;
+    if (!adminState.unlocked || !adminState.ghConfig?.token) return;
     const revokeBtn = document.getElementById('store-access-revoke-btn');
     const msgEl = document.getElementById('store-vault-action-msg');
     if (revokeBtn) revokeBtn.disabled = true;
@@ -4178,7 +4178,7 @@ function bindEvents() {
         credentials: 'same-origin',
         headers: {
           'Content-Type': 'application/json',
-          Authorization: `Bearer ${adminState.gh.token}`,
+          Authorization: `Bearer ${adminState.ghConfig.token}`,
           [STORE_VAULT_API.csrfHeaderName]: STORE_VAULT_API.csrfHeaderValue,
         },
         body: JSON.stringify({ action: 'revoke_sessions' }),

@@ -25,7 +25,7 @@
     <link rel="stylesheet" href="./css/styles.css?v=83" />
     <script>
       (function () {
-        var CURRENT_CACHE = 'manifestudio-cache-v83';
+        var CURRENT_CACHE = 'manifestudio-cache-v84';
         window.addEventListener('load', function () {
           if ('caches' in window) {
             caches.keys().then(function (keys) {
@@ -35,7 +35,7 @@
             });
           }
           if ('serviceWorker' in navigator) {
-            navigator.serviceWorker.register('./sw.js?v=83').then(function (reg) {
+            navigator.serviceWorker.register('./sw.js?v=84').then(function (reg) {
               reg.update();
             }).catch(function () {});
           }

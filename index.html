@@ -98,7 +98,7 @@ Dilengkapi Jadwal Sholat, Prakiraan Cuaca, Jam Dunia, Speedtest, Social Media Do
             document.documentElement.setAttribute('data-theme', savedTheme);
           }
         } catch (e) {}
-        var CURRENT_CACHE = 'manifestudio-cache-v83';
+        var CURRENT_CACHE = 'manifestudio-cache-v84';
         window.addEventListener('load', function () {
           if ('caches' in window) {
             caches.keys().then(function (keys) {
@@ -108,7 +108,7 @@ Dilengkapi Jadwal Sholat, Prakiraan Cuaca, Jam Dunia, Speedtest, Social Media Do
             });
           }
           if ('serviceWorker' in navigator) {
-            navigator.serviceWorker.register('./sw.js?v=83').then(function (reg) {
+            navigator.serviceWorker.register('./sw.js?v=84').then(function (reg) {
               reg.update();
             }).catch(function () {});
           }
