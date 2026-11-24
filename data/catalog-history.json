@@ -1,7 +1,1052 @@
 {
-  "updatedAt": "2026-11-19T13:05:39.368Z",
+  "updatedAt": "2026-11-24T21:45:01.826Z",
   "maxLogs": 12,
   "logs": [
+    {
+      "id": "rev-mwv83lgm-2p9i",
+      "createdAt": "2026-11-24T21:45:01.030Z",
+      "action": "publish",
+      "summary": "Sinkronisasi katalog terbaru",
+      "details": [
+        "Sinkronisasi katalog terbaru"
+      ],
+      "productCount": 19,
+      "voucherCount": 2,
+      "snapshot": {
+        "brand": {
+          "name": "Manifestudio",
+          "tagline": "by Tomy",
+          "logo": "./assets/logos/uploads/brand-mwj42bno.png",
+          "footerText": "Dikelola oleh Manifestudio by Tomy © 2026",
+          "whatsappNumber": "6285122936027",
+          "tiktokUrl": "https://www.tiktok.com/@tmctomystudio",
+          "tiktokHandle": "@tmctomystudio",
+          "instagramUrl": "https://www.instagram.com/tmctomystudio",
+          "instagramHandle": "@tmctomystudio",
+          "discountThreshold": 50000,
+          "discountAmount": 2000,
+          "payLaterSurchargeRate": 0.1,
+          "serviceFeeFlat": 0,
+          "serviceFeeLabel": "Biaya Layanan",
+          "openGraph": {
+            "title": "Manifestudio by Tomy —  Akun Premium Murah Berkualitas dan Utilitas",
+            "description": "Platform Akun Premium Murah Berkualitas.\nDilengkapi Jadwal Sholat, Prakiraan Cuaca, Jam Dunia, Speedtest, Social Media Downloader & Kompres Media HD.",
+            "tagline": "by Tomy · Katalog Layanan Digital & Utilitas Terpadu",
+            "image": "https://raw.githubusercontent.com/tmctomystudio26/Source/refs/heads/main/1794840032-picsay.jpg",
+            "imageAlt": "Banner Katalog Layanan Digital & Utilitas Manifestudio",
+            "siteName": "Manifestudio"
+          },
+          "socials": [
+            {
+              "id": "social-whatsapp",
+              "platform": "WhatsApp",
+              "label": "WhatsApp Admin",
+              "handle": "+62 851-2293-6027",
+              "url": "https://wa.me/6285122936027",
+              "logo": "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcSV0QiU30wRrmwBKWXcXIlNuileOBuF9WGEPvqIEit2BANTgLH0HTAy0Tgb&s=10"
+            },
+            {
+              "id": "social-tiktok",
+              "platform": "TikTok",
+              "label": "TikTok @tmctomystudio",
+              "handle": "@tmctomystudio",
+              "url": "https://www.tiktok.com/@tmctomystudio",
+              "logo": "./assets/icons/social-tiktok.svg"
+            },
+            {
+              "id": "social-instagram",
+              "platform": "Instagram",
+              "label": "Instagram @tmctomystudio",
+              "handle": "@tmctomystudio",
+              "url": "https://www.instagram.com/tmctomystudio",
+              "logo": "./assets/icons/social-instagram.svg"
+            }
+          ],
+          "storeAccess": {
+            "enabled": true,
+            "accessKeyEncoded": "mskey:v1:00000c007f1f1c6d04",
+            "accessKeyPreviewLength": 9,
+            "promptTitle": "Akses Khusus Store",
+            "promptDescription": "Masukkan kunci akses khusus dari Admin untuk berpindah dari Manifestudio ke halaman Store.",
+            "storeOrigin": "https://manifestore.my.id",
+            "utilitiesOrigin": "https://manifestudio.my.id",
+            "storeBrandName": "Manifestore",
+            "utilitiesBrandName": "Manifestudio"
+          }
+        },
+        "utilities": {
+          "callout": {
+            "icon": "./assets/icons/menu-utilitas.svg",
+            "title": "Menu Utilitas",
+            "badge": "15 Fitur Gratis",
+            "description": "",
+            "autoCountBadge": true
+          },
+          "musicHero": {
+            "icon": "https://thumb.wikimedia.org/wikipedia/commons/thumb/6/6a/Youtube_Music_icon.svg/3840px-Youtube_Music_icon.svg.png?utm_source=commons.wikimedia.org&utm_campaign=index&utm_content=thumbnail",
+            "title": "YT Music Hub — YT Music Gratis Tanpa Iklan",
+            "subtitle": "Didukung YT Music API & API open-source."
+          },
+          "items": [
+            {
+              "id": "prayer",
+              "enabled": true,
+              "label": "Jadwal Sholat",
+              "icon": "./assets/icons/tool-prayer.svg",
+              "pageTitle": "Jadwal Sholat & Imsakiyah",
+              "pageSubtitle": "Waktu sholat resmi Kemenag RI (WIB/WITA/WIT) lengkap dengan hitung mundur waktu sholat berikutnya.",
+              "heroKicker": "Kemenag RI · Waktu Sholat Resmi",
+              "heroTitle": "Jadwal Sholat & Imsakiyah Harian",
+              "heroDescription": "Deteksi lokasi otomatis atau pilih Kelurahan, Kecamatan, dan Kab/Kota se-Indonesia lengkap dengan hitung mundur adzan."
+            },
+            {
+              "id": "weather",
+              "enabled": true,
+              "label": "Prakiraan Cuaca",
+              "icon": "./assets/icons/tool-weather.svg",
+              "pageTitle": "Prakiraan Cuaca Real-Time",
+              "pageSubtitle": "Kondisi cuaca saat ini, curah hujan presisi per jam, kelembapan, UV, angin, & prakiraan 7 hari ke depan.",
+              "heroKicker": "Multi-Sensor Radar Curah Hujan",
+              "heroTitle": "Prakiraan Cuaca Presisi Real-Time",
+              "heroDescription": "Pantau suhu, kelembapan, indeks UV, kecepatan angin, hujan per jam, serta prakiraan 7 hari ke depan."
+            },
+            {
+              "id": "worldclock",
+              "enabled": true,
+              "label": "Jam Dunia & Globe",
+              "icon": "./assets/icons/tool-world.svg",
+              "pageTitle": "Jam Dunia UTC & Bola Dunia",
+              "pageSubtitle": "Standar waktu internasional UTC/GMT, WIB, WITA, WIT, serta konversi waktu lintas negara.",
+              "heroKicker": "Standar Internasional UTC/GMT · WIB · WITA · WIT",
+              "heroTitle": "Bola Dunia Interaktif & Konverter Waktu",
+              "heroDescription": "Putar bola dunia interaktif untuk memilih negara dan konversi waktu lintas zona secara instan."
+            },
+            {
+              "id": "speedtest",
+              "enabled": true,
+              "label": "Speedtest",
+              "icon": "./assets/icons/tool-speed.svg",
+              "pageTitle": "Speedtest Internet Real-Time",
+              "pageSubtitle": "Uji kecepatan rata-rata download, upload, ping, jitter, lokasi server, ISP, dan perangkat Anda.",
+              "heroKicker": "Cloudflare Speed Edge",
+              "heroTitle": "Tes Kecepatan Internet",
+              "heroDescription": "Uji kecepatan download, upload, ping, jitter, dan latensi beban koneksi internet Anda secara langsung."
+            },
+            {
+              "id": "downloader",
+              "enabled": true,
+              "label": "Downloader",
+              "icon": "./assets/icons/tool-downloader.svg",
+              "pageTitle": "Downloader Video, Foto, Carousel & Story",
+              "pageSubtitle": "Unduh video HD, postingan foto, slide carousel, story, & salin caption dari TikTok, IG, YT, dan FB.",
+              "heroKicker": "Video · Foto · Multi-Slide · Story · Salin Caption",
+              "heroTitle": "Downloader Media Sosial All-in-One",
+              "heroDescription": "Unduh Video HD, Postingan Foto, Slide Carousel (Banyak Foto), Story Sosmed, & Salin Caption dari TikTok, Instagram, YouTube, dan Facebook."
+            },
+            {
+              "id": "compressor",
+              "enabled": true,
+              "label": "Kompresor HD",
+              "icon": "./assets/icons/tool-compressor.svg",
+              "pageTitle": "Kompresor Foto & Video HD (Anti-Pecah Sosmed)",
+              "pageSubtitle": "6 metode kompresi AI & Open-Source (Multi-AI Tanpa Key, AVIF/WebP 2-Pass, & FFmpeg WASM) agar lolos kompresi ulang TikTok, IG, & WA.",
+              "heroKicker": "AI Hybrid & Open-Source Engine · Multi-AI / AVIF / WebP / FFmpeg WASM",
+              "heroTitle": "Kompres Foto & Video HD Nyata Tanpa Pecah di Sosmed",
+              "heroDescription": "Didukung Multi-AI Publik tanpa API key, codec generasi baru AVIF/WebP/MozJPEG, Unsharp Clarity, & FFmpeg WASM untuk memangkas ukuran file secara nyata sambil menjaga ketajaman HD."
+            },
+            {
+              "id": "converter",
+              "enabled": true,
+              "label": "Konversi File",
+              "icon": "./assets/icons/tool-converter.svg",
+              "pageTitle": "Konversi Semua Format File (All-in-One Converter)",
+              "pageSubtitle": "Konversi DOCX ke PDF, Excel ke PDF/CSV, PDF ke JPG/PNG, JPG ke PNG/JPEG/WebP/ZIP, serta MP4 ke M4A/WAV/MP3 secara instan.",
+              "heroKicker": "All-in-One File Converter · 85+ Konversi Multi-Format & OpenXML",
+              "heroTitle": "Konversi Semua Format File (DOCX, Excel, PDF, Foto, Video, Audio & ZIP)",
+              "heroDescription": "Masukkan file apa saja di bawah ini."
+            },
+            {
+              "id": "songfinder",
+              "enabled": true,
+              "label": "Cari Judul Lagu",
+              "icon": "./assets/icons/tool-songfinder.svg",
+              "pageTitle": "Cari Judul Lagu, Musik & Sumber Video (Multi-API & AI Identifier)",
+              "pageSubtitle": "Unggah file audio atau video untuk mendeteksi judul lagu dengan kemiripan hingga ~100%, lengkap dengan link YouTube, Spotify, Apple Music, TikTok, IG Reels & sumber video mirip.",
+              "heroKicker": "AudD Shazam-Grade · Whisper Lirik AI · Multi-AI & Video Similarity (9 Engine)",
+              "heroTitle": "Cari Judul Lagu, Lirik, Kemiripan Musik & Sumber Video (Otomatis Audio/Video)",
+              "heroDescription": "Masukkan file Audio (MP3, WAV, M4A, AAC, OGG, FLAC) maupun Video (MP4, MOV, WebM, MKV). Sistem membaca gelombang suara asli via AudD Fingerprinting, mentranskrip vokal via Whisper Large v3 Turbo, mencocokkan lirik di LRCLIB & Lyrics.ovh, menghitung Shazam Landmark Hash + Cosine Acoustic Similarity, dan menggabungkan Multi-AI Publik Gratis + Apple Music, Spotify, Shazam, YouTube & TikTok."
+            },
+            {
+              "id": "music",
+              "enabled": true,
+              "label": "YT Music",
+              "icon": "https://thumb.wikimedia.org/wikipedia/commons/thumb/6/6a/Youtube_Music_icon.svg/3840px-Youtube_Music_icon.svg.png?utm_source=commons.wikimedia.org&utm_campaign=index&utm_content=thumbnail",
+              "pageTitle": "YT Music Player — Gratis Tanpa Iklan",
+              "pageSubtitle": "Pemutar YT Music API gratis bebas iklan",
+              "heroKicker": "YT Music API · Bebas Iklan",
+              "heroTitle": "Pemutar YT Music Gratis",
+              "heroDescription": "Putar lagu tanpa iklan, cari musik favorit, kelola daftar putar, & sinkron dengan tombol putar mengambang."
+            },
+            {
+              "id": "dracin",
+              "enabled": true,
+              "label": "Drama Pendek",
+              "icon": "./assets/icons/tool-dracin.svg",
+              "pageTitle": "Drama Pendek Gratis Tanpa Iklan — Indonesia, China & Global (20+ Platform)",
+              "pageSubtitle": "Drama Pendek Indonesia, China & global dari DramaBox, Melolo, PineDrama, NetShort, GoodShort, FlickReels, ReelShort, ShortMax & 12+ platform lain bebas lompat episode 100% gratis & subtitle Indonesia.",
+              "heroKicker": "20+ Platform Drama Pendek · Indonesia, China & Global · Full Gratis",
+              "heroTitle": "Nonton Drama Pendek Gratis Tanpa Iklan",
+              "heroDescription": "Satukan Drama Pendek Indonesia, DramaBox, Melolo, PineDrama, NetShort, GoodShort, FlickReels, FreeReels, ReelShort, ShortMax, DramaWave, MyDrama, StardustTV, FlexTV, KalosTV, Vigloo & Anichin full episode gratis tanpa VIP."
+            },
+            {
+              "id": "audioeditor",
+              "enabled": true,
+              "label": "Audio Editor",
+              "icon": "./assets/icons/tool-audioeditor.svg",
+              "pageTitle": "Audio Editor Studio AI — Mastering, EQ & Pisah Vokal",
+              "pageSubtitle": "Pangkas, naikkan volume, ubah suara, Equalizer 10-band, penstabil noise, pemisah vokal & musik, perbaikan audio, edit identitas ID3/RIFF, mix multi-trek, Multi-AI, & ekspor MP3/WAV/M4A/OGG/FLAC.",
+              "heroKicker": "Web Audio DSP · FFmpeg WASM · LAME MP3 · Multi-AI Studio",
+              "heroTitle": "Studio Editor Audio Lengkap & Asisten Mastering AI",
+              "heroDescription": "Edit audio langsung di browser dengan pemotong presisi, 10-Band EQ, Voice Changer, penjernih & perbaikan audio, pemisah vokal/karaoke, mixer multi-trek, editor tag resmi iTunes/MusicBrainz, serta dukungan Multi-AI."
+            },
+            {
+              "id": "manifestai",
+              "enabled": true,
+              "label": "Manifest AI",
+              "icon": "./assets/icons/tool-manifestai.svg",
+              "pageTitle": "Manifest AI — Chat Multi-Model Gratis & API Key Pribadi",
+              "pageSubtitle": "Gabungkan Gemini, ChatGPT, DeepSeek, Claude, Grok, Meta, Qwen & Mistral secara terpadu dengan auto-update model terbaru real-time, failover anti-limit, memori konsisten, dan riwayat chat.",
+              "heroKicker": "Multi-AI Ensemble · Auto-Update Model Real-Time · Gratis & Multi-BYOK",
+              "heroTitle": "Manifest AI — Asisten Cerdas Gabungan Multi-Model",
+              "heroDescription": "Satukan kekuatan banyak model AI terkemuka dalam satu ruang obrolan yang konsisten memorinya, gratis tanpa API key dengan jalur failover otomatis per pengguna, atau kombinasikan beberapa API Key pribadi Anda secara paralel."
+            },
+            {
+              "id": "plagiarism",
+              "enabled": true,
+              "label": "Cek Plagiarisme",
+              "icon": "./assets/icons/tool-plagiarism.svg",
+              "pageTitle": "Cek Plagiarisme Terpadu — Laporan Format Turnitin & Multi-AI",
+              "pageSubtitle": "Unggah semua jenis berkas (PDF, DOCX, PPTX, XLSX, ODT, EPUB, RTF, Gambar OCR) atau tempel naskah. Gabungan OpenAlex, Crossref, DOAJ, Wikipedia, Multi-AI & Turnitin API dengan unduh laporan PDF/HTML mirip Turnitin terbaru.",
+              "heroKicker": "Turnitin-Style Report · OpenAlex 250M+ · Crossref · DOAJ · Multi-AI Ensemble",
+              "heroTitle": "Cek Plagiarisme Multi-Mesin Terpadu & Laporan Turnitin",
+              "heroDescription": "Seluruh mesin deteksi berjalan serentak (OpenAlex, Crossref, DOAJ, Wikipedia ID/EN, Winnowing K-Gram, Multi-AI ChatGPT/Gemini/Claude/DeepSeek/Grok & konektor Turnitin Core API) lalu digabungkan menjadi laporan interaktif & PDF siap unduh."
+            },
+            {
+              "id": "novel",
+              "enabled": true,
+              "label": "Novel Terpadu",
+              "icon": "./assets/icons/tool-novel.svg",
+              "pageTitle": "Novel Terpadu — Baca Full Gratis Real-Time, 122+ Tema & Audiobook",
+              "pageSubtitle": "Gabungkan banyak platform novel populer & open-source dalam satu katalog gratis penuh tanpa kunci VIP, update real-time, cari novel dari potongan teks/screenshot/file hingga 100%, 122+ tema halaman (animasi, upload & AI), layar penuh, dan mode suara.",
+              "heroKicker": "14+ Sumber & Mirror Eks-VIP Gratis · 200+ Novel Real-Time · 122+ Tema AI & Animasi · Mode Suara",
+              "heroTitle": "Pembaca Novel Terpadu — Gratis Penuh Tanpa Kunci VIP",
+              "heroDescription": "Nikmati ribuan bab novel populer lintas platform yang terintegrasi dalam satu katalog, lengkap dengan mode layar penuh, loncat halaman & bab, pencocokan novel dari cuplikan/screenshot/file hingga 100%, riwayat baca, 122+ tema halaman termasuk tema bergerak & request AI, serta mode suara audiobook."
+            },
+            {
+              "id": "callerid",
+              "enabled": true,
+              "label": "Cek Nomor",
+              "icon": "./assets/icons/tool-callerid.svg",
+              "pageTitle": "Cek Nomor & Caller ID Anti-Spam (Multi-API Open-Source)",
+              "pageSubtitle": "Gabungkan Google libphonenumber-js, HLR Operator Indonesia, Direktori Resmi Bank/OJK, CallShield GitHub Spam DB, GitHub/HN OSINT, Wikidata, & Tag Komunitas tanpa login.",
+              "heroKicker": "5 Mesin Open-Source Kolaboratif · Gratis Tanpa Login · Tag Komunitas",
+              "heroTitle": "Cek Nomor Telepon, Operator, Verifikasi Resmi & Anti-Spam",
+              "heroDescription": "Analisis format E.164 & HLR operator, verifikasi nomor resmi Bank/OJK/Polri/Ekspedisi, cek laporan spam CallShield GitHub & OSINT publik, serta kelola tag komunitas dan daftar blokir pribadi langsung di browser."
+            }
+          ]
+        },
+        "banners": [
+          {
+            "id": "banner-katalog",
+            "utilityId": "",
+            "kicker": "Katalog Utama · Garansi Jelas",
+            "heading": "Layanan Digital Siap Pakai dalam Hitungan Menit",
+            "sub": "Potongan otomatis Rp2.000 mulai Rp50.000, dukung kode voucher, & opsi Bayar Nanti setelah akun aktif.",
+            "ctaLabel": "Jelajahi Katalog →",
+            "href": "#katalog",
+            "image": "./assets/banners/banner-katalog.jpg",
+            "scrim": "default",
+            "enabled": true
+          },
+          {
+            "id": "banner-prayer",
+            "utilityId": "prayer",
+            "kicker": "Menu Utilitas · Kemenag RI",
+            "heading": "Jadwal Sholat & Imsakiyah Presisi Lokasi",
+            "sub": "Hitung mundur waktu adzan otomatis sesuai GPS & kecamatan se-Indonesia dari Imsak hingga Isya.",
+            "ctaLabel": "Buka Jadwal Sholat →",
+            "href": "./tools.html?tab=prayer",
+            "image": "./assets/banners/banner-prayer.jpg",
+            "scrim": "emerald",
+            "enabled": true
+          },
+          {
+            "id": "banner-weather",
+            "utilityId": "weather",
+            "kicker": "Menu Utilitas · Radar Live",
+            "heading": "Pantau Cuaca Real-Time & Prakiraan 7 Hari",
+            "sub": "Cek suhu aktual, curah hujan per jam, kelembapan, UV, & kecepatan angin sebelum beraktivitas.",
+            "ctaLabel": "Cek Cuaca →",
+            "href": "./tools.html?tab=weather",
+            "image": "./assets/banners/banner-weather.jpg",
+            "scrim": "weather",
+            "enabled": true
+          },
+          {
+            "id": "banner-worldclock",
+            "utilityId": "worldclock",
+            "kicker": "Menu Utilitas · Standar UTC",
+            "heading": "Putar Globe 3D & Konversi WIB / WITA / WIT",
+            "sub": "Klik negara di bola dunia interaktif untuk membandingkan zona waktu internasional secara instan.",
+            "ctaLabel": "Buka Jam Dunia →",
+            "href": "./tools.html?tab=worldclock",
+            "image": "./assets/banners/banner-worldclock.jpg",
+            "scrim": "world",
+            "enabled": true
+          },
+          {
+            "id": "banner-speedtest",
+            "utilityId": "speedtest",
+            "kicker": "Menu Utilitas · Edge Speed",
+            "heading": "Uji Kecepatan Internet, Ping & Jitter Real-Time",
+            "sub": "Cek download, upload, latensi gaming, info ISP, dan server terdekat cukup sekali klik.",
+            "ctaLabel": "Mulai Speedtest →",
+            "href": "./tools.html?tab=speedtest",
+            "image": "./assets/banners/banner-speedtest.jpg",
+            "scrim": "prayer",
+            "enabled": true
+          },
+          {
+            "id": "banner-downloader",
+            "utilityId": "downloader",
+            "kicker": "Menu Utilitas · Tanpa Watermark",
+            "heading": "Downloader Video, Foto, Story & Audio Sosmed",
+            "sub": "Simpan video HD TikTok, IG, YT, FB, slide carousel, & salin caption langsung tanpa watermark.",
+            "ctaLabel": "Buka Downloader →",
+            "href": "./tools.html?tab=downloader",
+            "image": "./assets/banners/banner-downloader.jpg",
+            "scrim": "downloader",
+            "enabled": true
+          },
+          {
+            "id": "banner-compressor",
+            "utilityId": "compressor",
+            "kicker": "Menu Utilitas · Anti-Pecah Sosmed",
+            "heading": "Kompres Foto & Video HD Tanpa Turun Kualitas",
+            "sub": "Perkecil ukuran file secara nyata dengan AVIF/WebP & FFmpeg agar unggahan TikTok, IG & WA tetap tajam.",
+            "ctaLabel": "Kompres Media →",
+            "href": "./tools.html?tab=compressor",
+            "image": "./assets/banners/banner-compressor.jpg",
+            "scrim": "emerald",
+            "enabled": true
+          },
+          {
+            "id": "banner-converter",
+            "utilityId": "converter",
+            "kicker": "Menu Utilitas · 85+ Format File",
+            "heading": "Konversi DOCX, PDF, Excel, Foto, Video & Audio",
+            "sub": "Deteksi format otomatis untuk ubah dokumen, gambar, arsip ZIP, hingga audio instan di browser.",
+            "ctaLabel": "Konversi File →",
+            "href": "./tools.html?tab=converter",
+            "image": "./assets/banners/banner-converter.jpg",
+            "scrim": "amber",
+            "enabled": true
+          },
+          {
+            "id": "banner-songfinder",
+            "utilityId": "songfinder",
+            "kicker": "Menu Utilitas · 9 Engine AI",
+            "heading": "Cari Judul Lagu & Sumber Video dari Potongan",
+            "sub": "Unggah rekaman audio atau klip video untuk lacak judul, lirik, & link resmi hingga ~100% akurat.",
+            "ctaLabel": "Cari Lagu →",
+            "href": "./tools.html?tab=songfinder",
+            "image": "./assets/banners/banner-songfinder.jpg",
+            "scrim": "violet",
+            "enabled": true
+          },
+          {
+            "id": "banner-music",
+            "utilityId": "music",
+            "kicker": "Menu Utilitas · Bebas Iklan",
+            "heading": "YT Music Hub — Streaming Musik Gratis Full",
+            "sub": "Putar lagu viral Indonesia & mancanegara tanpa iklan, lengkap pemutar mini mengambang.",
+            "ctaLabel": "Putar Musik →",
+            "href": "./tools.html?tab=music",
+            "image": "./assets/banners/banner-music.jpg",
+            "scrim": "crimson",
+            "enabled": true
+          },
+          {
+            "id": "banner-dracin",
+            "utilityId": "dracin",
+            "kicker": "Menu Utilitas · 20+ Platform Terpadu",
+            "heading": "Nonton Drama Pendek Full Episode Gratis",
+            "sub": "Satukan drama pendek Indonesia, China & global dalam satu player bebas iklan, lompat episode bebas, & subtitle Indonesia.",
+            "ctaLabel": "Tonton Drama →",
+            "href": "./tools.html?tab=dracin",
+            "image": "./assets/banners/banner-dracin.jpg",
+            "scrim": "crimson",
+            "enabled": true
+          },
+          {
+            "id": "banner-audioeditor",
+            "utilityId": "audioeditor",
+            "kicker": "Menu Utilitas · Studio DSP & AI",
+            "heading": "Audio Editor — EQ 10-Band, Pisah Vokal & Mix",
+            "sub": "Potong audio, hapus noise, ubah suara, pisah karaoke, & ekspor MP3/WAV/FLAC langsung di web.",
+            "ctaLabel": "Buka Studio →",
+            "href": "./tools.html?tab=audioeditor",
+            "image": "./assets/banners/banner-audioeditor.jpg",
+            "scrim": "violet",
+            "enabled": true
+          },
+          {
+            "id": "banner-manifestai",
+            "utilityId": "manifestai",
+            "kicker": "Menu Utilitas · Multi-Model AI",
+            "heading": "Manifest AI — Gabungan Model Cerdas Gratis",
+            "sub": "Ngobrol dengan ensemble AI modern, memori konsisten, failover otomatis, & dukung API Key pribadi.",
+            "ctaLabel": "Chat Manifest AI →",
+            "href": "./tools.html?tab=manifestai",
+            "image": "./assets/banners/banner-manifestai.jpg",
+            "scrim": "world",
+            "enabled": true
+          },
+          {
+            "id": "banner-plagiarism",
+            "utilityId": "plagiarism",
+            "kicker": "Menu Utilitas · Format Turnitin",
+            "heading": "Cek Plagiarisme Dokumen Asli + Laporan PDF",
+            "sub": "Pertahankan tata letak dokumen asli dengan sorotan warna sumber & unduh laporan ala Turnitin.",
+            "ctaLabel": "Cek Plagiarisme →",
+            "href": "./tools.html?tab=plagiarism",
+            "image": "./assets/banners/banner-plagiarism.jpg",
+            "scrim": "prayer",
+            "enabled": true
+          },
+          {
+            "id": "banner-novel",
+            "utilityId": "novel",
+            "kicker": "Menu Utilitas · 122+ Tema & Suara",
+            "heading": "Baca Novel Terpadu Gratis Penuh Real-Time",
+            "sub": "Katalog novel lintas platform bebas kunci VIP, cari dari cuplikan, tema animasi, & mode audiobook.",
+            "ctaLabel": "Baca Novel →",
+            "href": "./tools.html?tab=novel",
+            "image": "./assets/banners/banner-novel.jpg",
+            "scrim": "amber",
+            "enabled": true
+          },
+          {
+            "id": "banner-callerid",
+            "utilityId": "callerid",
+            "kicker": "Menu Utilitas · 5 API Open-Source",
+            "heading": "Cek Nomor, Caller ID & Anti-Spam Gratis",
+            "sub": "Lacak operator HLR, kode area, verifikasi hotline resmi Bank/OJK, & cek laporan spam tanpa login.",
+            "ctaLabel": "Cek Nomor →",
+            "href": "./tools.html?tab=callerid",
+            "image": "./assets/banners/banner-callerid.jpg",
+            "scrim": "emerald",
+            "enabled": true
+          }
+        ],
+        "categories": [
+          {
+            "id": "all",
+            "label": "Semua Layanan"
+          },
+          {
+            "id": "streaming",
+            "label": "Streaming Film"
+          },
+          {
+            "id": "music",
+            "label": "Musik & Hiburan"
+          },
+          {
+            "id": "creative",
+            "label": "Desain & Editing"
+          },
+          {
+            "id": "custom",
+            "label": "Request & Custom"
+          },
+          {
+            "id": "pendidikan",
+            "label": "Pendidikan & Pekerjaan"
+          }
+        ],
+        "paymentOptions": [
+          {
+            "id": "Bayar Sekarang",
+            "label": "Bayar Sekarang (QRIS / E-Wallet / Bank)",
+            "badge": "0% Biaya",
+            "note": "Tanpa biaya tambahan · Proses prioritas instan setelah bukti transfer dikonfirmasi.",
+            "surchargeRate": 0
+          },
+          {
+            "id": "Bayar Belakangan (Setelah Akun Diterima)",
+            "label": "Bayar Nanti (Setelah Akun Diterima)",
+            "badge": "+10% Biaya Layanan",
+            "note": "Dikenakan biaya tambahan 10% dari total tagihan karena pembayaran dilakukan setelah akun aktif.",
+            "surchargeRate": 0.1
+          }
+        ],
+        "faqItems": [
+          {
+            "question": "Berapa lama proses aktivasi pesanan?",
+            "answer": "Pesanan diproses 3–10 menit via WhatsApp pada jam operasional setelah pembayaran dikonfirmasi."
+          },
+          {
+            "question": "Apa beda paket Sharing dan Privat?",
+            "answer": "Sharing memakai satu akun bersama sesuai kuota profil (misal 1P1U atau 1P2U). Privat memberi kendali penuh atas seluruh akun."
+          },
+          {
+            "question": "Bagaimana cara klaim garansi akun?",
+            "answer": "Paket bergaransi mendapat penggantian akun baru selama masa aktif jika kendala bukan karena pelanggaran aturan pemakaian."
+          },
+          {
+            "question": "Apa ketentuan Bayar Sekarang dan Bayar Nanti?",
+            "answer": "Bayar Sekarang bebas biaya (0%). Bayar Nanti (setelah akun diterima) dikenakan biaya layanan +10% yang dihitung otomatis saat checkout."
+          },
+          {
+            "question": "Bagaimana memakai voucher dan struk digital?",
+            "answer": "Masukkan kode voucher di keranjang sebelum checkout. Setelah pesanan dibuat, struk PNG siap diunduh dan dikirim ke WhatsApp admin."
+          },
+          {
+            "question": "Bagaimana kerja Jadwal Sholat, Cuaca, Jam Dunia, dan Speedtest?",
+            "answer": "Buka Menu Utilitas untuk mengakses semua utilitas di halaman terpisah. Lokasi memakai izin GPS browser terlebih dahulu, lalu otomatis fallback ke IP atau pencarian kota manual."
+          },
+          {
+            "question": "Bisakah request aplikasi atau paket durasi khusus?",
+            "answer": "Bisa. Pilih Request & Custom di katalog untuk memesan aplikasi atau durasi paket sesuai kebutuhan."
+          }
+        ],
+        "vouchers": [
+          {
+            "code": "RESELLERNOVEMBER",
+            "type": "fixed",
+            "value": 2000,
+            "minSubtotal": 12000,
+            "usageMode": "unlimited",
+            "maxUses": 0,
+            "label": "Potongan Rp2.000 (min. Rp12.000)"
+          },
+          {
+            "code": "TOMYLOVEBILLA",
+            "type": "fixed",
+            "value": 3000,
+            "minSubtotal": 15000,
+            "usageMode": "once",
+            "maxUses": 1,
+            "label": "Potongan Rp3.000 (min. Rp15.000)"
+          }
+        ],
+        "products": [
+          {
+            "id": "capcut-pro",
+            "name": "Capcut Pro",
+            "category": "creative",
+            "logo": "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcSQjbP_6uEVA1zrKcoQ7hEz2hX6lwXqHiTy-iez_Ml2ww&s=10",
+            "isBestSeller": false,
+            "outOfStock": false,
+            "tag": "Tersedia",
+            "summary": "Semua Fitur Pro",
+            "variants": [
+              {
+                "id": "capcut-pro-v1",
+                "name": "7 Hari Privat",
+                "price": 14500,
+                "outOfStock": false
+              },
+              {
+                "id": "capcut-pro-qy2e",
+                "name": "1 Bulan Privat",
+                "price": 27500,
+                "outOfStock": false
+              }
+            ]
+          },
+          {
+            "id": "netflix-premium",
+            "name": "Netflix Premium",
+            "category": "streaming",
+            "logo": "https://images.ctfassets.net/4cd45et68cgf/Rx83JoRDMkYNlMC9MKzcB/2b14d5a59fc3937afd3f03191e19502d/Netflix-Symbol.png?w=700&h=456",
+            "isBestSeller": true,
+            "outOfStock": false,
+            "tag": "Paling Laris",
+            "summary": "4K Ultra HD · Profil terkelola · Anti-hold",
+            "notice": "Harga produk Netflix sedang mengalami penyesuaian ringan akibat tingginya permintaan dan keterbatasan stok akun.",
+            "variants": [
+              {
+                "id": "nf-1p2u",
+                "name": "1 Bulan - Sharing 1P2U",
+                "price": 25000,
+                "oldPrice": 27500,
+                "outOfStock": false
+              },
+              {
+                "id": "nf-1p1u",
+                "name": "1 Bulan - Sharing 1P1U",
+                "price": 30000,
+                "outOfStock": false,
+                "oldPrice": 35000
+              },
+              {
+                "id": "nf-privat",
+                "name": "1 Bulan - Privat",
+                "price": 175000,
+                "outOfStock": false,
+                "oldPrice": 200000
+              }
+            ]
+          },
+          {
+            "id": "canva-pro",
+            "name": "Canva Pro",
+            "category": "creative",
+            "logo": "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcQkiK0cB69eEEHw7m7AWSVXVQk83Xj93BujgFBVYD1chw&s=10",
+            "isBestSeller": true,
+            "outOfStock": false,
+            "tag": "Populer Kreator",
+            "summary": "Akses template Pro, Brand Kit & hapus background",
+            "variants": [
+              {
+                "id": "canva-1m",
+                "name": "1 Bulan",
+                "price": 4000,
+                "outOfStock": false
+              },
+              {
+                "id": "canva-2m",
+                "name": "2 Bulan",
+                "price": 7000,
+                "outOfStock": false
+              },
+              {
+                "id": "canva-3m",
+                "name": "3 Bulan",
+                "price": 10000,
+                "outOfStock": false
+              },
+              {
+                "id": "canva-6m",
+                "name": "6 Bulan",
+                "price": 11000,
+                "outOfStock": true
+              },
+              {
+                "id": "canva-1y",
+                "name": "1 Tahun (Garansi 8 bulan)",
+                "price": 10000,
+                "outOfStock": true,
+                "restockMessage": "Akan segera restock"
+              }
+            ]
+          },
+          {
+            "id": "youtube-premium",
+            "name": "YouTube Premium",
+            "category": "music",
+            "logo": "./assets/logos/youtube.svg",
+            "isBestSeller": false,
+            "outOfStock": true,
+            "restockMessage": "Akan segera restock",
+            "tag": "Segera Restock",
+            "summary": "Bebas iklan · Putar di latar belakang · YouTube Music",
+            "variants": [
+              {
+                "id": "yt-3m-ng",
+                "name": "3 Bulan - No Garansi",
+                "price": 15000,
+                "outOfStock": true
+              },
+              {
+                "id": "yt-3m-1r",
+                "name": "3 Bulan - Garansi 1x Replace",
+                "price": 20000,
+                "outOfStock": true
+              },
+              {
+                "id": "yt-3m-2r",
+                "name": "3 Bulan - Garansi 2x Replace",
+                "price": 25000,
+                "outOfStock": true
+              },
+              {
+                "id": "yt-3m-full",
+                "name": "3 Bulan - Garansi Full",
+                "price": 30000,
+                "outOfStock": true
+              }
+            ]
+          },
+          {
+            "id": "spotify-premium",
+            "name": "Spotify Premium",
+            "category": "music",
+            "logo": "./assets/logos/spotify.svg",
+            "isBestSeller": false,
+            "outOfStock": false,
+            "tag": "Tersedia",
+            "summary": "Audio kualitas tinggi · Unduh offline tanpa iklan",
+            "variants": [
+              {
+                "id": "sp-3m-ng",
+                "name": "2 Bulan - No Garansi",
+                "price": 15000,
+                "outOfStock": false
+              },
+              {
+                "id": "sp-3m-full",
+                "name": "2 Bulan - Garansi Full",
+                "price": 40000,
+                "outOfStock": true
+              }
+            ]
+          },
+          {
+            "id": "viu-premium",
+            "name": "Viu Premium",
+            "category": "streaming",
+            "logo": "https://play-lh.googleusercontent.com/zncg12zFgKmDiCC7nz9fY1DFJh8z40a5y6XaWYQUeHcEv-jcbOvZYNWpRq--6lcOw9M4Hf75SfeWBIOei4Adp30",
+            "isBestSeller": false,
+            "outOfStock": false,
+            "tag": "Tersedia",
+            "summary": "Drama Asia & simulcast terbaru bebas iklan",
+            "variants": [
+              {
+                "id": "viu-1m",
+                "name": "1 Bulan Privat",
+                "price": 7000,
+                "outOfStock": false
+              },
+              {
+                "id": "viu-3m",
+                "name": "3 Bulan Privat",
+                "price": 15000,
+                "outOfStock": false
+              },
+              {
+                "id": "viu-6m",
+                "name": "6 Bulan Privat",
+                "price": 27000,
+                "outOfStock": false
+              }
+            ]
+          },
+          {
+            "id": "vidio-platinum",
+            "name": "Vidio Premier Platinum",
+            "category": "streaming",
+            "logo": "https://static.vecteezy.com/system/resources/previews/054/298/844/non_2x/vidio-logo-illustration-in-square-background-free-png.png",
+            "isBestSeller": false,
+            "outOfStock": true,
+            "tag": "Segera Restock",
+            "summary": "Liga olahraga, serial original & tayangan lokal",
+            "variants": [
+              {
+                "id": "vidio-tv",
+                "name": "3-12 Bulan (Khusus TV)",
+                "price": 15000,
+                "outOfStock": true
+              },
+              {
+                "id": "vidio-hp",
+                "name": "1 Bulan - Khusus HP",
+                "price": 20000,
+                "outOfStock": true
+              },
+              {
+                "id": "vidio-all",
+                "name": "1 Bulan - All Device",
+                "price": 28000,
+                "outOfStock": true
+              }
+            ],
+            "restockMessage": "Akan segera restock"
+          },
+          {
+            "id": "alight-motion",
+            "name": "Alight Motion Premium",
+            "category": "creative",
+            "logo": "https://play-lh.googleusercontent.com/LRjRXaVEtoeHyiFcnMLCHs1ZJV8Q4q70PggflRDAfgOkulzFTbJg65y0drg6Yapo22Xoos_XCbyh7EgycBhQ",
+            "isBestSeller": false,
+            "outOfStock": false,
+            "tag": "Favorit Editor",
+            "summary": "Preset XML terbuka · Ekspor tanpa watermark",
+            "variants": [
+              {
+                "id": "am-1y-ng",
+                "name": "1 Tahun - No Garansi",
+                "price": 15000,
+                "outOfStock": false
+              },
+              {
+                "id": "am-1y-6m",
+                "name": "1 Tahun - Garansi 6 Bulan",
+                "price": 25000,
+                "outOfStock": false
+              },
+              {
+                "id": "am-1y-full",
+                "name": "1 Tahun - Garansi Full",
+                "price": 30000,
+                "outOfStock": false
+              }
+            ]
+          },
+          {
+            "id": "wetv-vip",
+            "name": "WeTV",
+            "category": "streaming",
+            "logo": "https://cdn.aptoide.com/imgs/c/b/d/cbd68f98648c8b73a404b1c2f13c7c74_icon.png",
+            "isBestSeller": false,
+            "outOfStock": false,
+            "tag": "Tersedia",
+            "summary": "Akses episode cepat & kualitas Blu-ray 1080p",
+            "variants": [
+              {
+                "id": "wetv-1m-6u",
+                "name": "1 Bulan Sharing 6u",
+                "price": 8500,
+                "outOfStock": false
+              },
+              {
+                "id": "wetv-1m-privat",
+                "name": "1 Bulan Privat",
+                "price": 35000,
+                "outOfStock": false
+              }
+            ]
+          },
+          {
+            "id": "prime-video",
+            "name": "Prime Video",
+            "category": "streaming",
+            "logo": "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcTrdZcdaVBPV-o5UH_YdPrNwPTasCUwD2oeVLDWKdfH-lF6QTxrPAof2i0&s=10",
+            "isBestSeller": false,
+            "outOfStock": false,
+            "tag": "Tersedia",
+            "summary": "Film & serial Amazon Originals resmi",
+            "variants": [
+              {
+                "id": "prime-1m-share",
+                "name": "1 Bulan Sharing",
+                "price": 8000,
+                "outOfStock": false
+              },
+              {
+                "id": "prime-1m-privat",
+                "name": "1 Bulan Privat",
+                "price": 15000,
+                "outOfStock": false
+              }
+            ]
+          },
+          {
+            "id": "cek-turnitin",
+            "name": "Cek Turnitin",
+            "category": "pendidikan",
+            "logo": "https://img.icons8.com/fluent/1200/turnitin.jpg",
+            "isBestSeller": false,
+            "outOfStock": false,
+            "tag": "Tersedia",
+            "summary": "Cek Plagiasi Turnitin",
+            "variants": [
+              {
+                "id": "cek-turnitin-v1",
+                "name": "Turnitin V1",
+                "price": 17000,
+                "outOfStock": false
+              },
+              {
+                "id": "cek-turnitin-8fnd",
+                "name": "Turnitin V2",
+                "price": 25000,
+                "outOfStock": false
+              }
+            ]
+          },
+          {
+            "id": "zoom-pro",
+            "name": "Zoom Pro",
+            "category": "pendidikan",
+            "logo": "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcSV3G_jBuK0VNzE1gVORXPf5LSTgoTsCN_T8FFxiiaXwQ&s=10",
+            "isBestSeller": false,
+            "outOfStock": false,
+            "tag": "Tersedia",
+            "summary": "Zoom Premium Durasi Meeting Tanpa Batas",
+            "variants": [
+              {
+                "id": "zoom-pro-v1",
+                "name": "7 Hari - 100 Peserta",
+                "price": 10000,
+                "outOfStock": false
+              },
+              {
+                "id": "zoom-pro-sghw",
+                "name": "14 Hari - 100 Peserta",
+                "price": 15000,
+                "outOfStock": false
+              }
+            ]
+          },
+          {
+            "id": "cek-ai-gptzero",
+            "name": "Cek AI GPTZero",
+            "category": "pendidikan",
+            "logo": "https://assets.clever.com/resource-icons/apps/68790fa79ab5560042bfb0dc/icon_786dfa7.png",
+            "isBestSeller": false,
+            "outOfStock": false,
+            "tag": "Tersedia",
+            "summary": "AI Detector paling akurat untuk mendeteksi tulisan berbasis AI pada skripsi, tugas, maupun artikel. Dilengkapi skor dan laporan resmi dari GPTZero.",
+            "variants": [
+              {
+                "id": "cek-ai-gptzero-v1",
+                "name": "1-2500 kata",
+                "price": 5000,
+                "outOfStock": false
+              },
+              {
+                "id": "cek-ai-gptzero-iikf",
+                "name": "2500-5000 kata",
+                "price": 10000,
+                "outOfStock": false
+              },
+              {
+                "id": "cek-ai-gptzero-jb9n",
+                "name": ">5000 kata (hubungi admin)",
+                "price": 0,
+                "outOfStock": false
+              }
+            ]
+          },
+          {
+            "id": "bstation",
+            "name": "Bstation",
+            "category": "streaming",
+            "logo": "https://play-lh.googleusercontent.com/GRaGILWLQ783himRR36yRjD2mKo1nyHkMCuBuVMTM1UIqlcwzWns54KVGi8w6I4Ea52Oh2yCBF6cbRpPex66zQ",
+            "isBestSeller": false,
+            "outOfStock": false,
+            "tag": "Tersedia",
+            "summary": "Bstation Premium",
+            "variants": [
+              {
+                "id": "bstation-v1",
+                "name": "12 Bulan",
+                "price": 20000,
+                "outOfStock": false
+              }
+            ]
+          },
+          {
+            "id": "picsart",
+            "name": "Picsart",
+            "category": "creative",
+            "logo": "https://play-lh.googleusercontent.com/gRheGVxu9Ygc4lIc71bVSgjGNiZ8d-nraBqGFRm1SV-2CsD-byiqzt_8m8y8tJqyLXc",
+            "isBestSeller": false,
+            "outOfStock": false,
+            "tag": "Tersedia",
+            "summary": "Picsart Pro Gold",
+            "variants": [
+              {
+                "id": "picsart-v1",
+                "name": "7 Hari Privat",
+                "price": 10000,
+                "outOfStock": false,
+                "oldPrice": 15000
+              }
+            ]
+          },
+          {
+            "id": "wink",
+            "name": "Wink",
+            "category": "creative",
+            "logo": "https://play-lh.googleusercontent.com/cshtf7MBtmCo5hOjigtUOLgpCcx-ZkQ_eisfmSvK0QZBKSG5bp4MEIH9iqdGYWnUK0B1bEc6iQ10p7WVZYVW7A",
+            "isBestSeller": false,
+            "outOfStock": false,
+            "tag": "Tersedia",
+            "summary": "",
+            "variants": [
+              {
+                "id": "wink-v1",
+                "name": "VIP 7 Hari",
+                "price": 8000,
+                "outOfStock": false
+              },
+              {
+                "id": "wink-pqbn",
+                "name": "VIP+ 7 Hari",
+                "price": 12000,
+                "outOfStock": false
+              }
+            ]
+          },
+          {
+            "id": "remini",
+            "name": "Remini",
+            "category": "streaming",
+            "logo": "https://play-lh.googleusercontent.com/9RmPcE8hzIr9M9_1PiIvzmhg70zW2whRd26n2GMOIT9xRtUR18U00d_U5Ldcdac3NlwUL5Es_MN4vwqCR5LIPA=w240-h480-rw",
+            "isBestSeller": false,
+            "outOfStock": false,
+            "tag": "Tersedia",
+            "summary": "",
+            "variants": [
+              {
+                "id": "remini-v1",
+                "name": "7 Hari",
+                "price": 7000,
+                "outOfStock": false
+              }
+            ]
+          },
+          {
+            "id": "gemini-ai",
+            "name": "Gemini AI",
+            "category": "pendidikan",
+            "logo": "https://static.vecteezy.com/system/resources/previews/082/425/422/non_2x/gemini-logo-no-background-google-ai-assistant-brand-icon-free-png.png",
+            "isBestSeller": false,
+            "outOfStock": false,
+            "tag": "Tersedia",
+            "summary": "",
+            "variants": [
+              {
+                "id": "gemini-ai-v1",
+                "name": "Gemini Plus 6 Bulan",
+                "price": 25000,
+                "outOfStock": false
+              }
+            ]
+          },
+          {
+            "id": "request-custom",
+            "name": "Request dan Custom Produk",
+            "category": "custom",
+            "logo": "./assets/logos/custom-request.svg",
+            "isBestSeller": false,
+            "outOfStock": false,
+            "tag": "Layanan Custom",
+            "summary": "Pesan aplikasi khusus atau paket kombinasi durasi",
+            "variants": [
+              {
+                "id": "req-custom-app",
+                "name": "Request Produk",
+                "price": 0,
+                "outOfStock": false,
+                "description": "Tidak menemukan produk yang Anda cari di katalog? Ajukan request langsung ke admin."
+              },
+              {
+                "id": "req-custom-durasi",
+                "name": "Custom Produk",
+                "price": 0,
+                "outOfStock": false,
+                "description": "Ingin menggabungkan beberapa aplikasi atau mengatur durasi paket khusus."
+              }
+            ]
+          }
+        ]
+      }
+    },
     {
       "id": "rev-mwnkcdro-7e23",
       "createdAt": "2026-11-19T13:05:36.948Z",
@@ -7054,583 +8099,6 @@
             "minSubtotal": 15000,
             "usageMode": "once",
             "maxUses": 1,
-            "label": "Potongan Rp3.000 (min. Rp15.000)"
-          }
-        ],
-        "products": [
-          {
-            "id": "capcut-pro",
-            "name": "Capcut Pro",
-            "category": "creative",
-            "logo": "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcSQjbP_6uEVA1zrKcoQ7hEz2hX6lwXqHiTy-iez_Ml2ww&s=10",
-            "isBestSeller": false,
-            "outOfStock": false,
-            "tag": "Tersedia",
-            "summary": "Semua Fitur Pro",
-            "variants": [
-              {
-                "id": "capcut-pro-v1",
-                "name": "7 Hari Privat",
-                "price": 14500,
-                "outOfStock": false
-              },
-              {
-                "id": "capcut-pro-qy2e",
-                "name": "1 Bulan Privat",
-                "price": 27500,
-                "outOfStock": false
-              }
-            ]
-          },
-          {
-            "id": "netflix-premium",
-            "name": "Netflix Premium",
-            "category": "streaming",
-            "logo": "https://images.ctfassets.net/4cd45et68cgf/Rx83JoRDMkYNlMC9MKzcB/2b14d5a59fc3937afd3f03191e19502d/Netflix-Symbol.png?w=700&h=456",
-            "isBestSeller": true,
-            "outOfStock": false,
-            "tag": "Paling Laris",
-            "summary": "4K Ultra HD · Profil terkelola · Anti-hold",
-            "notice": "Harga produk Netflix sedang mengalami penyesuaian ringan akibat tingginya permintaan dan keterbatasan stok akun.",
-            "variants": [
-              {
-                "id": "nf-1p2u",
-                "name": "1 Bulan - Sharing 1P2U",
-                "price": 25000,
-                "oldPrice": 27500,
-                "outOfStock": false
-              },
-              {
-                "id": "nf-1p1u",
-                "name": "1 Bulan - Sharing 1P1U",
-                "price": 30000,
-                "outOfStock": false,
-                "oldPrice": 35000
-              },
-              {
-                "id": "nf-privat",
-                "name": "1 Bulan - Privat",
-                "price": 175000,
-                "outOfStock": false,
-                "oldPrice": 200000
-              }
-            ]
-          },
-          {
-            "id": "canva-pro",
-            "name": "Canva Pro",
-            "category": "creative",
-            "logo": "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcQkiK0cB69eEEHw7m7AWSVXVQk83Xj93BujgFBVYD1chw&s=10",
-            "isBestSeller": true,
-            "outOfStock": false,
-            "tag": "Populer Kreator",
-            "summary": "Akses template Pro, Brand Kit & hapus background",
-            "variants": [
-              {
-                "id": "canva-1m",
-                "name": "1 Bulan",
-                "price": 4000,
-                "outOfStock": false
-              },
-              {
-                "id": "canva-2m",
-                "name": "2 Bulan",
-                "price": 7000,
-                "outOfStock": false
-              },
-              {
-                "id": "canva-3m",
-                "name": "3 Bulan",
-                "price": 10000,
-                "outOfStock": false
-              },
-              {
-                "id": "canva-6m",
-                "name": "6 Bulan",
-                "price": 11000,
-                "outOfStock": true
-              },
-              {
-                "id": "canva-1y",
-                "name": "1 Tahun (Garansi 8 bulan)",
-                "price": 10000,
-                "outOfStock": true,
-                "restockMessage": "Akan segera restock"
-              }
-            ]
-          },
-          {
-            "id": "youtube-premium",
-            "name": "YouTube Premium",
-            "category": "music",
-            "logo": "./assets/logos/youtube.svg",
-            "isBestSeller": false,
-            "outOfStock": true,
-            "restockMessage": "Akan segera restock",
-            "tag": "Segera Restock",
-            "summary": "Bebas iklan · Putar di latar belakang · YouTube Music",
-            "variants": [
-              {
-                "id": "yt-3m-ng",
-                "name": "3 Bulan - No Garansi",
-                "price": 15000,
-                "outOfStock": true
-              },
-              {
-                "id": "yt-3m-1r",
-                "name": "3 Bulan - Garansi 1x Replace",
-                "price": 20000,
-                "outOfStock": true
-              },
-              {
-                "id": "yt-3m-2r",
-                "name": "3 Bulan - Garansi 2x Replace",
-                "price": 25000,
-                "outOfStock": true
-              },
-              {
-                "id": "yt-3m-full",
-                "name": "3 Bulan - Garansi Full",
-                "price": 30000,
-                "outOfStock": true
-              }
-            ]
-          },
-          {
-            "id": "spotify-premium",
-            "name": "Spotify Premium",
-            "category": "music",
-            "logo": "./assets/logos/spotify.svg",
-            "isBestSeller": false,
-            "outOfStock": false,
-            "tag": "Tersedia",
-            "summary": "Audio kualitas tinggi · Unduh offline tanpa iklan",
-            "variants": [
-              {
-                "id": "sp-3m-ng",
-                "name": "2 Bulan - No Garansi",
-                "price": 15000,
-                "outOfStock": false
-              },
-              {
-                "id": "sp-3m-full",
-                "name": "2 Bulan - Garansi Full",
-                "price": 40000,
-                "outOfStock": true
-              }
-            ]
-          },
-          {
-            "id": "viu-premium",
-            "name": "Viu Premium",
-            "category": "streaming",
-            "logo": "https://play-lh.googleusercontent.com/zncg12zFgKmDiCC7nz9fY1DFJh8z40a5y6XaWYQUeHcEv-jcbOvZYNWpRq--6lcOw9M4Hf75SfeWBIOei4Adp30",
-            "isBestSeller": false,
-            "outOfStock": false,
-            "tag": "Tersedia",
-            "summary": "Drama Asia & simulcast terbaru bebas iklan",
-            "variants": [
-              {
-                "id": "viu-1m",
-                "name": "1 Bulan Privat",
-                "price": 7000,
-                "outOfStock": false
-              },
-              {
-                "id": "viu-3m",
-                "name": "3 Bulan Privat",
-                "price": 15000,
-                "outOfStock": false
-              },
-              {
-                "id": "viu-6m",
-                "name": "6 Bulan Privat",
-                "price": 27000,
-                "outOfStock": false
-              }
-            ]
-          },
-          {
-            "id": "vidio-platinum",
-            "name": "Vidio Premier Platinum",
-            "category": "streaming",
-            "logo": "https://static.vecteezy.com/system/resources/previews/054/298/844/non_2x/vidio-logo-illustration-in-square-background-free-png.png",
-            "isBestSeller": false,
-            "outOfStock": true,
-            "tag": "Segera Restock",
-            "summary": "Liga olahraga, serial original & tayangan lokal",
-            "variants": [
-              {
-                "id": "vidio-tv",
-                "name": "3-12 Bulan (Khusus TV)",
-                "price": 15000,
-                "outOfStock": true
-              },
-              {
-                "id": "vidio-hp",
-                "name": "1 Bulan - Khusus HP",
-                "price": 20000,
-                "outOfStock": true
-              },
-              {
-                "id": "vidio-all",
-                "name": "1 Bulan - All Device",
-                "price": 28000,
-                "outOfStock": true
-              }
-            ],
-            "restockMessage": "Akan segera restock"
-          },
-          {
-            "id": "alight-motion",
-            "name": "Alight Motion Premium",
-            "category": "creative",
-            "logo": "https://play-lh.googleusercontent.com/LRjRXaVEtoeHyiFcnMLCHs1ZJV8Q4q70PggflRDAfgOkulzFTbJg65y0drg6Yapo22Xoos_XCbyh7EgycBhQ",
-            "isBestSeller": false,
-            "outOfStock": false,
-            "tag": "Favorit Editor",
-            "summary": "Preset XML terbuka · Ekspor tanpa watermark",
-            "variants": [
-              {
-                "id": "am-1y-ng",
-                "name": "1 Tahun - No Garansi",
-                "price": 15000,
-                "outOfStock": false
-              },
-              {
-                "id": "am-1y-6m",
-                "name": "1 Tahun - Garansi 6 Bulan",
-                "price": 25000,
-                "outOfStock": false
-              },
-              {
-                "id": "am-1y-full",
-                "name": "1 Tahun - Garansi Full",
-                "price": 30000,
-                "outOfStock": false
-              }
-            ]
-          },
-          {
-            "id": "wetv-vip",
-            "name": "WeTV",
-            "category": "streaming",
-            "logo": "https://cdn.aptoide.com/imgs/c/b/d/cbd68f98648c8b73a404b1c2f13c7c74_icon.png",
-            "isBestSeller": false,
-            "outOfStock": false,
-            "tag": "Tersedia",
-            "summary": "Akses episode cepat & kualitas Blu-ray 1080p",
-            "variants": [
-              {
-                "id": "wetv-1m-6u",
-                "name": "1 Bulan Sharing 6u",
-                "price": 8500,
-                "outOfStock": false
-              },
-              {
-                "id": "wetv-1m-privat",
-                "name": "1 Bulan Privat",
-                "price": 35000,
-                "outOfStock": false
-              }
-            ]
-          },
-          {
-            "id": "prime-video",
-            "name": "Prime Video",
-            "category": "streaming",
-            "logo": "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcTrdZcdaVBPV-o5UH_YdPrNwPTasCUwD2oeVLDWKdfH-lF6QTxrPAof2i0&s=10",
-            "isBestSeller": false,
-            "outOfStock": false,
-            "tag": "Tersedia",
-            "summary": "Film & serial Amazon Originals resmi",
-            "variants": [
-              {
-                "id": "prime-1m-share",
-                "name": "1 Bulan Sharing",
-                "price": 8000,
-                "outOfStock": false
-              },
-              {
-                "id": "prime-1m-privat",
-                "name": "1 Bulan Privat",
-                "price": 15000,
-                "outOfStock": false
-              }
-            ]
-          },
-          {
-            "id": "cek-turnitin",
-            "name": "Cek Turnitin",
-            "category": "pendidikan",
-            "logo": "https://img.icons8.com/fluent/1200/turnitin.jpg",
-            "isBestSeller": false,
-            "outOfStock": false,
-            "tag": "Tersedia",
-            "summary": "Cek Plagiasi Turnitin",
-            "variants": [
-              {
-                "id": "cek-turnitin-v1",
-                "name": "Turnitin V1",
-                "price": 17000,
-                "outOfStock": false
-              },
-              {
-                "id": "cek-turnitin-8fnd",
-                "name": "Turnitin V2",
-                "price": 25000,
-                "outOfStock": false
-              }
-            ]
-          },
-          {
-            "id": "request-custom",
-            "name": "Request dan Custom Produk",
-            "category": "custom",
-            "logo": "./assets/logos/custom-request.svg",
-            "isBestSeller": false,
-            "outOfStock": false,
-            "tag": "Layanan Custom",
-            "summary": "Pesan aplikasi khusus atau paket kombinasi durasi",
-            "variants": [
-              {
-                "id": "req-custom-app",
-                "name": "Request Produk",
-                "price": 0,
-                "outOfStock": false,
-                "description": "Tidak menemukan produk yang Anda cari di katalog? Ajukan request langsung ke admin."
-              },
-              {
-                "id": "req-custom-durasi",
-                "name": "Custom Produk",
-                "price": 0,
-                "outOfStock": false,
-                "description": "Ingin menggabungkan beberapa aplikasi atau mengatur durasi paket khusus."
-              }
-            ]
-          }
-        ]
-      }
-    },
-    {
-      "id": "rev-mwjalcaz-i0rw",
-      "createdAt": "2026-11-16T13:21:34.091Z",
-      "action": "publish",
-      "summary": "Mengubah judul OpenGraph menjadi \"Manifestudio by Tomy —  Akun Premium Murah Berkualitas dan Utilitas\" · Mengubah caption / deskripsi OpenGraph",
-      "details": [
-        "Mengubah judul OpenGraph menjadi \"Manifestudio by Tomy —  Akun Premium Murah Berkualitas dan Utilitas\"",
-        "Mengubah caption / deskripsi OpenGraph"
-      ],
-      "productCount": 12,
-      "voucherCount": 2,
-      "snapshot": {
-        "brand": {
-          "name": "Manifestudio",
-          "tagline": "by Tomy",
-          "logo": "./assets/logos/uploads/brand-mwj42bno.png",
-          "footerText": "Dikelola oleh Manifestudio by Tomy © 2026",
-          "whatsappNumber": "6285122936027",
-          "tiktokUrl": "https://www.tiktok.com/@tmctomystudio",
-          "tiktokHandle": "@tmctomystudio",
-          "instagramUrl": "https://www.instagram.com/tmctomystudio",
-          "instagramHandle": "@tmctomystudio",
-          "discountThreshold": 50000,
-          "discountAmount": 2000,
-          "payLaterSurchargeRate": 0.1,
-          "serviceFeeFlat": 0,
-          "serviceFeeLabel": "Biaya Layanan",
-          "openGraph": {
-            "title": "Manifestudio by Tomy —  Akun Premium Murah Berkualitas dan Utilitas",
-            "description": "Platform Akun Premium Murah Berkualitas.\nDilengkapi Jadwal Sholat, Prakiraan Cuaca, Jam Dunia, Speedtest, Social Media Downloader & Kompres Media HD.",
-            "tagline": "by Tomy · Katalog Layanan Digital & Utilitas Terpadu",
-            "image": "./assets/og-manifestudio.jpg",
-            "imageAlt": "Banner Katalog Layanan Digital & Utilitas Manifestudio",
-            "siteName": "Manifestudio"
-          },
-          "socials": [
-            {
-              "id": "social-whatsapp",
-              "platform": "WhatsApp",
-              "label": "WhatsApp Admin",
-              "handle": "+62 851-2293-6027",
-              "url": "https://wa.me/6285122936027",
-              "logo": "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcSV0QiU30wRrmwBKWXcXIlNuileOBuF9WGEPvqIEit2BANTgLH0HTAy0Tgb&s=10"
-            },
-            {
-              "id": "social-tiktok",
-              "platform": "TikTok",
-              "label": "TikTok @tmctomystudio",
-              "handle": "@tmctomystudio",
-              "url": "https://www.tiktok.com/@tmctomystudio",
-              "logo": "./assets/icons/social-tiktok.svg"
-            },
-            {
-              "id": "social-instagram",
-              "platform": "Instagram",
-              "label": "Instagram @tmctomystudio",
-              "handle": "@tmctomystudio",
-              "url": "https://www.instagram.com/tmctomystudio",
-              "logo": "./assets/icons/social-instagram.svg"
-            }
-          ]
-        },
-        "banners": [
-          {
-            "id": "banner-katalog",
-            "kicker": "Promo Otomatis · Garansi Penuh",
-            "heading": "Layanan Digital Siap Pakai dalam Hitungan Menit",
-            "sub": "Potongan otomatis Rp2.000 untuk transaksi mulai Rp50.000, dukungan kode voucher, dan opsi Bayar Nanti setelah akun diterima.",
-            "ctaLabel": "Jelajahi Katalog →",
-            "href": "#katalog",
-            "image": "./assets/hero-banner.jpg",
-            "scrim": "default"
-          },
-          {
-            "id": "banner-prayer",
-            "kicker": "Utilitas Muslim · 35+ Kota & GPS",
-            "heading": "Jadwal Sholat & Imsakiyah Real-Time",
-            "sub": "Hitung mundur waktu adzan berikutnya otomatis beserta jadwal Imsak, Subuh, Dzuhur, Ashar, Maghrib, dan Isya.",
-            "ctaLabel": "Buka Jadwal Sholat →",
-            "href": "./tools.html?tab=prayer",
-            "image": "./assets/banner-prayer.jpg",
-            "scrim": "default"
-          },
-          {
-            "id": "banner-weather",
-            "kicker": "Cuaca Akurat · Prakiraan 7 Hari",
-            "heading": "Pantau Cuaca, Suhu & Peluang Hujan",
-            "sub": "Data meteorologi presisi lengkap dengan kelembapan, indeks UV, kecepatan angin, dan prakiraan mingguan.",
-            "ctaLabel": "Cek Cuaca Sekarang →",
-            "href": "./tools.html?tab=weather",
-            "image": "./assets/banner-weather.jpg",
-            "scrim": "default"
-          },
-          {
-            "id": "banner-worldclock",
-            "kicker": "3D Globe Interaktif · WIB / WITA / WIT",
-            "heading": "Jam Dunia & Konverter Zona Waktu",
-            "sub": "Putar bola dunia 3D ke negara mana pun untuk membandingkan waktu lokal dengan kota internasional secara instan.",
-            "ctaLabel": "Buka Jam Dunia →",
-            "href": "./tools.html?tab=worldclock",
-            "image": "./assets/banner-worldclock.jpg",
-            "scrim": "default"
-          },
-          {
-            "id": "banner-speedtest",
-            "kicker": "Uji Jaringan · Download, Upload & Ping",
-            "heading": "Speedtest Internet & Kualitas Streaming",
-            "sub": "Ukur kecepatan unduh, unggah, ping, jitter, dan kesiapan streaming 4K atau gaming kompetitif Anda.",
-            "ctaLabel": "Mulai Speedtest →",
-            "href": "./tools.html?tab=speedtest",
-            "image": "./assets/banner-speedtest.jpg",
-            "scrim": "default"
-          },
-          {
-            "id": "banner-downloader",
-            "kicker": "All-in-One · Tanpa Watermark",
-            "heading": "Downloader Video, Foto, Story & Audio Sosmed",
-            "sub": "Unduh video HD tanpa watermark, postingan foto & slide carousel, story sosmed, salin caption, atau ekstrak MP3.",
-            "ctaLabel": "Buka Downloader →",
-            "href": "./tools.html?tab=downloader",
-            "image": "./assets/banner-speedtest.jpg",
-            "scrim": "default"
-          },
-          {
-            "id": "banner-compressor",
-            "kicker": "Zero Quality Loss · Anti-Pecah Sosmed",
-            "heading": "Kompres Foto & Video HD Tanpa Kurangi Kualitas",
-            "sub": "Optimalkan ukuran file dengan 4 metode lossless & pengunci bit-rate agar TikTok, IG, & WA tidak menurunkan ketajaman unggahan Anda.",
-            "ctaLabel": "Kompres Media HD →",
-            "href": "./tools.html?tab=compressor",
-            "image": "./assets/hero-banner.jpg",
-            "scrim": "default"
-          }
-        ],
-        "categories": [
-          {
-            "id": "all",
-            "label": "Semua Layanan"
-          },
-          {
-            "id": "streaming",
-            "label": "Streaming Film"
-          },
-          {
-            "id": "music",
-            "label": "Musik & Hiburan"
-          },
-          {
-            "id": "creative",
-            "label": "Desain & Editing"
-          },
-          {
-            "id": "custom",
-            "label": "Request & Custom"
-          },
-          {
-            "id": "pendidikan",
-            "label": "Pendidikan"
-          }
-        ],
-        "paymentOptions": [
-          {
-            "id": "Bayar Sekarang",
-            "label": "Bayar Sekarang (QRIS / E-Wallet / Bank)",
-            "badge": "0% Biaya",
-            "note": "Tanpa biaya tambahan · Proses prioritas instan setelah bukti transfer dikonfirmasi.",
-            "surchargeRate": 0
-          },
-          {
-            "id": "Bayar Belakangan (Setelah Akun Diterima)",
-            "label": "Bayar Nanti (Setelah Akun Diterima)",
-            "badge": "+10% Biaya Layanan",
-            "note": "Dikenakan biaya tambahan 10% dari total tagihan karena pembayaran dilakukan setelah akun aktif.",
-            "surchargeRate": 0.1
-          }
-        ],
-        "faqItems": [
-          {
-            "question": "Berapa lama proses aktivasi pesanan?",
-            "answer": "Pesanan diproses 3–10 menit via WhatsApp pada jam operasional setelah pembayaran dikonfirmasi."
-          },
-          {
-            "question": "Apa beda paket Sharing dan Privat?",
-            "answer": "Sharing memakai satu akun bersama sesuai kuota profil (misal 1P1U atau 1P2U). Privat memberi kendali penuh atas seluruh akun."
-          },
-          {
-            "question": "Bagaimana cara klaim garansi akun?",
-            "answer": "Paket bergaransi mendapat penggantian akun baru selama masa aktif jika kendala bukan karena pelanggaran aturan pemakaian."
-          },
-          {
-            "question": "Apa ketentuan Bayar Sekarang dan Bayar Nanti?",
-            "answer": "Bayar Sekarang bebas biaya (0%). Bayar Nanti (setelah akun diterima) dikenakan biaya layanan +10% yang dihitung otomatis saat checkout."
-          },
-          {
-            "question": "Bagaimana memakai voucher dan struk digital?",
-            "answer": "Masukkan kode voucher di keranjang sebelum checkout. Setelah pesanan dibuat, struk PNG siap diunduh dan dikirim ke WhatsApp admin."
-          },
-          {
-            "question": "Bagaimana kerja Jadwal Sholat, Cuaca, Jam Dunia, dan Speedtest?",
-            "answer": "Buka Menu Lainnya untuk mengakses semua utilitas di halaman terpisah. Lokasi memakai izin GPS browser terlebih dahulu, lalu otomatis fallback ke IP atau pencarian kota manual."
-          },
-          {
-            "question": "Bisakah request aplikasi atau paket durasi khusus?",
-            "answer": "Bisa. Pilih Request & Custom di katalog untuk memesan aplikasi atau durasi paket sesuai kebutuhan."
-          }
-        ],
-        "vouchers": [
-          {
-            "code": "RESELLERNOVEMBER",
-            "type": "fixed",
-            "value": 2000,
-            "minSubtotal": 12000,
-            "label": "Potongan Rp2.000 (min. Rp12.000)"
-          },
-          {
-            "code": "TOMYLOVEBILLA",
-            "type": "fixed",
-            "value": 3000,
-            "minSubtotal": 15000,
             "label": "Potongan Rp3.000 (min. Rp15.000)"
           }
         ],
