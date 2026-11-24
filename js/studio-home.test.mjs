@@ -6,7 +6,10 @@ import {
   STUDIO_VALUE_PILLARS,
   buildStudioFeatureDirectory,
   buildStudioHeroBanners,
+  buildStudioRouteUrl,
   filterStudioFeatures,
+  groupStudioFeaturesByCategory,
+  parseStudioRoute,
 } from './studio-home.js';
 import {
   DEFAULT_BANNERS,
@@ -87,3 +90,43 @@ test('buildStudioFeatureDirectory & filterStudioFeatures support category tabs a
   assert.equal(STUDIO_VALUE_PILLARS.length, 4);
   assert.ok(STUDIO_FAQ_ITEMS.length >= 4);
 });
+
+test('parseStudioRoute, buildStudioRouteUrl & groupStudioFeaturesByCategory power Home Hub vs Dedicated Feature Pages', () => {
+  const utilities = normalizeUtilityConfig(DEFAULT_UTILITY_CONFIG);
+  const enabledIds = utilities.items.filter((i) => i.enabled !== false).map((i) => i.id);
+
+  // No ?tab= -> clean Home Hub
+  assert.deepEqual(parseStudioRoute('', enabledIds), { mode: 'home', tabId: null });
+  assert.deepEqual(parseStudioRoute('?site=utilities', enabledIds), { mode: 'home', tabId: null });
+
+  // Valid ?tab= or ?tool= -> dedicated single-feature page
+  assert.deepEqual(parseStudioRoute('?tab=manifestai', enabledIds), { mode: 'tool', tabId: 'manifestai' });
+  assert.deepEqual(parseStudioRoute('?site=utilities&tool=dracin', enabledIds), { mode: 'tool', tabId: 'dracin' });
+
+  // Unknown or disabled tab falls back cleanly to Home Hub
+  assert.deepEqual(parseStudioRoute('?tab=nonexistent', enabledIds), { mode: 'home', tabId: null });
+  assert.deepEqual(
+    parseStudioRoute('?tab=speedtest', enabledIds.filter((id) => id !== 'speedtest')),
+    { mode: 'home', tabId: null }
+  );
+
+  // Route URL builder preserves preview params and toggles ?tab=
+  assert.equal(
+    buildStudioRouteUrl('https://manifestudio.my.id/#fitur', 'manifestai'),
+    '/?tab=manifestai'
+  );
+  assert.equal(
+    buildStudioRouteUrl('http://localhost:3000/site/tools.html?site=utilities&tab=manifestai', null),
+    '/site/tools.html?site=utilities'
+  );
+  assert.equal(
+    buildStudioRouteUrl('http://localhost:3000/site/tools.html?site=utilities&tab=manifestai', null, { hash: 'fitur' }),
+    '/site/tools.html?site=utilities#fitur'
+  );
+
+  // Category grouping for compact Quick-Switch select
+  const groups = groupStudioFeaturesByCategory(buildStudioFeatureDirectory(utilities));
+  assert.equal(groups.length, 4);
+  assert.equal(groups.reduce((acc, g) => acc + g.items.length, 0), 15);
+});
+

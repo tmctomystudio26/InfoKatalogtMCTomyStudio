@@ -290,3 +290,73 @@ export function filterStudioFeatures(features, filters = {}) {
     return true;
   });
 }
+
+/**
+ * Parse URL query string to decide whether Manifestudio should render the
+ * clean Home Hub (`mode: 'home'`) or a dedicated single-feature page (`mode: 'tool'`).
+ *
+ * @param {string} search
+ * @param {Array<string>} enabledIds
+ * @returns {{ mode: 'home' | 'tool', tabId: string | null }}
+ */
+export function parseStudioRoute(search = '', enabledIds = []) {
+  const params = new URLSearchParams(String(search || '').replace(/^\?/, ''));
+  const rawTab = String(params.get('tab') || params.get('tool') || '').trim().toLowerCase();
+  if (!rawTab) {
+    return { mode: 'home', tabId: null };
+  }
+  const allowed = new Set(
+    (Array.isArray(enabledIds) ? enabledIds : []).map((id) => String(id || '').trim().toLowerCase())
+  );
+  if (allowed.size > 0 && !allowed.has(rawTab)) {
+    return { mode: 'home', tabId: null };
+  }
+  return { mode: 'tool', tabId: rawTab };
+}
+
+/**
+ * Build a clean URL for navigating between Manifestudio Home Hub (`tabId = null`)
+ * and a dedicated feature page (`tabId = 'manifestai'`, etc.), preserving `?site=` preview params.
+ *
+ * @param {string} currentHref
+ * @param {string | null} [tabId]
+ * @param {{ hash?: string }} [opts]
+ * @returns {string}
+ */
+export function buildStudioRouteUrl(currentHref, tabId = null, opts = {}) {
+  const url = new URL(currentHref || 'https://manifestudio.my.id/');
+  url.searchParams.delete('tool');
+  const cleanTab = String(tabId || '').trim().toLowerCase();
+  if (cleanTab) {
+    url.searchParams.set('tab', cleanTab);
+    url.hash = '';
+  } else {
+    url.searchParams.delete('tab');
+    url.hash = opts.hash ? (opts.hash.startsWith('#') ? opts.hash : `#${opts.hash}`) : '';
+  }
+  return `${url.pathname}${url.search}${url.hash}`;
+}
+
+/**
+ * Group directory features by curated category order for clean Quick-Switch optgroups.
+ * @param {Array<object>} features
+ * @returns {Array<{ id: string, label: string, items: Array<object> }>}
+ */
+export function groupStudioFeaturesByCategory(features) {
+  const list = Array.isArray(features) ? features : [];
+  const groups = [];
+  for (const cat of STUDIO_CATEGORIES) {
+    if (cat.id === 'all') continue;
+    const items = list.filter((f) => f.category === cat.id);
+    if (items.length > 0) {
+      groups.push({ id: cat.id, label: cat.label, items });
+    }
+  }
+  const knownIds = new Set(groups.flatMap((g) => g.items.map((i) => i.id)));
+  const extras = list.filter((f) => !knownIds.has(f.id));
+  if (extras.length > 0) {
+    groups.push({ id: 'other', label: 'Utilitas Lainnya', items: extras });
+  }
+  return groups;
+}
+

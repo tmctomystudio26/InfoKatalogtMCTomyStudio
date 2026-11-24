@@ -406,6 +406,7 @@ export function createToolsHubController({
   utilitiesConfig = null,
   onToast = () => {},
   onSubTabChange = () => {},
+  hideSubnav = false,
 }) {
   const today = getTodayParts();
   const initialClock = getZoneTimeParts(new Date(), 'Asia/Jakarta');
@@ -527,6 +528,7 @@ export function createToolsHubController({
   }
 
   function renderSubPanelIntro(id) {
+    if (hideSubnav) return '';
     const item = getUtilityItemConfig(id);
     if (!item.heroKicker && !item.heroTitle && !item.heroDescription) return '';
     return `
@@ -5677,15 +5679,21 @@ export function createToolsHubController({
       )
       .join('');
 
-    rootEl.innerHTML = `
-      <div class="tools-hub">
-        <div class="tools-subnav" role="tablist" aria-label="Menu Utilitas">
-          ${subnavButtonsHtml}
+    rootEl.innerHTML = hideSubnav
+      ? `
+        <div class="tools-hub is-dedicated">
+          ${activeTabHtml}
         </div>
+      `
+      : `
+        <div class="tools-hub">
+          <div class="tools-subnav" role="tablist" aria-label="Menu Utilitas">
+            ${subnavButtonsHtml}
+          </div>
 
-        ${activeTabHtml}
-      </div>
-    `;
+          ${activeTabHtml}
+        </div>
+      `;
 
     bindToolEvents();
     startLiveTimers();

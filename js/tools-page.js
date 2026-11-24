@@ -1,18 +1,18 @@
-import { createToolsHubController } from './tools-ui.js?v=81';
-import { getDefaultCatalogSnapshot, loadCatalogData } from './data.js?v=81';
+import { createToolsHubController } from './tools-ui.js?v=82';
+import { getDefaultCatalogSnapshot, loadCatalogData } from './data.js?v=82';
 import {
   inferBannerUtilityId,
   normalizeBanners,
   normalizeBrandConfig,
   normalizeUtilityConfig,
-} from './store.js?v=81';
+} from './store.js?v=82';
 import {
   computeBannerHydrationWindow,
   initPerformanceClass,
   resolveBannerTransition,
   scheduleIdleTask,
-} from './perf-guard.js?v=81';
-import { initPwaManager } from './pwa.js?v=81';
+} from './perf-guard.js?v=82';
+import { initPwaManager } from './pwa.js?v=82';
 import {
   DOMAIN_CONFIG,
   applyDomainPwaMeta,
@@ -21,15 +21,19 @@ import {
   resolveDisplayBrand,
   resolveSiteContext,
   verifyStoreAccessKey,
-} from './domain-router.js?v=81';
+} from './domain-router.js?v=82';
 import {
   STUDIO_CATEGORIES,
   STUDIO_FAQ_ITEMS,
+  STUDIO_FEATURE_META,
   STUDIO_VALUE_PILLARS,
   buildStudioFeatureDirectory,
   buildStudioHeroBanners,
+  buildStudioRouteUrl,
   filterStudioFeatures,
-} from './studio-home.js?v=81';
+  groupStudioFeaturesByCategory,
+  parseStudioRoute,
+} from './studio-home.js?v=82';
 
 const THEME_STORAGE_KEY = 'manifestudio_theme_v1';
 const VALID_TABS = new Set([
@@ -58,7 +62,8 @@ let toastTimer = null;
 let activeUtilities = normalizeUtilityConfig(defaultSnap.utilities);
 let activeBrand = normalizeBrandConfig(defaultSnap.brand);
 let activeCatalogBanners = normalizeBanners(defaultSnap.banners);
-let currentTab = 'prayer';
+let currentViewMode = 'home'; // 'home' | 'tool'
+let currentTab = null;
 
 // Standalone Homepage UI state
 let activeBannerSlide = 0;
@@ -102,6 +107,10 @@ function getEnabledUtilityItems() {
   return enabled.length > 0 ? enabled : activeUtilities.items || [];
 }
 
+function getEnabledUtilityIds() {
+  return getEnabledUtilityItems().map((it) => it.id);
+}
+
 function resolveEnabledTab(tab) {
   const enabled = getEnabledUtilityItems();
   if (VALID_TABS.has(tab) && enabled.some((it) => it.id === tab)) {
@@ -116,14 +125,20 @@ function getTabMeta(tab) {
   const item =
     enabled.find((it) => it.id === safeTab) ||
     enabled[0] || {
+      id: 'prayer',
       label: 'Jadwal Sholat',
+      icon: './assets/icons/tool-prayer.svg',
       pageTitle: 'Jadwal Sholat & Imsakiyah',
       pageSubtitle: 'Waktu sholat resmi Kemenag RI sesuai lokasi Anda.',
     };
+  const featMeta = STUDIO_FEATURE_META[safeTab] || { categoryLabel: 'Utilitas' };
   return {
+    id: item.id,
     label: item.label,
-    title: item.pageTitle,
-    subtitle: item.pageSubtitle,
+    icon: item.icon || `./assets/icons/tool-${safeTab}.svg`,
+    categoryLabel: featMeta.categoryLabel || 'Utilitas',
+    title: item.pageTitle || item.label,
+    subtitle: item.pageSubtitle || '',
   };
 }
 
@@ -136,16 +151,8 @@ function escapeHtml(str) {
     .replaceAll("'", '&#39;');
 }
 
-function readInitialTab() {
-  const params = new URLSearchParams(window.location.search);
-  const tab = (params.get('tab') || params.get('tool') || '').toLowerCase();
-  return VALID_TABS.has(tab) ? tab : 'prayer';
-}
-
-function hasExplicitTabParam() {
-  const params = new URLSearchParams(window.location.search);
-  const tab = (params.get('tab') || params.get('tool') || '').toLowerCase();
-  return VALID_TABS.has(tab);
+function readCurrentRoute() {
+  return parseStudioRoute(window.location.search, getEnabledUtilityIds());
 }
 
 function showToast(message) {
@@ -191,15 +198,121 @@ function applyTheme() {
   toolsHub?.redrawTheme();
 }
 
-function activateUtilityAndScroll(tabId, { scroll = true } = {}) {
-  const safeTab = resolveEnabledTab(tabId);
-  currentTab = safeTab;
-  toolsHub?.mount(safeTab);
-  syncActiveTabChrome(safeTab);
-  renderStudioFeatureDirectory();
-  if (scroll) {
-    document.getElementById('workspace')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+function ensureToolsHubInstance() {
+  if (toolsHub) return toolsHub;
+  const root = document.getElementById('tools-hub-root');
+  if (!root) return null;
+  toolsHub = createToolsHubController({
+    rootEl: root,
+    utilitiesConfig: activeUtilities,
+    hideSubnav: true,
+    onToast: showToast,
+    onSubTabChange: (nextTab) => {
+      if (nextTab && nextTab !== currentTab) {
+        enterToolView(nextTab, { pushState: true });
+      }
+    },
+  });
+  return toolsHub;
+}
+
+function renderToolSwitcherOptions(selectedId = null) {
+  const select = document.getElementById('studio-tool-switcher');
+  if (!select) return;
+  const dir = buildStudioFeatureDirectory(activeUtilities);
+  const groups = groupStudioFeaturesByCategory(dir);
+  select.innerHTML = groups
+    .map(
+      (grp) => `
+      <optgroup label="${escapeHtml(grp.label)}">
+        ${grp.items
+          .map(
+            (feat) =>
+              `<option value="${escapeHtml(feat.id)}" ${feat.id === selectedId ? 'selected' : ''}>${escapeHtml(feat.label)}</option>`
+          )
+          .join('')}
+      </optgroup>
+    `
+    )
+    .join('');
+  if (selectedId) {
+    select.value = selectedId;
   }
+}
+
+function syncHeaderNavState(activeKey) {
+  document.querySelectorAll('[data-studio-section-link]').forEach((el) => {
+    const key = el.getAttribute('data-studio-section-link');
+    el.classList.toggle('is-active', key === activeKey);
+  });
+}
+
+function enterHomeView({ pushState = true, scrollTarget = null } = {}) {
+  const homeView = document.getElementById('studio-home-view');
+  const toolView = document.getElementById('studio-tool-view');
+  currentViewMode = 'home';
+  currentTab = null;
+
+  document.documentElement.setAttribute('data-studio-view', 'home');
+  if (homeView) homeView.hidden = false;
+  if (toolView) toolView.hidden = true;
+
+  // Unmount active tool cleanly so no timers/GPS run in background on homepage
+  if (toolsHub) {
+    toolsHub.unmount();
+  }
+
+  const utilName = getStoreAccessCfg().utilitiesBrandName || DOMAIN_CONFIG.utilitiesBrandName;
+  const enabledCount = getEnabledUtilityItems().length || 15;
+  document.title = `${utilName} — Platform ${enabledCount} Utilitas Digital, AI & Hiburan Gratis`;
+
+  if (pushState) {
+    const nextUrl = buildStudioRouteUrl(window.location.href, null, {
+      hash: scrollTarget && scrollTarget !== 'top' ? scrollTarget : '',
+    });
+    window.history.pushState({ view: 'home' }, '', nextUrl);
+  }
+
+  syncHeaderNavState(scrollTarget || 'top');
+
+  if (scrollTarget && scrollTarget !== 'top') {
+    requestAnimationFrame(() => {
+      document.getElementById(scrollTarget)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+  } else {
+    window.scrollTo({ top: 0, behavior: 'auto' });
+  }
+}
+
+function enterToolView(tabId, { pushState = true } = {}) {
+  const safeTab = resolveEnabledTab(tabId);
+  const homeView = document.getElementById('studio-home-view');
+  const toolView = document.getElementById('studio-tool-view');
+
+  currentViewMode = 'tool';
+  currentTab = safeTab;
+
+  document.documentElement.setAttribute('data-studio-view', 'tool');
+  if (homeView) homeView.hidden = true;
+  if (toolView) toolView.hidden = false;
+
+  const hub = ensureToolsHubInstance();
+  hub?.setUtilitiesConfig?.(activeUtilities);
+  hub?.mount(safeTab);
+  syncActiveTabChrome(safeTab);
+  renderToolSwitcherOptions(safeTab);
+  syncHeaderNavState('fitur');
+
+  if (pushState) {
+    const nextUrl = buildStudioRouteUrl(window.location.href, safeTab);
+    window.history.pushState({ view: 'tool', tab: safeTab }, '', nextUrl);
+  }
+
+  window.scrollTo({ top: 0, behavior: 'auto' });
+}
+
+function activateUtilityAndScroll(tabId) {
+  enterToolView(tabId, { pushState: true });
 }
 
 /* ============================================================================
@@ -666,43 +779,35 @@ function renderStudioFeatureDirectory() {
 
   grid.innerHTML = filtered
     .map((feat) => {
-      const isCurrent = feat.id === currentTab;
+      const toolHref = buildStudioRouteUrl(window.location.href, feat.id);
       return `
-        <article class="studio-feat-card ${isCurrent ? 'is-current' : ''}">
-          <div class="studio-feat-top">
-            <img
-              src="${escapeHtml(feat.icon)}"
-              alt=""
-              width="40"
-              height="40"
-              loading="lazy"
-              decoding="async"
-              class="studio-feat-icon"
-            />
-            <div class="studio-feat-meta-text">
-              <span>${escapeHtml(feat.categoryLabel)}</span>
-              <span aria-hidden="true">·</span>
-              <span>${isCurrent ? 'Sedang Dibuka' : 'Gratis'}</span>
-            </div>
-          </div>
+        <a
+          href="${escapeHtml(toolHref)}"
+          class="studio-feat-card"
+          data-studio-open-tool="${escapeHtml(feat.id)}"
+          aria-label="Buka halaman ${escapeHtml(feat.label)} — ${escapeHtml(feat.categoryLabel)}"
+        >
+          <img
+            src="${escapeHtml(feat.icon)}"
+            alt=""
+            width="44"
+            height="44"
+            decoding="async"
+            class="studio-feat-icon"
+          />
 
           <div class="studio-feat-body">
-            <h3 class="studio-feat-title">${escapeHtml(feat.label)}</h3>
+            <div class="studio-feat-head-row">
+              <h3 class="studio-feat-title">${escapeHtml(feat.label)}</h3>
+              <span class="studio-feat-cat">${escapeHtml(feat.categoryLabel)}</span>
+            </div>
             <p class="studio-feat-summary">${escapeHtml(feat.summary)}</p>
-            <p class="studio-feat-highlights">${escapeHtml(feat.highlights)}</p>
           </div>
 
-          <div class="studio-feat-foot">
-            <button
-              type="button"
-              class="btn ${isCurrent ? 'btn-primary' : 'btn-secondary'} btn-sm studio-feat-open-btn"
-              data-studio-open-tool="${escapeHtml(feat.id)}"
-              aria-label="Buka fitur ${escapeHtml(feat.label)} di Workspace"
-            >
-              ${isCurrent ? 'Lihat di Workspace ↑' : 'Buka Fitur →'}
-            </button>
-          </div>
-        </article>
+          <span class="studio-feat-arrow" aria-hidden="true">
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg>
+          </span>
+        </a>
       `;
     })
     .join('');
@@ -900,11 +1005,12 @@ function syncStoreTriggerButtons() {
   const cfg = getStoreAccessCfg();
   const storeName = cfg.storeBrandName || DOMAIN_CONFIG.storeBrandName;
   const requiresGate = Boolean(ctx.requiresStoreGate);
+  const homeHref = buildStudioRouteUrl(window.location.href, null);
 
   const brandLink = document.getElementById('tools-brand-link');
   const footerBrand = document.getElementById('footer-brand-name');
-  brandLink?.setAttribute('href', '#top');
-  footerBrand?.setAttribute('href', '#top');
+  brandLink?.setAttribute('href', homeHref);
+  footerBrand?.setAttribute('href', homeHref);
 
   const headerStoreBtn = document.getElementById('tools-store-btn');
   if (headerStoreBtn) {
@@ -925,20 +1031,19 @@ function syncActiveTabChrome(tab) {
   const ctx = getSiteContext();
   const utilName = getStoreAccessCfg().utilitiesBrandName || DOMAIN_CONFIG.utilitiesBrandName;
 
+  const iconEl = document.getElementById('studio-tool-icon');
+  const eyebrowEl = document.getElementById('studio-tool-eyebrow');
   const titleEl = document.getElementById('tools-page-title');
   const subEl = document.getElementById('tools-page-subtitle');
+
+  if (iconEl) iconEl.src = meta.icon;
+  if (eyebrowEl) eyebrowEl.textContent = `${meta.categoryLabel} · Gratis Tanpa Login`;
   if (titleEl) titleEl.textContent = meta.title;
   if (subEl) subEl.textContent = meta.subtitle;
   document.title = `${utilName} — ${meta.title}`;
 
   applyDomainPwaMeta(ctx);
   syncStoreTriggerButtons();
-
-  const url = new URL(window.location.href);
-  if (url.searchParams.has('tab') || safeTab !== 'prayer') {
-    url.searchParams.set('tab', safeTab);
-    window.history.replaceState({}, '', url.toString());
-  }
 }
 
 function applyBrandToToolsPage(brandRaw) {
@@ -995,7 +1100,7 @@ function applyBrandToToolsPage(brandRaw) {
 }
 
 function bindStudioSectionEvents() {
-  // Delegated click for Store Gate triggers
+  // Delegated click for Store Gate triggers & Dedicated Tool Page links
   document.addEventListener('click', (e) => {
     const storeTrigger = e.target.closest?.('[data-store-gate-trigger]');
     if (storeTrigger) {
@@ -1004,21 +1109,64 @@ function bindStudioSectionEvents() {
       return;
     }
 
-    const openToolBtn = e.target.closest?.('[data-studio-open-tool]');
-    if (openToolBtn) {
+    const openToolEl = e.target.closest?.('[data-studio-open-tool]');
+    if (openToolEl) {
+      // Allow Ctrl/Cmd/Shift/Middle click on <a> to open in a new tab natively
+      if (openToolEl.tagName === 'A' && (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button !== 0)) {
+        return;
+      }
       e.preventDefault();
-      const targetTab = openToolBtn.getAttribute('data-studio-open-tool');
-      if (targetTab) activateUtilityAndScroll(targetTab);
+      const targetTab = openToolEl.getAttribute('data-studio-open-tool');
+      if (targetTab) enterToolView(targetTab, { pushState: true });
     }
   });
 
-  // Smooth section nav highlighting
+  // Back to Home Hub buttons (Logo, Footer brand, Dedicated Page Back button)
+  const handleHomeBrandClick = (e) => {
+    if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button !== 0) return;
+    e.preventDefault();
+    if (currentViewMode === 'tool') {
+      enterHomeView({ pushState: true, scrollTarget: 'top' });
+    } else {
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+      syncHeaderNavState('top');
+    }
+  };
+  document.getElementById('tools-brand-link')?.addEventListener('click', handleHomeBrandClick);
+  document.getElementById('footer-brand-name')?.addEventListener('click', handleHomeBrandClick);
+  document.getElementById('studio-back-home-btn')?.addEventListener('click', () => {
+    enterHomeView({ pushState: true, scrollTarget: 'fitur' });
+  });
+
+  // Quick-Switch feature dropdown inside Dedicated Feature Page
+  document.getElementById('studio-tool-switcher')?.addEventListener('change', (e) => {
+    const nextTab = e.target.value;
+    if (nextTab && nextTab !== currentTab) {
+      enterToolView(nextTab, { pushState: true });
+    }
+  });
+
+  // Header navigation links (work seamlessly from both Home Hub & Dedicated Tool Page)
   document.querySelectorAll('[data-studio-section-link]').forEach((link) => {
-    link.addEventListener('click', () => {
-      document
-        .querySelectorAll('[data-studio-section-link]')
-        .forEach((el) => el.classList.toggle('is-active', el === link));
+    link.addEventListener('click', (e) => {
+      const targetId = link.getAttribute('data-studio-section-link') || 'top';
+      if (currentViewMode === 'tool') {
+        e.preventDefault();
+        enterHomeView({ pushState: true, scrollTarget: targetId });
+        return;
+      }
+      syncHeaderNavState(targetId);
     });
+  });
+
+  // Browser Back / Forward sync
+  window.addEventListener('popstate', () => {
+    const route = readCurrentRoute();
+    if (route.mode === 'tool' && route.tabId) {
+      enterToolView(route.tabId, { pushState: false });
+    } else {
+      enterHomeView({ pushState: false });
+    }
   });
 
   // Directory instant search
@@ -1068,32 +1216,14 @@ async function bootstrap() {
   renderStudioFeatureDirectory();
   renderStudioValuePillars();
   renderStudioFaq();
+  renderToolSwitcherOptions();
 
-  const explicitTab = hasExplicitTabParam();
-  currentTab = readInitialTab();
-  const root = document.getElementById('tools-hub-root');
-
-  if (root) {
-    toolsHub = createToolsHubController({
-      rootEl: root,
-      utilitiesConfig: activeUtilities,
-      onToast: showToast,
-      onSubTabChange: (nextTab) => {
-        currentTab = resolveEnabledTab(nextTab);
-        syncActiveTabChrome(currentTab);
-        renderStudioFeatureDirectory();
-      },
-    });
-    toolsHub.mount(currentTab);
-    syncActiveTabChrome(currentTab);
-    renderStudioFeatureDirectory();
-
-    // If visitor came via direct deep link (?tab=dracin), bring workspace smoothly into view
-    if (explicitTab) {
-      requestAnimationFrame(() => {
-        document.getElementById('workspace')?.scrollIntoView({ behavior: 'auto', block: 'start' });
-      });
-    }
+  // Route cleanly between Home Hub (/) and Dedicated Feature Page (?tab=<id>)
+  const initialRoute = readCurrentRoute();
+  if (initialRoute.mode === 'tool' && initialRoute.tabId) {
+    enterToolView(initialRoute.tabId, { pushState: false });
+  } else {
+    enterHomeView({ pushState: false });
   }
 
   document.getElementById('theme-toggle-btn')?.addEventListener('click', () => {
@@ -1123,7 +1253,7 @@ async function bootstrap() {
     currentTab === 'songfinder' ||
     currentTab === 'downloader';
   const bootMusicLazy = () => {
-    import('./music.js?v=81')
+    import('./music.js?v=82')
       .then((m) => m.initMusicPlayer?.())
       .catch(() => {});
   };
@@ -1143,13 +1273,16 @@ async function bootstrap() {
     }
     if (loaded?.data?.utilities) {
       activeUtilities = normalizeUtilityConfig(loaded.data.utilities);
-      const nextSafeTab = resolveEnabledTab(currentTab);
       toolsHub?.setUtilitiesConfig?.(activeUtilities);
-      if (nextSafeTab !== currentTab) {
-        currentTab = nextSafeTab;
-        toolsHub?.mount(currentTab);
+      renderToolSwitcherOptions(currentTab);
+      if (currentViewMode === 'tool' && currentTab) {
+        const nextSafeTab = resolveEnabledTab(currentTab);
+        if (nextSafeTab !== currentTab) {
+          enterToolView(nextSafeTab, { pushState: false });
+        } else {
+          syncActiveTabChrome(currentTab);
+        }
       }
-      syncActiveTabChrome(currentTab);
     }
     renderStudioBanners();
     renderStudioFeatureDirectory();
