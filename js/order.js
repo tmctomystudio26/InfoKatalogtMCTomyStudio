@@ -1,7 +1,13 @@
-import { PENDING_ORDER_STORAGE_KEY, formatRupiah, normalizeBrandConfig } from './store.js?v=76';
-import { loadCatalogData } from './data.js?v=76';
-import { generateReceiptImage } from './receipt.js?v=76';
-import { initPerformanceClass, scheduleIdleTask } from './perf-guard.js?v=76';
+import { PENDING_ORDER_STORAGE_KEY, formatRupiah, normalizeBrandConfig } from './store.js?v=80';
+import { loadCatalogData } from './data.js?v=80';
+import { generateReceiptImage } from './receipt.js?v=80';
+import { initPerformanceClass, scheduleIdleTask } from './perf-guard.js?v=80';
+import {
+  applyDomainPwaMeta,
+  buildStoreUrl,
+  resolveDisplayBrand,
+  resolveSiteContext,
+} from './domain-router.js?v=80';
 
 const THEME_STORAGE_KEY = 'manifestudio_theme_v1';
 
@@ -219,6 +225,17 @@ function renderOrderDetails(order) {
 }
 
 async function initOrderPage() {
+  const siteCtx = resolveSiteContext({ isToolsPage: false });
+  applyDomainPwaMeta(siteCtx);
+  const initialDisplayBrand = resolveDisplayBrand({}, siteCtx);
+  document.title = `Konfirmasi Pesanan & Struk — ${initialDisplayBrand.name}`;
+  const initNameEl = document.getElementById('header-brand-name');
+  if (initNameEl) initNameEl.textContent = initialDisplayBrand.name;
+  const storeHomeHref = buildStoreUrl(siteCtx);
+  document.querySelectorAll('a[href="./index.html"]').forEach((a) => {
+    a.setAttribute('href', storeHomeHref);
+  });
+
   loadTheme();
   applyTheme();
 
@@ -268,8 +285,11 @@ async function initOrderPage() {
 
   try {
     const createdAt = order.createdAt ? new Date(order.createdAt) : new Date();
+    const receiptBrandName = order.brandName || initialDisplayBrand.name;
     const receipt = await generateReceiptImage({
       orderCode: order.orderCode,
+      brandName: receiptBrandName,
+      footerText: initialDisplayBrand.footerText,
       customerName: order.customerName,
       whatsappNote: order.whatsappNote || '',
       paymentOption: order.paymentOption,
@@ -289,7 +309,7 @@ async function initOrderPage() {
     const loadingEl = document.getElementById('receipt-loading-text');
     if (imgEl) {
       imgEl.src = receipt.objectUrl;
-      imgEl.alt = `Struk belanja Manifestudio ${order.orderCode}`;
+      imgEl.alt = `Struk belanja ${receiptBrandName} ${order.orderCode}`;
       imgEl.hidden = false;
     }
     if (loadingEl) loadingEl.hidden = true;
@@ -319,18 +339,21 @@ async function initOrderPage() {
   loadCatalogData({ allowLocalPreview: true })
     .then((loaded) => {
       const brand = normalizeBrandConfig(loaded?.data?.brand || {});
+      const resolvedCtx = resolveSiteContext({ isToolsPage: false, storeAccess: brand.storeAccess });
+      const display = resolveDisplayBrand(brand, resolvedCtx);
       const logoEl = document.getElementById('header-brand-logo');
       if (logoEl && brand.logo) logoEl.src = brand.logo;
       const nameEl = document.getElementById('header-brand-name');
-      if (nameEl && brand.name) nameEl.textContent = brand.name;
+      if (nameEl) nameEl.textContent = display.name;
       const taglineEl = document.getElementById('header-brand-tagline');
-      if (taglineEl && brand.tagline) taglineEl.textContent = brand.tagline;
+      if (taglineEl) taglineEl.textContent = display.tagline;
+      document.title = `Konfirmasi Pesanan & Struk — ${display.name}`;
     })
     .catch(() => {});
 
   initPerformanceClass();
   scheduleIdleTask(() => {
-    import('./music.js?v=76').then(({ initMusicPlayer }) => initMusicPlayer()).catch(() => {});
+    import('./music.js?v=80').then(({ initMusicPlayer }) => initMusicPlayer()).catch(() => {});
   }, 1800);
 }
 

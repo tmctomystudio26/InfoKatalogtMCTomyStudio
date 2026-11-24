@@ -19,11 +19,11 @@
       rel="stylesheet"
     />
 
-    <link rel="stylesheet" href="./css/tokens.css?v=76" />
-    <link rel="stylesheet" href="./css/styles.css?v=76" />
+    <link rel="stylesheet" href="./css/tokens.css?v=80" />
+    <link rel="stylesheet" href="./css/styles.css?v=80" />
     <script>
       (function () {
-        var CURRENT_CACHE = 'manifestudio-cache-v76';
+        var CURRENT_CACHE = 'manifestudio-cache-v80';
         window.addEventListener('load', function () {
           if ('caches' in window) {
             caches.keys().then(function (keys) {
@@ -33,7 +33,7 @@
             });
           }
           if ('serviceWorker' in navigator) {
-            navigator.serviceWorker.register('./sw.js?v=76').then(function (reg) {
+            navigator.serviceWorker.register('./sw.js?v=80').then(function (reg) {
               reg.update();
             }).catch(function () {});
           }
@@ -833,6 +833,102 @@
             </div>
           </div>
 
+          <!-- Card 1B: Pengaturan Dual-Domain & Kunci Akses Store -->
+          <div class="admin-card" id="admin-store-access-card">
+            <div class="admin-card-head">
+              <div>
+                <h2 class="admin-section-title">Dual-Domain &amp; Kunci Akses Store (Manifestudio ⇄ Manifestore)</h2>
+                <p class="admin-subtitle">
+                  Pengunjung langsung ke <strong>manifestore.my.id</strong> tetap bebas akses tanpa kode &amp; bebas berpindah ke Utilitas. Pengunjung dari <strong>manifestudio.my.id</strong> wajib memasukkan kunci akses ini jika klik menu beralih ke Store.
+                </p>
+              </div>
+              <span class="admin-badge is-ok">Dual-Domain</span>
+            </div>
+
+            <label class="admin-checkbox-row" for="store-access-enabled-toggle">
+              <input type="checkbox" id="store-access-enabled-toggle" checked />
+              <span>Aktifkan Kunci Akses Store saat beralih dari Manifestudio ke Manifestore</span>
+            </label>
+
+            <div class="admin-form-grid">
+              <div class="form-field admin-sum-field">
+                <label for="store-access-key-input">Kunci Akses Store (Bebas Diedit Admin) <span class="req">*</span></label>
+                <div class="token-input-row">
+                  <input
+                    type="password"
+                    id="store-access-key-input"
+                    value="MFSTORE26"
+                    placeholder="Contoh: MFSTORE26"
+                    autocomplete="off"
+                    spellcheck="false"
+                  />
+                  <button type="button" class="btn btn-secondary btn-sm" data-toggle-secret="store-access-key-input">
+                    Lihat
+                  </button>
+                  <button type="button" id="store-access-generate-btn" class="btn btn-secondary btn-sm">
+                    Acak Kunci
+                  </button>
+                </div>
+                <span class="admin-prod-meta">Tidak peka huruf besar/kecil. Setelah diubah, klik <strong>Simpan &amp; Publikasikan ke GitHub</strong> agar berlaku live.</span>
+              </div>
+
+              <div class="form-field">
+                <label for="store-access-brand-input">Nama Brand Domain Store</label>
+                <input
+                  type="text"
+                  id="store-access-brand-input"
+                  value="Manifestore"
+                  placeholder="Manifestore"
+                />
+              </div>
+              <div class="form-field">
+                <label for="store-access-util-brand-input">Nama Brand Domain Utilitas</label>
+                <input
+                  type="text"
+                  id="store-access-util-brand-input"
+                  value="Manifestudio"
+                  placeholder="Manifestudio"
+                />
+              </div>
+              <div class="form-field">
+                <label for="store-access-store-origin-input">Domain Store (URL Origin)</label>
+                <input
+                  type="text"
+                  id="store-access-store-origin-input"
+                  value="https://manifestore.my.id"
+                  placeholder="https://manifestore.my.id"
+                />
+              </div>
+              <div class="form-field">
+                <label for="store-access-util-origin-input">Domain Utilitas (URL Origin)</label>
+                <input
+                  type="text"
+                  id="store-access-util-origin-input"
+                  value="https://manifestudio.my.id"
+                  placeholder="https://manifestudio.my.id"
+                />
+              </div>
+              <div class="form-field">
+                <label for="store-access-prompt-title-input">Judul Modal Kunci Akses</label>
+                <input
+                  type="text"
+                  id="store-access-prompt-title-input"
+                  value="Akses Khusus Manifestore"
+                  placeholder="Akses Khusus Manifestore"
+                />
+              </div>
+              <div class="form-field">
+                <label for="store-access-prompt-desc-input">Keterangan Modal Kunci Akses</label>
+                <input
+                  type="text"
+                  id="store-access-prompt-desc-input"
+                  value="Masukkan kunci akses khusus dari Admin untuk berpindah dari Manifestudio ke halaman Store."
+                  placeholder="Pesan petunjuk untuk pengguna..."
+                />
+              </div>
+            </div>
+          </div>
+
           <!-- Card 2: Pengaturan OpenGraph & Social Share Preview -->
           <div class="admin-card">
             <h2 class="admin-section-title">Pengaturan OpenGraph &amp; Tampilan Share Link (WA / FB / IG / X / Telegram)</h2>
@@ -1233,6 +1329,6 @@
 
     <div id="toast-notification" class="toast-notification" role="status" aria-live="polite" hidden></div>
 
-    <script type="module" src="./js/admin.js?v=76"></script>
+    <script type="module" src="./js/admin.js?v=80"></script>
   </body>
 </html>

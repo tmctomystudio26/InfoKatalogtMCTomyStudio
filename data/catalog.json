@@ -14,6 +14,17 @@
     "payLaterSurchargeRate": 0.1,
     "serviceFeeFlat": 0,
     "serviceFeeLabel": "Biaya Layanan",
+    "storeAccess": {
+      "enabled": true,
+      "accessKeyEncoded": "mskey:v1:00000c007f1f1c6d04",
+      "accessKeyPreviewLength": 9,
+      "promptTitle": "Akses Khusus Manifestore",
+      "promptDescription": "Masukkan kunci akses khusus dari Admin untuk berpindah dari Manifestudio ke halaman Store.",
+      "storeOrigin": "https://manifestore.my.id",
+      "utilitiesOrigin": "https://manifestudio.my.id",
+      "storeBrandName": "Manifestore",
+      "utilitiesBrandName": "Manifestudio"
+    },
     "openGraph": {
       "title": "Manifestudio by Tomy —  Akun Premium Murah Berkualitas dan Utilitas",
       "description": "Platform Akun Premium Murah Berkualitas.\nDilengkapi Jadwal Sholat, Prakiraan Cuaca, Jam Dunia, Speedtest, Social Media Downloader & Kompres Media HD.",

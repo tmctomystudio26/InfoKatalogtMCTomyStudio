@@ -42,9 +42,10 @@ Dokumen teknis terpadu bagi **Tim IT, Human Developer, maupun AI Coding Agent** 
 | `js/song-finder.js` | Pencari Judul Lagu, Musik & Analisis Kemiripan Video Sosmed Multi-API + Whisper/AudD/AI Publik | `tools-logic.js`, `media-engine.js` |
 | `js/music.js` + `js/music-logic.js` | Floating dock draggable, YT Music API open-source, drawer 14 kategori + tren real-time, background audio anti-mati, PiP + Mode Headset | YouTube IFrame API / Audius / Siputzx |
 | `data/catalog.json` & `data/catalog-history.json` | Single Source of Truth produk, utilitas, brand, OpenGraph, banners, kategori, voucher usage limits, FAQ & 12 snapshot riwayat | Service Worker Network-First |
+| `functions/_middleware.js` + `js/domain-router.js` | **Dual-Domain Edge & Client Router (`v80`)**: Pemisahan `manifestore.my.id` (Manifestore Storefront + 5 Banner Fitur Store + bebas akses langsung) & `manifestudio.my.id` (15 Utilitas Gratis di `/` + Kunci Akses Store yang dapat diedit di Admin, default `MFSTORE26`), dual branding struk/WA, serta preview `?site=store` / `?site=utilities` | `data/catalog.json` (`brand.storeAccess`) |
 | `js/perf-guard.js` | **Zero-Freeze Adaptive Performance Guard (`v76`)**: Deteksi perangkat spesifikasi rendah (`data-perf="lite"`), jendela hidrasi banner ±1 slide (maks 3 tekstur GPU), transisi wrap-around 1-langkah konstan, batch render progresif, & pelindung konflik MediaCodec / auto-music | Pure ESM (Zero deps) |
-| `sw.js` + `manifest.webmanifest` | Network-First code/data cache (`manifestudio-cache-v76` dengan precache shell ringan 19 berkas <250 KB + runtime caching on-demand + pelestarian `manifestudio-ffmpeg-core-v1`) & instalasi PWA | — |
-| `CNAME` | Konfigurasi domain kustom resmi GitHub Pages (`manifestudio.my.id`) — jangan dihapus | Cloudflare DNS |
+| `sw.js` + `manifest-store.webmanifest` + `manifest-utilities.webmanifest` | Network-First code/data cache (`manifestudio-cache-v80` dengan precache shell ringan <260 KB + runtime caching on-demand + pelestarian `manifestudio-ffmpeg-core-v1`) & 2 PWA mandiri (Manifestore & Manifestudio) | — |
+| `CNAME` | Konfigurasi domain kustom opsional GitHub Pages (`manifestudio.my.id`) | Cloudflare Pages / DNS |
 
 ---
 

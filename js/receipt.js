@@ -48,6 +48,8 @@ function formatReceiptDate(date = new Date()) {
 
 export async function generateReceiptImage({
   orderCode,
+  brandName = 'Manifestudio',
+  footerText = '',
   customerName,
   whatsappNote = '',
   paymentOption,
@@ -55,6 +57,10 @@ export async function generateReceiptImage({
   totals,
   createdAt = new Date(),
 }) {
+  const safeBrand = String(brandName || 'Manifestudio').trim() || 'Manifestudio';
+  const safeBrandUpper = safeBrand.toUpperCase();
+  const safeFooter =
+    String(footerText || '').trim() || `Dikelola oleh ${safeBrand} by Tomy © 2026`;
   const width = 580;
   const padX = 26;
   const innerW = width - padX * 2;
@@ -122,7 +128,7 @@ export async function generateReceiptImage({
   // Store title
   ctx.fillStyle = '#FFFFFF';
   ctx.font = `800 21px ${sans}`;
-  ctx.fillText('MANIFESTUDIO', padX, 42);
+  ctx.fillText(safeBrandUpper, padX, 42);
 
   ctx.fillStyle = '#94A3B8';
   ctx.font = `500 11px ${sans}`;
@@ -290,10 +296,10 @@ export async function generateReceiptImage({
   const fy = totalH - 36;
   ctx.fillStyle = '#64748B';
   ctx.font = `500 11px ${sans}`;
-  ctx.fillText('Kirim bukti faktur ini ke WhatsApp Admin Manifestudio', padX, fy);
+  ctx.fillText(`Kirim bukti faktur ini ke WhatsApp Admin ${safeBrand}`, padX, fy);
   ctx.fillStyle = '#94A3B8';
   ctx.font = `400 10px ${sans}`;
-  ctx.fillText('Faktur digital resmi divalidasi otomatis · Dikelola oleh Manifestudio by Tomy © 2026', padX, fy + 16);
+  ctx.fillText(`Faktur digital resmi divalidasi otomatis · ${safeFooter}`, padX, fy + 16);
 
   // Encode as lightweight JPEG (~35-50 KB)
   let blob = await canvasToBlob(canvas, 'image/jpeg', 0.85);
@@ -305,7 +311,8 @@ export async function generateReceiptImage({
     mimeType = 'image/png';
   }
 
-  const fileName = `faktur-${String(orderCode || 'manifestudio').toLowerCase()}.${ext}`;
+  const brandSlug = safeBrand.toLowerCase().replace(/[^a-z0-9]+/g, '') || 'manifestore';
+  const fileName = `faktur-${brandSlug}-${String(orderCode || 'order').toLowerCase()}.${ext}`;
   const file = new File([blob], fileName, { type: mimeType });
   const objectUrl = URL.createObjectURL(blob);
   const sizeKb = Math.max(1, Math.round(blob.size / 1024));

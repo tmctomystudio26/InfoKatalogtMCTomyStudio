@@ -2,7 +2,7 @@ import {
   CATALOG_PREVIEW_STORAGE_KEY,
   getDefaultCatalogSnapshot,
   loadCatalogData,
-} from './data.js?v=76';
+} from './data.js?v=80';
 import {
   DEFAULT_UTILITY_CONFIG,
   MAX_HISTORY_LOGS,
@@ -42,12 +42,20 @@ import {
   upsertProductInCatalog,
   upsertSocialInCatalog,
   upsertUtilityItemInCatalog,
-} from './store.js?v=76';
+} from './store.js?v=80';
 import {
   decryptVault,
   encryptVault,
   verifyGitHubTokenAccess,
-} from './vault.js?v=76';
+} from './vault.js?v=80';
+import {
+  DOMAIN_CONFIG,
+  encodeStoreAccessKey,
+  generateRandomStoreAccessKey,
+  getEditableStoreAccessKey,
+  normalizeOriginUrl,
+  normalizeStoreAccessConfig,
+} from './domain-router.js?v=80';
 
 const THEME_STORAGE_KEY = 'manifestudio_theme_v1';
 const ADMIN_VAULT_STORAGE_KEY = 'manifestudio_admin_vault_v1';
@@ -1558,6 +1566,23 @@ function renderBrandSettings() {
   setVal('brand-whatsapp-input', brand.whatsappNumber || '6285122936027');
   setVal('brand-discount-threshold-input', Number(brand.discountThreshold ?? 50000));
   setVal('brand-discount-amount-input', Number(brand.discountAmount ?? 2000));
+
+  const storeAccess = normalizeStoreAccessConfig(brand.storeAccess || {});
+  const enabledEl = document.getElementById('store-access-enabled-toggle');
+  if (enabledEl) enabledEl.checked = storeAccess.enabled !== false;
+  setVal('store-access-key-input', getEditableStoreAccessKey(storeAccess));
+  setVal('store-access-brand-input', storeAccess.storeBrandName || DOMAIN_CONFIG.storeBrandName);
+  setVal(
+    'store-access-util-brand-input',
+    storeAccess.utilitiesBrandName || DOMAIN_CONFIG.utilitiesBrandName
+  );
+  setVal('store-access-store-origin-input', storeAccess.storeOrigin || DOMAIN_CONFIG.storeOrigin);
+  setVal(
+    'store-access-util-origin-input',
+    storeAccess.utilitiesOrigin || DOMAIN_CONFIG.utilitiesOrigin
+  );
+  setVal('store-access-prompt-title-input', storeAccess.promptTitle || 'Akses Khusus Manifestore');
+  setVal('store-access-prompt-desc-input', storeAccess.promptDescription || '');
 
   syncBrandLogoUi();
   syncOpenGraphUi();
@@ -3949,6 +3974,89 @@ function bindEvents() {
   });
   bindBrandField('brand-discount-amount-input', (b, val) => {
     b.discountAmount = Math.max(0, Math.round(Number(val) || 0));
+  });
+
+  // Dual-Domain & Editable Store Access Key controls
+  const updateStoreAccess = (mutateFn) => {
+    if (!adminState.unlocked) return;
+    adminState.catalog.brand = normalizeBrandConfig(adminState.catalog.brand || {});
+    const current = normalizeStoreAccessConfig(adminState.catalog.brand.storeAccess || {});
+    mutateFn(current);
+    adminState.catalog.brand.storeAccess = normalizeStoreAccessConfig(current);
+    markDirty();
+  };
+
+  document.getElementById('store-access-enabled-toggle')?.addEventListener('change', (e) => {
+    updateStoreAccess((cfg) => {
+      cfg.enabled = Boolean(e.target.checked);
+    });
+  });
+
+  document.getElementById('store-access-key-input')?.addEventListener('input', (e) => {
+    const clean = String(e.target.value || '').trim();
+    if (!clean) return;
+    updateStoreAccess((cfg) => {
+      cfg.accessKeyEncoded = encodeStoreAccessKey(clean);
+      cfg.accessKeyPreviewLength = clean.length;
+    });
+  });
+
+  document.getElementById('store-access-generate-btn')?.addEventListener('click', () => {
+    if (!adminState.unlocked) return;
+    const generated = generateRandomStoreAccessKey();
+    const keyInput = document.getElementById('store-access-key-input');
+    if (keyInput) {
+      keyInput.value = generated;
+      keyInput.type = 'text';
+      const toggleBtn = document.querySelector('[data-toggle-secret="store-access-key-input"]');
+      if (toggleBtn) toggleBtn.textContent = 'Tutup';
+    }
+    updateStoreAccess((cfg) => {
+      cfg.accessKeyEncoded = encodeStoreAccessKey(generated);
+      cfg.accessKeyPreviewLength = generated.length;
+    });
+    showToast(`Kunci akses baru dibuat: ${generated} (klik Simpan & Publikasikan ke GitHub)`);
+  });
+
+  document.getElementById('store-access-brand-input')?.addEventListener('input', (e) => {
+    updateStoreAccess((cfg) => {
+      cfg.storeBrandName = String(e.target.value || '').trim() || DOMAIN_CONFIG.storeBrandName;
+    });
+  });
+
+  document.getElementById('store-access-util-brand-input')?.addEventListener('input', (e) => {
+    updateStoreAccess((cfg) => {
+      cfg.utilitiesBrandName =
+        String(e.target.value || '').trim() || DOMAIN_CONFIG.utilitiesBrandName;
+    });
+  });
+
+  document.getElementById('store-access-store-origin-input')?.addEventListener('change', (e) => {
+    const normalized = normalizeOriginUrl(e.target.value, DOMAIN_CONFIG.storeOrigin);
+    e.target.value = normalized;
+    updateStoreAccess((cfg) => {
+      cfg.storeOrigin = normalized;
+    });
+  });
+
+  document.getElementById('store-access-util-origin-input')?.addEventListener('change', (e) => {
+    const normalized = normalizeOriginUrl(e.target.value, DOMAIN_CONFIG.utilitiesOrigin);
+    e.target.value = normalized;
+    updateStoreAccess((cfg) => {
+      cfg.utilitiesOrigin = normalized;
+    });
+  });
+
+  document.getElementById('store-access-prompt-title-input')?.addEventListener('input', (e) => {
+    updateStoreAccess((cfg) => {
+      cfg.promptTitle = String(e.target.value || '').trim() || 'Akses Khusus Manifestore';
+    });
+  });
+
+  document.getElementById('store-access-prompt-desc-input')?.addEventListener('input', (e) => {
+    updateStoreAccess((cfg) => {
+      cfg.promptDescription = String(e.target.value || '').trim();
+    });
   });
 
   // Add New Social Media / Contact Form

@@ -4,6 +4,8 @@
  * Zero DOM dependencies so all business logic can be unit tested directly.
  */
 
+import { normalizeStoreAccessConfig } from './domain-router.js';
+
 export function formatRupiah(amount) {
   const safeAmount = Number.isFinite(amount) ? Math.max(0, Math.round(amount)) : 0;
   return `Rp${safeAmount.toLocaleString('id-ID')}`;
@@ -299,6 +301,7 @@ export function generateOrderCode(now = new Date()) {
 
 export function buildWhatsAppOrderCaption({
   orderCode = '',
+  brandName = 'Manifestudio',
   customerName,
   whatsappNote = '',
   paymentOption,
@@ -309,9 +312,10 @@ export function buildWhatsAppOrderCaption({
     totals?.payLaterPercent !== undefined
       ? totals.payLaterPercent
       : Math.round(Number(totals?.payLaterRate ?? 0.1) * 1000) / 10;
+  const headerBrand = String(brandName || 'Manifestudio').trim().toUpperCase() || 'MANIFESTUDIO';
 
   const lines = [
-    '*PESANAN BARU — MANIFESTUDIO*',
+    `*PESANAN BARU — ${headerBrand}*`,
     ...(orderCode ? [`No. Pesanan: *${orderCode}*`] : []),
     `Pemesan: *${customerName.trim()}*`,
     '',
@@ -371,6 +375,7 @@ export const PENDING_ORDER_STORAGE_KEY = 'manifestudio_pending_order_v1';
 
 export function createOrderSnapshot({
   orderCode,
+  brandName = 'Manifestudio',
   whatsappNumber = '6285122936027',
   customerName,
   whatsappNote = '',
@@ -379,6 +384,7 @@ export function createOrderSnapshot({
   totals,
   now = new Date(),
 }) {
+  const safeBrandName = String(brandName || 'Manifestudio').trim() || 'Manifestudio';
   const safeCart = (Array.isArray(cart) ? cart : []).map((item) => ({
     productId: item.productId,
     productName: item.productName,
@@ -390,6 +396,7 @@ export function createOrderSnapshot({
   }));
   const caption = buildWhatsAppOrderCaption({
     orderCode,
+    brandName: safeBrandName,
     customerName,
     whatsappNote,
     paymentOption,
@@ -399,6 +406,7 @@ export function createOrderSnapshot({
 
   return {
     orderCode,
+    brandName: safeBrandName,
     createdAt: now instanceof Date ? now.toISOString() : String(now),
     whatsappNumber: String(whatsappNumber || '6285122936027'),
     customerName: String(customerName || '').trim(),
@@ -1420,6 +1428,7 @@ export function normalizeBrandConfig(brand = {}) {
     serviceFeeLabel: String(safe.serviceFeeLabel || 'Biaya Layanan').trim() || 'Biaya Layanan',
     socials: normalizeBrandSocials({ ...safe, whatsappNumber: waNum }),
     openGraph: normalizeOpenGraphConfig(safe),
+    storeAccess: normalizeStoreAccessConfig(safe.storeAccess),
   };
 }
 

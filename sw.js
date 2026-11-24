@@ -1,6 +1,6 @@
-const CACHE_NAME = 'manifestudio-cache-v79';
+const CACHE_NAME = 'manifestudio-cache-v80';
 
-// Lean core shell precache (< 250 KB) so first-time visitors on slow mobile connections
+// Lean core shell precache (< 260 KB) so first-time visitors on slow mobile connections
 // NEVER get bandwidth-starved downloading 100+ unused files. All other utilities, icons,
 // vendor engines, and mascot banners are cached automatically on first use.
 const PRECACHE_ASSETS = [
@@ -9,9 +9,12 @@ const PRECACHE_ASSETS = [
   './tools.html',
   './data/catalog.json',
   './manifest.webmanifest',
+  './manifest-store.webmanifest',
+  './manifest-utilities.webmanifest',
   './css/tokens.css',
   './css/styles.css',
   './js/perf-guard.js',
+  './js/domain-router.js',
   './js/data.js',
   './js/store.js',
   './js/pwa.js',

@@ -20716,14 +20716,89 @@ html[data-perf="lite"] .music-popover {
   background: var(--surface);
 }
 
+/* ============================================================================
+ * Dual-Domain Cross-Link & Store Access Key Gate Modal (v80)
+ * ============================================================================ */
+.header-nav-link.is-cross-link {
+  color: var(--accent);
+  font-weight: 600;
+}
 
+.store-gate-modal {
+  width: min(440px, calc(100vw - 1.5rem));
+  max-width: 440px;
+}
 
+.store-gate-head-row {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
 
+.store-gate-lock-badge {
+  width: 42px;
+  height: 42px;
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--primary) 16%, transparent);
+  border: 1px solid color-mix(in srgb, var(--primary) 34%, var(--border));
+  color: var(--accent);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
 
+.store-gate-form {
+  display: grid;
+  gap: 0.9rem;
+  padding: 0 1.25rem 1.25rem;
+}
 
+.store-gate-desc {
+  margin: 0;
+  font-size: 0.88rem;
+  line-height: 1.5;
+  color: var(--ink-muted);
+}
 
+.store-gate-input-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
 
+.store-gate-input-row input {
+  flex: 1;
+  min-width: 0;
+}
 
+.store-gate-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.6rem;
+  padding-top: 0.2rem;
+}
 
+.admin-checkbox-row {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  padding: 0.72rem 0.9rem;
+  margin-bottom: 1rem;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  background: var(--surface-elevated);
+  font-size: 0.88rem;
+  font-weight: 600;
+  color: var(--ink);
+  cursor: pointer;
+}
 
+.admin-checkbox-row input[type="checkbox"] {
+  width: 17px;
+  height: 17px;
+  accent-color: var(--primary);
+  flex-shrink: 0;
+}
 

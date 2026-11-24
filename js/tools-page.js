@@ -1,16 +1,73 @@
-import { createToolsHubController } from './tools-ui.js?v=79';
-import { loadCatalogData } from './data.js?v=79';
-import { normalizeBrandConfig, normalizeUtilityConfig } from './store.js?v=79';
-import { initPerformanceClass, scheduleIdleTask } from './perf-guard.js?v=79';
+import { createToolsHubController } from './tools-ui.js?v=80';
+import { loadCatalogData } from './data.js?v=80';
+import { normalizeBrandConfig, normalizeUtilityConfig } from './store.js?v=80';
+import { initPerformanceClass, scheduleIdleTask } from './perf-guard.js?v=80';
+import { initPwaManager } from './pwa.js?v=80';
+import {
+  DOMAIN_CONFIG,
+  applyDomainPwaMeta,
+  buildStoreUrl,
+  normalizeStoreAccessConfig,
+  resolveDisplayBrand,
+  resolveSiteContext,
+  verifyStoreAccessKey,
+} from './domain-router.js?v=80';
 
 const THEME_STORAGE_KEY = 'manifestudio_theme_v1';
-const VALID_TABS = new Set(['prayer', 'weather', 'worldclock', 'speedtest', 'downloader', 'compressor', 'converter', 'songfinder', 'music', 'dracin', 'audioeditor', 'manifestai', 'plagiarism', 'novel', 'callerid']);
+const VALID_TABS = new Set([
+  'prayer',
+  'weather',
+  'worldclock',
+  'speedtest',
+  'downloader',
+  'compressor',
+  'converter',
+  'songfinder',
+  'music',
+  'dracin',
+  'audioeditor',
+  'manifestai',
+  'plagiarism',
+  'novel',
+  'callerid',
+]);
 
 let currentTheme = 'dark';
 let toolsHub = null;
 let toastTimer = null;
 let activeUtilities = normalizeUtilityConfig();
+let activeBrand = normalizeBrandConfig();
 let currentTab = 'prayer';
+
+function getSiteContext() {
+  return resolveSiteContext({
+    isToolsPage: true,
+    storeAccess: activeBrand?.storeAccess,
+  });
+}
+
+function getStoreAccessCfg() {
+  return normalizeStoreAccessConfig(activeBrand?.storeAccess || {});
+}
+
+function isStoreGateSessionUnlocked() {
+  const cfg = getStoreAccessCfg();
+  if (!cfg.enabled) return true;
+  try {
+    return sessionStorage.getItem(DOMAIN_CONFIG.storeGateSessionKey) === cfg.accessKeyEncoded;
+  } catch {
+    return false;
+  }
+}
+
+function saveStoreGateSessionUnlocked() {
+  const cfg = getStoreAccessCfg();
+  try {
+    sessionStorage.setItem(DOMAIN_CONFIG.storeGateSessionKey, cfg.accessKeyEncoded);
+  } catch {
+    // Ignore storage error
+  }
+}
 
 function getEnabledUtilityItems() {
   const enabled = (activeUtilities.items || []).filter((it) => it.enabled !== false);
@@ -100,6 +157,181 @@ function applyTheme() {
   toolsHub?.redrawTheme();
 }
 
+function closeStoreAccessModal() {
+  const root = document.getElementById('store-access-modal-root');
+  if (!root) return;
+  root.hidden = true;
+  root.innerHTML = '';
+}
+
+function openStoreAccessModal() {
+  const root = document.getElementById('store-access-modal-root');
+  if (!root) return;
+  const ctx = getSiteContext();
+  const cfg = getStoreAccessCfg();
+  const storeName = cfg.storeBrandName || DOMAIN_CONFIG.storeBrandName;
+
+  root.hidden = false;
+  root.innerHTML = `
+    <div class="modal-backdrop" id="store-gate-backdrop"></div>
+    <div
+      id="store-access-modal"
+      class="modal-dialog store-gate-modal"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="store-gate-title"
+    >
+      <div class="modal-header">
+        <div class="store-gate-head-row">
+          <div class="store-gate-lock-badge" aria-hidden="true">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round">
+              <rect width="18" height="11" x="3" y="11" rx="2" ry="2" />
+              <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+            </svg>
+          </div>
+          <div>
+            <h2 id="store-gate-title">${escapeHtml(cfg.promptTitle || `Akses Khusus ${storeName}`)}</h2>
+            <p class="modal-subtitle">Area terproteksi dari ${escapeHtml(cfg.utilitiesBrandName || 'Manifestudio')}</p>
+          </div>
+        </div>
+        <button type="button" class="icon-close-btn" id="close-store-gate-btn" aria-label="Tutup dialog kunci akses">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+        </button>
+      </div>
+
+      <form id="store-access-form" class="store-gate-form" novalidate>
+        <p class="store-gate-desc">
+          ${escapeHtml(
+            cfg.promptDescription ||
+              `Masukkan kunci akses khusus dari Admin untuk berpindah ke halaman ${storeName}.`
+          )}
+        </p>
+
+        <div class="form-field">
+          <label for="store-access-key-field">Kunci Akses Store <span class="req">*</span></label>
+          <div class="store-gate-input-row">
+            <input
+              type="password"
+              id="store-access-key-field"
+              name="storeAccessKey"
+              placeholder="Masukkan kunci akses"
+              autocomplete="off"
+              spellcheck="false"
+              required
+            />
+            <button type="button" id="toggle-store-gate-key-btn" class="btn btn-secondary btn-sm">
+              Lihat
+            </button>
+          </div>
+        </div>
+
+        <div id="store-gate-error" class="form-error" role="alert" hidden></div>
+
+        <div class="store-gate-actions">
+          <button type="button" class="btn btn-ghost btn-sm" id="cancel-store-gate-btn">Batal</button>
+          <button type="submit" class="btn btn-primary btn-sm" id="submit-store-gate-btn">
+            Buka ${escapeHtml(storeName)} →
+          </button>
+        </div>
+      </form>
+    </div>
+  `;
+
+  const keyInput = root.querySelector('#store-access-key-field');
+  const errorBox = root.querySelector('#store-gate-error');
+  const toggleBtn = root.querySelector('#toggle-store-gate-key-btn');
+
+  root.querySelector('#store-gate-backdrop')?.addEventListener('click', closeStoreAccessModal);
+  root.querySelector('#close-store-gate-btn')?.addEventListener('click', closeStoreAccessModal);
+  root.querySelector('#cancel-store-gate-btn')?.addEventListener('click', closeStoreAccessModal);
+
+  toggleBtn?.addEventListener('click', () => {
+    if (!keyInput) return;
+    const isPass = keyInput.type === 'password';
+    keyInput.type = isPass ? 'text' : 'password';
+    toggleBtn.textContent = isPass ? 'Tutup' : 'Lihat';
+  });
+
+  keyInput?.addEventListener('input', () => {
+    if (errorBox) {
+      errorBox.hidden = true;
+      errorBox.textContent = '';
+    }
+  });
+
+  root.querySelector('#store-access-form')?.addEventListener('submit', (e) => {
+    e.preventDefault();
+    const entered = keyInput?.value || '';
+    const check = verifyStoreAccessKey(entered, cfg);
+    if (!check.ok) {
+      if (errorBox) {
+        errorBox.textContent =
+          check.reason === 'empty'
+            ? 'Masukkan kunci akses terlebih dahulu.'
+            : 'Kunci akses tidak valid. Hubungi Admin jika Anda memiliki akses.';
+        errorBox.hidden = false;
+      }
+      keyInput?.focus();
+      return;
+    }
+
+    saveStoreGateSessionUnlocked();
+    closeStoreAccessModal();
+    showToast(`Akses terverifikasi — membuka ${storeName}...`);
+    const targetUrl = buildStoreUrl(ctx);
+    window.location.href = targetUrl;
+  });
+
+  requestAnimationFrame(() => keyInput?.focus());
+}
+
+function handleStoreNavigationRequest() {
+  const ctx = getSiteContext();
+  if (!ctx.requiresStoreGate || isStoreGateSessionUnlocked()) {
+    window.location.href = buildStoreUrl(ctx);
+    return;
+  }
+  openStoreAccessModal();
+}
+
+function syncStoreTriggerButtons() {
+  const ctx = getSiteContext();
+  const cfg = getStoreAccessCfg();
+  const storeName = cfg.storeBrandName || DOMAIN_CONFIG.storeBrandName;
+  const requiresGate = Boolean(ctx.requiresStoreGate);
+
+  const brandLink = document.getElementById('tools-brand-link');
+  const footerBrand = document.getElementById('footer-brand-name');
+  if (ctx.isSplitDomain && ctx.mode === 'utilities') {
+    brandLink?.setAttribute('href', '#top');
+    footerBrand?.setAttribute('href', '#top');
+  } else {
+    const storeHref = buildStoreUrl(ctx);
+    brandLink?.setAttribute('href', storeHref);
+    footerBrand?.setAttribute('href', storeHref);
+  }
+
+  const headerStoreBtn = document.getElementById('tools-store-btn');
+  if (headerStoreBtn) {
+    headerStoreBtn.setAttribute(
+      'aria-label',
+      requiresGate ? `Akses ${storeName} (butuh kunci akses)` : `Buka katalog ${storeName}`
+    );
+    headerStoreBtn.innerHTML = requiresGate
+      ? `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg><span>Store</span>`
+      : `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m15 18-6-6 6-6"/></svg><span>Katalog</span>`;
+  }
+
+  const headBackBtn = document.getElementById('tools-back-store-btn');
+  if (headBackBtn) {
+    headBackBtn.textContent = requiresGate ? 'Akses Store 🔒' : '← Menu Utama';
+    headBackBtn.setAttribute(
+      'aria-label',
+      requiresGate ? `Buka ${storeName} dengan kunci akses` : 'Kembali ke menu utama'
+    );
+  }
+}
+
 const CONCISE_HEADER_NAV_LABELS = {
   prayer: 'Jadwal Sholat',
   weather: 'Cuaca',
@@ -121,11 +353,13 @@ const CONCISE_HEADER_NAV_LABELS = {
 function renderHeaderNavFromUtilities() {
   const navEl = document.getElementById('tools-header-nav') || document.querySelector('.header-nav');
   if (!navEl) return;
+  const ctx = getSiteContext();
   const enabledItems = getEnabledUtilityItems();
   const buttonsHtml = enabledItems
     .map((item) => {
       const rawLabel = String(item.label || '').trim();
-      const label = rawLabel.length <= 24 ? rawLabel : CONCISE_HEADER_NAV_LABELS[item.id] || rawLabel;
+      const label =
+        rawLabel.length <= 24 ? rawLabel : CONCISE_HEADER_NAV_LABELS[item.id] || rawLabel;
       const isActive = item.id === currentTab;
       return `<button type="button" class="header-nav-link ${isActive ? 'is-active' : ''}" data-tools-nav="${escapeHtml(
         item.id
@@ -133,7 +367,11 @@ function renderHeaderNavFromUtilities() {
     })
     .join('');
 
-  navEl.innerHTML = `<a href="./index.html" class="header-nav-link">Katalog</a>${buttonsHtml}`;
+  const storeTriggerHtml = ctx.requiresStoreGate
+    ? `<button type="button" class="header-nav-link is-cross-link" data-store-gate-trigger="nav">Store 🔒</button>`
+    : `<button type="button" class="header-nav-link" data-store-gate-trigger="nav">Katalog</button>`;
+
+  navEl.innerHTML = `${storeTriggerHtml}${buttonsHtml}`;
   navEl.querySelectorAll('[data-tools-nav]').forEach((btn) => {
     btn.addEventListener('click', () => {
       const next = btn.getAttribute('data-tools-nav');
@@ -149,13 +387,17 @@ function syncActiveTabChrome(tab) {
   const safeTab = resolveEnabledTab(tab);
   currentTab = safeTab;
   const meta = getTabMeta(safeTab);
+  const ctx = getSiteContext();
+  const utilName = getStoreAccessCfg().utilitiesBrandName || DOMAIN_CONFIG.utilitiesBrandName;
 
   const titleEl = document.getElementById('tools-page-title');
   const subEl = document.getElementById('tools-page-subtitle');
   if (titleEl) titleEl.textContent = meta.title;
   if (subEl) subEl.textContent = meta.subtitle;
-  document.title = `${meta.title} — Manifestudio`;
+  document.title = `${meta.title} — ${utilName}`;
 
+  applyDomainPwaMeta(ctx);
+  syncStoreTriggerButtons();
   renderHeaderNavFromUtilities();
 
   const url = new URL(window.location.href);
@@ -164,21 +406,29 @@ function syncActiveTabChrome(tab) {
 }
 
 function applyBrandToToolsPage(brandRaw) {
-  const brand = normalizeBrandConfig(brandRaw || {});
+  activeBrand = normalizeBrandConfig(brandRaw || {});
+  const ctx = getSiteContext();
+  const display = resolveDisplayBrand(activeBrand, ctx);
+  const utilBrandName = getStoreAccessCfg().utilitiesBrandName || activeBrand.name || 'Manifestudio';
+
+  applyDomainPwaMeta(ctx);
+  syncStoreTriggerButtons();
+
   const logoEl = document.getElementById('header-brand-logo');
-  if (logoEl && brand.logo) logoEl.src = brand.logo;
+  if (logoEl && activeBrand.logo) logoEl.src = activeBrand.logo;
   const nameEl = document.getElementById('header-brand-name');
-  if (nameEl && brand.name) nameEl.textContent = brand.name;
+  if (nameEl) nameEl.textContent = utilBrandName;
   const taglineEl = document.getElementById('header-brand-tagline');
-  if (taglineEl && brand.tagline) taglineEl.textContent = brand.tagline;
+  if (taglineEl) taglineEl.textContent = display.tagline;
   const footerNameEl = document.getElementById('footer-brand-name');
-  if (footerNameEl && brand.name) footerNameEl.textContent = brand.name;
+  if (footerNameEl) footerNameEl.textContent = utilBrandName;
   const footerCopyEl = document.getElementById('footer-copy-text');
-  if (footerCopyEl && brand.footerText) footerCopyEl.textContent = brand.footerText;
+  if (footerCopyEl && activeBrand.footerText) footerCopyEl.textContent = activeBrand.footerText;
 
   const socialContainer = document.getElementById('footer-social-links');
   if (socialContainer) {
-    const socialsHtml = (brand.socials || [])
+    const installBtn = socialContainer.querySelector('#footer-install-link');
+    const socialsHtml = (activeBrand.socials || [])
       .map(
         (soc) => `
         <a
@@ -197,10 +447,14 @@ function applyBrandToToolsPage(brandRaw) {
       `
       )
       .join('');
+    const storeFooterLabel = ctx.requiresStoreGate ? 'Akses Store 🔒' : 'Katalog Utama';
     socialContainer.innerHTML = `
-      <a href="./index.html" class="footer-link-btn">Katalog Utama</a>
+      <button type="button" class="footer-link-btn" data-store-gate-trigger="footer">${escapeHtml(storeFooterLabel)}</button>
       ${socialsHtml}
     `;
+    if (installBtn) {
+      socialContainer.appendChild(installBtn);
+    }
   }
 }
 
@@ -208,6 +462,32 @@ async function bootstrap() {
   initPerformanceClass();
   loadTheme();
   applyTheme();
+
+  const initialCtx = getSiteContext();
+  applyDomainPwaMeta(initialCtx);
+  syncStoreTriggerButtons();
+
+  initPwaManager({
+    appName: getStoreAccessCfg().utilitiesBrandName || 'Manifestudio',
+    appDesc: 'Akses 15 fitur utilitas gratis lebih cepat dari layar utama & tetap nyaman dibuka offline.',
+  });
+
+  // Global delegated click handler for all gated Store triggers (header, nav, page head, footer)
+  document.addEventListener('click', (e) => {
+    const trigger = e.target.closest?.('[data-store-gate-trigger]');
+    if (!trigger) return;
+    e.preventDefault();
+    handleStoreNavigationRequest();
+  });
+
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') {
+      const modalRoot = document.getElementById('store-access-modal-root');
+      if (modalRoot && !modalRoot.hidden) {
+        closeStoreAccessModal();
+      }
+    }
+  });
 
   currentTab = readInitialTab();
   const root = document.getElementById('tools-hub-root');
@@ -253,7 +533,7 @@ async function bootstrap() {
     currentTab === 'songfinder' ||
     currentTab === 'downloader';
   const bootMusicLazy = () => {
-    import('./music.js?v=79')
+    import('./music.js?v=80')
       .then((m) => m.initMusicPlayer?.())
       .catch(() => {});
   };
@@ -284,5 +564,3 @@ async function bootstrap() {
 }
 
 bootstrap();
-
-

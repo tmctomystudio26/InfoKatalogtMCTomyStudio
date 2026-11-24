@@ -40,19 +40,29 @@ function saveBannerState(state) {
   }
 }
 
-export function initPwaManager() {
+export function initPwaManager(options = {}) {
+  const appName = String(options.appName || 'Manifestudio').trim() || 'Manifestudio';
+  const appDesc =
+    String(
+      options.appDesc ||
+        'Akses lebih cepat dari layar utama & tetap bisa dibuka saat offline.'
+    ).trim();
   const root = document.getElementById('pwa-banner-root');
   const offlineBanner = document.getElementById('offline-banner');
   const headerInstallBtn = document.getElementById('header-install-btn');
   const footerInstallLink = document.getElementById('footer-install-link');
 
+  if (headerInstallBtn) {
+    headerInstallBtn.setAttribute('aria-label', `Install aplikasi ${appName}`);
+  }
+
   if (!root) return;
 
-  // Register Service Worker with relative path for GitHub Pages subpath safety
+  // Register Service Worker with relative path for Cloudflare Pages / GitHub Pages safety
   if ('serviceWorker' in navigator) {
     window.addEventListener('load', () => {
       navigator.serviceWorker
-        .register('./sw.js?v=79')
+        .register('./sw.js?v=80')
         .then((reg) => reg.update())
         .catch(() => {
           // Silent fallback if SW registration is blocked in private mode
@@ -95,9 +105,9 @@ export function initPwaManager() {
     if (bannerState === 'minimized') {
       root.innerHTML = `
         <div class="pwa-minimized-dock" role="region" aria-label="Penawaran install aplikasi">
-          <button type="button" class="pwa-mini-restore" id="pwa-restore-btn" aria-label="Buka penawaran install aplikasi Manifestudio">
+          <button type="button" class="pwa-mini-restore" id="pwa-restore-btn" aria-label="Buka penawaran install aplikasi ${appName}">
             <span class="pwa-mini-dot" aria-hidden="true"></span>
-            <span>Install App</span>
+            <span>Install ${appName}</span>
           </button>
           <button type="button" class="pwa-mini-close" id="pwa-mini-dismiss-btn" aria-label="Hilangkan penawaran install aplikasi">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
@@ -129,13 +139,13 @@ export function initPwaManager() {
     }
 
     root.innerHTML = `
-      <aside class="pwa-card" role="region" aria-label="Install Aplikasi Manifestudio">
+      <aside class="pwa-card" role="region" aria-label="Install Aplikasi ${appName}">
         <div class="pwa-card-top">
           <div class="pwa-card-brand">
             <img src="./assets/icons/brand-icon.svg" alt="" width="40" height="40" class="pwa-card-icon" />
             <div>
-              <p class="pwa-card-title">Install Manifestudio App</p>
-              <p class="pwa-card-desc">Akses katalog lebih cepat dari layar utama &amp; tetap bisa dibuka saat offline.</p>
+              <p class="pwa-card-title">Install ${appName} App</p>
+              <p class="pwa-card-desc">${appDesc}</p>
             </div>
           </div>
           <div class="pwa-window-controls">

@@ -4,7 +4,7 @@ import {
   PAY_LATER_SURCHARGE_RATE,
   getDefaultCatalogSnapshot,
   loadCatalogData,
-} from './data.js?v=79';
+} from './data.js?v=80';
 import {
   PENDING_ORDER_STORAGE_KEY,
   addToCart,
@@ -23,14 +23,22 @@ import {
   syncPaymentOptionsWithBrand,
   updateCartQty,
   validateOrderForm,
-} from './store.js?v=79';
-import { initPwaManager } from './pwa.js?v=79';
+} from './store.js?v=80';
+import { initPwaManager } from './pwa.js?v=80';
 import {
   computeBannerHydrationWindow,
   initPerformanceClass,
   resolveBannerTransition,
   scheduleIdleTask,
-} from './perf-guard.js?v=79';
+} from './perf-guard.js?v=80';
+import {
+  applyDomainPwaMeta,
+  buildStoreUrl,
+  buildStorefrontBannersForSiteMode,
+  buildUtilitiesUrl,
+  resolveDisplayBrand,
+  resolveSiteContext,
+} from './domain-router.js?v=80';
 
 const THEME_STORAGE_KEY = 'manifestudio_theme_v1';
 const CART_STORAGE_KEY = 'manifestudio_cart_v1';
@@ -66,6 +74,13 @@ function getUtilitiesConfig() {
   return normalizeUtilityConfig(state.catalog?.utilities);
 }
 
+function getSiteContext() {
+  return resolveSiteContext({
+    isToolsPage: false,
+    storeAccess: getBrand().storeAccess,
+  });
+}
+
 function getBanners() {
   const activeUtilIds = new Set(
     (getUtilitiesConfig().items || [])
@@ -79,7 +94,13 @@ function getBanners() {
     if (uid && !activeUtilIds.has(uid)) return false;
     return true;
   });
-  return filtered.length > 0 ? filtered : allBanners.slice(0, 1);
+  const baseBanners = filtered.length > 0 ? filtered : allBanners.slice(0, 1);
+  const ctx = getSiteContext();
+  return buildStorefrontBannersForSiteMode(baseBanners, ctx, inferBannerUtilityId, {
+    enabledUtilityCount: activeUtilIds.size || 15,
+    brand: getBrand(),
+    productCount: getProducts().length,
+  });
 }
 
 function getCategories() {
@@ -435,6 +456,13 @@ function renderBanners() {
     })
     .join('');
 
+  track.querySelectorAll('a[href="#custom-request"]').forEach((link) => {
+    link.addEventListener('click', (e) => {
+      e.preventDefault();
+      openProductModal('request-custom');
+    });
+  });
+
   track.querySelectorAll('img[data-fallback-banner]').forEach((img) => {
     img.addEventListener(
       'error',
@@ -606,6 +634,10 @@ function initBannerCarousel() {
 
   function navigateToBannerTarget(href) {
     if (!href) return;
+    if (href === '#custom-request') {
+      openProductModal('request-custom');
+      return;
+    }
     if (href.startsWith('#')) {
       const target = document.querySelector(href);
       if (target) {
@@ -1429,6 +1461,8 @@ function renderCartDrawer() {
     }
     const orderCode = generateOrderCode();
     const brand = getBrand();
+    const ctx = getSiteContext();
+    const displayBrand = resolveDisplayBrand(brand, ctx);
 
     const snapshot = createOrderSnapshot({
       orderCode,
@@ -1438,6 +1472,7 @@ function renderCartDrawer() {
       paymentOption: state.paymentOption,
       cart: state.cart,
       totals: activeTotals,
+      brandName: displayBrand.name,
     });
 
     persistPendingOrder(snapshot);
@@ -1452,7 +1487,7 @@ function renderCartDrawer() {
     saveCart();
     updateCartBadges();
 
-    window.location.href = './order.html';
+    window.location.href = buildStoreUrl(ctx, { path: 'order.html' });
   });
 }
 
@@ -1574,31 +1609,53 @@ function renderPreviewNotice() {
 
 function renderBrandAndFooter() {
   const brand = getBrand();
+  const ctx = getSiteContext();
+  const display = resolveDisplayBrand(brand, ctx);
+  const isStoreSplit = Boolean(ctx.isSplitDomain && ctx.mode === 'store');
+  const utilitiesHomeHref = buildUtilitiesUrl(ctx);
+  const storeHomeHref = buildStoreUrl(ctx);
+
+  applyDomainPwaMeta(ctx);
+
+  const brandLinkEl = document.querySelector('.site-header .brand-link');
+  if (brandLinkEl) {
+    brandLinkEl.setAttribute('href', storeHomeHref);
+    brandLinkEl.setAttribute('aria-label', `Beranda ${display.name}`);
+  }
   const logoEl = document.getElementById('header-brand-logo');
   if (logoEl && brand.logo) {
     logoEl.src = brand.logo;
+    logoEl.alt = `Logo ${display.name}`;
   }
   const nameEl = document.getElementById('header-brand-name');
-  if (nameEl && brand.name) {
-    nameEl.textContent = brand.name;
+  if (nameEl) {
+    nameEl.textContent = display.name;
   }
   const taglineEl = document.getElementById('header-brand-tagline');
-  if (taglineEl && brand.tagline) {
-    taglineEl.textContent = brand.tagline;
+  if (taglineEl) {
+    taglineEl.textContent = display.tagline;
   }
   const footerNameEl = document.getElementById('footer-brand-name');
-  if (footerNameEl && brand.name) {
-    footerNameEl.textContent = brand.name;
+  if (footerNameEl) {
+    footerNameEl.textContent = display.name;
+    footerNameEl.setAttribute('href', storeHomeHref);
   }
   const footerCopyEl = document.getElementById('footer-copy-text');
-  if (footerCopyEl && brand.footerText) {
-    footerCopyEl.textContent = brand.footerText;
+  if (footerCopyEl) {
+    footerCopyEl.textContent = display.footerText;
+  }
+  const headerInstallBtn = document.getElementById('header-install-btn');
+  if (headerInstallBtn) {
+    headerInstallBtn.setAttribute('aria-label', `Install aplikasi ${display.name}`);
   }
 
   // Sync OpenGraph & Document Meta Tags dynamically
   const og = brand.openGraph || {};
-  if (og.title) {
-    document.title = og.title;
+  const activeTitle = isStoreSplit ? display.storeTitle : og.title || display.storeTitle;
+  const activeDesc = isStoreSplit ? display.storeDescription : og.description || display.storeDescription;
+  const activeSiteName = isStoreSplit ? display.name : og.siteName || display.name;
+  if (activeTitle) {
+    document.title = activeTitle;
   }
   const setMetaContent = (selector, value) => {
     if (!value) return;
@@ -1606,15 +1663,15 @@ function renderBrandAndFooter() {
     if (el) el.setAttribute('content', value);
   };
   const absOgImage = resolveAbsoluteOgImageUrl(og.image || './assets/og-manifestudio.jpg', window.location.origin);
-  setMetaContent('meta[name="description"]', og.description);
-  setMetaContent('meta[property="og:site_name"]', og.siteName || brand.name);
-  setMetaContent('meta[property="og:title"]', og.title);
-  setMetaContent('meta[property="og:description"]', og.description);
+  setMetaContent('meta[name="description"]', activeDesc);
+  setMetaContent('meta[property="og:site_name"]', activeSiteName);
+  setMetaContent('meta[property="og:title"]', activeTitle);
+  setMetaContent('meta[property="og:description"]', activeDesc);
   setMetaContent('meta[property="og:image"]', absOgImage);
   setMetaContent('meta[property="og:image:secure_url"]', absOgImage);
   setMetaContent('meta[property="og:image:alt"]', og.imageAlt);
-  setMetaContent('meta[name="twitter:title"]', og.title);
-  setMetaContent('meta[name="twitter:description"]', og.description);
+  setMetaContent('meta[name="twitter:title"]', activeTitle);
+  setMetaContent('meta[name="twitter:description"]', activeDesc);
   setMetaContent('meta[name="twitter:image"]', absOgImage);
   setMetaContent('meta[name="twitter:image:alt"]', og.imageAlt);
 
@@ -1641,8 +1698,9 @@ function renderBrandAndFooter() {
       )
       .join('');
 
+    const utilFooterLabel = isStoreSplit ? 'Manifestudio (Utilitas Gratis) ↗' : 'Menu Utilitas';
     socialContainer.innerHTML = `
-      <a href="./tools.html" class="footer-link-btn">Menu Utilitas</a>
+      <a href="${escapeHtml(utilitiesHomeHref)}" class="footer-link-btn">${escapeHtml(utilFooterLabel)}</a>
       ${socialsHtml}
     `;
     if (installBtn) {
@@ -1656,18 +1714,30 @@ function renderBrandAndFooter() {
 
   const headerNav = document.getElementById('header-nav-list');
   if (headerNav) {
-    const linksHtml = activeUtilItems
-      .map(
-        (item) =>
-          `<a href="./tools.html?tab=${escapeHtml(item.id)}" class="header-nav-link">${escapeHtml(
-            item.label
-          )}</a>`
-      )
-      .join('');
-    headerNav.innerHTML = `
-      <button type="button" class="header-nav-link is-active" data-nav-target="catalog">Katalog</button>
-      ${linksHtml}
-    `;
+    if (isStoreSplit) {
+      headerNav.innerHTML = `
+        <button type="button" class="header-nav-link is-active" data-nav-target="catalog">Katalog</button>
+        <button type="button" class="header-nav-link" data-nav-target="custom-request">Request Custom</button>
+        <a href="#faq" class="header-nav-link">FAQ &amp; Garansi</a>
+        <a href="${escapeHtml(utilitiesHomeHref)}" class="header-nav-link is-cross-link">Utilitas Gratis ↗</a>
+      `;
+      headerNav.querySelector('[data-nav-target="custom-request"]')?.addEventListener('click', () => {
+        openProductModal('request-custom');
+      });
+    } else {
+      const linksHtml = activeUtilItems
+        .map(
+          (item) =>
+            `<a href="${escapeHtml(buildUtilitiesUrl(ctx, item.id))}" class="header-nav-link">${escapeHtml(
+              item.label
+            )}</a>`
+        )
+        .join('');
+      headerNav.innerHTML = `
+        <button type="button" class="header-nav-link is-active" data-nav-target="catalog">Katalog</button>
+        ${linksHtml}
+      `;
+    }
     headerNav.querySelector('[data-nav-target="catalog"]')?.addEventListener('click', () => {
       state.category = 'all';
       renderCategories();
@@ -1680,14 +1750,20 @@ function renderBrandAndFooter() {
   if (calloutCard && utilitiesCfg.callout) {
     calloutCard.hidden = activeUtilItems.length === 0;
     const firstActiveTab = activeUtilItems[0]?.id || 'prayer';
-    calloutCard.setAttribute('href', `./tools.html?tab=${encodeURIComponent(firstActiveTab)}`);
+    calloutCard.setAttribute(
+      'href',
+      isStoreSplit ? utilitiesHomeHref : buildUtilitiesUrl(ctx, firstActiveTab)
+    );
     const iconImg = calloutCard.querySelector('img.utilities-callout-icon, .utilities-callout-icon img');
     if (iconImg && utilitiesCfg.callout.icon) {
       iconImg.src = utilitiesCfg.callout.icon;
     }
     const titleStrong = calloutCard.querySelector('.utilities-callout-title, .utilities-callout-title-row strong');
-    if (titleStrong && utilitiesCfg.callout.title) {
-      titleStrong.textContent = utilitiesCfg.callout.title;
+    const resolvedTitle = isStoreSplit
+      ? `${brand.storeAccess?.utilitiesBrandName || 'Manifestudio'} — Utilitas Gratis`
+      : utilitiesCfg.callout.title || 'Menu Utilitas';
+    if (titleStrong) {
+      titleStrong.textContent = resolvedTitle;
     }
     const badgeSpan = calloutCard.querySelector('.utilities-callout-sub-tag, .utilities-callout-badge');
     const syncedBadge = utilitiesCfg.callout.badge || `${activeUtilItems.length} Fitur Gratis`;
@@ -1695,7 +1771,9 @@ function renderBrandAndFooter() {
       badgeSpan.textContent = syncedBadge;
     }
     const subP = calloutCard.querySelector('.utilities-callout-desc, .utilities-callout-copy p');
-    const calloutDesc = String(utilitiesCfg.callout.description || '').trim();
+    const calloutDesc = isStoreSplit
+      ? 'Jadwal Sholat, Drama Pendek, YT Music, Downloader, AI & lainnya — bebas akses tanpa login.'
+      : String(utilitiesCfg.callout.description || '').trim();
     if (subP) {
       if (calloutDesc) {
         subP.textContent = calloutDesc;
@@ -1705,10 +1783,7 @@ function renderBrandAndFooter() {
         subP.hidden = true;
       }
     }
-    calloutCard.setAttribute(
-      'aria-label',
-      `Buka ${utilitiesCfg.callout.title || 'Menu Utilitas'} — ${syncedBadge}`.trim()
-    );
+    calloutCard.setAttribute('aria-label', `Buka ${resolvedTitle} — ${syncedBadge}`.trim());
   }
 }
 
@@ -1735,7 +1810,11 @@ async function bootstrap() {
   initBannerCarousel();
   renderAllStorefrontViews();
   bindGlobalEvents();
-  initPwaManager();
+  const initialDisplay = resolveDisplayBrand(getBrand(), getSiteContext());
+  initPwaManager({
+    appName: initialDisplay.name,
+    appDesc: `Akses katalog ${initialDisplay.name} & checkout instan lebih cepat dari layar utama.`,
+  });
 
   // Defer floating YT Music bundle until browser is idle (or immediately if music was playing across pages)
   let wasMusicPlaying = false;
@@ -1749,7 +1828,7 @@ async function bootstrap() {
     // Ignore
   }
   const bootMusicLazy = () => {
-    import('./music.js?v=79')
+    import('./music.js?v=80')
       .then((m) => m.initMusicPlayer?.())
       .catch(() => {});
   };

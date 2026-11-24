@@ -14,9 +14,9 @@ Platform web statis resmi **Manifestudio** (*by Tomy*) berbasis **100% Static HT
 
 ## 🌟 Fitur Utama
 
-1. **Katalog Top-Up Modern, 16 Banner Maskot Gen-Z & Mesin Performa Anti-Lag Semua Perangkat (`v76–v79`)**:
-   - **16 Slide Banner Maskot Gen-Z (`assets/banners/banner-*.jpg`)**: Carousel grid 1-bingkai anti-freeze (transisi 1-langkah halus termasuk saat wrap `16 → 1`, hidrasi GPU ±1 slide) lengkap dengan ilustrasi maskot unik, scrim bertema, penghitung slide (`1 / 16`), serta sinkron penuh dengan Panel Admin.
-   - **Pemuatan Instan Menu Utilitas & *Zero-Freeze Engine* (`perf-guard.js`)**: *On-demand lazy loading* per tab, precache shell ringan `<250 KB` (`manifestudio-cache-v79`), anti-konflik `MediaCodec` Drama Pendek, lazy YouTube music engine, serta mode adaptif perangkat ringan (`data-perf="lite"`) tanpa mengurangi kualitas visual maupun fitur.
+1. **Arsitektur Dual-Domain (`manifestore.my.id` ⇄ `manifestudio.my.id`), Banner Khusus Store & Mesin Performa Anti-Lag (`v76–v80`)**:
+   - **1 Repositori + Cloudflare Pages Dual-Domain (`functions/_middleware.js` & `js/domain-router.js`)**: `manifestore.my.id` tayang sebagai **Manifestore** (Katalog Akun Premium, 5 Banner Fitur Store + 1 slide Manifestudio, faktur JPG/WA Manifestore, & PWA mandiri `manifest-store.webmanifest`) yang bebas akses langsung tanpa kode dan bebas berpindah ke Utilitas; `manifestudio.my.id` tayang sebagai **Manifestudio** (15 Utilitas Gratis di `/` & PWA mandiri `manifest-utilities.webmanifest`) dengan **Kunci Akses Store** (default `MFSTORE26`, bebas diedit/diacak di Panel Admin) sebelum beralih ke Store.
+   - **Pemuatan Instan Menu Utilitas & *Zero-Freeze Engine* (`perf-guard.js`)**: *On-demand lazy loading* per tab, precache shell ringan `<260 KB` (`manifestudio-cache-v80`), anti-konflik `MediaCodec` Drama Pendek, lazy YouTube music engine, serta mode adaptif perangkat ringan (`data-perf="lite"`) tanpa mengurangi kualitas visual maupun fitur.
    - **Kartu Pintasan Menu Utilitas Ringkas (`#utilities-callout-card`)**: Tampil ramping tanpa daftar teks panjang dengan lencana **`15 Fitur Gratis`** yang otomatis mengikuti jumlah fitur aktif di Panel Admin.
    - Grid produk responsif (5 kolom desktop → 2 kolom mobile), pencarian instan, filter kategori dinamis, status stok, serta *FAQ* yang dapat diedit Admin.
 2. **Checkout Bersih, Voucher Berkuota Ketat, Biaya Layanan Fleksibel & Struk JPEG (`order.html`)**:
