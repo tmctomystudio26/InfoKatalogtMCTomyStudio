@@ -1,8 +1,18 @@
-import { createToolsHubController } from './tools-ui.js?v=80';
-import { loadCatalogData } from './data.js?v=80';
-import { normalizeBrandConfig, normalizeUtilityConfig } from './store.js?v=80';
-import { initPerformanceClass, scheduleIdleTask } from './perf-guard.js?v=80';
-import { initPwaManager } from './pwa.js?v=80';
+import { createToolsHubController } from './tools-ui.js?v=81';
+import { getDefaultCatalogSnapshot, loadCatalogData } from './data.js?v=81';
+import {
+  inferBannerUtilityId,
+  normalizeBanners,
+  normalizeBrandConfig,
+  normalizeUtilityConfig,
+} from './store.js?v=81';
+import {
+  computeBannerHydrationWindow,
+  initPerformanceClass,
+  resolveBannerTransition,
+  scheduleIdleTask,
+} from './perf-guard.js?v=81';
+import { initPwaManager } from './pwa.js?v=81';
 import {
   DOMAIN_CONFIG,
   applyDomainPwaMeta,
@@ -11,7 +21,15 @@ import {
   resolveDisplayBrand,
   resolveSiteContext,
   verifyStoreAccessKey,
-} from './domain-router.js?v=80';
+} from './domain-router.js?v=81';
+import {
+  STUDIO_CATEGORIES,
+  STUDIO_FAQ_ITEMS,
+  STUDIO_VALUE_PILLARS,
+  buildStudioFeatureDirectory,
+  buildStudioHeroBanners,
+  filterStudioFeatures,
+} from './studio-home.js?v=81';
 
 const THEME_STORAGE_KEY = 'manifestudio_theme_v1';
 const VALID_TABS = new Set([
@@ -32,12 +50,22 @@ const VALID_TABS = new Set([
   'callerid',
 ]);
 
+const defaultSnap = getDefaultCatalogSnapshot();
+
 let currentTheme = 'dark';
 let toolsHub = null;
 let toastTimer = null;
-let activeUtilities = normalizeUtilityConfig();
-let activeBrand = normalizeBrandConfig();
+let activeUtilities = normalizeUtilityConfig(defaultSnap.utilities);
+let activeBrand = normalizeBrandConfig(defaultSnap.brand);
+let activeCatalogBanners = normalizeBanners(defaultSnap.banners);
 let currentTab = 'prayer';
+
+// Standalone Homepage UI state
+let activeBannerSlide = 0;
+let applyStudioBannerSlideFn = null;
+let activeDirectoryCategory = 'all';
+let directoryQuery = '';
+let openFaqIndex = 0;
 
 function getSiteContext() {
   return resolveSiteContext({
@@ -89,8 +117,8 @@ function getTabMeta(tab) {
     enabled.find((it) => it.id === safeTab) ||
     enabled[0] || {
       label: 'Jadwal Sholat',
-      pageTitle: 'Jadwal Sholat Indonesia',
-      pageSubtitle: 'Waktu Imsak hingga Isya resmi Kemenag RI sesuai lokasimu.',
+      pageTitle: 'Jadwal Sholat & Imsakiyah',
+      pageSubtitle: 'Waktu sholat resmi Kemenag RI sesuai lokasi Anda.',
     };
   return {
     label: item.label,
@@ -112,6 +140,12 @@ function readInitialTab() {
   const params = new URLSearchParams(window.location.search);
   const tab = (params.get('tab') || params.get('tool') || '').toLowerCase();
   return VALID_TABS.has(tab) ? tab : 'prayer';
+}
+
+function hasExplicitTabParam() {
+  const params = new URLSearchParams(window.location.search);
+  const tab = (params.get('tab') || params.get('tool') || '').toLowerCase();
+  return VALID_TABS.has(tab);
 }
 
 function showToast(message) {
@@ -157,6 +191,574 @@ function applyTheme() {
   toolsHub?.redrawTheme();
 }
 
+function activateUtilityAndScroll(tabId, { scroll = true } = {}) {
+  const safeTab = resolveEnabledTab(tabId);
+  currentTab = safeTab;
+  toolsHub?.mount(safeTab);
+  syncActiveTabChrome(safeTab);
+  renderStudioFeatureDirectory();
+  if (scroll) {
+    document.getElementById('workspace')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+}
+
+/* ============================================================================
+ * 1. Flagship Multi-Banner Carousel (Studio Hero)
+ * ============================================================================ */
+function getStudioBannerSlides() {
+  const utilName = getStoreAccessCfg().utilitiesBrandName || DOMAIN_CONFIG.utilitiesBrandName;
+  return buildStudioHeroBanners(activeCatalogBanners, activeUtilities, inferBannerUtilityId, {
+    brandName: utilName,
+  });
+}
+
+function renderStudioBanners() {
+  const track = document.getElementById('studio-banner-track');
+  const dotsContainer = document.getElementById('studio-banner-dots');
+  const counterEl = document.getElementById('studio-banner-counter');
+  const metaCountEl = document.getElementById('studio-meta-count');
+  if (!track) return;
+
+  const slides = getStudioBannerSlides();
+  if (activeBannerSlide >= slides.length) {
+    activeBannerSlide = 0;
+  }
+
+  if (metaCountEl) {
+    metaCountEl.textContent = `${getEnabledUtilityItems().length} Fitur Aktif`;
+  }
+
+  const hydrateWindow = new Set(computeBannerHydrationWindow(activeBannerSlide, slides.length, 1));
+
+  track.innerHTML = slides
+    .map((b, idx) => {
+      const scrimClass =
+        b.scrim && b.scrim !== 'default' ? `scrim-${escapeHtml(b.scrim)}` : '';
+      const hasImage = Boolean(String(b.image || '').trim());
+      const frameExtraClass = !hasImage ? 'banner-slide-gradient' : '';
+      const btnClass = idx === 0 ? 'btn btn-primary btn-sm' : 'btn btn-outline-light btn-sm';
+      const HeadingTag = idx === 0 ? 'h1' : 'h2';
+      const isActive = idx === activeBannerSlide;
+      const shouldHydrate = hydrateWindow.has(idx);
+
+      return `
+        <article
+          class="promo-banner-frame banner-slide ${frameExtraClass} ${isActive ? 'is-active' : ''}"
+          data-slide-index="${idx}"
+          data-banner-id="${escapeHtml(b.id)}"
+          data-banner-href="${escapeHtml(b.href || '#fitur')}"
+          ${b.utilityId ? `data-banner-tool="${escapeHtml(b.utilityId)}"` : ''}
+          aria-hidden="${!isActive}"
+        >
+          ${
+            hasImage
+              ? `<img
+                  ${shouldHydrate ? `src="${escapeHtml(b.image)}"` : ''}
+                  data-banner-src="${escapeHtml(b.image)}"
+                  alt="${escapeHtml(b.heading)}"
+                  class="promo-banner-img"
+                  width="1200"
+                  height="670"
+                  decoding="async"
+                  data-fallback-banner="./assets/banners/banner-manifestai.jpg"
+                  ${idx === 0 ? 'fetchpriority="high"' : 'loading="lazy"'}
+                />`
+              : ''
+          }
+          <div class="promo-banner-scrim ${scrimClass}" aria-hidden="true"></div>
+          <div class="promo-banner-content">
+            <div class="promo-banner-copy">
+              <span class="promo-kicker">${escapeHtml(b.kicker)}</span>
+              <${HeadingTag} class="promo-heading">${escapeHtml(b.heading)}</${HeadingTag}>
+              ${b.sub ? `<p class="promo-sub">${escapeHtml(b.sub)}</p>` : ''}
+            </div>
+            <div class="promo-banner-cta">
+              ${
+                b.utilityId
+                  ? `<button type="button" class="${btnClass}" data-banner-cta-tool="${escapeHtml(b.utilityId)}">${escapeHtml(b.ctaLabel || 'Buka Fitur →')}</button>`
+                  : `<a href="${escapeHtml(b.href || '#fitur')}" class="${btnClass}">${escapeHtml(b.ctaLabel || 'Jelajahi Fitur →')}</a>`
+              }
+            </div>
+          </div>
+        </article>
+      `;
+    })
+    .join('');
+
+  track.querySelectorAll('[data-banner-cta-tool]').forEach((btn) => {
+    btn.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const uid = btn.getAttribute('data-banner-cta-tool');
+      if (uid) activateUtilityAndScroll(uid);
+    });
+  });
+
+  track.querySelectorAll('img[data-fallback-banner]').forEach((img) => {
+    img.addEventListener(
+      'error',
+      () => {
+        const fb = img.getAttribute('data-fallback-banner') || './assets/banners/banner-manifestai.jpg';
+        if (img.getAttribute('src') !== fb) img.src = fb;
+      },
+      { once: true }
+    );
+  });
+
+  if (dotsContainer) {
+    dotsContainer.innerHTML = slides
+      .map(
+        (b, idx) => `
+        <button
+          type="button"
+          class="banner-dot ${idx === activeBannerSlide ? 'is-active' : ''}"
+          data-slide-dot="${idx}"
+          aria-label="Slide ${idx + 1}: ${escapeHtml(b.heading)}"
+          aria-selected="${idx === activeBannerSlide}"
+        ></button>
+      `
+      )
+      .join('');
+  }
+
+  if (counterEl) {
+    counterEl.textContent = `${activeBannerSlide + 1} / ${slides.length}`;
+  }
+
+  if (typeof applyStudioBannerSlideFn === 'function') {
+    applyStudioBannerSlideFn(activeBannerSlide, { immediate: true });
+  }
+}
+
+function initStudioBannerCarousel() {
+  const carousel = document.getElementById('studio-hero-carousel');
+  const track = document.getElementById('studio-banner-track');
+  const prevBtn = document.getElementById('studio-banner-prev-btn');
+  const nextBtn = document.getElementById('studio-banner-next-btn');
+  const dotsContainer = document.getElementById('studio-banner-dots');
+  if (!carousel || !track) return;
+
+  let autoTimer = null;
+  let leaveCleanupTimer = null;
+  let isInViewport = true;
+  let isPointerDown = false;
+  let hasMoved = false;
+  let dragStartX = 0;
+  let dragStartY = 0;
+  let dragDeltaX = 0;
+  let dragDeltaY = 0;
+  let dragSourceSlide = null;
+
+  const prefersReducedMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+
+  function getSlides() {
+    return Array.from(track.querySelectorAll('.banner-slide'));
+  }
+
+  function hydrateAdjacentImages(slides, activeIdx) {
+    const windowIndices = computeBannerHydrationWindow(activeIdx, slides.length, 1);
+    for (const idx of windowIndices) {
+      const img = slides[idx]?.querySelector('img[data-banner-src]');
+      if (img && !img.getAttribute('src')) {
+        const src = img.getAttribute('data-banner-src');
+        if (src) img.setAttribute('src', src);
+      }
+    }
+  }
+
+  function applySlide(index, { immediate = false } = {}) {
+    const slides = getSlides();
+    const totalSlides = slides.length;
+    if (totalSlides === 0) return;
+
+    const prevIdx = activeBannerSlide;
+    const transition = resolveBannerTransition(prevIdx, index, totalSlides);
+    const wrapped = transition.to;
+    activeBannerSlide = wrapped;
+
+    hydrateAdjacentImages(slides, wrapped);
+
+    if (leaveCleanupTimer) {
+      clearTimeout(leaveCleanupTimer);
+      leaveCleanupTimer = null;
+    }
+
+    const dirClass = transition.direction < 0 ? 'is-dir-prev' : 'is-dir-next';
+    const shouldAnimate = !immediate && !prefersReducedMotion && prevIdx !== wrapped && Boolean(slides[prevIdx]);
+
+    slides.forEach((slide, idx) => {
+      slide.style.transform = '';
+      slide.style.transition = '';
+      slide.classList.remove('is-leaving', 'is-entering', 'is-dir-next', 'is-dir-prev');
+      if (idx === wrapped) {
+        slide.classList.add('is-active');
+        slide.setAttribute('aria-hidden', 'false');
+        if (shouldAnimate) slide.classList.add('is-entering', dirClass);
+      } else if (shouldAnimate && idx === prevIdx) {
+        slide.classList.remove('is-active');
+        slide.classList.add('is-leaving', dirClass);
+        slide.setAttribute('aria-hidden', 'true');
+      } else {
+        slide.classList.remove('is-active');
+        slide.setAttribute('aria-hidden', 'true');
+      }
+    });
+
+    if (shouldAnimate) {
+      const nextSlideEl = slides[wrapped];
+      const prevSlideEl = slides[prevIdx];
+      requestAnimationFrame(() => {
+        nextSlideEl?.classList.remove('is-entering');
+      });
+      leaveCleanupTimer = setTimeout(() => {
+        prevSlideEl?.classList.remove('is-leaving', 'is-dir-next', 'is-dir-prev');
+        nextSlideEl?.classList.remove('is-dir-next', 'is-dir-prev');
+        leaveCleanupTimer = null;
+      }, 280);
+    }
+
+    dotsContainer?.querySelectorAll('[data-slide-dot]').forEach((dot) => {
+      const dotIdx = Number(dot.getAttribute('data-slide-dot'));
+      const active = dotIdx === wrapped;
+      dot.classList.toggle('is-active', active);
+      dot.setAttribute('aria-selected', String(active));
+    });
+
+    const counterEl = document.getElementById('studio-banner-counter');
+    if (counterEl) {
+      counterEl.textContent = `${wrapped + 1} / ${totalSlides}`;
+    }
+  }
+
+  applyStudioBannerSlideFn = applySlide;
+
+  function startAutoSlide() {
+    if (prefersReducedMotion) return;
+    stopAutoSlide();
+    autoTimer = setInterval(() => {
+      if (!document.hidden && isInViewport && !isPointerDown && getSlides().length > 1) {
+        applySlide(activeBannerSlide + 1);
+      }
+    }, 6800);
+  }
+
+  function stopAutoSlide() {
+    if (autoTimer) {
+      clearInterval(autoTimer);
+      autoTimer = null;
+    }
+  }
+
+  if (typeof IntersectionObserver !== 'undefined') {
+    const io = new IntersectionObserver(
+      (entries) => {
+        isInViewport = Boolean(entries[0]?.isIntersecting);
+      },
+      { threshold: 0.1 }
+    );
+    io.observe(carousel);
+  }
+
+  function handleBannerActivate(slideEl) {
+    if (!slideEl) return;
+    const uid = slideEl.getAttribute('data-banner-tool');
+    if (uid) {
+      activateUtilityAndScroll(uid);
+      return;
+    }
+    const href = slideEl.getAttribute('data-banner-href') || '';
+    if (href.startsWith('#')) {
+      document.querySelector(href)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+  }
+
+  prevBtn?.addEventListener('click', () => {
+    applySlide(activeBannerSlide - 1);
+    startAutoSlide();
+  });
+
+  nextBtn?.addEventListener('click', () => {
+    applySlide(activeBannerSlide + 1);
+    startAutoSlide();
+  });
+
+  dotsContainer?.addEventListener('click', (e) => {
+    const dot = e.target.closest('[data-slide-dot]');
+    if (!dot) return;
+    const idx = Number(dot.getAttribute('data-slide-dot') || 0);
+    applySlide(idx);
+    startAutoSlide();
+  });
+
+  carousel.addEventListener('keydown', (e) => {
+    const slides = getSlides();
+    if (e.key === 'ArrowLeft') {
+      e.preventDefault();
+      applySlide(activeBannerSlide - 1);
+      startAutoSlide();
+    } else if (e.key === 'ArrowRight') {
+      e.preventDefault();
+      applySlide(activeBannerSlide + 1);
+      startAutoSlide();
+    } else if (e.key === 'Enter' && document.activeElement === carousel) {
+      e.preventDefault();
+      handleBannerActivate(slides[activeBannerSlide]);
+    }
+  });
+
+  carousel.addEventListener('mouseenter', stopAutoSlide);
+  carousel.addEventListener('mouseleave', startAutoSlide);
+  carousel.addEventListener('focusin', stopAutoSlide);
+  carousel.addEventListener('focusout', startAutoSlide);
+
+  carousel.addEventListener('pointerdown', (e) => {
+    if (e.button !== 0 && e.pointerType === 'mouse') return;
+    if (e.target.closest('button, a')) return;
+    const slides = getSlides();
+    isPointerDown = true;
+    hasMoved = false;
+    dragStartX = e.clientX;
+    dragStartY = e.clientY;
+    dragDeltaX = 0;
+    dragDeltaY = 0;
+    dragSourceSlide = e.target.closest('.banner-slide') || slides[activeBannerSlide] || null;
+  });
+
+  carousel.addEventListener('pointermove', (e) => {
+    if (!isPointerDown) return;
+    dragDeltaX = e.clientX - dragStartX;
+    dragDeltaY = e.clientY - dragStartY;
+
+    if (!hasMoved) {
+      if (Math.hypot(dragDeltaX, dragDeltaY) <= 6) return;
+      if (Math.abs(dragDeltaY) > Math.abs(dragDeltaX) + 4) {
+        isPointerDown = false;
+        dragSourceSlide = null;
+        return;
+      }
+      hasMoved = true;
+      stopAutoSlide();
+      carousel.classList.add('is-dragging');
+    }
+
+    const activeSlide = getSlides()[activeBannerSlide];
+    if (activeSlide) {
+      const clampedPx = Math.max(-72, Math.min(72, dragDeltaX * 0.42));
+      activeSlide.style.transition = 'none';
+      activeSlide.style.transform = `translate3d(${clampedPx}px, 0, 0)`;
+    }
+  });
+
+  const finishDrag = (e) => {
+    if (!isPointerDown) return;
+    const wasTap = !hasMoved && Math.hypot(dragDeltaX, dragDeltaY) < 8;
+    const sourceSlide = dragSourceSlide;
+
+    isPointerDown = false;
+    hasMoved = false;
+    dragSourceSlide = null;
+    carousel.classList.remove('is-dragging');
+
+    const activeSlide = getSlides()[activeBannerSlide];
+    if (activeSlide) {
+      activeSlide.style.transition = '';
+      activeSlide.style.transform = '';
+    }
+
+    if (wasTap && e?.type === 'pointerup' && !e.target.closest('button, a')) {
+      dragDeltaX = 0;
+      dragDeltaY = 0;
+      handleBannerActivate(sourceSlide);
+      startAutoSlide();
+      return;
+    }
+
+    const threshold = Math.min(72, Math.max(36, carousel.clientWidth * 0.14));
+    if (dragDeltaX <= -threshold) {
+      applySlide(activeBannerSlide + 1);
+    } else if (dragDeltaX >= threshold) {
+      applySlide(activeBannerSlide - 1);
+    } else {
+      applySlide(activeBannerSlide, { immediate: true });
+    }
+    dragDeltaX = 0;
+    dragDeltaY = 0;
+    startAutoSlide();
+  };
+
+  carousel.addEventListener('pointerup', finishDrag);
+  carousel.addEventListener('pointercancel', finishDrag);
+  carousel.addEventListener('pointerleave', () => {
+    if (isPointerDown) finishDrag({ type: 'pointerleave', target: carousel });
+  });
+
+  renderStudioBanners();
+  applySlide(0, { immediate: true });
+  startAutoSlide();
+}
+
+/* ============================================================================
+ * 2. Complete 15-Feature Directory, Value Pillars & FAQ
+ * ============================================================================ */
+function renderStudioCategoryTabs() {
+  const container = document.getElementById('studio-category-tabs');
+  if (!container) return;
+
+  container.innerHTML = STUDIO_CATEGORIES.map((cat) => {
+    const active = activeDirectoryCategory === cat.id;
+    return `
+      <button
+        type="button"
+        class="cat-tab ${active ? 'is-active' : ''}"
+        data-studio-category="${escapeHtml(cat.id)}"
+        aria-pressed="${active}"
+      >
+        ${escapeHtml(cat.label)}
+      </button>
+    `;
+  }).join('');
+
+  container.querySelectorAll('[data-studio-category]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      activeDirectoryCategory = btn.getAttribute('data-studio-category') || 'all';
+      renderStudioCategoryTabs();
+      renderStudioFeatureDirectory();
+    });
+  });
+}
+
+function renderStudioFeatureDirectory() {
+  const grid = document.getElementById('studio-feature-grid');
+  const countEl = document.getElementById('studio-directory-count');
+  if (!grid) return;
+
+  const allFeatures = buildStudioFeatureDirectory(activeUtilities);
+  const filtered = filterStudioFeatures(allFeatures, {
+    category: activeDirectoryCategory,
+    query: directoryQuery,
+  });
+
+  if (countEl) {
+    countEl.textContent = `${filtered.length} fitur`;
+  }
+
+  if (filtered.length === 0) {
+    grid.innerHTML = `
+      <div class="empty-state studio-empty-state">
+        <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+        <h3>Fitur tidak ditemukan</h3>
+        <p>Coba kata kunci lain atau pilih kategori Semua Fitur.</p>
+        <button type="button" class="btn btn-secondary btn-sm" id="studio-reset-dir-btn">Reset Filter</button>
+      </div>
+    `;
+    document.getElementById('studio-reset-dir-btn')?.addEventListener('click', () => {
+      activeDirectoryCategory = 'all';
+      directoryQuery = '';
+      const searchEl = document.getElementById('studio-feature-search');
+      if (searchEl) searchEl.value = '';
+      const clearBtn = document.getElementById('studio-clear-search-btn');
+      if (clearBtn) clearBtn.hidden = true;
+      renderStudioCategoryTabs();
+      renderStudioFeatureDirectory();
+    });
+    return;
+  }
+
+  grid.innerHTML = filtered
+    .map((feat) => {
+      const isCurrent = feat.id === currentTab;
+      return `
+        <article class="studio-feat-card ${isCurrent ? 'is-current' : ''}">
+          <div class="studio-feat-top">
+            <img
+              src="${escapeHtml(feat.icon)}"
+              alt=""
+              width="40"
+              height="40"
+              loading="lazy"
+              decoding="async"
+              class="studio-feat-icon"
+            />
+            <div class="studio-feat-meta-text">
+              <span>${escapeHtml(feat.categoryLabel)}</span>
+              <span aria-hidden="true">·</span>
+              <span>${isCurrent ? 'Sedang Dibuka' : 'Gratis'}</span>
+            </div>
+          </div>
+
+          <div class="studio-feat-body">
+            <h3 class="studio-feat-title">${escapeHtml(feat.label)}</h3>
+            <p class="studio-feat-summary">${escapeHtml(feat.summary)}</p>
+            <p class="studio-feat-highlights">${escapeHtml(feat.highlights)}</p>
+          </div>
+
+          <div class="studio-feat-foot">
+            <button
+              type="button"
+              class="btn ${isCurrent ? 'btn-primary' : 'btn-secondary'} btn-sm studio-feat-open-btn"
+              data-studio-open-tool="${escapeHtml(feat.id)}"
+              aria-label="Buka fitur ${escapeHtml(feat.label)} di Workspace"
+            >
+              ${isCurrent ? 'Lihat di Workspace ↑' : 'Buka Fitur →'}
+            </button>
+          </div>
+        </article>
+      `;
+    })
+    .join('');
+}
+
+function renderStudioValuePillars() {
+  const grid = document.getElementById('studio-pillars-grid');
+  if (!grid) return;
+
+  grid.innerHTML = STUDIO_VALUE_PILLARS.map(
+    (p) => `
+      <article class="studio-pillar-item">
+        <span class="studio-pillar-num mono-num">${escapeHtml(p.index)}.</span>
+        <h3 class="studio-pillar-title">${escapeHtml(p.title)}</h3>
+        <p class="studio-pillar-desc">${escapeHtml(p.description)}</p>
+      </article>
+    `
+  ).join('');
+}
+
+function renderStudioFaq() {
+  const container = document.getElementById('studio-faq-list');
+  if (!container) return;
+
+  container.innerHTML = STUDIO_FAQ_ITEMS.map((item, idx) => {
+    const isOpen = openFaqIndex === idx;
+    return `
+      <div class="faq-item ${isOpen ? 'is-open' : ''}">
+        <button
+          type="button"
+          class="faq-trigger"
+          data-studio-faq-idx="${idx}"
+          aria-expanded="${isOpen}"
+        >
+          <span>${escapeHtml(item.question)}</span>
+          <svg class="faq-chevron" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
+        </button>
+        <div class="faq-panel" ${isOpen ? '' : 'hidden'}>
+          <p>${escapeHtml(item.answer)}</p>
+        </div>
+      </div>
+    `;
+  }).join('');
+
+  container.querySelectorAll('[data-studio-faq-idx]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const idx = Number(btn.getAttribute('data-studio-faq-idx'));
+      openFaqIndex = openFaqIndex === idx ? -1 : idx;
+      renderStudioFaq();
+    });
+  });
+}
+
+/* ============================================================================
+ * 3. Store Access Key Gate Modal (Protected Switch Studio -> Store)
+ * ============================================================================ */
 function closeStoreAccessModal() {
   const root = document.getElementById('store-access-modal-root');
   if (!root) return;
@@ -278,8 +880,7 @@ function openStoreAccessModal() {
     saveStoreGateSessionUnlocked();
     closeStoreAccessModal();
     showToast(`Akses terverifikasi — membuka ${storeName}...`);
-    const targetUrl = buildStoreUrl(ctx);
-    window.location.href = targetUrl;
+    window.location.href = buildStoreUrl(ctx);
   });
 
   requestAnimationFrame(() => keyInput?.focus());
@@ -302,14 +903,8 @@ function syncStoreTriggerButtons() {
 
   const brandLink = document.getElementById('tools-brand-link');
   const footerBrand = document.getElementById('footer-brand-name');
-  if (ctx.isSplitDomain && ctx.mode === 'utilities') {
-    brandLink?.setAttribute('href', '#top');
-    footerBrand?.setAttribute('href', '#top');
-  } else {
-    const storeHref = buildStoreUrl(ctx);
-    brandLink?.setAttribute('href', storeHref);
-    footerBrand?.setAttribute('href', storeHref);
-  }
+  brandLink?.setAttribute('href', '#top');
+  footerBrand?.setAttribute('href', '#top');
 
   const headerStoreBtn = document.getElementById('tools-store-btn');
   if (headerStoreBtn) {
@@ -318,69 +913,9 @@ function syncStoreTriggerButtons() {
       requiresGate ? `Akses ${storeName} (butuh kunci akses)` : `Buka katalog ${storeName}`
     );
     headerStoreBtn.innerHTML = requiresGate
-      ? `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg><span>Store</span>`
-      : `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m15 18-6-6 6-6"/></svg><span>Katalog</span>`;
+      ? `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg><span class="hide-xs">Store</span>`
+      : `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4Z"/><path d="M3 6h18"/><path d="M16 10a4 4 0 0 1-8 0"/></svg><span class="hide-xs">Store</span>`;
   }
-
-  const headBackBtn = document.getElementById('tools-back-store-btn');
-  if (headBackBtn) {
-    headBackBtn.textContent = requiresGate ? 'Akses Store 🔒' : '← Menu Utama';
-    headBackBtn.setAttribute(
-      'aria-label',
-      requiresGate ? `Buka ${storeName} dengan kunci akses` : 'Kembali ke menu utama'
-    );
-  }
-}
-
-const CONCISE_HEADER_NAV_LABELS = {
-  prayer: 'Jadwal Sholat',
-  weather: 'Cuaca',
-  worldclock: 'Jam Dunia',
-  speedtest: 'Speedtest',
-  downloader: 'Downloader',
-  compressor: 'Kompresor HD',
-  converter: 'Konversi File',
-  songfinder: 'Cari Lagu',
-  music: 'Musik YT',
-  dracin: 'Drama Pendek',
-  audioeditor: 'Audio Editor',
-  manifestai: 'Manifest AI',
-  plagiarism: 'Cek Plagiarisme',
-  novel: 'Novel',
-  callerid: 'Cek Nomor',
-};
-
-function renderHeaderNavFromUtilities() {
-  const navEl = document.getElementById('tools-header-nav') || document.querySelector('.header-nav');
-  if (!navEl) return;
-  const ctx = getSiteContext();
-  const enabledItems = getEnabledUtilityItems();
-  const buttonsHtml = enabledItems
-    .map((item) => {
-      const rawLabel = String(item.label || '').trim();
-      const label =
-        rawLabel.length <= 24 ? rawLabel : CONCISE_HEADER_NAV_LABELS[item.id] || rawLabel;
-      const isActive = item.id === currentTab;
-      return `<button type="button" class="header-nav-link ${isActive ? 'is-active' : ''}" data-tools-nav="${escapeHtml(
-        item.id
-      )}" aria-current="${isActive ? 'page' : 'false'}">${escapeHtml(label)}</button>`;
-    })
-    .join('');
-
-  const storeTriggerHtml = ctx.requiresStoreGate
-    ? `<button type="button" class="header-nav-link is-cross-link" data-store-gate-trigger="nav">Store 🔒</button>`
-    : `<button type="button" class="header-nav-link" data-store-gate-trigger="nav">Katalog</button>`;
-
-  navEl.innerHTML = `${storeTriggerHtml}${buttonsHtml}`;
-  navEl.querySelectorAll('[data-tools-nav]').forEach((btn) => {
-    btn.addEventListener('click', () => {
-      const next = btn.getAttribute('data-tools-nav');
-      if (!next || !VALID_TABS.has(next)) return;
-      currentTab = resolveEnabledTab(next);
-      toolsHub?.mount(currentTab);
-      syncActiveTabChrome(currentTab);
-    });
-  });
 }
 
 function syncActiveTabChrome(tab) {
@@ -394,15 +929,16 @@ function syncActiveTabChrome(tab) {
   const subEl = document.getElementById('tools-page-subtitle');
   if (titleEl) titleEl.textContent = meta.title;
   if (subEl) subEl.textContent = meta.subtitle;
-  document.title = `${meta.title} — ${utilName}`;
+  document.title = `${utilName} — ${meta.title}`;
 
   applyDomainPwaMeta(ctx);
   syncStoreTriggerButtons();
-  renderHeaderNavFromUtilities();
 
   const url = new URL(window.location.href);
-  url.searchParams.set('tab', safeTab);
-  window.history.replaceState({}, '', url.toString());
+  if (url.searchParams.has('tab') || safeTab !== 'prayer') {
+    url.searchParams.set('tab', safeTab);
+    window.history.replaceState({}, '', url.toString());
+  }
 }
 
 function applyBrandToToolsPage(brandRaw) {
@@ -447,7 +983,7 @@ function applyBrandToToolsPage(brandRaw) {
       `
       )
       .join('');
-    const storeFooterLabel = ctx.requiresStoreGate ? 'Akses Store 🔒' : 'Katalog Utama';
+    const storeFooterLabel = ctx.requiresStoreGate ? 'Akses Store 🔒' : 'Buka Store';
     socialContainer.innerHTML = `
       <button type="button" class="footer-link-btn" data-store-gate-trigger="footer">${escapeHtml(storeFooterLabel)}</button>
       ${socialsHtml}
@@ -456,6 +992,60 @@ function applyBrandToToolsPage(brandRaw) {
       socialContainer.appendChild(installBtn);
     }
   }
+}
+
+function bindStudioSectionEvents() {
+  // Delegated click for Store Gate triggers
+  document.addEventListener('click', (e) => {
+    const storeTrigger = e.target.closest?.('[data-store-gate-trigger]');
+    if (storeTrigger) {
+      e.preventDefault();
+      handleStoreNavigationRequest();
+      return;
+    }
+
+    const openToolBtn = e.target.closest?.('[data-studio-open-tool]');
+    if (openToolBtn) {
+      e.preventDefault();
+      const targetTab = openToolBtn.getAttribute('data-studio-open-tool');
+      if (targetTab) activateUtilityAndScroll(targetTab);
+    }
+  });
+
+  // Smooth section nav highlighting
+  document.querySelectorAll('[data-studio-section-link]').forEach((link) => {
+    link.addEventListener('click', () => {
+      document
+        .querySelectorAll('[data-studio-section-link]')
+        .forEach((el) => el.classList.toggle('is-active', el === link));
+    });
+  });
+
+  // Directory instant search
+  const searchInput = document.getElementById('studio-feature-search');
+  const clearBtn = document.getElementById('studio-clear-search-btn');
+  if (searchInput) {
+    searchInput.addEventListener('input', (e) => {
+      directoryQuery = e.target.value;
+      if (clearBtn) clearBtn.hidden = directoryQuery.trim().length === 0;
+      renderStudioFeatureDirectory();
+    });
+  }
+  clearBtn?.addEventListener('click', () => {
+    directoryQuery = '';
+    if (searchInput) searchInput.value = '';
+    clearBtn.hidden = true;
+    renderStudioFeatureDirectory();
+  });
+
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') {
+      const modalRoot = document.getElementById('store-access-modal-root');
+      if (modalRoot && !modalRoot.hidden) {
+        closeStoreAccessModal();
+      }
+    }
+  });
 }
 
 async function bootstrap() {
@@ -472,23 +1062,14 @@ async function bootstrap() {
     appDesc: 'Akses 15 fitur utilitas gratis lebih cepat dari layar utama & tetap nyaman dibuka offline.',
   });
 
-  // Global delegated click handler for all gated Store triggers (header, nav, page head, footer)
-  document.addEventListener('click', (e) => {
-    const trigger = e.target.closest?.('[data-store-gate-trigger]');
-    if (!trigger) return;
-    e.preventDefault();
-    handleStoreNavigationRequest();
-  });
+  bindStudioSectionEvents();
+  initStudioBannerCarousel();
+  renderStudioCategoryTabs();
+  renderStudioFeatureDirectory();
+  renderStudioValuePillars();
+  renderStudioFaq();
 
-  document.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape') {
-      const modalRoot = document.getElementById('store-access-modal-root');
-      if (modalRoot && !modalRoot.hidden) {
-        closeStoreAccessModal();
-      }
-    }
-  });
-
+  const explicitTab = hasExplicitTabParam();
   currentTab = readInitialTab();
   const root = document.getElementById('tools-hub-root');
 
@@ -500,10 +1081,19 @@ async function bootstrap() {
       onSubTabChange: (nextTab) => {
         currentTab = resolveEnabledTab(nextTab);
         syncActiveTabChrome(currentTab);
+        renderStudioFeatureDirectory();
       },
     });
     toolsHub.mount(currentTab);
     syncActiveTabChrome(currentTab);
+    renderStudioFeatureDirectory();
+
+    // If visitor came via direct deep link (?tab=dracin), bring workspace smoothly into view
+    if (explicitTab) {
+      requestAnimationFrame(() => {
+        document.getElementById('workspace')?.scrollIntoView({ behavior: 'auto', block: 'start' });
+      });
+    }
   }
 
   document.getElementById('theme-toggle-btn')?.addEventListener('click', () => {
@@ -533,7 +1123,7 @@ async function bootstrap() {
     currentTab === 'songfinder' ||
     currentTab === 'downloader';
   const bootMusicLazy = () => {
-    import('./music.js?v=80')
+    import('./music.js?v=81')
       .then((m) => m.initMusicPlayer?.())
       .catch(() => {});
   };
@@ -548,6 +1138,9 @@ async function bootstrap() {
     if (loaded?.data?.brand) {
       applyBrandToToolsPage(loaded.data.brand);
     }
+    if (loaded?.data?.banners) {
+      activeCatalogBanners = normalizeBanners(loaded.data.banners);
+    }
     if (loaded?.data?.utilities) {
       activeUtilities = normalizeUtilityConfig(loaded.data.utilities);
       const nextSafeTab = resolveEnabledTab(currentTab);
@@ -558,6 +1151,8 @@ async function bootstrap() {
       }
       syncActiveTabChrome(currentTab);
     }
+    renderStudioBanners();
+    renderStudioFeatureDirectory();
   } catch {
     // Ignore
   }

@@ -3,20 +3,20 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Menu Utilitas — Manifestudio</title>
+    <title>Manifestudio — Platform 15 Utilitas Digital, AI &amp; Hiburan Gratis</title>
     <meta
       name="description"
-      content="Jadwal Sholat Kemenag RI, Prakiraan Cuaca, Jam Dunia UTC, Speedtest, Downloader, Kompresor HD, dan Pemutar YT Music Viral Indonesia di Manifestudio."
+      content="Manifestudio by Tomy: 15 fitur utilitas digital, AI, dan hiburan gratis tanpa login — Manifest AI, Drama Pendek, YT Music, Downloader, Kompresor HD, Konversi File, Audio Editor, Cek Plagiarisme, Novel, Jadwal Sholat, Cuaca, Jam Dunia, Speedtest &amp; Cek Nomor."
     />
 
     <link rel="canonical" href="https://manifestudio.my.id/" />
 
     <!-- Open Graph & Social Share -->
     <meta property="og:url" content="https://manifestudio.my.id/" />
-    <meta property="og:title" content="Menu Utilitas — Manifestudio" />
+    <meta property="og:title" content="Manifestudio — Platform 15 Utilitas Digital, AI &amp; Hiburan Gratis" />
     <meta
       property="og:description"
-      content="Jadwal Sholat Kemenag RI, Cuaca, Jam Dunia UTC, Speedtest Internet, &amp; Downloader Video TikTok/YouTube/IG/FB Tanpa Watermark."
+      content="15 alat digital &amp; hiburan gratis tanpa login: Manifest AI, Drama Pendek, YT Music, Downloader Tanpa Watermark, Kompresor HD, Cek Plagiarisme, Novel &amp; Cek Nomor."
     />
     <meta
       property="og:image"
@@ -34,10 +34,10 @@
     <meta property="og:site_name" content="Manifestudio" />
 
     <meta name="twitter:card" content="summary_large_image" />
-    <meta name="twitter:title" content="Menu Utilitas — Manifestudio" />
+    <meta name="twitter:title" content="Manifestudio — Platform 15 Utilitas Digital, AI &amp; Hiburan Gratis" />
     <meta
       name="twitter:description"
-      content="Jadwal Sholat Kemenag RI, Cuaca, Jam Dunia UTC, Speedtest Internet, &amp; Downloader Video No Watermark."
+      content="15 fitur utilitas digital, AI, dan hiburan gratis tanpa login &amp; tanpa iklan."
     />
     <meta
       name="twitter:image"
@@ -48,7 +48,7 @@
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta name="apple-mobile-web-app-title" content="Manifestudio" />
-    <link rel="manifest" href="./manifest.webmanifest" />
+    <link rel="manifest" href="./manifest-utilities.webmanifest" />
     <link rel="icon" type="image/svg+xml" href="./assets/icons/brand-icon.svg" />
     <link rel="apple-touch-icon" href="./assets/icons/apple-touch-icon.png" />
 
@@ -59,8 +59,8 @@
       rel="stylesheet"
     />
 
-    <link rel="stylesheet" href="./css/tokens.css?v=80" />
-    <link rel="stylesheet" href="./css/styles.css?v=80" />
+    <link rel="stylesheet" href="./css/tokens.css?v=81" />
+    <link rel="stylesheet" href="./css/styles.css?v=81" />
     <script>
       (function () {
         try {
@@ -69,7 +69,7 @@
             document.documentElement.setAttribute('data-theme', savedTheme);
           }
         } catch (e) {}
-        var CURRENT_CACHE = 'manifestudio-cache-v80';
+        var CURRENT_CACHE = 'manifestudio-cache-v81';
         if ('caches' in window) {
           caches.keys().then(function (keys) {
             keys.forEach(function (k) {
@@ -79,7 +79,7 @@
         }
         if ('serviceWorker' in navigator) {
           window.addEventListener('load', function () {
-            navigator.serviceWorker.register('./sw.js?v=80').then(function (reg) {
+            navigator.serviceWorker.register('./sw.js?v=81').then(function (reg) {
               reg.update();
             }).catch(function () {});
           });
@@ -89,7 +89,7 @@
   </head>
   <body>
     <div id="offline-banner" class="offline-banner" role="status" hidden>
-      Mode offline aktif — fitur lokal tetap bisa dipakai.
+      Mode offline aktif — alat pemrosesan lokal tetap bisa digunakan.
     </div>
 
     <header class="site-header">
@@ -109,23 +109,12 @@
           </div>
         </a>
 
-        <nav id="tools-header-nav" class="header-nav" aria-label="Navigasi menu utilitas">
-          <button type="button" class="header-nav-link" data-store-gate-trigger="nav">Store</button>
-          <button type="button" class="header-nav-link" data-tools-nav="prayer">Jadwal Sholat</button>
-          <button type="button" class="header-nav-link" data-tools-nav="weather">Cuaca</button>
-          <button type="button" class="header-nav-link" data-tools-nav="worldclock">Jam Dunia</button>
-          <button type="button" class="header-nav-link" data-tools-nav="speedtest">Speedtest</button>
-          <button type="button" class="header-nav-link" data-tools-nav="downloader">Downloader</button>
-          <button type="button" class="header-nav-link" data-tools-nav="compressor">Kompresor HD</button>
-          <button type="button" class="header-nav-link" data-tools-nav="converter">Konversi File</button>
-          <button type="button" class="header-nav-link" data-tools-nav="songfinder">Cari Lagu</button>
-          <button type="button" class="header-nav-link" data-tools-nav="music">Musik YT</button>
-          <button type="button" class="header-nav-link" data-tools-nav="dracin">Drama Pendek</button>
-          <button type="button" class="header-nav-link" data-tools-nav="audioeditor">Audio Editor</button>
-          <button type="button" class="header-nav-link" data-tools-nav="manifestai">Manifest AI</button>
-          <button type="button" class="header-nav-link" data-tools-nav="plagiarism">Cek Plagiarisme</button>
-          <button type="button" class="header-nav-link" data-tools-nav="novel">Novel</button>
-          <button type="button" class="header-nav-link" data-tools-nav="callerid">Cek Nomor</button>
+        <nav id="tools-header-nav" class="header-nav studio-header-nav" aria-label="Navigasi utama Manifestudio">
+          <a href="#top" class="header-nav-link is-active" data-studio-section-link="top">Beranda</a>
+          <a href="#workspace" class="header-nav-link" data-studio-section-link="workspace">Workspace</a>
+          <a href="#fitur" class="header-nav-link" data-studio-section-link="fitur">15 Fitur</a>
+          <a href="#keunggulan" class="header-nav-link" data-studio-section-link="keunggulan">Keunggulan</a>
+          <a href="#faq-studio" class="header-nav-link" data-studio-section-link="faq-studio">FAQ</a>
         </nav>
 
         <div class="header-actions">
@@ -137,7 +126,7 @@
             aria-label="Akses Store Khusus"
           >
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
-            <span>Store</span>
+            <span class="hide-xs">Store</span>
           </button>
           <button
             type="button"
@@ -164,94 +153,248 @@
       </div>
     </header>
 
-    <main id="top" class="tools-page-shell container">
-      <div class="tools-page-head">
-        <div>
-          <h1 id="tools-page-title" class="section-title">Menu Utilitas</h1>
-          <p id="tools-page-subtitle" class="section-subtitle">
-            15 fitur utilitas gratis: Sholat, Cuaca, Jam Dunia, Speedtest, Downloader, Drama Pendek, Novel, AI &amp; Cek Nomor.
-          </p>
-        </div>
-        <button type="button" id="tools-back-store-btn" class="btn btn-secondary btn-sm" data-store-gate-trigger="head">
-          Store Khusus
-        </button>
-      </div>
+    <main id="top" class="studio-main">
+      <!-- 1. Flagship Multi-Banner Showcase Carousel -->
+      <section class="promo-banner-section studio-hero-section" aria-label="Sorotan Platform &amp; 15 Fitur Manifestudio">
+        <div class="container">
+          <div
+            class="banner-carousel"
+            id="studio-hero-carousel"
+            tabindex="0"
+            aria-roledescription="carousel"
+            aria-label="Banner fitur unggulan Manifestudio"
+          >
+            <div class="banner-track" id="studio-banner-track">
+              <article class="promo-banner-frame banner-slide is-active" data-slide-index="0" data-banner-href="#fitur" aria-hidden="false">
+                <img
+                  src="./assets/banners/banner-manifestai.jpg"
+                  alt="Manifestudio — Platform 15 Utilitas Digital, AI dan Hiburan Gratis"
+                  class="promo-banner-img"
+                  width="1200"
+                  height="670"
+                  fetchpriority="high"
+                  decoding="async"
+                />
+                <div class="promo-banner-scrim scrim-violet" aria-hidden="true"></div>
+                <div class="promo-banner-content">
+                  <div class="promo-banner-copy">
+                    <span class="promo-kicker">Manifestudio · 15 Fitur Digital Gratis</span>
+                    <h1 class="promo-heading">Satu Platform Ringan untuk AI, Hiburan &amp; Alat Harian Tanpa Login</h1>
+                    <p class="promo-sub">
+                      Akses Manifest AI, Drama Pendek, YT Music, Downloader, Kompresor HD, Cek Plagiarisme, hingga Cek Nomor dalam satu tempat yang cepat dan rapi.
+                    </p>
+                  </div>
+                  <div class="promo-banner-cta">
+                    <a href="#fitur" class="btn btn-primary btn-sm">Jelajahi 15 Fitur →</a>
+                  </div>
+                </div>
+              </article>
+            </div>
 
-      <div id="tools-hub-root">
-        <div class="tools-hub" data-ssr-shell="true">
-          <div class="tools-subnav" role="tablist" aria-label="Menu Utilitas">
-            <a href="./tools.html?tab=prayer" class="tools-subtab" data-tool-subtab="prayer"><img src="./assets/icons/tool-prayer.svg" alt="" width="28" height="28" class="tools-subtab-icon" decoding="async" /><span>Jadwal Sholat</span></a>
-            <a href="./tools.html?tab=weather" class="tools-subtab" data-tool-subtab="weather"><img src="./assets/icons/tool-weather.svg" alt="" width="28" height="28" class="tools-subtab-icon" decoding="async" /><span>Prakiraan Cuaca</span></a>
-            <a href="./tools.html?tab=worldclock" class="tools-subtab" data-tool-subtab="worldclock"><img src="./assets/icons/tool-world.svg" alt="" width="28" height="28" class="tools-subtab-icon" decoding="async" /><span>Jam Dunia &amp; Globe</span></a>
-            <a href="./tools.html?tab=speedtest" class="tools-subtab" data-tool-subtab="speedtest"><img src="./assets/icons/tool-speed.svg" alt="" width="28" height="28" class="tools-subtab-icon" decoding="async" /><span>Speedtest</span></a>
-            <a href="./tools.html?tab=downloader" class="tools-subtab" data-tool-subtab="downloader"><img src="./assets/icons/tool-downloader.svg" alt="" width="28" height="28" class="tools-subtab-icon" decoding="async" /><span>Downloader</span></a>
-            <a href="./tools.html?tab=compressor" class="tools-subtab" data-tool-subtab="compressor"><img src="./assets/icons/tool-compressor.svg" alt="" width="28" height="28" class="tools-subtab-icon" decoding="async" /><span>Kompresor HD</span></a>
-            <a href="./tools.html?tab=converter" class="tools-subtab" data-tool-subtab="converter"><img src="./assets/icons/tool-converter.svg" alt="" width="28" height="28" class="tools-subtab-icon" decoding="async" /><span>Konversi File</span></a>
-            <a href="./tools.html?tab=songfinder" class="tools-subtab" data-tool-subtab="songfinder"><img src="./assets/icons/tool-songfinder.svg" alt="" width="28" height="28" class="tools-subtab-icon" decoding="async" /><span>Cari Judul Lagu</span></a>
-            <a href="./tools.html?tab=music" class="tools-subtab" data-tool-subtab="music"><img src="./assets/icons/tool-music.svg" alt="" width="28" height="28" class="tools-subtab-icon" decoding="async" /><span>YT Music</span></a>
-            <a href="./tools.html?tab=dracin" class="tools-subtab" data-tool-subtab="dracin"><img src="./assets/icons/tool-dracin.svg" alt="" width="28" height="28" class="tools-subtab-icon" decoding="async" /><span>Drama Pendek</span></a>
-            <a href="./tools.html?tab=audioeditor" class="tools-subtab" data-tool-subtab="audioeditor"><img src="./assets/icons/tool-audioeditor.svg" alt="" width="28" height="28" class="tools-subtab-icon" decoding="async" /><span>Audio Editor</span></a>
-            <a href="./tools.html?tab=manifestai" class="tools-subtab" data-tool-subtab="manifestai"><img src="./assets/icons/tool-manifestai.svg" alt="" width="28" height="28" class="tools-subtab-icon" decoding="async" /><span>Manifest AI</span></a>
-            <a href="./tools.html?tab=plagiarism" class="tools-subtab" data-tool-subtab="plagiarism"><img src="./assets/icons/tool-plagiarism.svg" alt="" width="28" height="28" class="tools-subtab-icon" decoding="async" /><span>Cek Plagiarisme</span></a>
-            <a href="./tools.html?tab=novel" class="tools-subtab" data-tool-subtab="novel"><img src="./assets/icons/tool-novel.svg" alt="" width="28" height="28" class="tools-subtab-icon" decoding="async" /><span>Novel Terpadu</span></a>
-            <a href="./tools.html?tab=callerid" class="tools-subtab" data-tool-subtab="callerid"><img src="./assets/icons/tool-callerid.svg" alt="" width="28" height="28" class="tools-subtab-icon" decoding="async" /><span>Cek Nomor</span></a>
+            <button type="button" class="banner-nav-btn is-prev" id="studio-banner-prev-btn" aria-label="Banner sebelumnya">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m15 18-6-6 6-6"/></svg>
+            </button>
+            <button type="button" class="banner-nav-btn is-next" id="studio-banner-next-btn" aria-label="Banner berikutnya">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg>
+            </button>
+
+            <div class="banner-controls-bar">
+              <div class="banner-dots" id="studio-banner-dots" role="tablist" aria-label="Pilih slide banner Manifestudio">
+                <button type="button" class="banner-dot is-active" data-slide-dot="0" aria-label="Slide 1: Manifestudio"></button>
+              </div>
+              <span id="studio-banner-counter" class="banner-slide-counter mono-num" aria-live="polite">1 / 16</span>
+            </div>
           </div>
-          <div class="tool-lazy-loading-card" aria-busy="true">
-            <div class="tool-lazy-spinner" aria-hidden="true"></div>
-            <div>
-              <strong>Menyiapkan modul utilitas...</strong>
-              <p>Menu siap dipilih — hanya modul yang Anda buka yang dimuat agar super ringan.</p>
+
+          <div class="studio-meta-strip" aria-label="Ringkasan platform Manifestudio">
+            <span id="studio-meta-count" class="mono-num">15 Fitur Aktif</span>
+            <span aria-hidden="true">·</span>
+            <span>100% Gratis &amp; Tanpa Login</span>
+            <span aria-hidden="true">·</span>
+            <span>Pemrosesan Lokal &amp; Real-Time</span>
+            <span aria-hidden="true">·</span>
+            <span>Aplikasi PWA Mandiri</span>
+          </div>
+        </div>
+      </section>
+
+      <!-- 2. Interactive Workspace (Active Tool Hub) -->
+      <section id="workspace" class="tools-page-shell studio-workspace-section container" aria-labelledby="tools-page-title">
+        <div class="tools-page-head studio-workspace-head">
+          <div class="studio-workspace-heading">
+            <span class="studio-section-eyebrow">Workspace Aktif</span>
+            <h2 id="tools-page-title" class="section-title">Jadwal Sholat &amp; Imsakiyah</h2>
+            <p id="tools-page-subtitle" class="section-subtitle">
+              Pilih salah satu dari 15 alat di bawah — hanya modul yang Anda buka yang dimuat agar ringan.
+            </p>
+          </div>
+          <a href="#fitur" class="btn btn-secondary btn-sm">
+            Direktori 15 Fitur ↓
+          </a>
+        </div>
+
+        <div id="tools-hub-root">
+          <div class="tools-hub" data-ssr-shell="true">
+            <div class="tools-subnav" role="tablist" aria-label="Pilih alat di Workspace">
+              <a href="./tools.html?tab=prayer" class="tools-subtab" data-tool-subtab="prayer"><img src="./assets/icons/tool-prayer.svg" alt="" width="28" height="28" class="tools-subtab-icon" decoding="async" /><span>Jadwal Sholat</span></a>
+              <a href="./tools.html?tab=weather" class="tools-subtab" data-tool-subtab="weather"><img src="./assets/icons/tool-weather.svg" alt="" width="28" height="28" class="tools-subtab-icon" decoding="async" /><span>Prakiraan Cuaca</span></a>
+              <a href="./tools.html?tab=worldclock" class="tools-subtab" data-tool-subtab="worldclock"><img src="./assets/icons/tool-world.svg" alt="" width="28" height="28" class="tools-subtab-icon" decoding="async" /><span>Jam Dunia &amp; Globe</span></a>
+              <a href="./tools.html?tab=speedtest" class="tools-subtab" data-tool-subtab="speedtest"><img src="./assets/icons/tool-speed.svg" alt="" width="28" height="28" class="tools-subtab-icon" decoding="async" /><span>Speedtest</span></a>
+              <a href="./tools.html?tab=downloader" class="tools-subtab" data-tool-subtab="downloader"><img src="./assets/icons/tool-downloader.svg" alt="" width="28" height="28" class="tools-subtab-icon" decoding="async" /><span>Downloader</span></a>
+              <a href="./tools.html?tab=compressor" class="tools-subtab" data-tool-subtab="compressor"><img src="./assets/icons/tool-compressor.svg" alt="" width="28" height="28" class="tools-subtab-icon" decoding="async" /><span>Kompresor HD</span></a>
+              <a href="./tools.html?tab=converter" class="tools-subtab" data-tool-subtab="converter"><img src="./assets/icons/tool-converter.svg" alt="" width="28" height="28" class="tools-subtab-icon" decoding="async" /><span>Konversi File</span></a>
+              <a href="./tools.html?tab=songfinder" class="tools-subtab" data-tool-subtab="songfinder"><img src="./assets/icons/tool-songfinder.svg" alt="" width="28" height="28" class="tools-subtab-icon" decoding="async" /><span>Cari Judul Lagu</span></a>
+              <a href="./tools.html?tab=music" class="tools-subtab" data-tool-subtab="music"><img src="./assets/icons/tool-music.svg" alt="" width="28" height="28" class="tools-subtab-icon" decoding="async" /><span>YT Music</span></a>
+              <a href="./tools.html?tab=dracin" class="tools-subtab" data-tool-subtab="dracin"><img src="./assets/icons/tool-dracin.svg" alt="" width="28" height="28" class="tools-subtab-icon" decoding="async" /><span>Drama Pendek</span></a>
+              <a href="./tools.html?tab=audioeditor" class="tools-subtab" data-tool-subtab="audioeditor"><img src="./assets/icons/tool-audioeditor.svg" alt="" width="28" height="28" class="tools-subtab-icon" decoding="async" /><span>Audio Editor</span></a>
+              <a href="./tools.html?tab=manifestai" class="tools-subtab" data-tool-subtab="manifestai"><img src="./assets/icons/tool-manifestai.svg" alt="" width="28" height="28" class="tools-subtab-icon" decoding="async" /><span>Manifest AI</span></a>
+              <a href="./tools.html?tab=plagiarism" class="tools-subtab" data-tool-subtab="plagiarism"><img src="./assets/icons/tool-plagiarism.svg" alt="" width="28" height="28" class="tools-subtab-icon" decoding="async" /><span>Cek Plagiarisme</span></a>
+              <a href="./tools.html?tab=novel" class="tools-subtab" data-tool-subtab="novel"><img src="./assets/icons/tool-novel.svg" alt="" width="28" height="28" class="tools-subtab-icon" decoding="async" /><span>Novel Terpadu</span></a>
+              <a href="./tools.html?tab=callerid" class="tools-subtab" data-tool-subtab="callerid"><img src="./assets/icons/tool-callerid.svg" alt="" width="28" height="28" class="tools-subtab-icon" decoding="async" /><span>Cek Nomor</span></a>
+            </div>
+            <div class="tool-lazy-loading-card" aria-busy="true">
+              <div class="tool-lazy-spinner" aria-hidden="true"></div>
+              <div>
+                <strong>Menyiapkan modul workspace...</strong>
+                <p>Semua 15 fitur siap dipilih — hanya alat yang Anda buka yang dimuat agar cepat.</p>
+              </div>
             </div>
           </div>
         </div>
-      </div>
+      </section>
+
+      <!-- 3. Complete Categorized 15-Feature Directory -->
+      <section id="fitur" class="studio-section container" aria-labelledby="studio-directory-heading">
+        <div class="studio-section-head">
+          <div>
+            <span class="studio-section-eyebrow">Ekosistem Lengkap</span>
+            <h2 id="studio-directory-heading" class="section-title">Direktori 15 Fitur Manifestudio</h2>
+            <p class="section-subtitle">
+              Temukan alat sesuai kebutuhan Anda — mulai dari asisten AI, hiburan tanpa iklan, konversi dokumen, hingga utilitas harian.
+            </p>
+          </div>
+          <span id="studio-directory-count" class="catalog-count mono-num">15 fitur</span>
+        </div>
+
+        <div class="studio-directory-toolbar">
+          <div class="search-box studio-search-box">
+            <svg class="search-icon" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <circle cx="11" cy="11" r="8" />
+              <path d="m21 21-4.3-4.3" />
+            </svg>
+            <input
+              type="search"
+              id="studio-feature-search"
+              class="search-input"
+              placeholder="Cari fitur: AI, Drama, PDF, Sholat, Downloader..."
+              aria-label="Cari fitur di direktori Manifestudio"
+            />
+            <button
+              type="button"
+              id="studio-clear-search-btn"
+              class="search-clear-btn"
+              aria-label="Hapus pencarian fitur"
+              hidden
+            >
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+            </button>
+          </div>
+
+          <div id="studio-category-tabs" class="category-tabs" role="group" aria-label="Filter kategori fitur Manifestudio"></div>
+        </div>
+
+        <div id="studio-feature-grid" class="studio-feat-grid"></div>
+      </section>
+
+      <!-- 4. Platform Value Pillars -->
+      <section id="keunggulan" class="studio-section container" aria-labelledby="studio-pillars-heading">
+        <div class="studio-section-head">
+          <div>
+            <span class="studio-section-eyebrow">Kenapa Manifestudio</span>
+            <h2 id="studio-pillars-heading" class="section-title">Dirancang Ringan, Cepat &amp; Menjaga Privasi</h2>
+          </div>
+        </div>
+        <div id="studio-pillars-grid" class="studio-pillars-grid"></div>
+      </section>
+
+      <!-- 5. Standalone PWA Install Card -->
       <div id="pwa-banner-root" class="pwa-banner-root"></div>
+
+      <!-- 6. Manifestudio FAQ -->
+      <section id="faq-studio" class="faq-section container" aria-labelledby="studio-faq-heading">
+        <div class="studio-section-head">
+          <div>
+            <span class="studio-section-eyebrow">Bantuan &amp; Informasi</span>
+            <h2 id="studio-faq-heading" class="section-title">Pertanyaan Umum Manifestudio</h2>
+          </div>
+        </div>
+        <div id="studio-faq-list" class="faq-list"></div>
+      </section>
     </main>
 
-    <footer class="site-footer">
-      <div class="container footer-inner">
+    <footer class="site-footer studio-footer">
+      <div class="container studio-footer-grid">
         <div class="footer-brand">
           <a href="#top" id="footer-brand-name" class="brand-name" style="text-decoration: none;">Manifestudio</a>
-          <p id="footer-copy-text">Dikelola oleh Manifestudio by Tomy © 2026</p>
+          <p class="studio-footer-summary">
+            Platform mandiri 15 utilitas digital, AI, dan hiburan gratis tanpa login yang dapat diakses langsung dari browser maupun diinstal sebagai aplikasi PWA.
+          </p>
+          <p id="footer-copy-text" class="studio-footer-copy">Dikelola oleh Manifestudio by Tomy © 2026</p>
         </div>
-        <div id="footer-social-links" class="footer-links">
-          <button type="button" class="footer-link-btn" data-store-gate-trigger="footer">Akses Store</button>
-          <a
-            href="https://wa.me/6285122936027"
-            target="_blank"
-            rel="noopener noreferrer"
-            class="footer-link-btn"
-          >
-            <img src="./assets/icons/social-whatsapp.svg" alt="" width="18" height="18" class="footer-social-icon" />
-            <span>WhatsApp Admin</span>
-          </a>
-          <a
-            href="https://www.tiktok.com/@tmctomystudio"
-            target="_blank"
-            rel="noopener noreferrer"
-            class="footer-link-btn"
-          >
-            <img src="./assets/icons/social-tiktok.svg" alt="" width="18" height="18" class="footer-social-icon" />
-            <span>TikTok @tmctomystudio</span>
-          </a>
-          <a
-            href="https://www.instagram.com/tmctomystudio"
-            target="_blank"
-            rel="noopener noreferrer"
-            class="footer-link-btn"
-          >
-            <img src="./assets/icons/social-instagram.svg" alt="" width="18" height="18" class="footer-social-icon" />
-            <span>Instagram @tmctomystudio</span>
-          </a>
-          <button type="button" id="footer-install-link" class="footer-link-btn">
-            Install PWA
-          </button>
+
+        <div class="studio-footer-col">
+          <h3 class="studio-footer-heading">Fitur Populer</h3>
+          <div class="studio-footer-shortcuts">
+            <button type="button" class="studio-footer-text-btn" data-studio-open-tool="manifestai">Manifest AI</button>
+            <button type="button" class="studio-footer-text-btn" data-studio-open-tool="dracin">Drama Pendek</button>
+            <button type="button" class="studio-footer-text-btn" data-studio-open-tool="music">YT Music</button>
+            <button type="button" class="studio-footer-text-btn" data-studio-open-tool="downloader">Downloader</button>
+            <button type="button" class="studio-footer-text-btn" data-studio-open-tool="plagiarism">Cek Plagiarisme</button>
+            <button type="button" class="studio-footer-text-btn" data-studio-open-tool="callerid">Cek Nomor</button>
+          </div>
+        </div>
+
+        <div class="studio-footer-col">
+          <h3 class="studio-footer-heading">Komunitas &amp; Aplikasi</h3>
+          <div id="footer-social-links" class="footer-links">
+            <button type="button" class="footer-link-btn" data-store-gate-trigger="footer">Akses Store 🔒</button>
+            <a
+              href="https://wa.me/6285122936027"
+              target="_blank"
+              rel="noopener noreferrer"
+              class="footer-link-btn"
+            >
+              <img src="./assets/icons/social-whatsapp.svg" alt="" width="18" height="18" class="footer-social-icon" />
+              <span>WhatsApp Admin</span>
+            </a>
+            <a
+              href="https://www.tiktok.com/@tmctomystudio"
+              target="_blank"
+              rel="noopener noreferrer"
+              class="footer-link-btn"
+            >
+              <img src="./assets/icons/social-tiktok.svg" alt="" width="18" height="18" class="footer-social-icon" />
+              <span>TikTok @tmctomystudio</span>
+            </a>
+            <a
+              href="https://www.instagram.com/tmctomystudio"
+              target="_blank"
+              rel="noopener noreferrer"
+              class="footer-link-btn"
+            >
+              <img src="./assets/icons/social-instagram.svg" alt="" width="18" height="18" class="footer-social-icon" />
+              <span>Instagram @tmctomystudio</span>
+            </a>
+            <button type="button" id="footer-install-link" class="footer-link-btn">
+              Install PWA
+            </button>
+          </div>
         </div>
       </div>
     </footer>
 
     <div id="store-access-modal-root" class="modal-overlay" hidden></div>
     <div id="toast-notification" class="toast-notification" role="status" aria-live="polite" hidden></div>
-    <script type="module" src="./js/tools-page.js?v=80"></script>
+    <script type="module" src="./js/tools-page.js?v=81"></script>
   </body>
 </html>
