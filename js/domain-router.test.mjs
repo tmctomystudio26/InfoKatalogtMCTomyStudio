@@ -1,21 +1,20 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import path from 'node:path';
 import {
   DOMAIN_CONFIG,
+  STORE_VAULT_API,
   buildStoreUrl,
   buildStorefrontBannersForSiteMode,
   buildUtilitiesUrl,
-  decodeStoreAccessKey,
-  encodeStoreAccessKey,
   generateRandomStoreAccessKey,
-  getEditableStoreAccessKey,
   normalizeOriginUrl,
   normalizeStoreAccessConfig,
   resolveBannerHrefForContext,
   resolveDisplayBrand,
   resolveEdgeRoute,
   resolveSiteContext,
-  verifyStoreAccessKey,
 } from './domain-router.js';
 import {
   buildWhatsAppOrderCaption,
@@ -25,41 +24,38 @@ import {
 } from './store.js';
 import { onRequest } from '../functions/_middleware.js';
 
-test('Store Access Key obfuscation round-trip and verification', () => {
-  const encoded = encodeStoreAccessKey('MFSTORE26');
-  assert.ok(encoded.startsWith('mskey:v1:'));
-  assert.notEqual(encoded, 'MFSTORE26');
-  assert.equal(decodeStoreAccessKey(encoded), 'MFSTORE26');
-
-  const cfg = normalizeStoreAccessConfig();
-  assert.equal(cfg.enabled, true);
-  assert.equal(getEditableStoreAccessKey(cfg), 'MFSTORE26');
-
-  // Case-insensitive and whitespace-tolerant matching
-  assert.equal(verifyStoreAccessKey('MFSTORE26', cfg).ok, true);
-  assert.equal(verifyStoreAccessKey('  mfstore26  ', cfg).ok, true);
-  assert.equal(verifyStoreAccessKey('WRONGKEY', cfg).ok, false);
-  assert.equal(verifyStoreAccessKey('', cfg).reason, 'empty');
-
-  // Admin custom key override
-  const customCfg = normalizeStoreAccessConfig({
+test('Zero-secret client policy: domain-router & catalog.json contain zero store keys or client-side bypass helpers', () => {
+  // normalizeStoreAccessConfig strips any legacy secret/key/storeOrigin fields
+  const cfg = normalizeStoreAccessConfig({
     enabled: true,
-    accessKeyEncoded: encodeStoreAccessKey('VIP-TOMY-99'),
+    accessKey: 'SHOULD_NOT_SURVIVE',
+    accessKeyEncoded: 'mskey:v1:deadbeef',
+    storeOrigin: 'https://secret.example.com',
+    promptTitle: 'Akses Khusus Store',
   });
-  assert.equal(getEditableStoreAccessKey(customCfg), 'VIP-TOMY-99');
-  assert.equal(verifyStoreAccessKey('vip-tomy-99', customCfg).ok, true);
-  assert.equal(verifyStoreAccessKey('MFSTORE26', customCfg).ok, false);
+  assert.equal(cfg.enabled, true);
+  assert.equal('accessKey' in cfg, false);
+  assert.equal('accessKeyEncoded' in cfg, false);
+  assert.equal('storeOrigin' in cfg, false);
+  assert.equal(STORE_VAULT_API.verifyUrl, '/api/store-access/verify');
+  assert.equal(STORE_VAULT_API.goUrl, '/api/store-access/go');
 
-  // Disabled gate passes automatically
-  const openCfg = normalizeStoreAccessConfig({ enabled: false });
-  assert.equal(verifyStoreAccessKey('', openCfg).ok, true);
-
-  // Random generator produces valid non-empty key
+  // Cryptographic random key generator produces strong MF-XXXX-XXXX format
   const randomKey = generateRandomStoreAccessKey();
-  assert.match(randomKey, /^MF-[A-Z2-9]{6}$/);
+  assert.match(randomKey, /^MF-[A-Z2-9]{4}-[A-Z2-9]{4}$/);
+
+  // Live catalog.json must NOT contain any key or storeOrigin
+  const catalogRaw = fs.readFileSync(
+    path.resolve(process.cwd(), '.repos/InfoKatalogtMCTomyStudio/data/catalog.json'),
+    'utf8'
+  );
+  assert.equal(/MFSTORE26|accessKeyEncoded|mskey:v1:/i.test(catalogRaw), false);
+  const catalog = JSON.parse(catalogRaw);
+  assert.equal(catalog.brand?.storeAccess?.accessKeyEncoded, undefined);
+  assert.equal(catalog.brand?.storeAccess?.storeOrigin, undefined);
 });
 
-test('resolveSiteContext enforces asymmetric access policy (open on Manifestore, gated on Manifestudio)', () => {
+test('resolveSiteContext enforces asymmetric access policy (open on Store host, server-gated on Manifestudio)', () => {
   const storeCtx = resolveSiteContext({ hostname: 'manifestore.my.id', pathname: '/' });
   assert.equal(storeCtx.mode, 'store');
   assert.equal(storeCtx.isSplitDomain, true);
@@ -77,7 +73,9 @@ test('resolveSiteContext enforces asymmetric access policy (open on Manifestore,
   assert.equal(utilCtx.requiresStoreGate, true);
   assert.equal(utilCtx.brandName, 'Manifestudio');
   assert.equal(utilCtx.manifestHref, './manifest-utilities.webmanifest');
-  assert.equal(buildStoreUrl(utilCtx), 'https://manifestore.my.id/');
+  // Never leaks storeOrigin on Manifestudio — always routes via server-verified /api/store-access/go
+  assert.equal(utilCtx.storeOrigin, '');
+  assert.equal(buildStoreUrl(utilCtx), '/api/store-access/go');
 
   // Preview query overrides on localhost
   const localStore = resolveSiteContext({ hostname: 'localhost', search: '?site=store' });
@@ -91,7 +89,7 @@ test('resolveSiteContext enforces asymmetric access policy (open on Manifestore,
   assert.equal(localUtil.mode, 'utilities');
   assert.equal(localUtil.isSplitDomain, true);
   assert.equal(localUtil.requiresStoreGate, true);
-  assert.equal(buildStoreUrl(localUtil), './index.html?site=store');
+  assert.equal(buildStoreUrl(localUtil), '/api/store-access/go');
 });
 
 test('Upgraded Manifestore banners (Option 3A) replace 15 utility banners with Store features + 1 Manifestudio slide', () => {
@@ -126,7 +124,6 @@ test('Upgraded Manifestore banners (Option 3A) replace 15 utility banners with S
     brand: { discountThreshold: 50000, discountAmount: 2000, payLaterSurchargeRate: 0.1 },
   });
 
-  // 1 store main banner + 3 Manifestore feature slides + 1 Manifestudio cross-promo slide = 5 slides
   assert.equal(upgraded.length, 5);
   assert.ok(upgraded[0].kicker.includes('Manifestore'));
   assert.ok(upgraded.some((b) => b.id === 'banner-manifestore-promo-voucher'));
@@ -178,8 +175,13 @@ test('Dual branding (Option 2A) updates brand display, WhatsApp caption, and ord
   assert.ok(snap.caption.includes('MANIFESTORE'));
 });
 
-test('Edge routing & Cloudflare Pages _middleware.js parity', async () => {
-  // Pure planner checks
+test('Edge routing & Cloudflare Pages _middleware.js parity including /api/* pass-through', async () => {
+  assert.deepEqual(resolveEdgeRoute('https://manifestudio.my.id/api/store-access/status'), {
+    action: 'next',
+  });
+  assert.deepEqual(resolveEdgeRoute('https://manifestudio.my.id/api/store-access/go'), {
+    action: 'next',
+  });
   assert.deepEqual(resolveEdgeRoute('https://manifestudio.my.id/'), {
     action: 'rewrite',
     target: '/tools.html',
@@ -192,7 +194,6 @@ test('Edge routing & Cloudflare Pages _middleware.js parity', async () => {
     action: 'rewrite',
     target: '/manifest-utilities.webmanifest',
   });
-  // Must NOT leak manifestore.my.id when someone hits /order.html on manifestudio.my.id
   const studioOrder = resolveEdgeRoute('https://manifestudio.my.id/order.html');
   assert.equal(studioOrder.action, 'redirect');
   assert.equal(studioOrder.target, 'https://manifestudio.my.id/');
@@ -207,10 +208,6 @@ test('Edge routing & Cloudflare Pages _middleware.js parity', async () => {
     status: 302,
     target: 'https://manifestudio.my.id/?tab=prayer',
   });
-
-  // Static assets and admin pass straight through
-  assert.deepEqual(resolveEdgeRoute('https://manifestudio.my.id/admin.html'), { action: 'next' });
-  assert.deepEqual(resolveEdgeRoute('https://manifestudio.my.id/js/app.js'), { action: 'next' });
 
   // Middleware runtime check
   let fetchedUrl = '';
@@ -229,6 +226,14 @@ test('Edge routing & Cloudflare Pages _middleware.js parity', async () => {
   };
 
   await onRequest({
+    request: new Request('https://manifestudio.my.id/api/store-access/go'),
+    env: fakeEnv,
+    next: fakeNext,
+  });
+  assert.equal(nextCalled, true);
+
+  nextCalled = false;
+  await onRequest({
     request: new Request('https://manifestudio.my.id/?tab=music'),
     env: fakeEnv,
     next: fakeNext,
@@ -244,8 +249,10 @@ test('Edge routing & Cloudflare Pages _middleware.js parity', async () => {
   assert.equal(redirectRes.status, 302);
   assert.equal(redirectRes.headers.get('location'), 'https://manifestudio.my.id/?tab=dracin');
 
-  const originNorm = normalizeOriginUrl('manifestore.my.id/', DOMAIN_CONFIG.storeOrigin);
-  assert.equal(originNorm, 'https://manifestore.my.id');
+  assert.equal(
+    normalizeOriginUrl('manifestudio.my.id/', DOMAIN_CONFIG.utilitiesOrigin),
+    'https://manifestudio.my.id'
+  );
   assert.equal(
     resolveBannerHrefForContext('./tools.html?tab=novel', {
       isSplitDomain: true,

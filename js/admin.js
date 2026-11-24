@@ -50,12 +50,11 @@ import {
 } from './vault.js?v=80';
 import {
   DOMAIN_CONFIG,
-  encodeStoreAccessKey,
+  STORE_VAULT_API,
   generateRandomStoreAccessKey,
-  getEditableStoreAccessKey,
   normalizeOriginUrl,
   normalizeStoreAccessConfig,
-} from './domain-router.js?v=80';
+} from './domain-router.js?v=83';
 
 const THEME_STORAGE_KEY = 'manifestudio_theme_v1';
 const ADMIN_VAULT_STORAGE_KEY = 'manifestudio_admin_vault_v1';
@@ -550,6 +549,97 @@ function lockVaultSession() {
   showToast('Brankas Admin dikunci.');
 }
 
+function renderStoreVaultStatusUi(data, errMsg = '') {
+  const badgeEl = document.getElementById('store-vault-status-badge');
+  const metaEl = document.getElementById('store-vault-status-meta');
+  const saveBtn = document.getElementById('store-access-save-vault-btn');
+  const revokeBtn = document.getElementById('store-access-revoke-btn');
+
+  if (errMsg || !data?.ok) {
+    if (badgeEl) {
+      badgeEl.className = 'admin-badge';
+      badgeEl.textContent = 'Server Offline / Lokal';
+    }
+    if (metaEl) {
+      metaEl.textContent =
+        errMsg ||
+        'Endpoint Server Vault (/api/store-access/admin) hanya aktif saat dibuka di domain Cloudflare Pages atau server lokal.';
+    }
+    return;
+  }
+
+  if (!data.kvBound) {
+    if (badgeEl) {
+      badgeEl.className = 'admin-badge is-warn';
+      badgeEl.textContent = 'Perlu Binding KV';
+    }
+    if (metaEl) {
+      metaEl.textContent =
+        'Binding Cloudflare KV "STORE_ACCESS_KV" belum terhubung. Ikuti panduan 3 langkah di bawah agar kunci akses bisa disimpan 100% di server.';
+    }
+    if (saveBtn) saveBtn.disabled = false;
+    if (revokeBtn) revokeBtn.disabled = true;
+    return;
+  }
+
+  if (data.configured && data.hasSavedKey) {
+    if (badgeEl) {
+      badgeEl.className = 'admin-badge is-ok';
+      badgeEl.textContent = data.enabled ? 'Server Vault Aktif (KV)' : 'Gerbang Nonaktif (KV)';
+    }
+    const updatedTxt = data.updatedAt
+      ? new Date(data.updatedAt).toLocaleString('id-ID')
+      : 'Baru dibuat';
+    if (metaEl) {
+      metaEl.textContent = `Tersimpan sebagai hash PBKDF2-SHA256 di Cloudflare KV · Versi Sesi: v${data.keyVersion || 1} · Pembaruan terakhir: ${updatedTxt}`;
+    }
+  } else {
+    if (badgeEl) {
+      badgeEl.className = 'admin-badge is-warn';
+      badgeEl.textContent = 'KV Siap · Belum Ada Kunci';
+    }
+    if (metaEl) {
+      metaEl.textContent =
+        'Cloudflare KV sudah terhubung! Masukkan kunci akses baru (min. 6 karakter) lalu klik "Simpan Kunci ke Server Vault".';
+    }
+  }
+
+  const enabledEl = document.getElementById('store-access-enabled-toggle');
+  if (enabledEl) enabledEl.checked = data.enabled !== false;
+  const originEl = document.getElementById('store-access-store-origin-input');
+  if (originEl && data.storeOrigin) originEl.value = data.storeOrigin;
+  if (revokeBtn) revokeBtn.disabled = !data.hasSavedKey;
+}
+
+async function refreshStoreVaultStatus() {
+  if (!adminState.unlocked || !adminState.gh?.token) return;
+  const msgEl = document.getElementById('store-vault-action-msg');
+  try {
+    const res = await fetch(STORE_VAULT_API.adminUrl, {
+      method: 'GET',
+      credentials: 'same-origin',
+      cache: 'no-store',
+      headers: {
+        Authorization: `Bearer ${adminState.gh.token}`,
+      },
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      renderStoreVaultStatusUi(
+        null,
+        res.status === 403
+          ? 'Token GitHub belum terverifikasi memiliki izin push pada repositori.'
+          : `Gagal membaca status Server Vault (HTTP ${res.status}).`
+      );
+      return;
+    }
+    renderStoreVaultStatusUi(data);
+    if (msgEl) msgEl.textContent = '';
+  } catch {
+    renderStoreVaultStatusUi(null);
+  }
+}
+
 async function openUnlockedDashboard() {
   adminState.unlocked = true;
   renderGateScreen();
@@ -594,6 +684,7 @@ async function openUnlockedDashboard() {
   renderHistoryList();
   syncNewProductLogoUi();
   pullHistoryFromGitHub().catch(() => {});
+  refreshStoreVaultStatus().catch(() => {});
 }
 
 function updateAdminTabCounters() {
@@ -1570,18 +1661,17 @@ function renderBrandSettings() {
   const storeAccess = normalizeStoreAccessConfig(brand.storeAccess || {});
   const enabledEl = document.getElementById('store-access-enabled-toggle');
   if (enabledEl) enabledEl.checked = storeAccess.enabled !== false;
-  setVal('store-access-key-input', getEditableStoreAccessKey(storeAccess));
+  setVal('store-access-key-input', '');
   setVal('store-access-brand-input', storeAccess.storeBrandName || DOMAIN_CONFIG.storeBrandName);
   setVal(
     'store-access-util-brand-input',
     storeAccess.utilitiesBrandName || DOMAIN_CONFIG.utilitiesBrandName
   );
-  setVal('store-access-store-origin-input', storeAccess.storeOrigin || DOMAIN_CONFIG.storeOrigin);
   setVal(
     'store-access-util-origin-input',
     storeAccess.utilitiesOrigin || DOMAIN_CONFIG.utilitiesOrigin
   );
-  setVal('store-access-prompt-title-input', storeAccess.promptTitle || 'Akses Khusus Manifestore');
+  setVal('store-access-prompt-title-input', storeAccess.promptTitle || 'Akses Khusus Store');
   setVal('store-access-prompt-desc-input', storeAccess.promptDescription || '');
 
   syncBrandLogoUi();
@@ -3976,7 +4066,7 @@ function bindEvents() {
     b.discountAmount = Math.max(0, Math.round(Number(val) || 0));
   });
 
-  // Dual-Domain & Editable Store Access Key controls
+  // Server-Side Store Access Vault (Cloudflare KV) & Public UI Label controls
   const updateStoreAccess = (mutateFn) => {
     if (!adminState.unlocked) return;
     adminState.catalog.brand = normalizeBrandConfig(adminState.catalog.brand || {});
@@ -3992,15 +4082,6 @@ function bindEvents() {
     });
   });
 
-  document.getElementById('store-access-key-input')?.addEventListener('input', (e) => {
-    const clean = String(e.target.value || '').trim();
-    if (!clean) return;
-    updateStoreAccess((cfg) => {
-      cfg.accessKeyEncoded = encodeStoreAccessKey(clean);
-      cfg.accessKeyPreviewLength = clean.length;
-    });
-  });
-
   document.getElementById('store-access-generate-btn')?.addEventListener('click', () => {
     if (!adminState.unlocked) return;
     const generated = generateRandomStoreAccessKey();
@@ -4011,11 +4092,115 @@ function bindEvents() {
       const toggleBtn = document.querySelector('[data-toggle-secret="store-access-key-input"]');
       if (toggleBtn) toggleBtn.textContent = 'Tutup';
     }
-    updateStoreAccess((cfg) => {
-      cfg.accessKeyEncoded = encodeStoreAccessKey(generated);
-      cfg.accessKeyPreviewLength = generated.length;
-    });
-    showToast(`Kunci akses baru dibuat: ${generated} (klik Simpan & Publikasikan ke GitHub)`);
+    showToast(`Kunci kuat dibuat: ${generated} — klik "Simpan Kunci ke Server Vault" untuk mengaktifkan.`);
+  });
+
+  document.getElementById('store-access-save-vault-btn')?.addEventListener('click', async () => {
+    if (!adminState.unlocked || !adminState.gh?.token) {
+      showToast('Buka Brankas Admin dengan token GitHub terlebih dahulu.');
+      return;
+    }
+    const saveBtn = document.getElementById('store-access-save-vault-btn');
+    const msgEl = document.getElementById('store-vault-action-msg');
+    const keyInput = document.getElementById('store-access-key-input');
+    const enabledEl = document.getElementById('store-access-enabled-toggle');
+    const originEl = document.getElementById('store-access-store-origin-input');
+    const titleEl = document.getElementById('store-access-prompt-title-input');
+    const descEl = document.getElementById('store-access-prompt-desc-input');
+
+    const newKey = String(keyInput?.value || '').trim();
+    const enabled = enabledEl ? Boolean(enabledEl.checked) : true;
+    const storeOrigin = String(originEl?.value || '').trim();
+
+    if (saveBtn) {
+      saveBtn.disabled = true;
+      saveBtn.textContent = 'Menyimpan ke Server Vault...';
+    }
+    if (msgEl) msgEl.textContent = 'Memverifikasi token GitHub & melakukan hashing PBKDF2-SHA256 di server...';
+
+    try {
+      const res = await fetch(STORE_VAULT_API.adminUrl, {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${adminState.gh.token}`,
+          [STORE_VAULT_API.csrfHeaderName]: STORE_VAULT_API.csrfHeaderValue,
+        },
+        body: JSON.stringify({
+          action: 'update',
+          enabled,
+          newKey,
+          storeOrigin,
+          promptTitle: String(titleEl?.value || '').trim(),
+          promptDescription: String(descEl?.value || '').trim(),
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data?.ok) {
+        const errTxt = data?.message || `Gagal menyimpan ke Server Vault (${data?.reason || res.status}).`;
+        if (msgEl) msgEl.textContent = errTxt;
+        showToast(errTxt);
+        return;
+      }
+
+      if (keyInput) {
+        keyInput.value = '';
+        keyInput.type = 'password';
+        const toggleBtn = document.querySelector('[data-toggle-secret="store-access-key-input"]');
+        if (toggleBtn) toggleBtn.textContent = 'Lihat';
+      }
+      renderStoreVaultStatusUi(data);
+      const okTxt = newKey
+        ? `Kunci akses baru tersimpan sebagai hash PBKDF2-SHA256 di Server Vault (v${data.keyVersion}) — langsung aktif tanpa push GitHub!`
+        : `Pengaturan Server Vault diperbarui (v${data.keyVersion}).`;
+      if (msgEl) msgEl.textContent = okTxt;
+      showToast(okTxt);
+    } catch {
+      if (msgEl) msgEl.textContent = 'Tidak dapat menghubungi server Cloudflare.';
+      showToast('Gagal menghubungi server Vault.');
+    } finally {
+      if (saveBtn) {
+        saveBtn.disabled = false;
+        saveBtn.textContent = 'Simpan Kunci ke Server Vault';
+      }
+    }
+  });
+
+  document.getElementById('store-access-revoke-btn')?.addEventListener('click', async () => {
+    if (!adminState.unlocked || !adminState.gh?.token) return;
+    const revokeBtn = document.getElementById('store-access-revoke-btn');
+    const msgEl = document.getElementById('store-vault-action-msg');
+    if (revokeBtn) revokeBtn.disabled = true;
+    try {
+      const res = await fetch(STORE_VAULT_API.adminUrl, {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${adminState.gh.token}`,
+          [STORE_VAULT_API.csrfHeaderName]: STORE_VAULT_API.csrfHeaderValue,
+        },
+        body: JSON.stringify({ action: 'revoke_sessions' }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data?.ok) {
+        showToast(data?.message || 'Gagal mencabut sesi aktif.');
+        return;
+      }
+      const txt = `Semua sesi akses Store lama langsung dicabut (sekarang Versi Sesi v${data.keyVersion}).`;
+      if (msgEl) msgEl.textContent = txt;
+      showToast(txt);
+      await refreshStoreVaultStatus();
+    } catch {
+      showToast('Gagal menghubungi server Vault.');
+    } finally {
+      if (revokeBtn) revokeBtn.disabled = false;
+    }
+  });
+
+  document.getElementById('store-access-refresh-vault-btn')?.addEventListener('click', () => {
+    refreshStoreVaultStatus();
   });
 
   document.getElementById('store-access-brand-input')?.addEventListener('input', (e) => {
@@ -4031,14 +4216,6 @@ function bindEvents() {
     });
   });
 
-  document.getElementById('store-access-store-origin-input')?.addEventListener('change', (e) => {
-    const normalized = normalizeOriginUrl(e.target.value, DOMAIN_CONFIG.storeOrigin);
-    e.target.value = normalized;
-    updateStoreAccess((cfg) => {
-      cfg.storeOrigin = normalized;
-    });
-  });
-
   document.getElementById('store-access-util-origin-input')?.addEventListener('change', (e) => {
     const normalized = normalizeOriginUrl(e.target.value, DOMAIN_CONFIG.utilitiesOrigin);
     e.target.value = normalized;
@@ -4049,7 +4226,7 @@ function bindEvents() {
 
   document.getElementById('store-access-prompt-title-input')?.addEventListener('input', (e) => {
     updateStoreAccess((cfg) => {
-      cfg.promptTitle = String(e.target.value || '').trim() || 'Akses Khusus Manifestore';
+      cfg.promptTitle = String(e.target.value || '').trim() || 'Akses Khusus Store';
     });
   });
 

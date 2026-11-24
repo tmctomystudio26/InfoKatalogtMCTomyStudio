@@ -15,13 +15,12 @@ import {
 import { initPwaManager } from './pwa.js?v=82';
 import {
   DOMAIN_CONFIG,
+  STORE_VAULT_API,
   applyDomainPwaMeta,
-  buildStoreUrl,
   normalizeStoreAccessConfig,
   resolveDisplayBrand,
   resolveSiteContext,
-  verifyStoreAccessKey,
-} from './domain-router.js?v=82';
+} from './domain-router.js?v=83';
 import {
   STUDIO_CATEGORIES,
   STUDIO_FAQ_ITEMS,
@@ -33,7 +32,7 @@ import {
   filterStudioFeatures,
   groupStudioFeaturesByCategory,
   parseStudioRoute,
-} from './studio-home.js?v=82';
+} from './studio-home.js?v=83';
 
 const THEME_STORAGE_KEY = 'manifestudio_theme_v1';
 const VALID_TABS = new Set([
@@ -83,22 +82,27 @@ function getStoreAccessCfg() {
   return normalizeStoreAccessConfig(activeBrand?.storeAccess || {});
 }
 
-function isStoreGateSessionUnlocked() {
-  const cfg = getStoreAccessCfg();
-  if (!cfg.enabled) return true;
-  try {
-    return sessionStorage.getItem(DOMAIN_CONFIG.storeGateSessionKey) === cfg.accessKeyEncoded;
-  } catch {
-    return false;
-  }
+function formatCooldownText(seconds) {
+  const safe = Math.max(1, Math.ceil(Number(seconds) || 0));
+  const mins = Math.floor(safe / 60);
+  const secs = safe % 60;
+  if (mins <= 0) return `${secs} detik`;
+  return secs > 0 ? `${mins} menit ${secs} detik` : `${mins} menit`;
 }
 
-function saveStoreGateSessionUnlocked() {
-  const cfg = getStoreAccessCfg();
+async function fetchStoreVaultStatus() {
   try {
-    sessionStorage.setItem(DOMAIN_CONFIG.storeGateSessionKey, cfg.accessKeyEncoded);
+    const res = await fetch(STORE_VAULT_API.statusUrl, {
+      method: 'GET',
+      credentials: 'same-origin',
+      cache: 'no-store',
+    });
+    if (!res.ok) {
+      return { ok: false, unreachable: true };
+    }
+    return await res.json();
   } catch {
-    // Ignore storage error
+    return { ok: false, unreachable: true };
   }
 }
 
@@ -862,7 +866,7 @@ function renderStudioFaq() {
 }
 
 /* ============================================================================
- * 3. Store Access Key Gate Modal (Protected Switch Studio -> Store)
+ * 3. Server-Verified Store Access Vault Gate Modal (Zero Client Secrets)
  * ============================================================================ */
 function closeStoreAccessModal() {
   const root = document.getElementById('store-access-modal-root');
@@ -871,12 +875,31 @@ function closeStoreAccessModal() {
   root.innerHTML = '';
 }
 
-function openStoreAccessModal() {
+function openStoreAccessModal(serverStatus = null, initialAlert = '') {
   const root = document.getElementById('store-access-modal-root');
   if (!root) return;
-  const ctx = getSiteContext();
   const cfg = getStoreAccessCfg();
-  const storeName = cfg.storeBrandName || DOMAIN_CONFIG.storeBrandName;
+  const promptTitle = serverStatus?.promptTitle || cfg.promptTitle || 'Akses Khusus Store';
+  const promptDesc =
+    serverStatus?.promptDescription ||
+    cfg.promptDescription ||
+    'Masukkan kunci akses khusus dari Admin untuk berpindah dari Manifestudio ke halaman Store.';
+
+  const isVaultUnconfigured = serverStatus && serverStatus.ok && serverStatus.configured === false;
+  const isLockedOut = Boolean(serverStatus?.lockedOut);
+  const isUnreachable = Boolean(serverStatus?.unreachable);
+
+  let initialErrorText = initialAlert || '';
+  if (isUnreachable) {
+    initialErrorText = 'Server keamanan tidak dapat dihubungi saat ini. Periksa koneksi Anda lalu coba lagi.';
+  } else if (isVaultUnconfigured) {
+    initialErrorText =
+      'Server Vault belum diaktifkan oleh Admin di Cloudflare KV. Akses ditutup demi keamanan.';
+  } else if (isLockedOut) {
+    initialErrorText = `Terlalu banyak percobaan salah. Coba lagi dalam ${formatCooldownText(serverStatus.retryAfterSec)}.`;
+  }
+
+  const inputDisabled = isVaultUnconfigured || isLockedOut;
 
   root.hidden = false;
   root.innerHTML = `
@@ -897,8 +920,8 @@ function openStoreAccessModal() {
             </svg>
           </div>
           <div>
-            <h2 id="store-gate-title">${escapeHtml(cfg.promptTitle || `Akses Khusus ${storeName}`)}</h2>
-            <p class="modal-subtitle">Area terproteksi dari ${escapeHtml(cfg.utilitiesBrandName || 'Manifestudio')}</p>
+            <h2 id="store-gate-title">${escapeHtml(promptTitle)}</h2>
+            <p class="modal-subtitle">Verifikasi server terenkripsi · ${escapeHtml(cfg.utilitiesBrandName || 'Manifestudio')}</p>
           </div>
         </div>
         <button type="button" class="icon-close-btn" id="close-store-gate-btn" aria-label="Tutup dialog kunci akses">
@@ -907,12 +930,7 @@ function openStoreAccessModal() {
       </div>
 
       <form id="store-access-form" class="store-gate-form" novalidate>
-        <p class="store-gate-desc">
-          ${escapeHtml(
-            cfg.promptDescription ||
-              `Masukkan kunci akses khusus dari Admin untuk berpindah ke halaman ${storeName}.`
-          )}
-        </p>
+        <p class="store-gate-desc">${escapeHtml(promptDesc)}</p>
 
         <div class="form-field">
           <label for="store-access-key-field">Kunci Akses Store <span class="req">*</span></label>
@@ -921,23 +939,25 @@ function openStoreAccessModal() {
               type="password"
               id="store-access-key-field"
               name="storeAccessKey"
-              placeholder="Masukkan kunci akses"
+              placeholder="Masukkan kunci akses dari Admin"
               autocomplete="off"
               spellcheck="false"
+              maxlength="64"
+              ${inputDisabled ? 'disabled' : ''}
               required
             />
-            <button type="button" id="toggle-store-gate-key-btn" class="btn btn-secondary btn-sm">
+            <button type="button" id="toggle-store-gate-key-btn" class="btn btn-secondary btn-sm" ${inputDisabled ? 'disabled' : ''}>
               Lihat
             </button>
           </div>
         </div>
 
-        <div id="store-gate-error" class="form-error" role="alert" hidden></div>
+        <div id="store-gate-error" class="form-error" role="alert" ${initialErrorText ? '' : 'hidden'}>${escapeHtml(initialErrorText)}</div>
 
         <div class="store-gate-actions">
           <button type="button" class="btn btn-ghost btn-sm" id="cancel-store-gate-btn">Batal</button>
-          <button type="submit" class="btn btn-primary btn-sm" id="submit-store-gate-btn">
-            Buka ${escapeHtml(storeName)} →
+          <button type="submit" class="btn btn-primary btn-sm" id="submit-store-gate-btn" ${inputDisabled ? 'disabled' : ''}>
+            Verifikasi &amp; Buka Store →
           </button>
         </div>
       </form>
@@ -947,6 +967,7 @@ function openStoreAccessModal() {
   const keyInput = root.querySelector('#store-access-key-field');
   const errorBox = root.querySelector('#store-gate-error');
   const toggleBtn = root.querySelector('#toggle-store-gate-key-btn');
+  const submitBtn = root.querySelector('#submit-store-gate-btn');
 
   root.querySelector('#store-gate-backdrop')?.addEventListener('click', closeStoreAccessModal);
   root.querySelector('#close-store-gate-btn')?.addEventListener('click', closeStoreAccessModal);
@@ -966,38 +987,113 @@ function openStoreAccessModal() {
     }
   });
 
-  root.querySelector('#store-access-form')?.addEventListener('submit', (e) => {
+  root.querySelector('#store-access-form')?.addEventListener('submit', async (e) => {
     e.preventDefault();
-    const entered = keyInput?.value || '';
-    const check = verifyStoreAccessKey(entered, cfg);
-    if (!check.ok) {
+    if (inputDisabled) return;
+
+    const entered = String(keyInput?.value || '').trim();
+    if (!entered) {
       if (errorBox) {
-        errorBox.textContent =
-          check.reason === 'empty'
-            ? 'Masukkan kunci akses terlebih dahulu.'
-            : 'Kunci akses tidak valid. Hubungi Admin jika Anda memiliki akses.';
+        errorBox.textContent = 'Masukkan kunci akses terlebih dahulu.';
         errorBox.hidden = false;
       }
       keyInput?.focus();
       return;
     }
 
-    saveStoreGateSessionUnlocked();
-    closeStoreAccessModal();
-    showToast(`Akses terverifikasi — membuka ${storeName}...`);
-    window.location.href = buildStoreUrl(ctx);
+    if (submitBtn) {
+      submitBtn.disabled = true;
+      submitBtn.textContent = 'Memverifikasi...';
+    }
+
+    try {
+      const res = await fetch(STORE_VAULT_API.verifyUrl, {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: {
+          'Content-Type': 'application/json',
+          [STORE_VAULT_API.csrfHeaderName]: STORE_VAULT_API.csrfHeaderValue,
+        },
+        body: JSON.stringify({ key: entered }),
+      });
+
+      const data = await res.json().catch(() => ({}));
+
+      if (res.ok && data?.ok) {
+        closeStoreAccessModal();
+        showToast('Kunci terverifikasi di server — mengalihkan ke Store...');
+        const nextGo =
+          typeof data.goUrl === 'string' && data.goUrl.startsWith('/')
+            ? data.goUrl
+            : STORE_VAULT_API.goUrl;
+        window.location.assign(nextGo);
+        return;
+      }
+
+      if (res.status === 429 || data?.reason === 'rate_limited') {
+        if (errorBox) {
+          errorBox.textContent = `Terlalu banyak percobaan salah. Akses dikunci sementara selama ${formatCooldownText(data.retryAfterSec || 900)}.`;
+          errorBox.hidden = false;
+        }
+        if (keyInput) keyInput.disabled = true;
+        if (submitBtn) {
+          submitBtn.disabled = true;
+          submitBtn.textContent = 'Dikunci Sementara';
+        }
+        return;
+      }
+
+      if (res.status === 503 || data?.reason === 'vault_not_configured') {
+        if (errorBox) {
+          errorBox.textContent =
+            data.message || 'Server Vault belum diaktifkan oleh Admin di Cloudflare KV.';
+          errorBox.hidden = false;
+        }
+      } else {
+        const rem =
+          typeof data?.attemptsRemaining === 'number'
+            ? ` Sisa percobaan: ${data.attemptsRemaining} kali.`
+            : '';
+        if (errorBox) {
+          errorBox.textContent = `Kunci akses tidak valid.${rem}`;
+          errorBox.hidden = false;
+        }
+        if (keyInput) {
+          keyInput.select();
+          keyInput.focus();
+        }
+      }
+    } catch {
+      if (errorBox) {
+        errorBox.textContent = 'Gagal menghubungi server verifikasi. Coba lagi beberapa saat.';
+        errorBox.hidden = false;
+      }
+    } finally {
+      if (submitBtn && !keyInput?.disabled) {
+        submitBtn.disabled = false;
+        submitBtn.textContent = 'Verifikasi & Buka Store →';
+      }
+    }
   });
 
-  requestAnimationFrame(() => keyInput?.focus());
+  if (!inputDisabled) {
+    requestAnimationFrame(() => keyInput?.focus());
+  }
 }
 
-function handleStoreNavigationRequest() {
+async function handleStoreNavigationRequest(initialAlert = '') {
   const ctx = getSiteContext();
-  if (!ctx.requiresStoreGate || isStoreGateSessionUnlocked()) {
-    window.location.href = buildStoreUrl(ctx);
+  if (!ctx.requiresStoreGate && !ctx.isProductionDomain && !ctx.isSplitDomain) {
+    window.location.assign('./index.html');
     return;
   }
-  openStoreAccessModal();
+
+  const status = await fetchStoreVaultStatus();
+  if (status?.ok && status.configured && (status.enabled === false || status.hasActivePass)) {
+    window.location.assign(STORE_VAULT_API.goUrl);
+    return;
+  }
+  openStoreAccessModal(status, initialAlert);
 }
 
 function syncStoreTriggerButtons() {
@@ -1224,6 +1320,18 @@ async function bootstrap() {
     enterToolView(initialRoute.tabId, { pushState: false });
   } else {
     enterHomeView({ pushState: false });
+  }
+
+  // If redirected back from /api/store-access/go without a valid HttpOnly pass, show Gate notice
+  try {
+    const curUrl = new URL(window.location.href);
+    if (curUrl.searchParams.get('gate') === 'required') {
+      curUrl.searchParams.delete('gate');
+      window.history.replaceState({}, '', `${curUrl.pathname}${curUrl.search}${curUrl.hash}`);
+      handleStoreNavigationRequest('Sesi tidak valid atau telah berakhir. Masukkan kunci akses Store.');
+    }
+  } catch {
+    // Ignore
   }
 
   document.getElementById('theme-toggle-btn')?.addEventListener('click', () => {

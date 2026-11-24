@@ -1,35 +1,35 @@
 /**
- * Dual-Domain Router, Branding & Store Access Gate Module (v80)
+ * Dual-Domain Router, Branding & Server-Vault Gate Config Module (v83)
  *
  * Powers 1 GitHub Repository + Cloudflare Pages across two distinct domains:
- *  - https://manifestudio.my.id  -> Hub Utilitas (15 Fitur Gratis)
- *  - https://manifestore.my.id   -> Manifestore (Katalog Akun Premium & Layanan Digital)
+ *  - https://manifestudio.my.id -> Hub Utilitas (15 Fitur Gratis)
+ *  - Storefront Domain          -> Manifestore (Katalog Akun Premium & Layanan Digital)
  *
- * Access Policy:
- *  - Direct visits to manifestore.my.id -> Full open Store access (no key required) + free jump to Manifestudio.
- *  - Visits on manifestudio.my.id       -> Hub Utilitas only; clicking Store triggers the customizable Access Key Gate.
- *  - Localhost / *.pages.dev preview    -> Supports ?site=store and ?site=utilities for instant testing.
+ * Zero-Secret Policy (v83):
+ *  - ZERO access keys, hashes, salts, or Store destination URLs exist in client-side code
+ *    or `data/catalog.json`.
+ *  - All Store Access verification, PBKDF2-SHA256 hashing, rate limiting, HttpOnly HMAC
+ *    pass cookies, and protected 302 redirects run exclusively on Cloudflare Pages Edge
+ *    Functions (`/api/store-access/*`) backed by Cloudflare KV (`STORE_ACCESS_KV`).
  */
 
 export const DOMAIN_CONFIG = Object.freeze({
   utilitiesDomain: 'manifestudio.my.id',
   utilitiesOrigin: 'https://manifestudio.my.id',
-  storeDomain: 'manifestore.my.id',
-  storeOrigin: 'https://manifestore.my.id',
   storeBrandName: 'Manifestore',
   utilitiesBrandName: 'Manifestudio',
   storeManifestPath: './manifest-store.webmanifest',
   utilitiesManifestPath: './manifest-utilities.webmanifest',
-  defaultStoreAccessKey: 'MFSTORE26',
-  storeGateSessionKey: 'manifestudio_store_gate_unlocked_v1',
 });
 
-const STORE_HOSTS = new Set([
-  'manifestore.my.id',
-  'www.manifestore.my.id',
-  'store.manifestudio.my.id',
-  'toko.manifestudio.my.id',
-]);
+export const STORE_VAULT_API = Object.freeze({
+  statusUrl: '/api/store-access/status',
+  verifyUrl: '/api/store-access/verify',
+  goUrl: '/api/store-access/go',
+  adminUrl: '/api/store-access/admin',
+  csrfHeaderName: 'X-Requested-With',
+  csrfHeaderValue: 'Manifestudio-Vault',
+});
 
 const UTILITIES_HOSTS = new Set([
   'manifestudio.my.id',
@@ -38,48 +38,20 @@ const UTILITIES_HOSTS = new Set([
   'utilitas.manifestudio.my.id',
 ]);
 
-const KEY_MASK_PREFIX = 'mskey:v1:';
-const KEY_MASK_SALT = 'MF_T0MY_2026_GATE';
-
-/**
- * Lightweight reversible obfuscation so the access key is not casually readable
- * as plaintext in JSON while remaining freely editable in the Admin Panel.
- * @param {string} plainKey
- * @returns {string}
- */
-export function encodeStoreAccessKey(plainKey = '') {
-  const clean = String(plainKey || '').trim();
-  if (!clean) return '';
-  let hex = '';
-  for (let i = 0; i < clean.length; i += 1) {
-    const xored = clean.charCodeAt(i) ^ KEY_MASK_SALT.charCodeAt(i % KEY_MASK_SALT.length);
-    hex += xored.toString(16).padStart(2, '0');
+function isLocalOrPreviewHost(host) {
+  if (!host) return true;
+  if (
+    host === 'localhost' ||
+    host === '127.0.0.1' ||
+    host === '0.0.0.0' ||
+    host === '[::1]' ||
+    host.endsWith('.local') ||
+    host.endsWith('.pages.dev') ||
+    host.endsWith('.run.app')
+  ) {
+    return true;
   }
-  return `${KEY_MASK_PREFIX}${hex}`;
-}
-
-/**
- * Decode an obfuscated access key back to plain text (also accepts plain text transparently).
- * @param {string} raw
- * @returns {string}
- */
-export function decodeStoreAccessKey(raw = '') {
-  const str = String(raw || '').trim();
-  if (!str) return '';
-  if (!str.startsWith(KEY_MASK_PREFIX)) {
-    return str;
-  }
-  const hex = str.slice(KEY_MASK_PREFIX.length);
-  if (!hex || hex.length % 2 !== 0 || !/^[0-9a-f]+$/i.test(hex)) {
-    return '';
-  }
-  let out = '';
-  for (let i = 0; i < hex.length; i += 2) {
-    const byte = parseInt(hex.slice(i, i + 2), 16);
-    const saltCode = KEY_MASK_SALT.charCodeAt((i / 2) % KEY_MASK_SALT.length);
-    out += String.fromCharCode(byte ^ saltCode);
-  }
-  return out.trim();
+  return /^\d{1,3}(\.\d{1,3}){3}$/.test(host);
 }
 
 /**
@@ -92,6 +64,9 @@ export function normalizeOriginUrl(rawUrl, fallbackOrigin) {
   if (!clean) return fallbackOrigin;
   try {
     const parsed = new URL(/^https?:\/\//i.test(clean) ? clean : `https://${clean}`);
+    if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') {
+      return fallbackOrigin;
+    }
     return parsed.origin;
   } catch {
     return fallbackOrigin;
@@ -99,31 +74,23 @@ export function normalizeOriginUrl(rawUrl, fallbackOrigin) {
 }
 
 /**
- * Normalize Store Access Gate & Dual-Domain config from catalog.brand.storeAccess.
+ * Normalize public non-sensitive Store Access UI config from catalog.brand.storeAccess.
+ * Intentionally strips any legacy secret/key fields so they can never leak into catalog.json.
  * @param {object} raw
  */
 export function normalizeStoreAccessConfig(raw = {}) {
   const safe = raw && typeof raw === 'object' ? raw : {};
-  const decodedFromEncoded = decodeStoreAccessKey(safe.accessKeyEncoded || '');
-  const plainCandidate = String(safe.accessKey || '').trim();
-  const effectiveKey =
-    plainCandidate || decodedFromEncoded || DOMAIN_CONFIG.defaultStoreAccessKey;
-
-  const storeOrigin = normalizeOriginUrl(safe.storeOrigin, DOMAIN_CONFIG.storeOrigin);
   const utilitiesOrigin = normalizeOriginUrl(safe.utilitiesOrigin, DOMAIN_CONFIG.utilitiesOrigin);
 
   return {
     enabled: safe.enabled !== false,
-    accessKeyEncoded: encodeStoreAccessKey(effectiveKey),
-    accessKeyPreviewLength: effectiveKey.length,
     promptTitle:
-      String(safe.promptTitle || 'Akses Khusus Manifestore').trim() || 'Akses Khusus Manifestore',
+      String(safe.promptTitle || 'Akses Khusus Store').trim() || 'Akses Khusus Store',
     promptDescription:
       String(
         safe.promptDescription ||
           'Masukkan kunci akses khusus dari Admin untuk berpindah dari Manifestudio ke halaman Store.'
       ).trim(),
-    storeOrigin,
     utilitiesOrigin,
     storeBrandName:
       String(safe.storeBrandName || DOMAIN_CONFIG.storeBrandName).trim() ||
@@ -135,60 +102,25 @@ export function normalizeStoreAccessConfig(raw = {}) {
 }
 
 /**
- * Extract plain editable access key for the authenticated Admin Panel.
- * @param {object} raw
- * @returns {string}
- */
-export function getEditableStoreAccessKey(raw = {}) {
-  const safe = raw && typeof raw === 'object' ? raw : {};
-  const plain = String(safe.accessKey || '').trim();
-  if (plain) return plain;
-  const decoded = decodeStoreAccessKey(safe.accessKeyEncoded || '');
-  return decoded || DOMAIN_CONFIG.defaultStoreAccessKey;
-}
-
-/**
- * Verify a user-entered store access key against the configured storeAccess object.
- * Case-insensitive & whitespace-trimmed comparison for smooth mobile typing.
- * @param {string} enteredKey
- * @param {object} storeAccessRaw
- * @returns {{ ok: boolean, reason: string }}
- */
-export function verifyStoreAccessKey(enteredKey, storeAccessRaw = {}) {
-  const cfg = normalizeStoreAccessConfig(storeAccessRaw);
-  if (!cfg.enabled) {
-    return { ok: true, reason: 'gate_disabled' };
-  }
-  const expected = decodeStoreAccessKey(cfg.accessKeyEncoded).trim().toLowerCase();
-  const actual = String(enteredKey || '').trim().toLowerCase();
-  if (!actual) {
-    return { ok: false, reason: 'empty' };
-  }
-  if (!expected) {
-    return { ok: false, reason: 'unconfigured' };
-  }
-  // Constant-length XOR check
-  if (actual.length !== expected.length) {
-    return { ok: false, reason: 'mismatch' };
-  }
-  let diff = 0;
-  for (let i = 0; i < actual.length; i += 1) {
-    diff |= actual.charCodeAt(i) ^ expected.charCodeAt(i);
-  }
-  return diff === 0 ? { ok: true, reason: 'matched' } : { ok: false, reason: 'mismatch' };
-}
-
-/**
- * Generate a clean, human-readable random access key for Admin Panel "Acak Kunci" button.
+ * Generate a cryptographically strong, human-readable random access key for Admin Panel "Acak Kunci".
+ * Uses Web Crypto `crypto.getRandomValues` (no Math.random bias).
  * @returns {string}
  */
 export function generateRandomStoreAccessKey() {
   const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-  let suffix = '';
-  for (let i = 0; i < 6; i += 1) {
-    suffix += alphabet[Math.floor(Math.random() * alphabet.length)];
+  const bytes = new Uint8Array(8);
+  if (typeof crypto !== 'undefined' && typeof crypto.getRandomValues === 'function') {
+    crypto.getRandomValues(bytes);
+  } else {
+    for (let i = 0; i < bytes.length; i += 1) {
+      bytes[i] = Math.floor(Math.random() * 256);
+    }
   }
-  return `MF-${suffix}`;
+  let raw = '';
+  for (let i = 0; i < bytes.length; i += 1) {
+    raw += alphabet[bytes[i] % alphabet.length];
+  }
+  return `MF-${raw.slice(0, 4)}-${raw.slice(4, 8)}`;
 }
 
 /**
@@ -205,6 +137,7 @@ export function normalizeHostname(hostname = '') {
 
 /**
  * Resolve current site mode ('store' | 'utilities') and whether dual-domain split is active.
+ * Never embeds or exposes the Store domain URL on Manifestudio clients.
  * @param {{ hostname?: string, pathname?: string, search?: string, isToolsPage?: boolean, storeAccess?: object }} input
  */
 export function resolveSiteContext(input = {}) {
@@ -216,6 +149,12 @@ export function resolveSiteContext(input = {}) {
         ? window.location.hostname
         : ''
   );
+  const currentOrigin =
+    typeof window !== 'undefined' && window.location?.origin
+      ? window.location.origin
+      : host
+        ? `https://${host}`
+        : '';
   const pathname = String(
     input.pathname !== undefined
       ? input.pathname
@@ -238,19 +177,16 @@ export function resolveSiteContext(input = {}) {
   const params = new URLSearchParams(search);
   const siteOverride = (params.get('site') || params.get('mode') || '').trim().toLowerCase();
 
-  let storeHostFromCfg = '';
   let utilHostFromCfg = '';
   try {
-    storeHostFromCfg = normalizeHostname(new URL(accessCfg.storeOrigin).hostname);
     utilHostFromCfg = normalizeHostname(new URL(accessCfg.utilitiesOrigin).hostname);
   } catch {
     // Ignore
   }
 
-  const isStoreProdHost =
-    STORE_HOSTS.has(host) || (Boolean(storeHostFromCfg) && host === storeHostFromCfg);
   const isUtilProdHost =
     UTILITIES_HOSTS.has(host) || (Boolean(utilHostFromCfg) && host === utilHostFromCfg);
+  const isStoreProdHost = !isUtilProdHost && !isLocalOrPreviewHost(host) && !isToolsPage;
   const isProductionDomain = isStoreProdHost || isUtilProdHost;
 
   if (siteOverride === 'store' || siteOverride === 'toko' || siteOverride === 'katalog') {
@@ -263,7 +199,7 @@ export function resolveSiteContext(input = {}) {
       siteQueryParam: 'store',
       brandName: accessCfg.storeBrandName,
       manifestHref: DOMAIN_CONFIG.storeManifestPath,
-      storeOrigin: accessCfg.storeOrigin,
+      storeOrigin: isStoreProdHost ? currentOrigin : '',
       utilitiesOrigin: accessCfg.utilitiesOrigin,
       requiresStoreGate: false,
     };
@@ -279,7 +215,7 @@ export function resolveSiteContext(input = {}) {
       siteQueryParam: 'utilities',
       brandName: accessCfg.utilitiesBrandName,
       manifestHref: DOMAIN_CONFIG.utilitiesManifestPath,
-      storeOrigin: accessCfg.storeOrigin,
+      storeOrigin: '',
       utilitiesOrigin: accessCfg.utilitiesOrigin,
       requiresStoreGate: accessCfg.enabled !== false,
     };
@@ -295,7 +231,7 @@ export function resolveSiteContext(input = {}) {
       siteQueryParam: '',
       brandName: accessCfg.storeBrandName,
       manifestHref: DOMAIN_CONFIG.storeManifestPath,
-      storeOrigin: accessCfg.storeOrigin,
+      storeOrigin: currentOrigin || `https://${host}`,
       utilitiesOrigin: accessCfg.utilitiesOrigin,
       requiresStoreGate: false,
     };
@@ -311,7 +247,7 @@ export function resolveSiteContext(input = {}) {
       siteQueryParam: '',
       brandName: accessCfg.utilitiesBrandName,
       manifestHref: DOMAIN_CONFIG.utilitiesManifestPath,
-      storeOrigin: accessCfg.storeOrigin,
+      storeOrigin: '',
       utilitiesOrigin: accessCfg.utilitiesOrigin,
       requiresStoreGate: accessCfg.enabled !== false,
     };
@@ -329,25 +265,28 @@ export function resolveSiteContext(input = {}) {
     manifestHref: isToolsPage
       ? DOMAIN_CONFIG.utilitiesManifestPath
       : DOMAIN_CONFIG.storeManifestPath,
-    storeOrigin: accessCfg.storeOrigin,
+    storeOrigin: '',
     utilitiesOrigin: accessCfg.utilitiesOrigin,
     requiresStoreGate: false,
   };
 }
 
 /**
- * Build a URL to the Storefront (manifestore.my.id on production or ?site=store on preview).
+ * Build a URL to the Storefront for Store-context internal links (e.g. order.html -> index.html).
+ * On Manifestudio Utilities mode, always routes through the server-verified gateway `/api/store-access/go`.
  * @param {ReturnType<typeof resolveSiteContext>} ctx
  * @param {{ hash?: string, path?: string }} [opts]
  */
 export function buildStoreUrl(ctx, opts = {}) {
+  if (ctx?.mode === 'utilities' && ctx?.isSplitDomain) {
+    return STORE_VAULT_API.goUrl;
+  }
   const hash = opts.hash ? (opts.hash.startsWith('#') ? opts.hash : `#${opts.hash}`) : '';
   const path = opts.path || '';
   if (ctx?.isSplitDomain) {
-    if (ctx.isProductionDomain) {
-      const origin = ctx.storeOrigin || DOMAIN_CONFIG.storeOrigin;
+    if (ctx.isProductionDomain && ctx.storeOrigin) {
       const cleanPath = path ? `/${path.replace(/^\/+/, '')}` : '/';
-      return `${origin}${cleanPath}${hash}`;
+      return `${ctx.storeOrigin}${cleanPath}${hash}`;
     }
     const targetFile = path ? `./${path.replace(/^\/+/, '')}` : './index.html';
     return `${targetFile}?site=store${hash}`;
@@ -400,10 +339,6 @@ export function resolveBannerHrefForContext(href, ctx) {
 /**
  * Build upgraded Manifestore-specific feature banners + 1 Manifestudio Utilities cross-promo slide (3A).
  * Preserves any custom non-utility store banners created by Admin in catalog.banners.
- * @param {Array<object>} banners
- * @param {ReturnType<typeof resolveSiteContext>} ctx
- * @param {(banner: object) => string | null} inferUtilityIdFn
- * @param {{ enabledUtilityCount?: number, brand?: object, productCount?: number }} [meta]
  */
 export function buildStorefrontBannersForSiteMode(
   banners,
@@ -429,7 +364,6 @@ export function buildStorefrontBannersForSiteMode(
 
   const fmtRp = (n) => `Rp${Math.round(Number(n) || 0).toLocaleString('id-ID')}`;
 
-  // Keep any Store-only banners (non-utility) from Admin catalog
   const storeCustomBanners = list
     .filter((b) => {
       if (b.enabled === false) return false;
@@ -437,7 +371,6 @@ export function buildStorefrontBannersForSiteMode(
       return !uid;
     })
     .map((b, idx) => {
-      // Enhance Slide 1 copy subtly for Manifestore identity while preserving custom Admin edits
       const isDefaultSlide1 = idx === 0 && /Layanan Digital Siap Pakai/i.test(String(b.heading || ''));
       return {
         ...b,
@@ -448,7 +381,6 @@ export function buildStorefrontBannersForSiteMode(
       };
     });
 
-  // Rich Manifestore feature showcase slides (Option 3A)
   const featureSlides = [
     {
       id: 'banner-manifestore-promo-voucher',
@@ -497,20 +429,15 @@ export function buildStorefrontBannersForSiteMode(
     },
   ];
 
-  // If Admin already added multiple custom store banners, put them first and avoid duplicates
   const existingIds = new Set(storeCustomBanners.map((b) => b.id));
-  const merged = [
+  return [
     ...storeCustomBanners,
     ...featureSlides.filter((s) => !existingIds.has(s.id)),
   ];
-
-  return merged;
 }
 
 /**
  * Derive domain-appropriate display brand name, meta tags, and receipt branding (Option 2A).
- * @param {object} brand
- * @param {ReturnType<typeof resolveSiteContext>} ctx
  */
 export function resolveDisplayBrand(brand = {}, ctx = {}) {
   const accessCfg = normalizeStoreAccessConfig(brand?.storeAccess || {});
@@ -548,9 +475,7 @@ export function resolveDisplayBrand(brand = {}, ctx = {}) {
 }
 
 /**
- * Sync <link rel="manifest">, <link rel="canonical">, og:url, and apple-mobile-web-app-title
- * so Manifestore and Manifestudio each install as their own standalone PWA.
- * @param {ReturnType<typeof resolveSiteContext>} ctx
+ * Sync <link rel="manifest">, <link rel="canonical">, og:url, and apple-mobile-web-app-title.
  */
 export function applyDomainPwaMeta(ctx) {
   if (typeof document === 'undefined' || !ctx) return;
@@ -569,13 +494,13 @@ export function applyDomainPwaMeta(ctx) {
     const canonical = document.querySelector('link[rel="canonical"]');
     const targetOrigin =
       ctx.mode === 'store'
-        ? ctx.storeOrigin || DOMAIN_CONFIG.storeOrigin
+        ? ctx.storeOrigin || window.location.origin
         : ctx.utilitiesOrigin || DOMAIN_CONFIG.utilitiesOrigin;
-    if (canonical) {
+    if (canonical && targetOrigin) {
       canonical.setAttribute('href', `${targetOrigin}/`);
     }
     const ogUrl = document.querySelector('meta[property="og:url"]');
-    if (ogUrl) {
+    if (ogUrl && targetOrigin) {
       ogUrl.setAttribute('content', `${targetOrigin}/`);
     }
   }
@@ -583,8 +508,6 @@ export function applyDomainPwaMeta(ctx) {
 
 /**
  * Pure edge-routing planner mirroring functions/_middleware.js for Cloudflare Pages.
- * Note: On manifestudio.my.id, NEVER redirect /order.html to manifestore.my.id so unauthorized
- * Studio visitors cannot discover the Store domain without the Access Key.
  * @param {string} requestUrl
  * @returns {{ action: 'next' | 'rewrite' | 'redirect', target?: string, status?: number }}
  */
@@ -600,6 +523,7 @@ export function resolveEdgeRoute(requestUrl) {
   const lowerPath = url.pathname.toLowerCase();
 
   if (
+    lowerPath.startsWith('/api/') ||
     lowerPath.startsWith('/assets/') ||
     lowerPath.startsWith('/css/') ||
     lowerPath.startsWith('/js/') ||
@@ -612,7 +536,7 @@ export function resolveEdgeRoute(requestUrl) {
   }
 
   const isUtilitiesHost = UTILITIES_HOSTS.has(host);
-  const isStoreHost = STORE_HOSTS.has(host);
+  const isStoreHost = !isUtilitiesHost && !isLocalOrPreviewHost(host);
 
   if (!isUtilitiesHost && !isStoreHost) {
     return { action: 'next' };
@@ -637,7 +561,6 @@ export function resolveEdgeRoute(requestUrl) {
       };
     }
     if (lowerPath === '/order.html' || lowerPath === '/order') {
-      // Keep Store domain private from Studio-only visitors
       return {
         action: 'redirect',
         status: 302,
@@ -647,7 +570,7 @@ export function resolveEdgeRoute(requestUrl) {
     return { action: 'next' };
   }
 
-  // Store host (manifestore.my.id)
+  // Production Store host
   if (lowerPath === '/manifest.webmanifest') {
     return {
       action: 'rewrite',

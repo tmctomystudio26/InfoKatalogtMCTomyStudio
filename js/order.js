@@ -7,7 +7,7 @@ import {
   buildStoreUrl,
   resolveDisplayBrand,
   resolveSiteContext,
-} from './domain-router.js?v=80';
+} from './domain-router.js?v=83';
 
 const THEME_STORAGE_KEY = 'manifestudio_theme_v1';
 

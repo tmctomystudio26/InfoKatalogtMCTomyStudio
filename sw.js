@@ -1,4 +1,4 @@
-const CACHE_NAME = 'manifestudio-cache-v82';
+const CACHE_NAME = 'manifestudio-cache-v83';
 
 // Lean core shell precache (< 270 KB) so first-time visitors on slow mobile connections
 // NEVER get bandwidth-starved downloading 100+ unused files. All other utilities, icons,
@@ -54,6 +54,7 @@ self.addEventListener('fetch', (event) => {
 
   const url = new URL(event.request.url);
   if (url.origin !== self.location.origin) return;
+  if (url.pathname.startsWith('/api/')) return;
 
   const isCodeOrData =
     event.request.mode === 'navigate' ||

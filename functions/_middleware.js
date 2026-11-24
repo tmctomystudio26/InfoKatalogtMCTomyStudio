@@ -39,6 +39,7 @@ export async function onRequest(context) {
   const lowerPath = url.pathname.toLowerCase();
 
   if (
+    lowerPath.startsWith('/api/') ||
     lowerPath.startsWith('/assets/') ||
     lowerPath.startsWith('/css/') ||
     lowerPath.startsWith('/js/') ||

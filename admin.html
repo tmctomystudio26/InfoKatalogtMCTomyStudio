@@ -19,11 +19,11 @@
       rel="stylesheet"
     />
 
-    <link rel="stylesheet" href="./css/tokens.css?v=82" />
-    <link rel="stylesheet" href="./css/styles.css?v=82" />
+    <link rel="stylesheet" href="./css/tokens.css?v=83" />
+    <link rel="stylesheet" href="./css/styles.css?v=83" />
     <script>
       (function () {
-        var CURRENT_CACHE = 'manifestudio-cache-v82';
+        var CURRENT_CACHE = 'manifestudio-cache-v83';
         window.addEventListener('load', function () {
           if ('caches' in window) {
             caches.keys().then(function (keys) {
@@ -33,7 +33,7 @@
             });
           }
           if ('serviceWorker' in navigator) {
-            navigator.serviceWorker.register('./sw.js?v=82').then(function (reg) {
+            navigator.serviceWorker.register('./sw.js?v=83').then(function (reg) {
               reg.update();
             }).catch(function () {});
           }
@@ -833,34 +833,39 @@
             </div>
           </div>
 
-          <!-- Card 1B: Pengaturan Dual-Domain & Kunci Akses Store -->
+          <!-- Card 1B: Pengaturan Keamanan Berlapis Server Vault (Cloudflare KV) -->
           <div class="admin-card" id="admin-store-access-card">
             <div class="admin-card-head">
               <div>
-                <h2 class="admin-section-title">Dual-Domain &amp; Kunci Akses Store (Manifestudio ⇄ Manifestore)</h2>
+                <h2 class="admin-section-title">Keamanan Berlapis Akses Store — Server Vault (Cloudflare KV)</h2>
                 <p class="admin-subtitle">
-                  Pengunjung langsung ke <strong>manifestore.my.id</strong> tetap bebas akses tanpa kode &amp; bebas berpindah ke Utilitas. Pengunjung dari <strong>manifestudio.my.id</strong> wajib memasukkan kunci akses ini jika klik menu beralih ke Store.
+                  Kunci akses dan URL tujuan Store disimpan <strong>100% di Server Cloudflare KV</strong> dalam bentuk hash kriptografi PBKDF2-SHA256 — tidak pernah muncul di Inspect Element, HTML, JS, <code>catalog.json</code>, maupun GitHub.
                 </p>
               </div>
-              <span class="admin-badge is-ok">Dual-Domain</span>
+              <span id="store-vault-status-badge" class="admin-badge">Memeriksa Vault...</span>
+            </div>
+
+            <div id="store-vault-status-meta" class="admin-prod-meta" style="margin-bottom: 0.75rem;">
+              Membaca status Server Vault Cloudflare...
             </div>
 
             <label class="admin-checkbox-row" for="store-access-enabled-toggle">
               <input type="checkbox" id="store-access-enabled-toggle" checked />
-              <span>Aktifkan Kunci Akses Store saat beralih dari Manifestudio ke Manifestore</span>
+              <span>Aktifkan Kunci Akses Store saat pengunjung beralih dari Manifestudio ke Store</span>
             </label>
 
             <div class="admin-form-grid">
               <div class="form-field admin-sum-field">
-                <label for="store-access-key-input">Kunci Akses Store (Bebas Diedit Admin) <span class="req">*</span></label>
+                <label for="store-access-key-input">Kunci Akses Store Baru (Tersimpan sebagai Hash di Server KV)</label>
                 <div class="token-input-row">
                   <input
                     type="password"
                     id="store-access-key-input"
-                    value="MFSTORE26"
-                    placeholder="Contoh: MFSTORE26"
-                    autocomplete="off"
+                    value=""
+                    placeholder="Kosongkan jika tidak mengganti kunci (min. 6 karakter)"
+                    autocomplete="new-password"
                     spellcheck="false"
+                    maxlength="64"
                   />
                   <button type="button" class="btn btn-secondary btn-sm" data-toggle-secret="store-access-key-input">
                     Lihat
@@ -869,7 +874,18 @@
                     Acak Kunci
                   </button>
                 </div>
-                <span class="admin-prod-meta">Tidak peka huruf besar/kecil. Setelah diubah, klik <strong>Simpan &amp; Publikasikan ke GitHub</strong> agar berlaku live.</span>
+                <span class="admin-prod-meta">Kunci lama tidak pernah ditampilkan ulang karena di-hash satu arah di server. Mengganti kunci otomatis mencabut semua sesi lama.</span>
+              </div>
+
+              <div class="form-field admin-sum-field">
+                <label for="store-access-store-origin-input">URL Tujuan Store (Rahasia di Server KV — Tidak Muncul di Frontend)</label>
+                <input
+                  type="url"
+                  id="store-access-store-origin-input"
+                  value=""
+                  placeholder="https://domain-store-anda.my.id"
+                  autocomplete="off"
+                />
               </div>
 
               <div class="form-field">
@@ -891,15 +907,6 @@
                 />
               </div>
               <div class="form-field">
-                <label for="store-access-store-origin-input">Domain Store (URL Origin)</label>
-                <input
-                  type="text"
-                  id="store-access-store-origin-input"
-                  value="https://manifestore.my.id"
-                  placeholder="https://manifestore.my.id"
-                />
-              </div>
-              <div class="form-field">
                 <label for="store-access-util-origin-input">Domain Utilitas (URL Origin)</label>
                 <input
                   type="text"
@@ -913,11 +920,11 @@
                 <input
                   type="text"
                   id="store-access-prompt-title-input"
-                  value="Akses Khusus Manifestore"
-                  placeholder="Akses Khusus Manifestore"
+                  value="Akses Khusus Store"
+                  placeholder="Akses Khusus Store"
                 />
               </div>
-              <div class="form-field">
+              <div class="form-field admin-sum-field">
                 <label for="store-access-prompt-desc-input">Keterangan Modal Kunci Akses</label>
                 <input
                   type="text"
@@ -927,6 +934,28 @@
                 />
               </div>
             </div>
+
+            <div class="admin-vault-actions" style="display:flex;flex-wrap:wrap;gap:0.6rem;margin-top:0.9rem;align-items:center;">
+              <button type="button" id="store-access-save-vault-btn" class="btn btn-primary btn-sm">
+                Simpan Kunci ke Server Vault
+              </button>
+              <button type="button" id="store-access-revoke-btn" class="btn btn-secondary btn-sm">
+                Cabut Semua Sesi Aktif
+              </button>
+              <button type="button" id="store-access-refresh-vault-btn" class="btn btn-ghost btn-sm">
+                Cek Status Server
+              </button>
+            </div>
+            <div id="store-vault-action-msg" class="admin-prod-meta" style="margin-top:0.55rem;" aria-live="polite"></div>
+
+            <details style="margin-top:0.85rem;font-size:0.84rem;color:var(--ink-muted);">
+              <summary style="cursor:pointer;font-weight:600;color:var(--ink);">Panduan Setup 1 Kali di Cloudflare Pages (Binding KV)</summary>
+              <ol style="margin:0.5rem 0 0 1.25rem;display:grid;gap:0.35rem;line-height:1.5;">
+                <li>Buka <strong>Cloudflare Dashboard → Storage &amp; Databases → KV</strong>, klik <strong>Create a namespace</strong>, beri nama <code>manifestudio-store-vault</code>.</li>
+                <li>Buka proyek <strong>Workers &amp; Pages → infokatalogtmctomystudio → Settings → Bindings → Add → KV namespace</strong>.</li>
+                <li>Isi <strong>Variable name</strong> persis: <code>STORE_ACCESS_KV</code>, pilih namespace tadi, lalu klik <strong>Save</strong> (otomatis aktif pada deploy berikutnya atau klik Retry Deployment).</li>
+              </ol>
+            </details>
           </div>
 
           <!-- Card 2: Pengaturan OpenGraph & Social Share Preview -->
@@ -1329,6 +1358,6 @@
 
     <div id="toast-notification" class="toast-notification" role="status" aria-live="polite" hidden></div>
 
-    <script type="module" src="./js/admin.js?v=82"></script>
+    <script type="module" src="./js/admin.js?v=83"></script>
   </body>
 </html>
