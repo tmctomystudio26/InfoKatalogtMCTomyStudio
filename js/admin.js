@@ -2,7 +2,7 @@ import {
   CATALOG_PREVIEW_STORAGE_KEY,
   getDefaultCatalogSnapshot,
   loadCatalogData,
-} from './data.js?v=80';
+} from './data.js?v=85';
 import {
   DEFAULT_UTILITY_CONFIG,
   MAX_HISTORY_LOGS,
@@ -42,19 +42,19 @@ import {
   upsertProductInCatalog,
   upsertSocialInCatalog,
   upsertUtilityItemInCatalog,
-} from './store.js?v=80';
+} from './store.js?v=85';
 import {
   decryptVault,
   encryptVault,
   verifyGitHubTokenAccess,
-} from './vault.js?v=80';
+} from './vault.js?v=85';
 import {
   DOMAIN_CONFIG,
   STORE_VAULT_API,
   generateRandomStoreAccessKey,
   normalizeOriginUrl,
   normalizeStoreAccessConfig,
-} from './domain-router.js?v=83';
+} from './domain-router.js?v=85';
 
 const THEME_STORAGE_KEY = 'manifestudio_theme_v1';
 const ADMIN_VAULT_STORAGE_KEY = 'manifestudio_admin_vault_v1';
@@ -583,15 +583,20 @@ function renderStoreVaultStatusUi(data, errMsg = '') {
   }
 
   if (data.configured && data.hasSavedKey) {
+    const activeContacts = ['whatsapp', 'instagram', 'tiktok'].filter((k) => data.contactsConfigured?.[k]);
     if (badgeEl) {
       badgeEl.className = 'admin-badge is-ok';
-      badgeEl.textContent = data.enabled ? 'Server Vault Aktif (KV)' : 'Gerbang Nonaktif (KV)';
+      badgeEl.textContent = data.enabled ? 'Server Vault Aktif (KV)' : 'Gerbang Store Nonaktif (KV)';
     }
     const updatedTxt = data.updatedAt
       ? new Date(data.updatedAt).toLocaleString('id-ID')
       : 'Baru dibuat';
+    const contactSummary =
+      activeContacts.length > 0
+        ? `Kontak terenkripsi: ${activeContacts.join(', ').toUpperCase()} (${data.contactSameAsStoreKey !== false ? 'kunci sama dengan Store' : data.hasSavedContactKey ? 'kunci terpisah aktif' : 'kunci terpisah belum diisi'})`
+        : 'Kontak terenkripsi belum diisi (WhatsApp/IG/TikTok)';
     if (metaEl) {
-      metaEl.textContent = `Tersimpan sebagai hash PBKDF2-SHA256 di Cloudflare KV · Versi Sesi: v${data.keyVersion || 1} · Pembaruan terakhir: ${updatedTxt}`;
+      metaEl.textContent = `Hash PBKDF2-SHA256 di Cloudflare KV · Sesi Store v${data.keyVersion || 1} · ${contactSummary} · Update: ${updatedTxt}`;
     }
   } else {
     if (badgeEl) {
@@ -600,7 +605,7 @@ function renderStoreVaultStatusUi(data, errMsg = '') {
     }
     if (metaEl) {
       metaEl.textContent =
-        'Cloudflare KV sudah terhubung! Masukkan kunci akses baru (min. 6 karakter) lalu klik "Simpan Kunci ke Server Vault".';
+        'Cloudflare KV sudah terhubung! Masukkan kunci akses baru (min. 6 karakter), isi URL Store & kontak rahasia, lalu klik "Simpan Pengaturan ke Server Vault".';
     }
   }
 
@@ -608,7 +613,27 @@ function renderStoreVaultStatusUi(data, errMsg = '') {
   if (enabledEl) enabledEl.checked = data.enabled !== false;
   const originEl = document.getElementById('store-access-store-origin-input');
   if (originEl && data.storeOrigin) originEl.value = data.storeOrigin;
-  if (revokeBtn) revokeBtn.disabled = !data.hasSavedKey;
+
+  const contactEnabledEl = document.getElementById('contact-access-enabled-toggle');
+  if (contactEnabledEl) contactEnabledEl.checked = data.contactEnabled !== false;
+  const sameKeyEl = document.getElementById('contact-access-same-key-toggle');
+  const contactKeyField = document.getElementById('contact-access-key-field');
+  const useSameKey = data.contactSameAsStoreKey !== false;
+  if (sameKeyEl) sameKeyEl.checked = useSameKey;
+  if (contactKeyField) contactKeyField.hidden = useSameKey;
+
+  const waEl = document.getElementById('contact-whatsapp-input');
+  if (waEl && typeof data.whatsappNumber === 'string' && data.whatsappNumber) waEl.value = data.whatsappNumber;
+  const igEl = document.getElementById('contact-instagram-input');
+  if (igEl && typeof data.instagramUrl === 'string' && data.instagramUrl) igEl.value = data.instagramUrl;
+  const ttEl = document.getElementById('contact-tiktok-input');
+  if (ttEl && typeof data.tiktokUrl === 'string' && data.tiktokUrl) ttEl.value = data.tiktokUrl;
+  const cDescEl = document.getElementById('contact-prompt-desc-input');
+  if (cDescEl && typeof data.contactPromptDescription === 'string' && data.contactPromptDescription) {
+    cDescEl.value = data.contactPromptDescription;
+  }
+
+  if (revokeBtn) revokeBtn.disabled = !data.hasSavedKey && !data.hasSavedContactKey;
 }
 
 async function refreshStoreVaultStatus() {
@@ -4092,7 +4117,25 @@ function bindEvents() {
       const toggleBtn = document.querySelector('[data-toggle-secret="store-access-key-input"]');
       if (toggleBtn) toggleBtn.textContent = 'Tutup';
     }
-    showToast(`Kunci kuat dibuat: ${generated} — klik "Simpan Kunci ke Server Vault" untuk mengaktifkan.`);
+    showToast(`Kunci kuat dibuat: ${generated} — klik "Simpan Pengaturan ke Server Vault" untuk mengaktifkan.`);
+  });
+
+  document.getElementById('contact-access-same-key-toggle')?.addEventListener('change', (e) => {
+    const contactKeyField = document.getElementById('contact-access-key-field');
+    if (contactKeyField) contactKeyField.hidden = Boolean(e.target.checked);
+  });
+
+  document.getElementById('contact-access-generate-btn')?.addEventListener('click', () => {
+    if (!adminState.unlocked) return;
+    const generated = generateRandomStoreAccessKey();
+    const keyInput = document.getElementById('contact-access-key-input');
+    if (keyInput) {
+      keyInput.value = generated;
+      keyInput.type = 'text';
+      const toggleBtn = document.querySelector('[data-toggle-secret="contact-access-key-input"]');
+      if (toggleBtn) toggleBtn.textContent = 'Tutup';
+    }
+    showToast(`Kunci kontak kuat dibuat: ${generated} — klik "Simpan Pengaturan ke Server Vault" untuk menyimpan.`);
   });
 
   document.getElementById('store-access-save-vault-btn')?.addEventListener('click', async () => {
@@ -4108,15 +4151,26 @@ function bindEvents() {
     const titleEl = document.getElementById('store-access-prompt-title-input');
     const descEl = document.getElementById('store-access-prompt-desc-input');
 
+    const contactEnabledEl = document.getElementById('contact-access-enabled-toggle');
+    const contactSameKeyEl = document.getElementById('contact-access-same-key-toggle');
+    const contactKeyInput = document.getElementById('contact-access-key-input');
+    const contactWaEl = document.getElementById('contact-whatsapp-input');
+    const contactIgEl = document.getElementById('contact-instagram-input');
+    const contactTtEl = document.getElementById('contact-tiktok-input');
+    const contactDescEl = document.getElementById('contact-prompt-desc-input');
+
     const newKey = String(keyInput?.value || '').trim();
     const enabled = enabledEl ? Boolean(enabledEl.checked) : true;
     const storeOrigin = String(originEl?.value || '').trim();
+    const contactEnabled = contactEnabledEl ? Boolean(contactEnabledEl.checked) : true;
+    const contactSameAsStoreKey = contactSameKeyEl ? Boolean(contactSameKeyEl.checked) : true;
+    const newContactKey = contactSameAsStoreKey ? '' : String(contactKeyInput?.value || '').trim();
 
     if (saveBtn) {
       saveBtn.disabled = true;
       saveBtn.textContent = 'Menyimpan ke Server Vault...';
     }
-    if (msgEl) msgEl.textContent = 'Memverifikasi token GitHub & melakukan hashing PBKDF2-SHA256 di server...';
+    if (msgEl) msgEl.textContent = 'Memverifikasi token GitHub & mengenkripsi pengaturan Store + Kontak di server...';
 
     try {
       const res = await fetch(STORE_VAULT_API.adminUrl, {
@@ -4134,6 +4188,13 @@ function bindEvents() {
           storeOrigin,
           promptTitle: String(titleEl?.value || '').trim(),
           promptDescription: String(descEl?.value || '').trim(),
+          contactEnabled,
+          contactSameAsStoreKey,
+          newContactKey,
+          whatsappNumber: String(contactWaEl?.value || '').trim(),
+          instagramUrl: String(contactIgEl?.value || '').trim(),
+          tiktokUrl: String(contactTtEl?.value || '').trim(),
+          contactPromptDescription: String(contactDescEl?.value || '').trim(),
         }),
       });
       const data = await res.json().catch(() => ({}));
@@ -4150,10 +4211,16 @@ function bindEvents() {
         const toggleBtn = document.querySelector('[data-toggle-secret="store-access-key-input"]');
         if (toggleBtn) toggleBtn.textContent = 'Lihat';
       }
+      if (contactKeyInput) {
+        contactKeyInput.value = '';
+        contactKeyInput.type = 'password';
+        const cToggleBtn = document.querySelector('[data-toggle-secret="contact-access-key-input"]');
+        if (cToggleBtn) cToggleBtn.textContent = 'Lihat';
+      }
       renderStoreVaultStatusUi(data);
-      const okTxt = newKey
-        ? `Kunci akses baru tersimpan sebagai hash PBKDF2-SHA256 di Server Vault (v${data.keyVersion}) — langsung aktif tanpa push GitHub!`
-        : `Pengaturan Server Vault diperbarui (v${data.keyVersion}).`;
+      const okTxt = newKey || newContactKey
+        ? `Kunci & pengaturan Store + Kontak tersimpan aman di Server Vault (v${data.keyVersion}) — langsung aktif!`
+        : `Pengaturan Store & Kontak di Server Vault diperbarui (v${data.keyVersion}).`;
       if (msgEl) msgEl.textContent = okTxt;
       showToast(okTxt);
     } catch {
@@ -4162,7 +4229,7 @@ function bindEvents() {
     } finally {
       if (saveBtn) {
         saveBtn.disabled = false;
-        saveBtn.textContent = 'Simpan Kunci ke Server Vault';
+        saveBtn.textContent = 'Simpan Pengaturan ke Server Vault';
       }
     }
   });
@@ -4188,7 +4255,7 @@ function bindEvents() {
         showToast(data?.message || 'Gagal mencabut sesi aktif.');
         return;
       }
-      const txt = `Semua sesi akses Store lama langsung dicabut (sekarang Versi Sesi v${data.keyVersion}).`;
+      const txt = `Semua sesi Store & Kontak lama langsung dicabut (sekarang Versi Sesi v${data.keyVersion}).`;
       if (msgEl) msgEl.textContent = txt;
       showToast(txt);
       await refreshStoreVaultStatus();
@@ -4201,6 +4268,12 @@ function bindEvents() {
 
   document.getElementById('store-access-refresh-vault-btn')?.addEventListener('click', () => {
     refreshStoreVaultStatus();
+  });
+
+  document.getElementById('contact-prompt-desc-input')?.addEventListener('input', (e) => {
+    updateStoreAccess((cfg) => {
+      cfg.contactPromptDescription = String(e.target.value || '').trim();
+    });
   });
 
   document.getElementById('store-access-brand-input')?.addEventListener('input', (e) => {
@@ -4435,8 +4508,47 @@ function renderUtilitiesSettings() {
   const musicHeroPending = adminState.pendingUploads['__util_music_hero__'];
   const calloutDesc = String(util.callout.description || '').trim();
 
+  const faCfg = util.featureAssistant || { enabled: true, welcomeMessage: '' };
+
   container.innerHTML = `
     <div class="admin-utilities-sections">
+      <!-- 0. Asisten Customer Service "Tanya Fitur" (Manifestudio) -->
+      <article class="admin-banner-card">
+        <div class="admin-social-top">
+          <div class="admin-social-brand">
+            <img
+              src="./assets/icons/tool-manifestai.svg"
+              alt="Ikon Tanya Fitur"
+              width="44"
+              height="44"
+              class="modal-logo admin-logo-thumb"
+            />
+            <div>
+              <strong class="admin-social-title">Asisten Mengambang "Tanya Fitur" (Customer Service AI)</strong>
+              <div class="admin-prod-meta">
+                Tampil di pojok kanan bawah Manifestudio — khusus menjawab pertanyaan &amp; pemecahan masalah 15 fitur secara faktual.
+              </div>
+            </div>
+          </div>
+          <span class="admin-badge is-ok">Manifestudio</span>
+        </div>
+
+        <label class="admin-checkbox-row" for="util-feature-cs-enabled" style="margin-top:0.65rem;">
+          <input type="checkbox" id="util-feature-cs-enabled" ${faCfg.enabled !== false ? 'checked' : ''} />
+          <span>Tampilkan tombol mengambang "Tanya Fitur" di halaman Manifestudio</span>
+        </label>
+
+        <div class="form-field" style="margin-top:0.5rem;">
+          <label for="util-feature-cs-welcome">Pesan Sapaan Awal (opsional — kosongkan untuk sapaan default)</label>
+          <textarea
+            id="util-feature-cs-welcome"
+            class="admin-textarea"
+            rows="2"
+            placeholder="Halo! Saya asisten Tanya Fitur Manifestudio..."
+          >${escapeHtml(faCfg.welcomeMessage || '')}</textarea>
+        </div>
+      </article>
+
       <!-- 1. Kartu Pintasan Menu Utilitas di Beranda Toko (Ringkas & Sinkron Otomatis) -->
       <article class="admin-banner-card">
         <div class="admin-social-top">
@@ -4926,6 +5038,24 @@ function renderUtilitiesSettings() {
         showToast(err.message || 'Gagal memproses file gambar.');
       }
     });
+  });
+
+  // Bind Tanya Fitur (Customer Service AI) controls
+  container.querySelector('#util-feature-cs-enabled')?.addEventListener('change', (e) => {
+    adminState.catalog.utilities = normalizeUtilityConfig(adminState.catalog.utilities || {});
+    adminState.catalog.utilities.featureAssistant.enabled = Boolean(e.target.checked);
+    markDirty();
+    showToast(
+      e.target.checked
+        ? 'Tombol Tanya Fitur diaktifkan untuk Manifestudio.'
+        : 'Tombol Tanya Fitur disembunyikan di Manifestudio.'
+    );
+  });
+
+  container.querySelector('#util-feature-cs-welcome')?.addEventListener('input', (e) => {
+    adminState.catalog.utilities = normalizeUtilityConfig(adminState.catalog.utilities || {});
+    adminState.catalog.utilities.featureAssistant.welcomeMessage = String(e.target.value || '').trim();
+    markDirty();
   });
 
   // Prevent clicking switch label inside <summary> from toggling <details>

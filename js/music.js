@@ -3785,7 +3785,8 @@ export function initMusicPlayer() {
         type="button"
         id="music-fab-btn"
         data-music-control="true"
-        class="music-fab-btn ytm-fab-btn ${isPlaying ? 'is-playing' : ''}"
+        class="music-fab-btn ytm-fab-btn ${isPlaying ? 'is-playing' : ''} ${!currentTrack && !isPlaying && !isLoading && !isOpen ? 'is-idle-hidden' : ''}"
+        ${!currentTrack && !isPlaying && !isLoading && !isOpen ? 'hidden' : ''}
         aria-label="${isOpen ? 'Tutup pemutar musik minimalis' : 'Buka pemutar musik YouTube Music (bisa digeser)'}"
         aria-expanded="${isOpen}"
         title="YouTube Music Player · Ketuk untuk buka atau tekan & geser"

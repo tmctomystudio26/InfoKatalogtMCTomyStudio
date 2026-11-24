@@ -56,13 +56,13 @@ const loadSongFinderMod = () => (_songFinderMod ? Promise.resolve(_songFinderMod
 const loadMusicMods = () =>
   _musicMods
     ? Promise.resolve(_musicMods)
-    : Promise.all([import('./music.js?v=79'), import('./music-logic.js?v=79')]).then(([music, logic]) => {
+    : Promise.all([import('./music.js?v=85'), import('./music-logic.js?v=85')]).then(([music, logic]) => {
         _musicMods = { music, logic };
         return _musicMods;
       });
 const loadDracinMod = () => (_dracinMod ? Promise.resolve(_dracinMod) : import('./dracin-ui.js?v=79').then((m) => (_dracinMod = m)));
 const loadAudioEditorMod = () => (_audioEditorMod ? Promise.resolve(_audioEditorMod) : import('./audio-editor-ui.js?v=79').then((m) => (_audioEditorMod = m)));
-const loadManifestAiMod = () => (_manifestAiMod ? Promise.resolve(_manifestAiMod) : import('./manifest-ai-ui.js?v=79').then((m) => (_manifestAiMod = m)));
+const loadManifestAiMod = () => (_manifestAiMod ? Promise.resolve(_manifestAiMod) : import('./manifest-ai-ui.js?v=85').then((m) => (_manifestAiMod = m)));
 const loadPlagiarismMod = () => (_plagiarismMod ? Promise.resolve(_plagiarismMod) : import('./plagiarism-ui.js?v=79').then((m) => (_plagiarismMod = m)));
 const loadNovelMod = () => (_novelMod ? Promise.resolve(_novelMod) : import('./novel-ui.js?v=79').then((m) => (_novelMod = m)));
 const loadCallerIdMod = () => (_callerIdMod ? Promise.resolve(_callerIdMod) : import('./callerid-ui.js?v=79').then((m) => (_callerIdMod = m)));

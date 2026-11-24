@@ -59,8 +59,8 @@
       rel="stylesheet"
     />
 
-    <link rel="stylesheet" href="./css/tokens.css?v=83" />
-    <link rel="stylesheet" href="./css/styles.css?v=83" />
+    <link rel="stylesheet" href="./css/tokens.css?v=85" />
+    <link rel="stylesheet" href="./css/styles.css?v=85" />
     <script>
       (function () {
         try {
@@ -72,7 +72,7 @@
           var hasTab = Boolean((qs.get('tab') || qs.get('tool') || '').trim());
           document.documentElement.setAttribute('data-studio-view', hasTab ? 'tool' : 'home');
         } catch (e) {}
-        var CURRENT_CACHE = 'manifestudio-cache-v84';
+        var CURRENT_CACHE = 'manifestudio-cache-v85';
         if ('caches' in window) {
           caches.keys().then(function (keys) {
             keys.forEach(function (k) {
@@ -82,7 +82,7 @@
         }
         if ('serviceWorker' in navigator) {
           window.addEventListener('load', function () {
-            navigator.serviceWorker.register('./sw.js?v=84').then(function (reg) {
+            navigator.serviceWorker.register('./sw.js?v=85').then(function (reg) {
               reg.update();
             }).catch(function () {});
           });
@@ -212,29 +212,13 @@
               </div>
             </div>
 
-            <div class="studio-meta-strip" aria-label="Ringkasan platform Manifestudio">
-              <span id="studio-meta-count" class="mono-num">15 Fitur Aktif</span>
-              <span aria-hidden="true">·</span>
-              <span>100% Gratis &amp; Tanpa Login</span>
-              <span aria-hidden="true">·</span>
-              <span>Halaman Khusus Per Fitur</span>
-              <span aria-hidden="true">·</span>
-              <span>Aplikasi PWA Mandiri</span>
-            </div>
           </div>
         </section>
 
-        <!-- 2. Single Unified 15-Feature Directory (Zero Duplication) -->
+        <!-- 2. Single Unified 15-Feature App Launcher Grid -->
         <section id="fitur" class="studio-section studio-directory-section container" aria-labelledby="studio-directory-heading">
-          <div class="studio-section-head">
-            <div>
-              <span class="studio-section-eyebrow">Ekosistem Lengkap</span>
-              <h2 id="studio-directory-heading" class="section-title">Pilih Fitur Manifestudio</h2>
-              <p class="section-subtitle">
-                Ketuk fitur mana saja untuk membuka halaman khususnya secara penuh dan fokus tanpa gangguan.
-              </p>
-            </div>
-            <span id="studio-directory-count" class="catalog-count mono-num">15 fitur</span>
+          <div class="studio-section-head studio-directory-head-clean">
+            <h2 id="studio-directory-heading" class="section-title">Pilih Fitur Manifestudio</h2>
           </div>
 
           <div class="studio-directory-toolbar">
@@ -308,9 +292,27 @@
             <span>Semua Fitur</span>
           </button>
 
-          <div class="studio-switcher-wrap">
-            <label for="studio-tool-switcher" class="sr-only">Pindah cepat ke fitur Manifestudio lain</label>
-            <select id="studio-tool-switcher" class="studio-tool-switcher" aria-label="Pindah cepat ke fitur Manifestudio lain"></select>
+          <div class="studio-switcher-wrap" id="studio-switcher-wrap">
+            <button
+              type="button"
+              id="studio-switcher-trigger"
+              class="studio-picker-trigger"
+              aria-haspopup="dialog"
+              aria-expanded="false"
+              aria-controls="studio-switcher-sheet"
+              aria-label="Pindah cepat ke fitur Manifestudio lain"
+            >
+              <img
+                id="studio-switcher-trigger-icon"
+                src="./assets/icons/menu-utilitas.svg"
+                alt=""
+                width="22"
+                height="22"
+                class="studio-picker-trigger-icon"
+              />
+              <span id="studio-switcher-trigger-label" class="studio-picker-trigger-label">Pilih Fitur</span>
+              <svg class="studio-picker-trigger-caret" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
+            </button>
           </div>
         </div>
 
@@ -338,9 +340,6 @@
       <div class="container studio-footer-grid">
         <div class="footer-brand">
           <a href="./" id="footer-brand-name" class="brand-name" style="text-decoration: none;">Manifestudio</a>
-          <p class="studio-footer-summary">
-            Platform mandiri 15 utilitas digital, AI, dan hiburan gratis tanpa login — setiap fitur tampil di halaman khusus yang bersih dan ringan.
-          </p>
           <p id="footer-copy-text" class="studio-footer-copy">Dikelola oleh Manifestudio by Tomy © 2026</p>
         </div>
 
@@ -359,34 +358,25 @@
         <div class="studio-footer-col">
           <h3 class="studio-footer-heading">Komunitas &amp; Aplikasi</h3>
           <div id="footer-social-links" class="footer-links">
-            <button type="button" class="footer-link-btn" data-store-gate-trigger="footer">Akses Store 🔒</button>
-            <a
-              href="https://wa.me/6285122936027"
-              target="_blank"
-              rel="noopener noreferrer"
-              class="footer-link-btn"
-            >
+            <button type="button" class="footer-link-btn" data-vault-target="store">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+              <span>Akses Store</span>
+            </button>
+            <button type="button" class="footer-link-btn" data-vault-target="whatsapp">
               <img src="./assets/icons/social-whatsapp.svg" alt="" width="18" height="18" class="footer-social-icon" />
-              <span>WhatsApp Admin</span>
-            </a>
-            <a
-              href="https://www.tiktok.com/@tmctomystudio"
-              target="_blank"
-              rel="noopener noreferrer"
-              class="footer-link-btn"
-            >
+              <span>WhatsApp</span>
+              <svg class="footer-lock-mini" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+            </button>
+            <button type="button" class="footer-link-btn" data-vault-target="tiktok">
               <img src="./assets/icons/social-tiktok.svg" alt="" width="18" height="18" class="footer-social-icon" />
-              <span>TikTok @tmctomystudio</span>
-            </a>
-            <a
-              href="https://www.instagram.com/tmctomystudio"
-              target="_blank"
-              rel="noopener noreferrer"
-              class="footer-link-btn"
-            >
+              <span>TikTok</span>
+              <svg class="footer-lock-mini" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+            </button>
+            <button type="button" class="footer-link-btn" data-vault-target="instagram">
               <img src="./assets/icons/social-instagram.svg" alt="" width="18" height="18" class="footer-social-icon" />
-              <span>Instagram @tmctomystudio</span>
-            </a>
+              <span>Instagram</span>
+              <svg class="footer-lock-mini" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+            </button>
             <button type="button" id="footer-install-link" class="footer-link-btn">
               Install PWA
             </button>
@@ -395,8 +385,10 @@
       </div>
     </footer>
 
+    <div id="studio-switcher-sheet-root" class="studio-picker-overlay" hidden></div>
+    <div id="feature-cs-root" class="fcs-root"></div>
     <div id="store-access-modal-root" class="modal-overlay" hidden></div>
     <div id="toast-notification" class="toast-notification" role="status" aria-live="polite" hidden></div>
-    <script type="module" src="./js/tools-page.js?v=83"></script>
+    <script type="module" src="./js/tools-page.js?v=85"></script>
   </body>
 </html>

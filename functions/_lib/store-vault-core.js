@@ -36,6 +36,9 @@ export const VAULT_CONSTANTS = Object.freeze({
   defaultStoreOrigin: 'https://manifestore.my.id',
   httpsPassCookieName: '__Host-ms_store_pass',
   httpPassCookieName: 'ms_store_pass',
+  httpsContactCookieName: '__Host-ms_contact_pass',
+  httpContactCookieName: 'ms_contact_pass',
+  allowedTargets: Object.freeze(['store', 'whatsapp', 'instagram', 'tiktok']),
 });
 
 const encoder = new TextEncoder();
@@ -180,6 +183,49 @@ export function validateStoreTargetUrl(rawUrl, { allowLocalHttp = false } = {}) 
     return { ok: true, url: parsed.toString() };
   }
   return { ok: false, reason: 'URL tujuan Store wajib menggunakan protokol HTTPS.' };
+}
+
+export function normalizeVaultTarget(rawTarget = 'store') {
+  const clean = String(rawTarget || 'store').trim().toLowerCase();
+  return VAULT_CONSTANTS.allowedTargets.includes(clean) ? clean : 'store';
+}
+
+export function validateWhatsAppNumber(raw = '') {
+  const clean = String(raw || '').trim();
+  if (!clean) return { ok: true, digits: '', url: '' };
+  let digits = clean.replace(/\D/g, '');
+  if (digits.startsWith('0')) {
+    digits = `62${digits.slice(1)}`;
+  }
+  if (digits.length < 9 || digits.length > 16) {
+    return {
+      ok: false,
+      reason: 'Nomor WhatsApp harus berisi 9–16 digit angka (contoh: 62851xxxxxxxx).',
+    };
+  }
+  return { ok: true, digits, url: `https://wa.me/${digits}` };
+}
+
+export function validateContactSocialUrl(raw = '', platform = 'instagram') {
+  const clean = String(raw || '').trim();
+  if (!clean) return { ok: true, url: '' };
+  let parsed;
+  try {
+    parsed = new URL(/^https?:\/\//i.test(clean) ? clean : `https://${clean}`);
+  } catch {
+    return { ok: false, reason: `URL ${platform} tidak valid.` };
+  }
+  if (parsed.protocol !== 'https:') {
+    return { ok: false, reason: `URL ${platform} harus menggunakan HTTPS.` };
+  }
+  const host = parsed.hostname.toLowerCase();
+  if (platform === 'instagram' && host !== 'instagram.com' && !host.endsWith('.instagram.com')) {
+    return { ok: false, reason: 'URL Instagram harus mengarah ke domain instagram.com.' };
+  }
+  if (platform === 'tiktok' && host !== 'tiktok.com' && !host.endsWith('.tiktok.com')) {
+    return { ok: false, reason: 'URL TikTok harus mengarah ke domain tiktok.com.' };
+  }
+  return { ok: true, url: parsed.toString() };
 }
 
 /* ============================================================================
@@ -361,10 +407,12 @@ export function isHttpsRequest(request) {
   return xfProto === 'https';
 }
 
-export function getPassCookieName(request) {
-  return isHttpsRequest(request)
-    ? VAULT_CONSTANTS.httpsPassCookieName
-    : VAULT_CONSTANTS.httpPassCookieName;
+export function getPassCookieName(request, scope = 'store') {
+  const isContact = scope === 'contact';
+  if (isHttpsRequest(request)) {
+    return isContact ? VAULT_CONSTANTS.httpsContactCookieName : VAULT_CONSTANTS.httpsPassCookieName;
+  }
+  return isContact ? VAULT_CONSTANTS.httpContactCookieName : VAULT_CONSTANTS.httpPassCookieName;
 }
 
 export function parseCookieHeader(cookieHeader = '') {
@@ -381,9 +429,14 @@ export function parseCookieHeader(cookieHeader = '') {
   return out;
 }
 
-export function buildSetPassCookieHeader(request, token, maxAge = VAULT_CONSTANTS.passTtlSeconds) {
+export function buildSetPassCookieHeader(
+  request,
+  token,
+  maxAge = VAULT_CONSTANTS.passTtlSeconds,
+  scope = 'store'
+) {
   const secure = isHttpsRequest(request);
-  const name = getPassCookieName(request);
+  const name = getPassCookieName(request, scope);
   const parts = [
     `${name}=${token}`,
     'Path=/',
@@ -473,11 +526,19 @@ export async function readVaultState(env) {
       try {
         const parsed = JSON.parse(raw);
         const hasKvKey = Boolean(parsed?.keyHash && parsed?.salt);
-        if (hasKvKey || parsed?.enabled === false) {
+        const hasContactKey = Boolean(parsed?.contactKeyHash && parsed?.contactSalt);
+        if (hasKvKey || hasContactKey || parsed?.enabled === false) {
+          const contactSameAsStoreKey = parsed?.contactSameAsStoreKey !== false;
+          const whatsappNumber = String(parsed?.whatsappNumber || '').replace(/\D/g, '');
+          const instagramUrl = String(parsed?.instagramUrl || '').trim();
+          const tiktokUrl = String(parsed?.tiktokUrl || '').trim();
+          const hasAnyContactTarget = Boolean(whatsappNumber || instagramUrl || tiktokUrl);
+          const contactKeyReady = contactSameAsStoreKey ? hasKvKey : hasContactKey;
+
           return {
             kvBound: true,
             source: 'kv',
-            configured: true,
+            configured: hasKvKey || parsed?.enabled === false,
             enabled: parsed.enabled !== false,
             keyHash: parsed.keyHash || '',
             salt: parsed.salt || '',
@@ -486,6 +547,19 @@ export async function readVaultState(env) {
             storeOrigin: String(parsed.storeOrigin || envStoreOrigin).trim() || envStoreOrigin,
             promptTitle: String(parsed.promptTitle || '').trim(),
             promptDescription: String(parsed.promptDescription || '').trim(),
+            // Contact Access Vault fields (WhatsApp, Instagram, TikTok)
+            contactEnabled: parsed.contactEnabled !== false,
+            contactSameAsStoreKey,
+            contactConfigured: hasAnyContactTarget && (parsed.contactEnabled === false || contactKeyReady),
+            contactKeyHash: parsed.contactKeyHash || '',
+            contactSalt: parsed.contactSalt || '',
+            contactIterations: Number(parsed.contactIterations) || VAULT_CONSTANTS.pbkdf2Iterations,
+            contactKeyVersion: Math.max(1, Number(parsed.contactKeyVersion) || 1),
+            whatsappNumber,
+            instagramUrl,
+            tiktokUrl,
+            contactPromptTitle: String(parsed.contactPromptTitle || '').trim(),
+            contactPromptDescription: String(parsed.contactPromptDescription || '').trim(),
             updatedAt: parsed.updatedAt || null,
             updatedBy: parsed.updatedBy || null,
           };
@@ -507,6 +581,18 @@ export async function readVaultState(env) {
       storeOrigin: envStoreOrigin,
       promptTitle: '',
       promptDescription: '',
+      contactEnabled: true,
+      contactSameAsStoreKey: true,
+      contactConfigured: false,
+      contactKeyHash: '',
+      contactSalt: '',
+      contactIterations: VAULT_CONSTANTS.pbkdf2Iterations,
+      contactKeyVersion: 1,
+      whatsappNumber: '',
+      instagramUrl: '',
+      tiktokUrl: '',
+      contactPromptTitle: '',
+      contactPromptDescription: '',
       updatedAt: null,
       updatedBy: 'cloudflare-env',
     };
@@ -521,6 +607,18 @@ export async function readVaultState(env) {
     storeOrigin: envStoreOrigin,
     promptTitle: '',
     promptDescription: '',
+    contactEnabled: true,
+    contactSameAsStoreKey: true,
+    contactConfigured: false,
+    contactKeyHash: '',
+    contactSalt: '',
+    contactIterations: VAULT_CONSTANTS.pbkdf2Iterations,
+    contactKeyVersion: 1,
+    whatsappNumber: '',
+    instagramUrl: '',
+    tiktokUrl: '',
+    contactPromptTitle: '',
+    contactPromptDescription: '',
     updatedAt: null,
     updatedBy: null,
   };
@@ -668,9 +766,51 @@ export async function authenticateAdminRequest(request, env, { fetchImpl = fetch
  * 8. HTTP Route Handlers (Shared by Cloudflare Pages Functions & Local Dev)
  * ============================================================================ */
 
+async function hasValidScopePassCookie(request, vault, secretBytes, scope, nowSec) {
+  const cookies = parseCookieHeader(request.headers.get('cookie') || '');
+  const reqHost = new URL(request.url).hostname.toLowerCase();
+
+  if (scope === 'store') {
+    const token = cookies[getPassCookieName(request, 'store')] || '';
+    if (!token) return false;
+    const check = await verifyPassToken(token, secretBytes, {
+      expectedKeyVersion: vault.keyVersion,
+      expectedHost: reqHost,
+      nowSec,
+    });
+    return check.ok;
+  }
+
+  // Contact scope: valid if contact cookie matches contactKeyVersion,
+  // OR if contactSameAsStoreKey is true and user already has a valid store pass cookie
+  const contactToken = cookies[getPassCookieName(request, 'contact')] || '';
+  if (contactToken) {
+    const expectedVer = vault.contactSameAsStoreKey ? vault.keyVersion : vault.contactKeyVersion;
+    const check = await verifyPassToken(contactToken, secretBytes, {
+      expectedKeyVersion: expectedVer,
+      expectedHost: reqHost,
+      nowSec,
+    });
+    if (check.ok) return true;
+  }
+
+  if (vault.contactSameAsStoreKey) {
+    const storeToken = cookies[getPassCookieName(request, 'store')] || '';
+    if (storeToken) {
+      const check = await verifyPassToken(storeToken, secretBytes, {
+        expectedKeyVersion: vault.keyVersion,
+        expectedHost: reqHost,
+        nowSec,
+      });
+      if (check.ok) return true;
+    }
+  }
+  return false;
+}
+
 /**
  * GET /api/store-access/status
- * Returns ONLY non-sensitive public gate state (never leaks key, hash, or storeOrigin).
+ * Returns ONLY non-sensitive public gate state (never leaks keys, hashes, URLs, or phone numbers).
  */
 export async function handleStatusRequest(request, env, deps = {}) {
   const nowSec = deps.nowSec ?? Math.floor(Date.now() / 1000);
@@ -681,19 +821,16 @@ export async function handleStatusRequest(request, env, deps = {}) {
 
   let hasActivePass = false;
   if (vault.configured && vault.enabled) {
-    const cookies = parseCookieHeader(request.headers.get('cookie') || '');
-    const token = cookies[getPassCookieName(request)] || '';
-    if (token) {
-      const reqHost = new URL(request.url).hostname.toLowerCase();
-      const check = await verifyPassToken(token, secretBytes, {
-        expectedKeyVersion: vault.keyVersion,
-        expectedHost: reqHost,
-        nowSec,
-      });
-      hasActivePass = check.ok;
-    }
+    hasActivePass = await hasValidScopePassCookie(request, vault, secretBytes, 'store', nowSec);
   } else if (vault.configured && !vault.enabled) {
     hasActivePass = true;
+  }
+
+  let hasActiveContactPass = false;
+  if (vault.contactConfigured && vault.contactEnabled) {
+    hasActiveContactPass = await hasValidScopePassCookie(request, vault, secretBytes, 'contact', nowSec);
+  } else if (vault.contactConfigured && !vault.contactEnabled) {
+    hasActiveContactPass = true;
   }
 
   return jsonResponse({
@@ -702,17 +839,33 @@ export async function handleStatusRequest(request, env, deps = {}) {
     kvBound: vault.kvBound,
     enabled: vault.enabled,
     hasActivePass,
+    contactConfigured: vault.contactConfigured,
+    contactEnabled: vault.contactEnabled,
+    contactSameAsStoreKey: vault.contactSameAsStoreKey,
+    hasActiveContactPass,
+    contactsConfigured: {
+      whatsapp: Boolean(vault.whatsappNumber),
+      instagram: Boolean(vault.instagramUrl),
+      tiktok: Boolean(vault.tiktokUrl),
+    },
+    contactChannels: {
+      whatsapp: Boolean(vault.whatsappNumber),
+      instagram: Boolean(vault.instagramUrl),
+      tiktok: Boolean(vault.tiktokUrl),
+    },
     lockedOut: rl.locked,
     retryAfterSec: rl.retryAfterSec,
     promptTitle: vault.promptTitle || undefined,
     promptDescription: vault.promptDescription || undefined,
+    contactPromptTitle: vault.contactPromptTitle || undefined,
+    contactPromptDescription: vault.contactPromptDescription || undefined,
   });
 }
 
 /**
  * POST /api/store-access/verify
- * Verifies user-submitted Store Access Key server-side, enforces rate limits,
- * and issues an HttpOnly HMAC-SHA256 pass cookie. Never leaks storeOrigin in JSON!
+ * Verifies user-submitted Store or Contact Access Key server-side, enforces rate limits,
+ * and issues an HttpOnly HMAC-SHA256 pass cookie. Never leaks URLs or phone numbers!
  */
 export async function handleVerifyRequest(request, env, deps = {}) {
   const nowSec = deps.nowSec ?? Math.floor(Date.now() / 1000);
@@ -721,13 +874,24 @@ export async function handleVerifyRequest(request, env, deps = {}) {
     return jsonResponse({ ok: false, reason: csrf.reason }, 403);
   }
 
+  let body;
+  try {
+    body = await request.json();
+  } catch {
+    return jsonResponse({ ok: false, reason: 'invalid_json' }, 400);
+  }
+
+  const target = normalizeVaultTarget(body?.target || (body?.scope === 'contact' ? 'whatsapp' : 'store'));
+  const scope = target === 'store' ? 'store' : 'contact';
   const vault = await readVaultState(env);
-  if (!vault.configured) {
+
+  const isTargetConfigured = scope === 'store' ? vault.configured : vault.contactConfigured;
+  if (!isTargetConfigured) {
     return jsonResponse(
       {
         ok: false,
         reason: 'vault_not_configured',
-        message: 'Server Vault belum diaktifkan oleh Admin di Cloudflare KV.',
+        message: 'Akses ini belum tersedia saat ini.',
       },
       503
     );
@@ -750,13 +914,6 @@ export async function handleVerifyRequest(request, env, deps = {}) {
     );
   }
 
-  let body;
-  try {
-    body = await request.json();
-  } catch {
-    return jsonResponse({ ok: false, reason: 'invalid_json' }, 400);
-  }
-
   const rawKey = typeof body?.key === 'string' ? body.key : '';
   const normalizedKey = normalizeAccessKeyInput(rawKey);
   if (!normalizedKey) {
@@ -767,15 +924,37 @@ export async function handleVerifyRequest(request, env, deps = {}) {
   }
 
   let matched = false;
-  if (!vault.enabled) {
-    matched = true;
-  } else if (vault.source === 'kv') {
-    matched = await verifyAccessKeyHash(normalizedKey, vault);
-  } else if (vault.source === 'env' && vault.envPlainKey) {
-    matched = timingSafeEqualBytes(
-      encoder.encode(normalizedKey),
-      encoder.encode(normalizeAccessKeyInput(vault.envPlainKey))
-    );
+  if (scope === 'store') {
+    if (!vault.enabled) {
+      matched = true;
+    } else if (vault.source === 'kv') {
+      matched = await verifyAccessKeyHash(normalizedKey, vault);
+    } else if (vault.source === 'env' && vault.envPlainKey) {
+      matched = timingSafeEqualBytes(
+        encoder.encode(normalizedKey),
+        encoder.encode(normalizeAccessKeyInput(vault.envPlainKey))
+      );
+    }
+  } else {
+    // Contact scope
+    if (!vault.contactEnabled) {
+      matched = true;
+    } else if (vault.contactSameAsStoreKey) {
+      if (vault.source === 'kv') {
+        matched = await verifyAccessKeyHash(normalizedKey, vault);
+      } else if (vault.source === 'env' && vault.envPlainKey) {
+        matched = timingSafeEqualBytes(
+          encoder.encode(normalizedKey),
+          encoder.encode(normalizeAccessKeyInput(vault.envPlainKey))
+        );
+      }
+    } else {
+      matched = await verifyAccessKeyHash(normalizedKey, {
+        keyHash: vault.contactKeyHash,
+        salt: vault.contactSalt,
+        iterations: vault.contactIterations,
+      });
+    }
   }
 
   if (!matched) {
@@ -809,34 +988,46 @@ export async function handleVerifyRequest(request, env, deps = {}) {
   // Valid key: clear rate-limit failures and issue signed HttpOnly pass cookie
   await clearRateLimitEntry(env, rlKey);
   const reqHost = new URL(request.url).hostname.toLowerCase();
+  const keyVer =
+    scope === 'store' || vault.contactSameAsStoreKey
+      ? vault.keyVersion
+      : vault.contactKeyVersion;
   const token = await signPassToken(
     {
       iat: nowSec,
       exp: nowSec + VAULT_CONSTANTS.passTtlSeconds,
-      kv: vault.keyVersion,
+      kv: keyVer,
+      sc: scope,
       host: reqHost,
       jti: bytesToHex(randomBytes(8)),
     },
     secretBytes
   );
 
+  const goUrl =
+    target === 'store'
+      ? '/api/store-access/go'
+      : `/api/store-access/go?target=${encodeURIComponent(target)}`;
+
   return jsonResponse(
     {
       ok: true,
-      goUrl: '/api/store-access/go',
+      scope,
+      target,
+      goUrl,
       expiresInSec: VAULT_CONSTANTS.passTtlSeconds,
     },
     200,
     {
-      'Set-Cookie': buildSetPassCookieHeader(request, token, VAULT_CONSTANTS.passTtlSeconds),
+      'Set-Cookie': buildSetPassCookieHeader(request, token, VAULT_CONSTANTS.passTtlSeconds, scope),
     }
   );
 }
 
 /**
- * GET /api/store-access/go
- * Server-side protected redirect gateway to Store.
- * Verifies HttpOnly signed pass cookie before issuing HTTP 302 Location to Store.
+ * GET /api/store-access/go?target=store|whatsapp|instagram|tiktok
+ * Server-side protected redirect gateway.
+ * Verifies HttpOnly signed pass cookie before issuing HTTP 302 Location.
  */
 export async function handleGoRequest(request, env, deps = {}) {
   const nowSec = deps.nowSec ?? Math.floor(Date.now() / 1000);
@@ -844,41 +1035,52 @@ export async function handleGoRequest(request, env, deps = {}) {
   const allowLocalHttp = Boolean(deps.allowLocalHttp);
   const fallbackHome = `${reqUrl.origin}/`;
 
+  const target = normalizeVaultTarget(reqUrl.searchParams.get('target') || 'store');
+  const scope = target === 'store' ? 'store' : 'contact';
   const vault = await readVaultState(env);
-  if (!vault.configured) {
+
+  const isTargetConfigured = scope === 'store' ? vault.configured : vault.contactConfigured;
+  if (!isTargetConfigured) {
     return new Response(null, {
       status: 302,
       headers: buildSecurityHeaders({ Location: fallbackHome }),
     });
   }
 
-  let authorized = !vault.enabled;
+  let authorized = scope === 'store' ? !vault.enabled : !vault.contactEnabled;
   if (!authorized) {
     const secretBytes = await getEffectiveSigningSecret(env);
-    const cookies = parseCookieHeader(request.headers.get('cookie') || '');
-    const token = cookies[getPassCookieName(request)] || '';
-    if (token) {
-      const check = await verifyPassToken(token, secretBytes, {
-        expectedKeyVersion: vault.keyVersion,
-        expectedHost: reqUrl.hostname.toLowerCase(),
-        nowSec,
-      });
-      authorized = check.ok;
-    }
+    authorized = await hasValidScopePassCookie(request, vault, secretBytes, scope, nowSec);
   }
 
   if (!authorized) {
+    const gateQuery =
+      target === 'store' ? 'gate=required' : `gate=required&target=${encodeURIComponent(target)}`;
     return new Response(null, {
       status: 302,
       headers: buildSecurityHeaders({
-        Location: `${reqUrl.origin}/?gate=required`,
-        'Set-Cookie': buildSetPassCookieHeader(request, '', 0),
+        Location: `${reqUrl.origin}/?${gateQuery}`,
+        'Set-Cookie': buildSetPassCookieHeader(request, '', 0, scope),
       }),
     });
   }
 
-  const targetCheck = validateStoreTargetUrl(vault.storeOrigin, { allowLocalHttp });
-  if (!targetCheck.ok) {
+  let destinationUrl = '';
+  if (target === 'store') {
+    const check = validateStoreTargetUrl(vault.storeOrigin, { allowLocalHttp });
+    if (check.ok) destinationUrl = check.url;
+  } else if (target === 'whatsapp') {
+    const check = validateWhatsAppNumber(vault.whatsappNumber);
+    if (check.ok && check.url) destinationUrl = check.url;
+  } else if (target === 'instagram') {
+    const check = validateContactSocialUrl(vault.instagramUrl, 'instagram');
+    if (check.ok && check.url) destinationUrl = check.url;
+  } else if (target === 'tiktok') {
+    const check = validateContactSocialUrl(vault.tiktokUrl, 'tiktok');
+    if (check.ok && check.url) destinationUrl = check.url;
+  }
+
+  if (!destinationUrl) {
     return new Response(null, {
       status: 302,
       headers: buildSecurityHeaders({ Location: fallbackHome }),
@@ -888,14 +1090,14 @@ export async function handleGoRequest(request, env, deps = {}) {
   return new Response(null, {
     status: 302,
     headers: buildSecurityHeaders({
-      Location: targetCheck.url,
+      Location: destinationUrl,
     }),
   });
 }
 
 /**
  * GET / POST /api/store-access/admin
- * Server-verified Admin management endpoint for Cloudflare KV Vault.
+ * Server-verified Admin management endpoint for Cloudflare KV Vault (Store + Contacts).
  */
 export async function handleAdminRequest(request, env, deps = {}) {
   const nowSec = deps.nowSec ?? Math.floor(Date.now() / 1000);
@@ -950,6 +1152,23 @@ export async function handleAdminRequest(request, env, deps = {}) {
       storeOrigin: vault.storeOrigin,
       promptTitle: vault.promptTitle || '',
       promptDescription: vault.promptDescription || '',
+      // Contact Vault admin state
+      contactConfigured: vault.contactConfigured,
+      contactEnabled: vault.contactEnabled,
+      contactSameAsStoreKey: vault.contactSameAsStoreKey,
+      contactKeyVersion: vault.contactKeyVersion,
+      hasSavedContactKey: Boolean(vault.contactKeyHash),
+      contactKeyConfigured: Boolean(vault.contactKeyHash),
+      contactsConfigured: {
+        whatsapp: Boolean(vault.whatsappNumber),
+        instagram: Boolean(vault.instagramUrl),
+        tiktok: Boolean(vault.tiktokUrl),
+      },
+      whatsappNumber: vault.whatsappNumber || '',
+      instagramUrl: vault.instagramUrl || '',
+      tiktokUrl: vault.tiktokUrl || '',
+      contactPromptTitle: vault.contactPromptTitle || '',
+      contactPromptDescription: vault.contactPromptDescription || '',
       updatedAt: vault.updatedAt,
       updatedBy: vault.updatedBy,
     });
@@ -1000,6 +1219,7 @@ export async function handleAdminRequest(request, env, deps = {}) {
     const nextRecord = {
       ...prev,
       keyVersion: Math.max(1, Number(prev.keyVersion) || 1) + 1,
+      contactKeyVersion: Math.max(1, Number(prev.contactKeyVersion) || 1) + 1,
       updatedAt: new Date(nowSec * 1000).toISOString(),
       updatedBy: auth.actor,
     };
@@ -1008,11 +1228,12 @@ export async function handleAdminRequest(request, env, deps = {}) {
       ok: true,
       action: 'revoke_sessions',
       keyVersion: nextRecord.keyVersion,
+      contactKeyVersion: nextRecord.contactKeyVersion,
       updatedAt: nextRecord.updatedAt,
     });
   }
 
-  // Action: 'update'
+  // Action: 'update' (Store + Contact Vault)
   const enabled = body?.enabled !== false;
   const newKeyRaw = typeof body?.newKey === 'string' ? body.newKey.trim() : '';
   const hasExistingHash = Boolean(prev?.keyHash && prev?.salt);
@@ -1051,6 +1272,63 @@ export async function handleAdminRequest(request, env, deps = {}) {
     return jsonResponse({ ok: false, reason: 'invalid_store_origin', message: originCheck.reason }, 400);
   }
 
+  // Contact Access Vault validation & hashing
+  const contactEnabled =
+    body?.contactEnabled !== undefined ? Boolean(body.contactEnabled) : prev?.contactEnabled !== false;
+  const contactSameAsStoreKey =
+    body?.contactSameAsStoreKey !== undefined
+      ? Boolean(body.contactSameAsStoreKey)
+      : prev?.contactSameAsStoreKey !== false;
+  const newContactKeyRaw = typeof body?.newContactKey === 'string' ? body.newContactKey.trim() : '';
+  const hasExistingContactHash = Boolean(prev?.contactKeyHash && prev?.contactSalt);
+
+  let contactKeyHash = prev?.contactKeyHash || '';
+  let contactSalt = prev?.contactSalt || '';
+  let contactIterations = Number(prev?.contactIterations) || VAULT_CONSTANTS.pbkdf2Iterations;
+  let contactKeyVersion = Math.max(1, Number(prev?.contactKeyVersion) || 1);
+
+  if (newContactKeyRaw) {
+    const validContactKey = validateNewAccessKey(newContactKeyRaw);
+    if (!validContactKey.ok) {
+      return jsonResponse(
+        { ok: false, reason: 'invalid_contact_key', message: validContactKey.reason },
+        400
+      );
+    }
+    const hashedContact = await hashAccessKey(validContactKey.normalized);
+    contactKeyHash = hashedContact.keyHash;
+    contactSalt = hashedContact.salt;
+    contactIterations = hashedContact.iterations;
+    contactKeyVersion = hasExistingContactHash ? contactKeyVersion + 1 : 1;
+  } else if (contactEnabled && !contactSameAsStoreKey && !hasExistingContactHash) {
+    return jsonResponse(
+      {
+        ok: false,
+        reason: 'contact_key_required',
+        message: 'Masukkan Kunci Akses Kontak baru (min. 6 karakter) atau centang "Samakan dengan Kunci Store".',
+      },
+      400
+    );
+  }
+
+  const rawWa = body?.whatsappNumber !== undefined ? body.whatsappNumber : prev?.whatsappNumber || '';
+  const waCheck = validateWhatsAppNumber(rawWa);
+  if (!waCheck.ok) {
+    return jsonResponse({ ok: false, reason: 'invalid_whatsapp', message: waCheck.reason }, 400);
+  }
+
+  const rawIg = body?.instagramUrl !== undefined ? body.instagramUrl : prev?.instagramUrl || '';
+  const igCheck = validateContactSocialUrl(rawIg, 'instagram');
+  if (!igCheck.ok) {
+    return jsonResponse({ ok: false, reason: 'invalid_instagram', message: igCheck.reason }, 400);
+  }
+
+  const rawTt = body?.tiktokUrl !== undefined ? body.tiktokUrl : prev?.tiktokUrl || '';
+  const ttCheck = validateContactSocialUrl(rawTt, 'tiktok');
+  if (!ttCheck.ok) {
+    return jsonResponse({ ok: false, reason: 'invalid_tiktok', message: ttCheck.reason }, 400);
+  }
+
   // Ensure persistent signing secret exists in KV right when Admin initializes Vault
   await getEffectiveSigningSecret(env);
 
@@ -1061,8 +1339,23 @@ export async function handleAdminRequest(request, env, deps = {}) {
     iterations,
     keyVersion,
     storeOrigin: originCheck.url,
-    promptTitle: String(body?.promptTitle || prev?.promptTitle || '').trim().slice(0, 120),
-    promptDescription: String(body?.promptDescription || prev?.promptDescription || '')
+    promptTitle: String(body?.promptTitle ?? prev?.promptTitle ?? '').trim().slice(0, 120),
+    promptDescription: String(body?.promptDescription ?? prev?.promptDescription ?? '')
+      .trim()
+      .slice(0, 260),
+    contactEnabled,
+    contactSameAsStoreKey,
+    contactKeyHash,
+    contactSalt,
+    contactIterations,
+    contactKeyVersion,
+    whatsappNumber: waCheck.digits,
+    instagramUrl: igCheck.url,
+    tiktokUrl: ttCheck.url,
+    contactPromptTitle: String(body?.contactPromptTitle ?? prev?.contactPromptTitle ?? '')
+      .trim()
+      .slice(0, 120),
+    contactPromptDescription: String(body?.contactPromptDescription ?? prev?.contactPromptDescription ?? '')
       .trim()
       .slice(0, 260),
     updatedAt: new Date(nowSec * 1000).toISOString(),
@@ -1071,15 +1364,36 @@ export async function handleAdminRequest(request, env, deps = {}) {
 
   await kv.put(VAULT_CONSTANTS.kvConfigKey, JSON.stringify(nextRecord));
 
+  const hasAnyContact = Boolean(
+    nextRecord.whatsappNumber || nextRecord.instagramUrl || nextRecord.tiktokUrl
+  );
+  const contactKeyReady = nextRecord.contactSameAsStoreKey
+    ? Boolean(nextRecord.keyHash)
+    : Boolean(nextRecord.contactKeyHash);
+
   return jsonResponse({
     ok: true,
     action: 'update',
     kvBound: true,
-    configured: true,
+    configured: Boolean(nextRecord.keyHash) || nextRecord.enabled === false,
     enabled: nextRecord.enabled,
     keyVersion: nextRecord.keyVersion,
     hasSavedKey: Boolean(nextRecord.keyHash),
     storeOrigin: nextRecord.storeOrigin,
+    contactConfigured: hasAnyContact && (nextRecord.contactEnabled === false || contactKeyReady),
+    contactEnabled: nextRecord.contactEnabled,
+    contactSameAsStoreKey: nextRecord.contactSameAsStoreKey,
+    contactKeyVersion: nextRecord.contactKeyVersion,
+    hasSavedContactKey: Boolean(nextRecord.contactKeyHash),
+    contactKeyConfigured: Boolean(nextRecord.contactKeyHash),
+    contactsConfigured: {
+      whatsapp: Boolean(nextRecord.whatsappNumber),
+      instagram: Boolean(nextRecord.instagramUrl),
+      tiktok: Boolean(nextRecord.tiktokUrl),
+    },
+    whatsappNumber: nextRecord.whatsappNumber,
+    instagramUrl: nextRecord.instagramUrl,
+    tiktokUrl: nextRecord.tiktokUrl,
     updatedAt: nextRecord.updatedAt,
     updatedBy: nextRecord.updatedBy,
   });

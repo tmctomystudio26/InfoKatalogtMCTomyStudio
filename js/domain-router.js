@@ -89,7 +89,14 @@ export function normalizeStoreAccessConfig(raw = {}) {
     promptDescription:
       String(
         safe.promptDescription ||
-          'Masukkan kunci akses khusus dari Admin untuk berpindah dari Manifestudio ke halaman Store.'
+          'Masukkan kunci akses untuk melanjutkan ke halaman Store.'
+      ).trim(),
+    contactPromptTitle:
+      String(safe.contactPromptTitle || 'Akses Kontak Resmi').trim() || 'Akses Kontak Resmi',
+    contactPromptDescription:
+      String(
+        safe.contactPromptDescription ||
+          'Masukkan kunci akses untuk membuka tautan kontak resmi.'
       ).trim(),
     utilitiesOrigin,
     storeBrandName:

@@ -1,18 +1,17 @@
-import { createToolsHubController } from './tools-ui.js?v=82';
-import { getDefaultCatalogSnapshot, loadCatalogData } from './data.js?v=82';
+import { createToolsHubController } from './tools-ui.js?v=85';
+import { getDefaultCatalogSnapshot, loadCatalogData } from './data.js?v=85';
 import {
   inferBannerUtilityId,
   normalizeBanners,
   normalizeBrandConfig,
   normalizeUtilityConfig,
-} from './store.js?v=82';
+} from './store.js?v=85';
 import {
   computeBannerHydrationWindow,
   initPerformanceClass,
   resolveBannerTransition,
-  scheduleIdleTask,
-} from './perf-guard.js?v=82';
-import { initPwaManager } from './pwa.js?v=82';
+} from './perf-guard.js?v=85';
+import { initPwaManager } from './pwa.js?v=85';
 import {
   DOMAIN_CONFIG,
   STORE_VAULT_API,
@@ -20,7 +19,7 @@ import {
   normalizeStoreAccessConfig,
   resolveDisplayBrand,
   resolveSiteContext,
-} from './domain-router.js?v=83';
+} from './domain-router.js?v=85';
 import {
   STUDIO_CATEGORIES,
   STUDIO_FAQ_ITEMS,
@@ -32,7 +31,8 @@ import {
   filterStudioFeatures,
   groupStudioFeaturesByCategory,
   parseStudioRoute,
-} from './studio-home.js?v=83';
+} from './studio-home.js?v=85';
+import { createFeatureCsController } from './feature-cs-ui.js?v=85';
 
 const THEME_STORAGE_KEY = 'manifestudio_theme_v1';
 const VALID_TABS = new Set([
@@ -53,10 +53,18 @@ const VALID_TABS = new Set([
   'callerid',
 ]);
 
+const VAULT_TARGET_LABELS = Object.freeze({
+  store: { label: 'Store', actionText: 'Verifikasi & Buka Store →', defaultTitle: 'Akses Khusus Store' },
+  whatsapp: { label: 'WhatsApp', actionText: 'Verifikasi & Buka WhatsApp →', defaultTitle: 'Akses Kontak WhatsApp' },
+  instagram: { label: 'Instagram', actionText: 'Verifikasi & Buka Instagram →', defaultTitle: 'Akses Instagram Resmi' },
+  tiktok: { label: 'TikTok', actionText: 'Verifikasi & Buka TikTok →', defaultTitle: 'Akses TikTok Resmi' },
+});
+
 const defaultSnap = getDefaultCatalogSnapshot();
 
 let currentTheme = 'dark';
 let toolsHub = null;
+let featureCs = null;
 let toastTimer = null;
 let activeUtilities = normalizeUtilityConfig(defaultSnap.utilities);
 let activeBrand = normalizeBrandConfig(defaultSnap.brand);
@@ -70,6 +78,7 @@ let applyStudioBannerSlideFn = null;
 let activeDirectoryCategory = 'all';
 let directoryQuery = '';
 let openFaqIndex = 0;
+let pickerQuery = '';
 
 function getSiteContext() {
   return resolveSiteContext({
@@ -220,28 +229,140 @@ function ensureToolsHubInstance() {
   return toolsHub;
 }
 
-function renderToolSwitcherOptions(selectedId = null) {
-  const select = document.getElementById('studio-tool-switcher');
-  if (!select) return;
-  const dir = buildStudioFeatureDirectory(activeUtilities);
-  const groups = groupStudioFeaturesByCategory(dir);
-  select.innerHTML = groups
+function syncToolSwitcherTrigger(selectedId = null) {
+  const iconEl = document.getElementById('studio-switcher-trigger-icon');
+  const labelEl = document.getElementById('studio-switcher-trigger-label');
+  if (!labelEl) return;
+  const meta = getTabMeta(selectedId || currentTab || 'manifestai');
+  if (iconEl) iconEl.src = meta.icon;
+  labelEl.textContent = meta.label;
+}
+
+function closeFeaturePickerSheet() {
+  const root = document.getElementById('studio-switcher-sheet-root');
+  const trigger = document.getElementById('studio-switcher-trigger');
+  if (root) {
+    root.hidden = true;
+    root.innerHTML = '';
+  }
+  trigger?.setAttribute('aria-expanded', 'false');
+  pickerQuery = '';
+}
+
+function renderFeaturePickerList() {
+  const listEl = document.getElementById('studio-picker-list');
+  if (!listEl) return;
+  const allFeatures = buildStudioFeatureDirectory(activeUtilities);
+  const filtered = filterStudioFeatures(allFeatures, {
+    category: 'all',
+    query: pickerQuery,
+  });
+
+  if (filtered.length === 0) {
+    listEl.innerHTML = `
+      <div class="studio-picker-empty">
+        <p>Fitur tidak ditemukan untuk "${escapeHtml(pickerQuery)}".</p>
+      </div>
+    `;
+    return;
+  }
+
+  const groups = groupStudioFeaturesByCategory(filtered);
+  listEl.innerHTML = groups
     .map(
       (grp) => `
-      <optgroup label="${escapeHtml(grp.label)}">
-        ${grp.items
-          .map(
-            (feat) =>
-              `<option value="${escapeHtml(feat.id)}" ${feat.id === selectedId ? 'selected' : ''}>${escapeHtml(feat.label)}</option>`
-          )
-          .join('')}
-      </optgroup>
+      <div class="studio-picker-group">
+        <div class="studio-picker-group-label">${escapeHtml(grp.label)}</div>
+        <div class="studio-picker-items">
+          ${grp.items
+            .map((feat) => {
+              const isActive = feat.id === currentTab;
+              return `
+                <button
+                  type="button"
+                  class="studio-picker-item ${isActive ? 'is-active' : ''}"
+                  data-picker-tool-id="${escapeHtml(feat.id)}"
+                  aria-current="${isActive ? 'page' : 'false'}"
+                >
+                  <img src="${escapeHtml(feat.icon)}" alt="" width="34" height="34" decoding="async" class="studio-picker-item-icon" />
+                  <span class="studio-picker-item-label">${escapeHtml(feat.label)}</span>
+                  ${
+                    isActive
+                      ? `<span class="studio-picker-check" aria-hidden="true"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span>`
+                      : `<span class="studio-picker-arrow" aria-hidden="true"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg></span>`
+                  }
+                </button>
+              `;
+            })
+            .join('')}
+        </div>
+      </div>
     `
     )
     .join('');
-  if (selectedId) {
-    select.value = selectedId;
-  }
+
+  listEl.querySelectorAll('[data-picker-tool-id]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const nextTab = btn.getAttribute('data-picker-tool-id');
+      closeFeaturePickerSheet();
+      if (nextTab && nextTab !== currentTab) {
+        enterToolView(nextTab, { pushState: true });
+      }
+    });
+  });
+}
+
+function openFeaturePickerSheet() {
+  const root = document.getElementById('studio-switcher-sheet-root');
+  const trigger = document.getElementById('studio-switcher-trigger');
+  if (!root) return;
+  pickerQuery = '';
+  root.hidden = false;
+  trigger?.setAttribute('aria-expanded', 'true');
+  root.innerHTML = `
+    <div class="studio-picker-backdrop" id="studio-picker-backdrop"></div>
+    <div
+      id="studio-switcher-sheet"
+      class="studio-picker-sheet"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="studio-picker-title"
+    >
+      <div class="studio-picker-handle" aria-hidden="true"></div>
+      <div class="studio-picker-head">
+        <h2 id="studio-picker-title" class="studio-picker-title">Pilih Fitur</h2>
+        <button type="button" class="icon-close-btn" id="studio-picker-close-btn" aria-label="Tutup daftar fitur">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+        </button>
+      </div>
+      <div class="studio-picker-search-wrap">
+        <svg class="studio-picker-search-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+        <input
+          type="search"
+          id="studio-picker-search-input"
+          class="studio-picker-search-input"
+          placeholder="Cari fitur cepat..."
+          autocomplete="off"
+          aria-label="Cari fitur di daftar pindah cepat"
+        />
+      </div>
+      <div id="studio-picker-list" class="studio-picker-list"></div>
+    </div>
+  `;
+
+  root.querySelector('#studio-picker-backdrop')?.addEventListener('click', closeFeaturePickerSheet);
+  root.querySelector('#studio-picker-close-btn')?.addEventListener('click', closeFeaturePickerSheet);
+  const searchEl = root.querySelector('#studio-picker-search-input');
+  searchEl?.addEventListener('input', (e) => {
+    pickerQuery = e.target.value;
+    renderFeaturePickerList();
+  });
+
+  renderFeaturePickerList();
+}
+
+function renderToolSwitcherOptions(selectedId = null) {
+  syncToolSwitcherTrigger(selectedId);
 }
 
 function syncHeaderNavState(activeKey) {
@@ -787,30 +908,22 @@ function renderStudioFeatureDirectory() {
       return `
         <a
           href="${escapeHtml(toolHref)}"
-          class="studio-feat-card"
+          class="studio-app-tile"
           data-studio-open-tool="${escapeHtml(feat.id)}"
-          aria-label="Buka halaman ${escapeHtml(feat.label)} — ${escapeHtml(feat.categoryLabel)}"
+          aria-label="Buka ${escapeHtml(feat.label)}"
+          title="${escapeHtml(feat.label)} — ${escapeHtml(feat.summary)}"
         >
-          <img
-            src="${escapeHtml(feat.icon)}"
-            alt=""
-            width="44"
-            height="44"
-            decoding="async"
-            class="studio-feat-icon"
-          />
-
-          <div class="studio-feat-body">
-            <div class="studio-feat-head-row">
-              <h3 class="studio-feat-title">${escapeHtml(feat.label)}</h3>
-              <span class="studio-feat-cat">${escapeHtml(feat.categoryLabel)}</span>
-            </div>
-            <p class="studio-feat-summary">${escapeHtml(feat.summary)}</p>
+          <div class="studio-app-icon-wrap">
+            <img
+              src="${escapeHtml(feat.icon)}"
+              alt=""
+              width="64"
+              height="64"
+              decoding="async"
+              class="studio-app-icon"
+            />
           </div>
-
-          <span class="studio-feat-arrow" aria-hidden="true">
-            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg>
-          </span>
+          <span class="studio-app-title">${escapeHtml(feat.label)}</span>
         </a>
       `;
     })
@@ -866,8 +979,20 @@ function renderStudioFaq() {
 }
 
 /* ============================================================================
- * 3. Server-Verified Store Access Vault Gate Modal (Zero Client Secrets)
+ * 3. Server-Verified Store & Contact Access Gate Modal (Zero Client Secrets)
  * ============================================================================ */
+function normalizeVaultTargetId(target) {
+  const clean = String(target || 'store').trim().toLowerCase();
+  return Object.prototype.hasOwnProperty.call(VAULT_TARGET_LABELS, clean) ? clean : 'store';
+}
+
+function buildVaultGoUrl(target = 'store') {
+  const safeTarget = normalizeVaultTargetId(target);
+  return safeTarget === 'store'
+    ? STORE_VAULT_API.goUrl
+    : `${STORE_VAULT_API.goUrl}?target=${encodeURIComponent(safeTarget)}`;
+}
+
 function closeStoreAccessModal() {
   const root = document.getElementById('store-access-modal-root');
   if (!root) return;
@@ -875,31 +1000,46 @@ function closeStoreAccessModal() {
   root.innerHTML = '';
 }
 
-function openStoreAccessModal(serverStatus = null, initialAlert = '') {
+function openStoreAccessModal(serverStatus = null, initialAlert = '', target = 'store') {
   const root = document.getElementById('store-access-modal-root');
   if (!root) return;
+  const safeTarget = normalizeVaultTargetId(target);
+  const isContactTarget = safeTarget !== 'store';
+  const targetMeta = VAULT_TARGET_LABELS[safeTarget];
   const cfg = getStoreAccessCfg();
-  const promptTitle = serverStatus?.promptTitle || cfg.promptTitle || 'Akses Khusus Store';
-  const promptDesc =
-    serverStatus?.promptDescription ||
-    cfg.promptDescription ||
-    'Masukkan kunci akses khusus dari Admin untuk berpindah dari Manifestudio ke halaman Store.';
 
-  const isVaultUnconfigured = serverStatus && serverStatus.ok && serverStatus.configured === false;
+  const promptTitle = isContactTarget
+    ? targetMeta.defaultTitle
+    : serverStatus?.promptTitle || cfg.promptTitle || targetMeta.defaultTitle;
+  const promptDesc = isContactTarget
+    ? serverStatus?.contactPromptDescription ||
+      cfg.contactPromptDescription ||
+      `Masukkan kode akses resmi untuk membuka ${targetMeta.label}.`
+    : serverStatus?.promptDescription ||
+      cfg.promptDescription ||
+      'Masukkan kode akses resmi untuk melanjutkan ke halaman Store.';
+
+  const isTargetUnavailable = isContactTarget
+    ? Boolean(
+        serverStatus &&
+          serverStatus.ok &&
+          (serverStatus.contactConfigured === false || !serverStatus.contactsConfigured?.[safeTarget])
+      )
+    : Boolean(serverStatus && serverStatus.ok && serverStatus.configured === false);
   const isLockedOut = Boolean(serverStatus?.lockedOut);
   const isUnreachable = Boolean(serverStatus?.unreachable);
 
   let initialErrorText = initialAlert || '';
   if (isUnreachable) {
-    initialErrorText = 'Server keamanan tidak dapat dihubungi saat ini. Periksa koneksi Anda lalu coba lagi.';
-  } else if (isVaultUnconfigured) {
-    initialErrorText =
-      'Server Vault belum diaktifkan oleh Admin di Cloudflare KV. Akses ditutup demi keamanan.';
+    initialErrorText = 'Koneksi sedang bermasalah. Silakan coba beberapa saat lagi.';
+  } else if (isTargetUnavailable) {
+    initialErrorText = `Akses ${targetMeta.label} belum tersedia saat ini.`;
   } else if (isLockedOut) {
-    initialErrorText = `Terlalu banyak percobaan salah. Coba lagi dalam ${formatCooldownText(serverStatus.retryAfterSec)}.`;
+    initialErrorText = `Terlalu banyak percobaan salah. Silakan coba lagi dalam ${formatCooldownText(serverStatus.retryAfterSec)}.`;
   }
 
-  const inputDisabled = isVaultUnconfigured || isLockedOut;
+  const inputDisabled = isTargetUnavailable || isLockedOut;
+  const fieldLabel = isContactTarget ? `Kode Akses ${targetMeta.label}` : 'Kode Akses Store';
 
   root.hidden = false;
   root.innerHTML = `
@@ -921,10 +1061,10 @@ function openStoreAccessModal(serverStatus = null, initialAlert = '') {
           </div>
           <div>
             <h2 id="store-gate-title">${escapeHtml(promptTitle)}</h2>
-            <p class="modal-subtitle">Verifikasi server terenkripsi · ${escapeHtml(cfg.utilitiesBrandName || 'Manifestudio')}</p>
+            <p class="modal-subtitle">${escapeHtml(cfg.utilitiesBrandName || 'Manifestudio')}</p>
           </div>
         </div>
-        <button type="button" class="icon-close-btn" id="close-store-gate-btn" aria-label="Tutup dialog kunci akses">
+        <button type="button" class="icon-close-btn" id="close-store-gate-btn" aria-label="Tutup dialog kode akses">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
         </button>
       </div>
@@ -933,13 +1073,13 @@ function openStoreAccessModal(serverStatus = null, initialAlert = '') {
         <p class="store-gate-desc">${escapeHtml(promptDesc)}</p>
 
         <div class="form-field">
-          <label for="store-access-key-field">Kunci Akses Store <span class="req">*</span></label>
+          <label for="store-access-key-field">${escapeHtml(fieldLabel)} <span class="req">*</span></label>
           <div class="store-gate-input-row">
             <input
               type="password"
               id="store-access-key-field"
               name="storeAccessKey"
-              placeholder="Masukkan kunci akses dari Admin"
+              placeholder="Masukkan kode akses"
               autocomplete="off"
               spellcheck="false"
               maxlength="64"
@@ -957,7 +1097,7 @@ function openStoreAccessModal(serverStatus = null, initialAlert = '') {
         <div class="store-gate-actions">
           <button type="button" class="btn btn-ghost btn-sm" id="cancel-store-gate-btn">Batal</button>
           <button type="submit" class="btn btn-primary btn-sm" id="submit-store-gate-btn" ${inputDisabled ? 'disabled' : ''}>
-            Verifikasi &amp; Buka Store →
+            ${escapeHtml(targetMeta.actionText)}
           </button>
         </div>
       </form>
@@ -994,7 +1134,7 @@ function openStoreAccessModal(serverStatus = null, initialAlert = '') {
     const entered = String(keyInput?.value || '').trim();
     if (!entered) {
       if (errorBox) {
-        errorBox.textContent = 'Masukkan kunci akses terlebih dahulu.';
+        errorBox.textContent = 'Masukkan kode akses terlebih dahulu.';
         errorBox.hidden = false;
       }
       keyInput?.focus();
@@ -1003,7 +1143,7 @@ function openStoreAccessModal(serverStatus = null, initialAlert = '') {
 
     if (submitBtn) {
       submitBtn.disabled = true;
-      submitBtn.textContent = 'Memverifikasi...';
+      submitBtn.textContent = 'Memeriksa...';
     }
 
     try {
@@ -1014,25 +1154,25 @@ function openStoreAccessModal(serverStatus = null, initialAlert = '') {
           'Content-Type': 'application/json',
           [STORE_VAULT_API.csrfHeaderName]: STORE_VAULT_API.csrfHeaderValue,
         },
-        body: JSON.stringify({ key: entered }),
+        body: JSON.stringify({ key: entered, target: safeTarget }),
       });
 
       const data = await res.json().catch(() => ({}));
 
       if (res.ok && data?.ok) {
         closeStoreAccessModal();
-        showToast('Kunci terverifikasi di server — mengalihkan ke Store...');
+        showToast(`Akses ${targetMeta.label} terverifikasi — mengalihkan...`);
         const nextGo =
           typeof data.goUrl === 'string' && data.goUrl.startsWith('/')
             ? data.goUrl
-            : STORE_VAULT_API.goUrl;
+            : buildVaultGoUrl(safeTarget);
         window.location.assign(nextGo);
         return;
       }
 
       if (res.status === 429 || data?.reason === 'rate_limited') {
         if (errorBox) {
-          errorBox.textContent = `Terlalu banyak percobaan salah. Akses dikunci sementara selama ${formatCooldownText(data.retryAfterSec || 900)}.`;
+          errorBox.textContent = `Terlalu banyak percobaan salah. Silakan coba lagi dalam ${formatCooldownText(data.retryAfterSec || 900)}.`;
           errorBox.hidden = false;
         }
         if (keyInput) keyInput.disabled = true;
@@ -1043,10 +1183,9 @@ function openStoreAccessModal(serverStatus = null, initialAlert = '') {
         return;
       }
 
-      if (res.status === 503 || data?.reason === 'vault_not_configured') {
+      if (res.status === 503 || data?.reason === 'vault_not_configured' || data?.reason === 'target_not_configured') {
         if (errorBox) {
-          errorBox.textContent =
-            data.message || 'Server Vault belum diaktifkan oleh Admin di Cloudflare KV.';
+          errorBox.textContent = `Akses ${targetMeta.label} belum tersedia saat ini.`;
           errorBox.hidden = false;
         }
       } else {
@@ -1055,7 +1194,7 @@ function openStoreAccessModal(serverStatus = null, initialAlert = '') {
             ? ` Sisa percobaan: ${data.attemptsRemaining} kali.`
             : '';
         if (errorBox) {
-          errorBox.textContent = `Kunci akses tidak valid.${rem}`;
+          errorBox.textContent = `Kode akses tidak sesuai.${rem}`;
           errorBox.hidden = false;
         }
         if (keyInput) {
@@ -1065,13 +1204,13 @@ function openStoreAccessModal(serverStatus = null, initialAlert = '') {
       }
     } catch {
       if (errorBox) {
-        errorBox.textContent = 'Gagal menghubungi server verifikasi. Coba lagi beberapa saat.';
+        errorBox.textContent = 'Koneksi sedang bermasalah. Silakan coba lagi.';
         errorBox.hidden = false;
       }
     } finally {
       if (submitBtn && !keyInput?.disabled) {
         submitBtn.disabled = false;
-        submitBtn.textContent = 'Verifikasi & Buka Store →';
+        submitBtn.textContent = targetMeta.actionText;
       }
     }
   });
@@ -1081,19 +1220,28 @@ function openStoreAccessModal(serverStatus = null, initialAlert = '') {
   }
 }
 
-async function handleStoreNavigationRequest(initialAlert = '') {
+async function handleStoreNavigationRequest(initialAlert = '', target = 'store') {
+  const safeTarget = normalizeVaultTargetId(target);
   const ctx = getSiteContext();
-  if (!ctx.requiresStoreGate && !ctx.isProductionDomain && !ctx.isSplitDomain) {
+  if (safeTarget === 'store' && !ctx.requiresStoreGate && !ctx.isProductionDomain && !ctx.isSplitDomain) {
     window.location.assign('./index.html');
     return;
   }
 
   const status = await fetchStoreVaultStatus();
-  if (status?.ok && status.configured && (status.enabled === false || status.hasActivePass)) {
-    window.location.assign(STORE_VAULT_API.goUrl);
-    return;
+  if (safeTarget === 'store') {
+    if (status?.ok && status.configured && (status.enabled === false || status.hasActivePass)) {
+      window.location.assign(buildVaultGoUrl('store'));
+      return;
+    }
+  } else {
+    const isConfigured = Boolean(status?.contactsConfigured?.[safeTarget]);
+    if (status?.ok && isConfigured && (status.contactEnabled === false || status.hasActiveContactPass)) {
+      window.location.assign(buildVaultGoUrl(safeTarget));
+      return;
+    }
   }
-  openStoreAccessModal(status, initialAlert);
+  openStoreAccessModal(status, initialAlert, safeTarget);
 }
 
 function syncStoreTriggerButtons() {
@@ -1165,29 +1313,29 @@ function applyBrandToToolsPage(brandRaw) {
   const socialContainer = document.getElementById('footer-social-links');
   if (socialContainer) {
     const installBtn = socialContainer.querySelector('#footer-install-link');
-    const socialsHtml = (activeBrand.socials || [])
-      .map(
-        (soc) => `
-        <a
-          href="${escapeHtml(soc.url || '#')}"
-          target="_blank"
-          rel="noopener noreferrer"
-          class="footer-link-btn"
-        >
-          ${
-            soc.logo
-              ? `<img src="${escapeHtml(soc.logo)}" alt="" width="18" height="18" class="footer-social-icon" />`
-              : ''
-          }
-          <span>${escapeHtml(soc.label || soc.platform || 'Sosmed')}</span>
-        </a>
-      `
-      )
-      .join('');
-    const storeFooterLabel = ctx.requiresStoreGate ? 'Akses Store 🔒' : 'Buka Store';
+    const lockSvg =
+      '<svg class="footer-lock-mini" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>';
+    // On Manifestudio, NEVER expose raw WhatsApp numbers or social handles in DOM — route all through Vault gate
     socialContainer.innerHTML = `
-      <button type="button" class="footer-link-btn" data-store-gate-trigger="footer">${escapeHtml(storeFooterLabel)}</button>
-      ${socialsHtml}
+      <button type="button" class="footer-link-btn" data-vault-target="store">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+        <span>Akses Store</span>
+      </button>
+      <button type="button" class="footer-link-btn" data-vault-target="whatsapp">
+        <img src="./assets/icons/social-whatsapp.svg" alt="" width="18" height="18" class="footer-social-icon" />
+        <span>WhatsApp</span>
+        ${lockSvg}
+      </button>
+      <button type="button" class="footer-link-btn" data-vault-target="tiktok">
+        <img src="./assets/icons/social-tiktok.svg" alt="" width="18" height="18" class="footer-social-icon" />
+        <span>TikTok</span>
+        ${lockSvg}
+      </button>
+      <button type="button" class="footer-link-btn" data-vault-target="instagram">
+        <img src="./assets/icons/social-instagram.svg" alt="" width="18" height="18" class="footer-social-icon" />
+        <span>Instagram</span>
+        ${lockSvg}
+      </button>
     `;
     if (installBtn) {
       socialContainer.appendChild(installBtn);
@@ -1196,18 +1344,25 @@ function applyBrandToToolsPage(brandRaw) {
 }
 
 function bindStudioSectionEvents() {
-  // Delegated click for Store Gate triggers & Dedicated Tool Page links
+  // Delegated click for Store/Contact Vault triggers & Dedicated Tool Page links
   document.addEventListener('click', (e) => {
+    const vaultTrigger = e.target.closest?.('[data-vault-target]');
+    if (vaultTrigger) {
+      e.preventDefault();
+      const target = vaultTrigger.getAttribute('data-vault-target') || 'store';
+      handleStoreNavigationRequest('', target);
+      return;
+    }
+
     const storeTrigger = e.target.closest?.('[data-store-gate-trigger]');
     if (storeTrigger) {
       e.preventDefault();
-      handleStoreNavigationRequest();
+      handleStoreNavigationRequest('', 'store');
       return;
     }
 
     const openToolEl = e.target.closest?.('[data-studio-open-tool]');
     if (openToolEl) {
-      // Allow Ctrl/Cmd/Shift/Middle click on <a> to open in a new tab natively
       if (openToolEl.tagName === 'A' && (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button !== 0)) {
         return;
       }
@@ -1234,12 +1389,9 @@ function bindStudioSectionEvents() {
     enterHomeView({ pushState: true, scrollTarget: 'fitur' });
   });
 
-  // Quick-Switch feature dropdown inside Dedicated Feature Page
-  document.getElementById('studio-tool-switcher')?.addEventListener('change', (e) => {
-    const nextTab = e.target.value;
-    if (nextTab && nextTab !== currentTab) {
-      enterToolView(nextTab, { pushState: true });
-    }
+  // Custom Quick-Switch Feature Picker trigger inside Dedicated Feature Page
+  document.getElementById('studio-switcher-trigger')?.addEventListener('click', () => {
+    openFeaturePickerSheet();
   });
 
   // Header navigation links (work seamlessly from both Home Hub & Dedicated Tool Page)
@@ -1257,6 +1409,7 @@ function bindStudioSectionEvents() {
 
   // Browser Back / Forward sync
   window.addEventListener('popstate', () => {
+    closeFeaturePickerSheet();
     const route = readCurrentRoute();
     if (route.mode === 'tool' && route.tabId) {
       enterToolView(route.tabId, { pushState: false });
@@ -1284,6 +1437,11 @@ function bindStudioSectionEvents() {
 
   document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape') {
+      const pickerRoot = document.getElementById('studio-switcher-sheet-root');
+      if (pickerRoot && !pickerRoot.hidden) {
+        closeFeaturePickerSheet();
+        return;
+      }
       const modalRoot = document.getElementById('store-access-modal-root');
       if (modalRoot && !modalRoot.hidden) {
         closeStoreAccessModal();
@@ -1322,13 +1480,28 @@ async function bootstrap() {
     enterHomeView({ pushState: false });
   }
 
-  // If redirected back from /api/store-access/go without a valid HttpOnly pass, show Gate notice
+  // Mount floating "Tanya Fitur" Customer Service AI widget (replaces idle black music icon)
+  featureCs = createFeatureCsController({
+    getActiveTab: () => currentTab,
+    onOpenFeature: (toolId) => {
+      if (toolId) enterToolView(toolId, { pushState: true });
+    },
+    getConfig: () => ({
+      enabled: activeUtilities?.featureAssistant?.enabled !== false,
+      greeting: activeUtilities?.featureAssistant?.welcomeMessage || '',
+    }),
+  });
+
+  // If redirected back from /api/store-access/go without a valid pass, show Gate notice
   try {
     const curUrl = new URL(window.location.href);
     if (curUrl.searchParams.get('gate') === 'required') {
+      const gateTarget = normalizeVaultTargetId(curUrl.searchParams.get('target') || 'store');
       curUrl.searchParams.delete('gate');
+      curUrl.searchParams.delete('target');
       window.history.replaceState({}, '', `${curUrl.pathname}${curUrl.search}${curUrl.hash}`);
-      handleStoreNavigationRequest('Sesi tidak valid atau telah berakhir. Masukkan kunci akses Store.');
+      const targetLabel = VAULT_TARGET_LABELS[gateTarget]?.label || 'Store';
+      handleStoreNavigationRequest(`Sesi berakhir. Masukkan kode akses untuk membuka ${targetLabel}.`, gateTarget);
     }
   } catch {
     // Ignore
@@ -1344,7 +1517,7 @@ async function bootstrap() {
     applyTheme();
   });
 
-  // Load floating YT Music bundle lazily when idle (or immediately if opening tab=music or resuming active audio)
+  // Load floating YT Music bundle ONLY if user opened tab=music or is actively resuming playback
   let wasMusicPlaying = false;
   try {
     const raw = sessionStorage.getItem('manifestudio_music_session_v1');
@@ -1360,15 +1533,10 @@ async function bootstrap() {
     currentTab === 'audioeditor' ||
     currentTab === 'songfinder' ||
     currentTab === 'downloader';
-  const bootMusicLazy = () => {
-    import('./music.js?v=82')
+  if (currentTab === 'music' || (wasMusicPlaying && !isVideoOrAudioTab)) {
+    import('./music.js?v=85')
       .then((m) => m.initMusicPlayer?.())
       .catch(() => {});
-  };
-  if (currentTab === 'music' || (wasMusicPlaying && !isVideoOrAudioTab)) {
-    bootMusicLazy();
-  } else {
-    scheduleIdleTask(bootMusicLazy, 2500);
   }
 
   try {
@@ -1382,6 +1550,7 @@ async function bootstrap() {
     if (loaded?.data?.utilities) {
       activeUtilities = normalizeUtilityConfig(loaded.data.utilities);
       toolsHub?.setUtilitiesConfig?.(activeUtilities);
+      featureCs?.refreshConfig?.();
       renderToolSwitcherOptions(currentTab);
       if (currentViewMode === 'tool' && currentTab) {
         const nextSafeTab = resolveEnabledTab(currentTab);

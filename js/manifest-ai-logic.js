@@ -22,84 +22,127 @@ export const DEFAULT_MANIFESTUDIO_PROFILE = Object.freeze({
   whatsappMasked: '62xxxxxxxxxx',
   socialMasked: '@t***********o',
   summary:
-    'Platform web katalog akun premium & layanan digital murah bergaransi sekaligus Menu Utilitas 12 fitur gratis tanpa iklan, dibuat dan dikelola oleh Tomy.',
+    'Platform web mandiri 15 utilitas digital, AI, dan hiburan gratis tanpa login serta tanpa iklan, dibuat dan dikelola oleh Tomy.',
   utilities: [
-    'Jadwal Sholat & Imsakiyah (resmi Kemenag RI + GPS)',
-    'Prakiraan Cuaca Real-Time (curah hujan, UV, 7 hari)',
-    'Jam Dunia UTC & Bola Dunia 3D (WIB/WITA/WIT)',
-    'Speedtest Internet (Cloudflare Edge)',
-    'Downloader Sosmed All-in-One (TikTok, IG, YouTube, FB: video HD, foto, carousel, story, caption)',
-    'Kompresor Foto & Video HD (anti-pecah sosmed, AVIF/WebP/FFmpeg WASM)',
-    'Konversi Semua File (85+ format: DOCX, Excel, PDF, foto, video, audio, ZIP)',
-    'Cari Judul Lagu, Musik & Sumber Video (AudD, Whisper lirik AI, kemiripan video)',
-    'YT Music Player (gratis tanpa iklan)',
-    'Drama Pendek (Indonesia, China & Global · 20+ platform short drama gratis tanpa iklan, sub Indo, full episode gratis)',
-    'Audio Editor Studio AI (potong audio, 10-Band EQ, Voice Changer, pisah vokal/karaoke, mixer multi-trek, tag ID3, ekspor MP3/WAV/M4A/OGG/FLAC)',
-    'Manifest AI (chat AI multi-model gratis tanpa API key & dukungan multi-API key pribadi)',
-  ],
-  sampleProducts: [
-    'CapCut Pro (mulai Rp14.500)',
-    'Netflix Premium (mulai Rp25.000)',
-    'Canva Pro (mulai Rp4.000)',
-    'YouTube Premium (mulai Rp15.000)',
-    'Spotify Premium (mulai Rp15.000)',
-    'Viu Premium (mulai Rp7.000)',
-    'Vidio Premier Platinum (mulai Rp15.000)',
-    'Alight Motion Premium (mulai Rp15.000)',
-    'WeTV (mulai Rp8.500)',
-    'Prime Video (mulai Rp8.000)',
-    'Cek Turnitin (mulai Rp17.000)',
-    'Zoom Pro (mulai Rp10.000)',
-    'Cek AI GPTZero',
-    'Bstation (mulai Rp20.000)',
-    'Picsart (mulai Rp10.000)',
-    'Wink (mulai Rp8.000)',
-    'Remini (mulai Rp7.000)',
-    'Gemini AI (mulai Rp25.000)',
-    'Request & Custom Produk',
+    'Manifest AI (chat AI multi-model gratis tanpa API key, streaming cepat, riset web & mode suara)',
+    'Cek Plagiarisme (pindai kemiripan naskah PDF/DOCX/OCR, prinsip No Repository, laporan PDF)',
+    'Novel Terpadu (200+ novel lintas 14+ sumber, 122+ tema halaman, mode layar penuh & audiobook)',
+    'Drama Pendek (Indonesia, China & Global · 17+ platform short drama gratis tanpa iklan, sub Indo, mode FYP)',
+    'YT Music Player (streaming lagu viral Indonesia & global bebas iklan dengan pemutar melayang & audio latar)',
+    'Audio Editor Studio AI (potong presisi, 10-Band EQ, Voice Changer, pisah vokal/karaoke, mixer multi-trek, ekspor MP3/WAV/M4A/OGG/FLAC)',
+    'Cari Judul Lagu & Sumber Video (identifikasi lagu dari rekaman/audio dan pencarian sumber video)',
+    'Downloader Sosmed All-in-One (TikTok, IG, YouTube, FB: video HD tanpa watermark, MP3, foto carousel, story)',
+    'Kompresor Foto & Video HD (anti-pecah sosmed, preset TikTok/IG/WA HD, proses lokal di browser)',
+    'Konversi Semua File (85+ kombinasi format: DOCX, Excel, PDF, foto, video, audio, ZIP lokal di browser)',
+    'Jadwal Sholat & Imsakiyah (resmi Kemenag RI se-Indonesia + GPS otomatis + hitung mundur adzan)',
+    'Prakiraan Cuaca Real-Time (suhu, curah hujan per jam, indeks UV, angin & prakiraan 7 hari)',
+    'Jam Dunia UTC & Globe 3D Interaktif (WIB/WITA/WIT dan kota-kota dunia)',
+    'Speedtest Internet (uji download, upload, ping & jitter melalui jaringan Cloudflare CDN)',
+    'Cek Nomor Telepon & Anti-Spam (cek operator, area, direktori hotline resmi & indikasi penipuan)',
   ],
 });
 
+/**
+ * Detect active site mode ('utilities' on manifestudio.my.id / tools.html vs 'store' on manifestore.my.id).
+ * On 'utilities' mode, Manifest AI MUST remain strictly isolated from store catalog/pricing/contacts.
+ */
+export function detectManifestAiSiteMode(explicitMode = '') {
+  const clean = String(explicitMode || '').trim().toLowerCase();
+  if (clean === 'utilities' || clean === 'store') return clean;
+  if (typeof window !== 'undefined' && window.location) {
+    try {
+      const qs = new URLSearchParams(window.location.search);
+      const forced = String(qs.get('site') || '').trim().toLowerCase();
+      if (forced === 'utilities' || forced === 'tools' || forced === 'studio') return 'utilities';
+      if (forced === 'store' || forced === 'catalog') return 'store';
+      const host = String(window.location.hostname || '').toLowerCase();
+      const path = String(window.location.pathname || '').toLowerCase();
+      if (host === 'manifestudio.my.id' || host === 'www.manifestudio.my.id' || path.endsWith('/tools.html') || path === '/tools.html') {
+        return 'utilities';
+      }
+      if (host === 'manifestore.my.id' || host === 'www.manifestore.my.id') {
+        return 'store';
+      }
+    } catch {
+      // ignore
+    }
+  }
+  return 'utilities';
+}
+
 export const MANIFEST_AI_SYSTEM_PROMPT = [
-  'Kamu adalah Manifest AI, asisten AI resmi milik Manifestudio (https://manifestudio.my.id/) yang dibuat dan dikelola oleh Tomy.',
-  'Identitas resmi Manifestudio: Platform katalog akun premium & layanan digital murah bergaransi (seperti CapCut Pro, Netflix, Canva Pro, YouTube Premium, Spotify, Viu, Vidio, Alight Motion, WeTV, Prime Video, Cek Turnitin, Zoom Pro, Bstation, Picsart, Wink, Remini, Gemini AI) sekaligus Menu Utilitas berisi 15 fitur gratis tanpa iklan (Jadwal Sholat, Cuaca, Jam Dunia 3D, Speedtest, Downloader Sosmed, Kompresor HD, Konversi File, Cari Judul Lagu, YT Music, Drama Pendek, Audio Editor Studio AI, Manifest AI, Cek Plagiarisme, Novel Terpadu, dan Cek Nomor).',
+  'Kamu adalah Manifest AI, asisten AI universal resmi milik Manifestudio (https://manifestudio.my.id/) yang dibuat dan dikelola oleh Tomy (update 2026).',
+  'Kamu dapat membantu menjawab pertanyaan universal apa saja secara cerdas, objektif, dan terstruktur (sains, coding, bisnis, edukasi, menulis, analisis, teknologi, gaya hidup, dsb.) sekaligus memahami ekosistem resmi yang sedang diakses pengguna.',
   'Aturan WAJIB:',
   '1. Selalu jawab PESAN TERAKHIR pengguna secara langsung. Jika pengguna mengganti topik ke hal baru, segera ikuti topik baru dan JANGAN memaksa kembali ke topik lama.',
   '2. Jika pengguna mengirim sapaan singkat (seperti "P", "Halo", "Hai", "Tes"), balas singkat dan ramah menanyakan apa yang bisa dibantu.',
-  '3. ANTI-HALUSINASI KETAT: Gunakan data riset terverifikasi (bila disediakan di sistem) dan fakta nyata yang benar-benar kamu pastikan. JANGAN pernah mengarang nama warung/toko/orang palsu (misalnya "Pak Budi", "Pak Sani", "Pak Wayan") atau tertukar makanan khas antar daerah (misalnya Sate Maranggi khas Purwakarta bukan Tasikmalaya; Tasikmalaya terkenal dengan Nasi Tutug Oncom/Nasi TO, Soto Ayam Pataruman, Kupat Tahu Mangunreja, Bubur Ayam, Mie Bakso, Nasi Cikur, dll.). Jika tidak yakin akan nama tempat spesifik, jelaskan makanannya secara jujur tanpa mengarang nama warung. Untuk Manifestudio, JANGAN pernah mengarang bahwa Manifestudio membuat game, AR/VR, animasi, atau agensi seni digital.',
-  '4. PRIVASI OWNER (MUTLAK — TANPA PENGECUALIAN): JANGAN PERNAH menuliskan nomor WhatsApp/telepon pemilik/admin (termasuk format +62/08), username media sosial, atau email pribadi. Jangan pernah berkontradiksi (misalnya berkata tidak bisa memberi nomor lalu menuliskan nomor di kalimat berikutnya). Jika pengguna menanyakan nomor WA, kontak admin/owner, atau sosmed, cukup arahkan pengguna ke tombol kontak & media sosial resmi di bagian footer (bawah halaman) website Manifestudio (dan bila menyebut format kontak selalu sensor menjadi 62xxxxxxxxxx atau @t***********o).',
+  '3. ANTI-HALUSINASI KETAT: Gunakan data riset terverifikasi (bila disediakan di sistem) dan fakta nyata yang benar-benar kamu pastikan. JANGAN pernah mengarang nama warung/toko/orang palsu atau mencampur fakta daerah. Untuk Manifestudio, JANGAN pernah mengarang fitur yang tidak ada.',
+  '4. PRIVASI OWNER (MUTLAK — TANPA PENGECUALIAN): JANGAN PERNAH menuliskan nomor WhatsApp/telepon pemilik/admin (termasuk format +62/08 — selalu gunakan sensor 62xxxxxxxxxx bila terpaksa merujuk), username media sosial, email pribadi, kode akses, atau detail konfigurasi server. Jika pengguna menanyakan nomor WA, kontak admin/owner, atau sosmed, arahkan ke tombol kontak di bagian footer halaman tanpa menyebutkan angka nomor atau username akun.',
   '5. Jawab dalam bahasa yang sama dengan pengguna (utamakan Bahasa Indonesia yang natural, akurat, ringkas, dan rapi dengan Markdown bila perlu).',
 ].join('\n');
 
+export const MANIFEST_AI_UTILITIES_SYSTEM_PROMPT = [
+  'Kamu adalah Manifest AI, asisten AI universal resmi di platform Manifestudio (https://manifestudio.my.id/) yang dibuat dan dikelola oleh Tomy (update 2026).',
+  'Peranmu di menu Manifest AI adalah ASISTEN AI UNIVERSAL — kamu bebas membantu segala topik (belajar, coding, matematika, tulisan, ide kreatif, teknologi, berita, sains, tips harian, hingga menjelaskan 15 fitur gratis di Manifestudio).',
+  'Identitas resmi Manifestudio (15 Fitur Gratis Tanpa Login): Manifest AI, Cek Plagiarisme, Novel Terpadu, Drama Pendek, YT Music Player, Audio Editor Studio AI, Cari Judul Lagu & Sumber Video, Downloader Sosmed, Kompresor Foto & Video HD, Konversi Semua File, Jadwal Sholat & Imsakiyah, Prakiraan Cuaca Real-Time, Jam Dunia UTC & Globe 3D, Speedtest Internet, dan Cek Nomor Telepon.',
+  'ATURAN ISOLASI & PRIVASI MUTLAK DI MANIFESTUDIO (WAJIB DIPATUHI 100%):',
+  '1. DILARANG KERAS menyebut, mengonfirmasi, mempromosikan, atau membocorkan keberadaan Manifestore, toko/store, katalog produk, akun premium (harga/daftar produk seperti CapCut/Netflix/Canva/Turnitin berbayar), metode pembayaran, voucher, cara order, maupun tautan domain lain.',
+  '2. DILARANG KERAS menampilkan atau menebak nomor WhatsApp/telepon, username TikTok/Instagram, email pribadi, kode akses, nama file/sistem internal, maupun detail konfigurasi admin.',
+  '3. Jika pengguna bertanya tentang toko/store, katalog produk, harga akun premium, atau kontak admin/sosmed di Manifestudio, jawab singkat dan sopan bahwa layanan Manifestudio berfokus pada 15 fitur utilitas digital, AI, dan hiburan gratis tanpa login, serta informasi toko maupun kontak pribadi tidak tersedia melalui Manifest AI.',
+  '4. Selalu jawab PESAN TERAKHIR pengguna secara langsung, akurat, anti-halusinasi, dan dalam bahasa yang sama dengan pengguna.',
+].join('\n');
+
 const MANIFESTUDIO_QUERY_RE =
-  /\b(man[ie]f[eu]s?t?studio|manifest\s*studio|manifest\s*ai|tomy|tmctomystudio|tuan|pemilik|pembuat|pencipta|siapa\s+(kamu|anda|pembuat|pemilik|tuan)|kamu\s+siapa|anda\s+siapa|katalog|akun\s+premium|menu\s+utilitas|fitur\s+di\s+sini|kontak\s+admin|whatsapp\s+admin|wa\s+admin|whatsapp\s+owner|wa\s+owner|sosmed|media\s+sosial|instagram|tiktok|cara\s+order|cara\s+pesan|bayar\s+nanti|bayar\s+belakangan|capcut|netflix|canva|turnitin|dracin|drama\s+china|drama\s+pendek|audio\s+editor)\b/i;
+  /\b(man[ie]f[eu]s?t?studio|manifest\s*studio|manifest\s*ai|tomy|tmctomystudio|tuan|pemilik|pembuat|pencipta|siapa\s+(kamu|anda|pembuat|pemilik|tuan)|kamu\s+siapa|anda\s+siapa|katalog|akun\s+premium|menu\s+utilitas|fitur\s+di\s+sini|kontak\s+admin|whatsapp\s+admin|wa\s+admin|whatsapp\s+owner|wa\s+owner|sosmed|media\s+sosial|instagram|tiktok|cara\s+order|cara\s+pesan|bayar\s+nanti|bayar\s+belakangan|dracin|drama\s+china|drama\s+pendek|audio\s+editor|cek\s+plagiarisme|cek\s+nomor|novel\s+terpadu|jadwal\s+sholat|kompresor\s+hd|konversi\s+file|speedtest|yt\s*music)\b/i;
 
 export function isManifestudioQuery(text = '') {
   return MANIFESTUDIO_QUERY_RE.test(String(text || ''));
 }
 
+const RESTRICTED_STORE_OR_CATALOG_RE =
+  /\b(manifestore|manifest\s*store|katalog\s*(?:produk|store|toko|akun|harga)?|daftar\s*(?:produk|harga|akun\s*premium)|jual\s*(?:akun|aplikasi|produk)|beli\s*(?:akun|capcut|netflix|canva|spotify|youtube\s*premium|viu|vidio|wetv|prime\s*video|zoom\s*pro|gemini|turnitin)|harga\s*(?:capcut|netflix|canva|spotify|youtube\s*premium|viu|vidio|wetv|prime\s*video|zoom\s*pro|turnitin|akun\s*premium|produk|langganan\s*di\s*sini)|cara\s*(?:order|pesan|beli|checkout)|bayar\s*(?:nanti|belakangan)|kode\s*akses\s*(?:store|toko|kontak|wa|admin)|kunci\s*akses\s*(?:store|toko|kontak)|link\s*(?:store|toko|manifestore)|url\s*(?:store|toko|manifestore)|toko\s*(?:manifestudio|tomy|resmi|kamu|ini)|store\s*(?:manifestudio|tomy|resmi|kamu|ini)|akses\s*store|menu\s*store)\b/i;
+
+/**
+ * Detects queries on Manifestudio (utilities mode) attempting to probe Manifestore,
+ * store catalog, pricing, access keys, or private contacts.
+ */
+export function isRestrictedManifestudioQuery(text = '') {
+  const clean = String(text || '').trim();
+  if (!clean) return false;
+  if (RESTRICTED_STORE_OR_CATALOG_RE.test(clean)) return true;
+  if (isDirectOwnerContactQuery(clean)) return true;
+  return false;
+}
+
 const DIRECT_OWNER_CONTACT_RE =
-  /(?:(?:berapa|mana|minta|kasih|bagi|tahu|info|apa|nomor|no\.?|kontak|hubungi|chat|telepon|telp|hp)\s*(?:nya\s*)?(?:wa|whatsapp|telepon|telp|hp|kontak|nomor)\s*(?:nya\s*)?(?:owner|admin|pemilik|tomy|tuan|manifestudio|web|resmi)|(?:wa|whatsapp|nomor|no\.?|kontak|sosmed|media\s*sosial|instagram|ig|tiktok|email|gmail)\s*(?:nya\s*)?(?:owner|admin|pemilik|tomy|tuan|manifestudio|resmi)|(?:owner|admin|pemilik|tomy|manifestudio)\s*(?:punya\s*)?(?:wa|whatsapp|nomor|no\.?\s*(?:wa|hp)|kontak|sosmed|instagram|ig|tiktok|email))/i;
+  /(?:(?:berapa|mana|minta|kasih|bagi|tahu|info|apa|nomor|no\.?|kontak|hubungi|chat|telepon|telp|hp|link|akun|username)\s*(?:nya\s*)?(?:wa|whatsapp|telepon|telp|hp|kontak|nomor|sosmed|media\s*sosial|instagram|ig|tiktok|email|gmail)\s*(?:nya\s*)?(?:owner|admin|pemilik|tomy|tuan|manifestudio|manifestore|web|situs|resmi)|(?:wa|whatsapp|nomor|no\.?|kontak|sosmed|media\s*sosial|instagram|ig|tiktok|email|gmail)\s*(?:nya\s*)?(?:owner|admin|pemilik|tomy|tuan|manifestudio|manifestore|resmi)|(?:owner|admin|pemilik|tomy|manifestudio|manifestore)\s*(?:punya\s*)?(?:wa|whatsapp|nomor|no\.?\s*(?:wa|hp)|kontak|sosmed|instagram|ig|tiktok|email))/i;
 
 /**
  * Detects direct user requests asking for owner/admin WhatsApp, phone, email, or social accounts
- * so Manifest AI responds deterministically with a non-contradictory privacy-safe footer guide.
+ * so Manifest AI responds deterministically with a non-contradictory privacy-safe guide.
  */
 export function isDirectOwnerContactQuery(text = '') {
   const clean = String(text || '').trim();
   if (!clean) return false;
-  // Don't hijack general tutorials like "cara membuat whatsapp bisnis" unless owner/admin/manifestudio/tomy is referenced
-  if (!/(?:owner|admin|pemilik|tomy|tuan|manifestudio|web\s*ini|situs\s*ini|resmi)/i.test(clean)) {
+  if (!/(?:owner|admin|pemilik|tomy|tuan|manifestudio|manifestore|web\s*ini|situs\s*ini|resmi)/i.test(clean)) {
     return false;
   }
   return DIRECT_OWNER_CONTACT_RE.test(clean);
 }
 
-export function buildOwnerContactPrivacyReply() {
+export function buildOwnerContactPrivacyReply(siteMode = 'utilities') {
+  const resolvedMode = detectManifestAiSiteMode(siteMode);
+  if (resolvedMode === 'utilities') {
+    return [
+      'Maaf, **Manifest AI** di **Manifestudio** hanya melayani pertanyaan umum serta informasi seputar **15 fitur utilitas digital, AI, dan hiburan gratis** di platform ini.',
+      '',
+      'Informasi kontak pribadi, akun media sosial, kode akses, maupun layanan di luar fitur utilitas tidak dapat ditampilkan melalui percakapan AI.',
+    ].join('\n');
+  }
   return [
-    'Demi menjaga privasi pemilik (**Tomy**), Manifest AI tidak dapat menampilkan nomor WhatsApp, email pribadi, maupun akun media sosial secara terbuka (`62xxxxxxxxxx` · `@t***********o`).',
+    'Demi menjaga privasi, Manifest AI tidak menampilkan nomor WhatsApp pribadi (`62xxxxxxxxxx`), email pribadi, maupun akun media sosial (`@t***********o`) secara terbuka di dalam chat.',
     '',
-    'Untuk menghubungi **WhatsApp Admin** atau mengunjungi **media sosial resmi Manifestudio**, silakan langsung klik tombol **Kontak & Sosmed resmi** yang sudah tersedia di **bagian footer (bawah halaman)** website ini.',
+    'Untuk menghubungi **WhatsApp Admin** atau media sosial resmi, silakan gunakan tombol kontak yang tersedia di **bagian footer (bawah halaman)** ini.',
   ].join('\n');
 }
 
@@ -228,15 +271,15 @@ export function sanitizeOwnerContactContradiction(text = '') {
  * replacing them with safe censored placeholders (62xxxxxxxxxx / @t***********o)
  * while preserving normal prices (Rp25.000), dates, and general numbers.
  */
-export function redactSensitiveOwnerData(text = '', catalogData = null) {
+export function redactSensitiveOwnerData(text = '', catalogData = null, opts = {}) {
   let out = String(text || '');
   if (!out) return '';
+  const siteMode = opts.siteMode || detectManifestAiSiteMode();
 
   const brand = catalogData?.brand || {};
-  const waRaw = String(brand.whatsappNumber || '6285122936027').replace(/\D/g, '');
-  const waCandidates = new Set([waRaw, '6285122936027'].filter((x) => x.length >= 9));
+  const waRaw = String(brand.whatsappNumber || '').replace(/\D/g, '');
+  const waCandidates = new Set([waRaw].filter((x) => x.length >= 9));
 
-  // Build full (628...), local (08...), and core (8...) variants for each owner WhatsApp number
   const digitPatterns = new Set();
   for (const num of waCandidates) {
     digitPatterns.add(num);
@@ -246,11 +289,11 @@ export function redactSensitiveOwnerData(text = '', catalogData = null) {
     }
   }
 
-  // 1. Censor wa.me / api.whatsapp.com URLs pointing to owner or any direct phone link
-  out = out.replace(/https?:\/\/(?:wa\.me|api\.whatsapp\.com\/send\?phone=)\/?\d{8,15}/gi, '62xxxxxxxxxx');
-  out = out.replace(/\bwa\.me\/\d{8,15}\b/gi, '62xxxxxxxxxx');
+  // 1. Censor wa.me / api.whatsapp.com URLs pointing to any phone link
+  out = out.replace(/https?:\/\/(?:wa\.me|api\.whatsapp\.com\/send\?phone=)\/?\d{8,15}/gi, '[tautan-dilindungi]');
+  out = out.replace(/\bwa\.me\/\d{8,15}\b/gi, '[tautan-dilindungi]');
 
-  // 2. Censor exact owner WhatsApp number in ANY ASCII or Unicode separator formatting
+  // 2. Censor dynamic owner WhatsApp number if present in store catalog
   const sortedDigits = [...digitPatterns].sort((a, b) => b.length - a.length);
   for (const digits of sortedDigits) {
     if (digits.length < 9) continue;
@@ -261,18 +304,11 @@ export function redactSensitiveOwnerData(text = '', catalogData = null) {
     const re = new RegExp(`(?:\\+?${FLEX_PHONE_SEP_CLASS})?${flexPattern}`, 'g');
     out = out.replace(re, '62xxxxxxxxxx');
   }
-
-  // 2b. Digit-stream scanner catch-all (catches exotic Unicode dashes/Markdown bold/zero-width chars)
   out = redactDigitSequences(out, sortedDigits);
 
-  // 3. Censor owner social handles & direct social URLs (TikTok, Instagram, etc.)
+  // 3. Censor dynamic social handles & direct social URLs linked to owner
   const rawHandles = new Set(
-    [
-      String(brand.instagramHandle || ''),
-      String(brand.tiktokHandle || ''),
-      '@tmctomystudio',
-      'tmctomystudio26',
-    ]
+    [String(brand.instagramHandle || ''), String(brand.tiktokHandle || '')]
       .map((h) => h.trim().replace(/^@+/, ''))
       .filter((h) => h.length >= 4)
   );
@@ -286,13 +322,18 @@ export function redactSensitiveOwnerData(text = '', catalogData = null) {
     );
     out = out.replace(new RegExp(`@?\\b${esc}\\b`, 'gi'), masked);
   }
+  // Also redact any accidental brand studio handle pattern without hardcoding literals
+  out = out.replace(
+    /https?:\/\/(?:www\.)?(?:instagram\.com|tiktok\.com)\/@?tmc[a-z0-9_.-]*/gi,
+    '@t***********o'
+  );
+  out = out.replace(/@?\btmc[a-z0-9_]*studio[a-z0-9_]*\b/gi, '@t***********o');
 
   // 4. Censor any email address linked to owner/manifestudio
-  out = out.replace(/\b[a-zA-Z0-9._%+-]*(?:tomy|manifestudio)[a-zA-Z0-9._%+-]*@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}\b/gi, 't***@*****.***');
+  out = out.replace(/\b[a-zA-Z0-9._%+-]*(?:tomy|manifestudio|manifestore)[a-zA-Z0-9._%+-]*@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}\b/gi, 't***@*****.***');
 
-  // 5. Contextual safeguard: if text mentions WA/WhatsApp/kontak/admin/owner/Tomy/Manifestudio alongside
-  //    ANY raw Indonesian mobile number (+62 8... / 08... with ASCII OR Unicode spaces/hyphens), censor it!
-  if (/(?:whatsapp|\bwa\b|kontak|telepon|telp|\bhp\b|hubungi|admin|owner|pemilik|tomy|manifestudio|nomor\s*pribadi)/i.test(out)) {
+  // 5. Contextual safeguard for Indonesian phone numbers next to contact/owner terms
+  if (/(?:whatsapp|\bwa\b|kontak|telepon|telp|\bhp\b|hubungi|admin|owner|pemilik|tomy|manifestudio|manifestore|nomor\s*pribadi)/i.test(out)) {
     const indonesianPhoneRe = new RegExp(
       `(?:\\+?62|0)${FLEX_PHONE_SEP_CLASS}8(?:${FLEX_PHONE_SEP_CLASS}\\d){7,12}`,
       'g'
@@ -300,99 +341,153 @@ export function redactSensitiveOwnerData(text = '', catalogData = null) {
     out = out.replace(indonesianPhoneRe, '62xxxxxxxxxx');
   }
 
-  // 6. Clean any contradictory "tidak bisa memberi nomor ... kirim pesan ke 62xxxxxxxxxx" phrasing
-  out = sanitizeOwnerContactContradiction(out);
+  // 6. Strict Manifestudio Domain Isolation: never leak Store domain or internal system details
+  if (siteMode === 'utilities') {
+    out = out.replace(/https?:\/\/(?:www\.)?manifestore\.my\.id[^\s)]*/gi, 'https://manifestudio.my.id/');
+    out = out.replace(/\bmanifestore(?:\.my\.id)?\b/gi, 'layanan terkait');
+  }
 
+  // 7. Strip internal technical/admin system jargon from public AI replies
+  out = out.replace(/\b(?:STORE_ACCESS_KV|Cloudflare\s*KV|PBKDF2(?:-SHA256)?|HMAC-SHA256|admin\.html|catalog\.json)\b/gi, 'sistem internal');
+
+  out = sanitizeOwnerContactContradiction(out);
   return out;
 }
 
 /**
- * Builds a concise, 100% factual Manifestudio knowledge block directly from live
- * `data/catalog.json` (with safe defaults) WITHOUT exposing sensitive owner phone/social data.
+ * Builds a concise, 100% factual knowledge block strictly scoped to the active site domain.
+ * On Manifestudio (`utilities`), NEVER includes Store products, pricing, vouchers, or contacts.
  */
-export function buildManifestudioKnowledgeBlock(catalogData = null) {
+export function buildManifestudioKnowledgeBlock(catalogData = null, opts = {}) {
+  const siteMode = opts.siteMode || detectManifestAiSiteMode();
   const brand = catalogData?.brand || {};
-  const name = String(brand.name || DEFAULT_MANIFESTUDIO_PROFILE.brandName);
+  const name =
+    siteMode === 'utilities'
+      ? String(brand?.storeAccess?.utilitiesBrandName || 'Manifestudio')
+      : String(brand.name || DEFAULT_MANIFESTUDIO_PROFILE.brandName);
   const tagline = String(brand.tagline || 'by Tomy');
 
-  const liveProducts = Array.isArray(catalogData?.products) && catalogData.products.length > 0
-    ? catalogData.products
-        .filter((p) => p && p.name)
-        .map((p) => {
-          const prices = (Array.isArray(p.variants) ? p.variants : [])
-            .map((v) => Number(v?.price))
-            .filter((x) => Number.isFinite(x) && x > 0);
-          const minPrice = prices.length > 0 ? Math.min(...prices) : 0;
-          return minPrice > 0 ? `${p.name} (mulai ${formatIdrSimple(minPrice)})` : p.name;
-        })
-    : DEFAULT_MANIFESTUDIO_PROFILE.sampleProducts;
+  const liveUtilities =
+    Array.isArray(catalogData?.utilities?.items) && catalogData.utilities.items.length > 0
+      ? catalogData.utilities.items
+          .filter((u) => u && u.enabled !== false)
+          .map((u) => u.label)
+          .filter(Boolean)
+      : DEFAULT_MANIFESTUDIO_PROFILE.utilities;
 
-  const liveUtilities = Array.isArray(catalogData?.utilities?.items) && catalogData.utilities.items.length > 0
-    ? catalogData.utilities.items.map((u) => u.label).filter(Boolean)
-    : DEFAULT_MANIFESTUDIO_PROFILE.utilities;
+  if (siteMode === 'utilities') {
+    return [
+      `[DATA RESMI TERVERIFIKASI ${name.toUpperCase()} (${tagline}) — MODE MANIFESTUDIO]`,
+      `- Nama Platform: ${name} (${tagline}) · Situs resmi: https://manifestudio.my.id/`,
+      `- Pengelola: Tomy.`,
+      `- Fokus Platform: Platform web mandiri berisi ${liveUtilities.length} fitur utilitas digital, AI, dan hiburan 100% gratis tanpa login dan tanpa iklan.`,
+      `- Daftar Lengkap ${liveUtilities.length} Fitur Aktif: ${liveUtilities.join('; ')}.`,
+      '- LARANGAN MUTLAK: Jangan pernah mengungkap, membahas, atau menyebut nama toko/store eksternal, katalog akun premium, harga produk berbayar, cara order, nomor WhatsApp, akun Instagram/TikTok, maupun konfigurasi sistem/admin.',
+    ].join('\n');
+  }
+
+  const liveProducts =
+    Array.isArray(catalogData?.products) && catalogData.products.length > 0
+      ? catalogData.products
+          .filter((p) => p && p.name)
+          .map((p) => {
+            const prices = (Array.isArray(p.variants) ? p.variants : [])
+              .map((v) => Number(v?.price))
+              .filter((x) => Number.isFinite(x) && x > 0);
+            const minPrice = prices.length > 0 ? Math.min(...prices) : 0;
+            return minPrice > 0 ? `${p.name} (mulai ${formatIdrSimple(minPrice)})` : p.name;
+          })
+      : [];
 
   const threshold = Number(brand.discountThreshold) || 50000;
   const discAmt = Number(brand.discountAmount) || 2000;
 
   return [
-    `[DATA RESMI TERVERIFIKASI ${name.toUpperCase()} (${tagline}) — WAJIB DIJADIKAN ACUAN UTAMA]`,
-    `- Nama Platform: ${name} (${tagline}) · Situs resmi: https://manifestudio.my.id/`,
-    `- Pemilik / Pengelola / Tuan: Tomy (privasi kontak dilindungi — JANGAN sebut nomor WA atau username sosmed asli; sensor menjadi 62xxxxxxxxxx / @t***********o dan arahkan pengguna ke tombol resmi di footer website).`,
-    `- Promo & Pembayaran: Potongan otomatis ${formatIdrSimple(discAmt)} mulai belanja ${formatIdrSimple(threshold)}, dukungan kode voucher, opsi Bayar Sekarang (0%) atau Bayar Belakangan, struk otomatis & konfirmasi pesanan.`,
-    `- Daftar Katalog Layanan Digital (${liveProducts.length} produk): ${liveProducts.join(', ')}.`,
-    `- Daftar Menu Utilitas Gratis Tanpa Iklan (${liveUtilities.length} fitur di tools.html): ${liveUtilities.join('; ')}.`,
-    `- LARANGAN KERAS: Jangan pernah menyebut layanan fiktif di luar daftar ini (game, AR/VR, animasi, seni digital) dan JANGAN pernah membocorkan nomor WhatsApp, akun sosmed, atau kontak pribadi owner tanpa sensor.`,
-  ].join('\n');
+    `[DATA RESMI TERVERIFIKASI ${name.toUpperCase()} (${tagline})]`,
+    `- Pengelola: Tomy (privasi kontak dilindungi — nomor WA disensor 62xxxxxxxxxx dan sosmed diarahkan ke tombol footer halaman).`,
+    `- Promo & Pembayaran: Potongan otomatis ${formatIdrSimple(discAmt)} mulai belanja ${formatIdrSimple(threshold)}, dukungan kode voucher, opsi Bayar Sekarang (0%) atau Bayar Belakangan, dan faktur otomatis.`,
+    liveProducts.length > 0 ? `- Daftar Katalog (${liveProducts.length} layanan): ${liveProducts.join(', ')}.` : '',
+    `- Menu Utilitas Gratis (${liveUtilities.length} fitur): ${liveUtilities.join('; ')}.`,
+  ]
+    .filter(Boolean)
+    .join('\n');
 }
 
 /**
  * Generates an accurate, verified Indonesian response directly from live Manifestudio data
- * when external free gateways are temporarily cooling down and the user asks about
- * Manifestudio, its creator Tomy, products, utilities, or sends a quick greeting.
- * Respects strict owner privacy: masks phone/socials and points to website footer.
+ * when external free gateways are temporarily cooling down.
  */
-export function buildLocalManifestudioFallback(prompt = '', catalogData = null) {
+export function buildLocalManifestudioFallback(prompt = '', catalogData = null, opts = {}) {
+  const siteMode = opts.siteMode || detectManifestAiSiteMode();
   const raw = String(prompt || '').trim();
   const lower = raw.toLowerCase();
   if (!raw) return '';
 
-  // Casual Indonesian pings/greetings ("P", "Halo", "Hai", "Tes")
   if (/^(p+|ping|halo+|hai+|hi+|hey+|tes+|test+|assalamualaikum|selamat\s+(pagi|siang|sore|malam))[\s!?.]*$/i.test(lower)) {
-    return 'Halo! Saya **Manifest AI** dari **Manifestudio** (*by Tomy*). Ada yang bisa saya bantu hari ini?';
+    return 'Halo! Saya **Manifest AI** di **Manifestudio** (*by Tomy*). Ada yang bisa saya bantu hari ini?';
   }
 
-  // Direct owner contact / WhatsApp / social media inquiry -> privacy-safe reply pointing to footer
   if (
+    isRestrictedManifestudioQuery(raw, siteMode) ||
     isDirectOwnerContactQuery(raw) ||
-    /\b(nomor\s*(wa|whatsapp|hp|telepon)|no\s*(wa|whatsapp|hp)|kontak\s*(admin|owner|tomy|pemilik)|sosmed|media\s*sosial|instagram|tiktok)\b/i.test(lower)
+    /\b(nomor\s*(wa|whatsapp|hp|telepon)|no\s*(wa|whatsapp|hp)|kontak\s*(admin|owner|tomy|pemilik)|sosmed|media\s*sosial)\b/i.test(lower)
   ) {
-    return buildOwnerContactPrivacyReply();
+    return buildOwnerContactPrivacyReply(siteMode);
   }
 
-  // Identity / creator / "what is Manifestudio" / "what's in Manifestudio"
   const asksAboutManifestudio =
     /\b(man[ie]f[eu]s?t?studio|manifest\s*studio|manifest\s*ai)\b/i.test(lower) ||
-    /\b(siapa\s+(kamu|anda|pembuat|pemilik|tuan|pengelola)|kamu\s+siapa|anda\s+siapa|tuan\s+kamu|pemilik\s+web)\b/i.test(lower);
+    /\b(siapa\s+(kamu|anda|pembuat|pemilik|tuan|pengelola)|kamu\s+siapa|anda\s+siapa|pemilik\s+web)\b/i.test(lower);
 
   if (!asksAboutManifestudio) return '';
 
-  const products = Array.isArray(catalogData?.products) && catalogData.products.length > 0
-    ? catalogData.products.slice(0, 12).map((p) => p.name)
-    : ['CapCut Pro', 'Netflix Premium', 'Canva Pro', 'YouTube Premium', 'Spotify Premium', 'Viu', 'Vidio', 'Alight Motion', 'WeTV', 'Prime Video', 'Cek Turnitin', 'Zoom Pro', 'Gemini AI'];
-  const utilities = Array.isArray(catalogData?.utilities?.items) && catalogData.utilities.items.length > 0
-    ? catalogData.utilities.items.map((u) => u.label)
-    : ['Jadwal Sholat', 'Prakiraan Cuaca', 'Jam Dunia & Globe', 'Speedtest', 'Downloader', 'Kompresor HD', 'Konversi File', 'Cari Judul Lagu', 'YT Music', 'Drama Pendek', 'Audio Editor', 'Manifest AI'];
+  const utilities =
+    Array.isArray(catalogData?.utilities?.items) && catalogData.utilities.items.length > 0
+      ? catalogData.utilities.items.filter((u) => u && u.enabled !== false).map((u) => u.label)
+      : [
+          'Manifest AI',
+          'Drama Pendek',
+          'YT Music',
+          'Downloader',
+          'Kompresor HD',
+          'Konversi File',
+          'Audio Editor',
+          'Cari Judul Lagu',
+          'Cek Plagiarisme',
+          'Novel Terpadu',
+          'Jadwal Sholat',
+          'Prakiraan Cuaca',
+          'Jam Dunia & Globe',
+          'Speedtest',
+          'Cek Nomor',
+        ];
+
+  if (siteMode === 'utilities') {
+    return [
+      'Halo! Saya **Manifest AI**, asisten AI universal di **Manifestudio** (*by Tomy*).',
+      '',
+      `**Manifestudio** adalah platform utilitas digital, AI, dan hiburan gratis tanpa login yang menyediakan **${utilities.length} fitur unggulan**:`,
+      '',
+      utilities.map((u, i) => `${i + 1}. **${u}**`).join('\n'),
+      '',
+      'Di sini saya bisa membantu pertanyaan umum apa pun—mulai dari menulis, coding, riset, hingga menjelaskan cara kerja fitur Manifestudio!',
+    ].join('\n');
+  }
+
+  const products =
+    Array.isArray(catalogData?.products) && catalogData.products.length > 0
+      ? catalogData.products.slice(0, 12).map((p) => p.name)
+      : [];
 
   return [
-    'Halo! Saya **Manifest AI**, asisten resmi milik **Manifestudio** (*by Tomy*) di [manifestudio.my.id](https://manifestudio.my.id/).',
+    'Halo! Saya **Manifest AI**, asisten AI resmi dari ekosistem **Manifestudio** (*by Tomy*).',
     '',
-    '**Manifestudio** adalah platform web yang dikelola oleh **Tomy** yang menyediakan dua layanan utama:',
-    '',
-    `1. **Katalog Akun Premium & Layanan Digital Bergaransi**: ${products.join(', ')}, dan lainnya (dilengkapi diskon otomatis mulai Rp50.000, kode voucher, struk otomatis, serta opsi Bayar Sekarang / Bayar Belakangan).`,
-    `2. **Menu Utilitas (${utilities.length} Fitur Gratis Tanpa Iklan)**: ${utilities.join(', ')}.`,
-    '',
-    '**Kontak & Sosmed Resmi**: Demi privasi pemilik (`62xxxxxxxxxx` · `@t***********o`), silakan akses tombol WhatsApp Admin dan media sosial resmi langsung di **bagian footer (bawah halaman)** website ini.',
-  ].join('\n');
+    products.length > 0 ? `**Katalog Layanan Digital**: ${products.join(', ')}, dan lainnya.` : '',
+    `**Menu Utilitas (${utilities.length} Fitur Gratis)**: ${utilities.join(', ')}.`,
+    'Untuk kontak resmi atau bantuan pesanan, silakan gunakan tombol yang tersedia di bagian footer halaman.',
+  ]
+    .filter(Boolean)
+    .join('\n');
 }
 
 export const MANIFEST_AI_PROVIDERS = Object.freeze([
@@ -1212,15 +1307,19 @@ export function buildUnifiedContextMessages(
     customSystemPrompt = '',
     catalogData = null,
     researchContext = '',
+    siteMode = '',
   } = {}
 ) {
+  const effectiveMode = siteMode || detectManifestAiSiteMode();
   const promptClean = String(currentUserPrompt || '').trim();
   const cleanHistory = sanitizeConversationHistory(history, catalogData);
   const shift = detectTopicShift(cleanHistory, promptClean);
 
-  const systemParts = [customSystemPrompt || MANIFEST_AI_SYSTEM_PROMPT];
-  if (isManifestudioQuery(promptClean)) {
-    systemParts.push(buildManifestudioKnowledgeBlock(catalogData));
+  const defaultPrompt =
+    effectiveMode === 'utilities' ? MANIFEST_AI_UTILITIES_SYSTEM_PROMPT : MANIFEST_AI_SYSTEM_PROMPT;
+  const systemParts = [customSystemPrompt || defaultPrompt];
+  if (!customSystemPrompt && isManifestudioQuery(promptClean)) {
+    systemParts.push(buildManifestudioKnowledgeBlock(catalogData, { siteMode: effectiveMode }));
   }
   if (researchContext && String(researchContext).trim()) {
     systemParts.push(String(researchContext).trim());

@@ -51,7 +51,7 @@ test('Manifest AI v64 knows its creator Tomy & real Manifestudio products while 
   assert.equal(isManifestudioQuery('Siapa tuan Manifestudio?'), true);
   assert.equal(isManifestudioQuery('Cara membuat kopi tubruk'), false);
 
-  const knowledge = buildManifestudioKnowledgeBlock(liveCatalog);
+  const knowledge = buildManifestudioKnowledgeBlock(liveCatalog, { siteMode: 'store' });
   assert.ok(knowledge.includes('Tomy'));
   assert.ok(knowledge.includes('Capcut Pro') || knowledge.includes('CapCut Pro'));
   assert.ok(knowledge.includes('Netflix Premium'));
@@ -63,12 +63,18 @@ test('Manifest AI v64 knows its creator Tomy & real Manifestudio products while 
   assert.equal(knowledge.includes('6285122936027'), false);
   assert.equal(knowledge.includes('@tmctomystudio'), false);
 
+  // Utilities mode (Manifestudio) MUST strictly hide Store products & pricing
+  const utilKnowledge = buildManifestudioKnowledgeBlock(liveCatalog, { siteMode: 'utilities' });
+  assert.ok(utilKnowledge.includes('Drama Pendek'));
+  assert.equal(utilKnowledge.includes('Netflix Premium'), false);
+  assert.equal(utilKnowledge.includes('6285122936027'), false);
+
   // Local fallback handles casual "P" greeting and Manifestudio identity queries accurately
-  const pingReply = buildLocalManifestudioFallback('P', liveCatalog);
+  const pingReply = buildLocalManifestudioFallback('P', liveCatalog, { siteMode: 'store' });
   assert.ok(pingReply.includes('Manifest AI'));
   assert.ok(pingReply.includes('Tomy'));
 
-  const brandReply = buildLocalManifestudioFallback('Ada apa aja di manefestudio?', liveCatalog);
+  const brandReply = buildLocalManifestudioFallback('Ada apa aja di manefestudio?', liveCatalog, { siteMode: 'store' });
   assert.ok(brandReply.includes('Manifestudio'));
   assert.ok(brandReply.includes('Tomy'));
   assert.ok(brandReply.includes('Menu Utilitas'));
@@ -78,7 +84,7 @@ test('Manifest AI v64 knows its creator Tomy & real Manifestudio products while 
   assert.equal(/AR\/VR|studio kreatif.*game/i.test(brandReply), false);
 
   // Unrelated general queries do NOT hijack normal LLM routing
-  assert.equal(buildLocalManifestudioFallback('Cara membuat kopi espresso', liveCatalog), '');
+  assert.equal(buildLocalManifestudioFallback('Cara membuat kopi espresso', liveCatalog, { siteMode: 'store' }), '');
 });
 
 test('Manifest AI v62 isolates new topics cleanly while preserving memory on follow-ups and topic returns', () => {
@@ -111,6 +117,7 @@ test('Manifest AI v62 isolates new topics cleanly while preserving memory on fol
 
   const switchedMsgs = buildUnifiedContextMessages(coffeeHistory, 'Ada apa aja di manefestudio', {
     catalogData: liveCatalog,
+    siteMode: 'store',
   });
   assert.equal(switchedMsgs.length, 2); // ONLY [system (with live catalog!), latest user prompt]
   assert.equal(switchedMsgs[0].role, 'system');
@@ -197,7 +204,7 @@ test('Manifest AI v63 rotates across 4 independent free networks and survives fu
   // Markdown XSS safety still holds
   const html = renderMarkdownSafe('**Manifestudio** <script>alert(1)</script>');
   assert.ok(html.includes('<strong>Manifestudio</strong>') && !html.includes('<script>'));
-  assert.ok(DEFAULT_MANIFESTUDIO_PROFILE.utilities.length === 12);
+  assert.ok(DEFAULT_MANIFESTUDIO_PROFILE.utilities.length === 15);
 });
 
 test('Manifest AI v64 strictly censors leaked owner WhatsApp, phones, socials, and emails while preserving prices & normal numbers', () => {
@@ -324,7 +331,7 @@ test('Manifest AI v66 blocks Unicode-hyphen phone leaks, eliminates contradictor
   assert.equal(isDirectOwnerContactQuery('Minta nomor WA admin Manifestudio'), true);
   assert.equal(isDirectOwnerContactQuery('Apa Instagram Tomy?'), true);
   assert.equal(isDirectOwnerContactQuery('Cara membuat akun WhatsApp bisnis'), false);
-  const directReply = buildOwnerContactPrivacyReply();
+  const directReply = buildOwnerContactPrivacyReply('store');
   assert.ok(directReply.includes('footer'));
   assert.ok(directReply.includes('62xxxxxxxxxx'));
   assert.equal(directReply.includes('851'), false);
@@ -400,7 +407,7 @@ test('Manifest AI v66 live web research grounding, Markdown tables, and fast fir
   assert.equal(html.includes('|---|---|'), false);
 
   // Inline code containing asterisks (`@t***********o`) must NOT corrupt subsequent **bold** Markdown or strip paragraphs
-  const privacyHtml = renderMarkdownSafe(redactSensitiveOwnerData(buildOwnerContactPrivacyReply(), liveCatalog));
+  const privacyHtml = renderMarkdownSafe(redactSensitiveOwnerData(buildOwnerContactPrivacyReply('store'), liveCatalog, { siteMode: 'store' }));
   const withoutCode = privacyHtml.replace(/<code[^>]*>[\s\S]*?<\/code>/g, '');
   assert.equal(withoutCode.includes('**'), false, 'No stray unparsed ** should remain outside inline code');
   assert.ok(privacyHtml.includes('<strong>WhatsApp Admin</strong>'));

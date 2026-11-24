@@ -19,11 +19,11 @@
       rel="stylesheet"
     />
 
-    <link rel="stylesheet" href="./css/tokens.css?v=84" />
-    <link rel="stylesheet" href="./css/styles.css?v=84" />
+    <link rel="stylesheet" href="./css/tokens.css?v=85" />
+    <link rel="stylesheet" href="./css/styles.css?v=85" />
     <script>
       (function () {
-        var CURRENT_CACHE = 'manifestudio-cache-v84';
+        var CURRENT_CACHE = 'manifestudio-cache-v85';
         window.addEventListener('load', function () {
           if ('caches' in window) {
             caches.keys().then(function (keys) {
@@ -33,7 +33,7 @@
             });
           }
           if ('serviceWorker' in navigator) {
-            navigator.serviceWorker.register('./sw.js?v=84').then(function (reg) {
+            navigator.serviceWorker.register('./sw.js?v=85').then(function (reg) {
               reg.update();
             }).catch(function () {});
           }
@@ -833,13 +833,13 @@
             </div>
           </div>
 
-          <!-- Card 1B: Pengaturan Keamanan Berlapis Server Vault (Cloudflare KV) -->
+          <!-- Card 1B: Pengaturan Keamanan Berlapis Server Vault (Store + Kontak WhatsApp/IG/TikTok) -->
           <div class="admin-card" id="admin-store-access-card">
             <div class="admin-card-head">
               <div>
-                <h2 class="admin-section-title">Keamanan Berlapis Akses Store — Server Vault (Cloudflare KV)</h2>
+                <h2 class="admin-section-title">Keamanan Berlapis Akses Store &amp; Kontak — Server Vault (Cloudflare KV)</h2>
                 <p class="admin-subtitle">
-                  Kunci akses dan URL tujuan Store disimpan <strong>100% di Server Cloudflare KV</strong> dalam bentuk hash kriptografi PBKDF2-SHA256 — tidak pernah muncul di Inspect Element, HTML, JS, <code>catalog.json</code>, maupun GitHub.
+                  Kode akses Store, kode akses Kontak, URL Store, nomor WhatsApp, Instagram, dan TikTok untuk pengunjung Manifestudio disimpan <strong>100% di Server Cloudflare KV</strong> dalam bentuk hash PBKDF2-SHA256 — tidak pernah muncul di Inspect Element, HTML, JS, maupun GitHub.
                 </p>
               </div>
               <span id="store-vault-status-badge" class="admin-badge">Memeriksa Vault...</span>
@@ -851,7 +851,7 @@
 
             <label class="admin-checkbox-row" for="store-access-enabled-toggle">
               <input type="checkbox" id="store-access-enabled-toggle" checked />
-              <span>Aktifkan Kunci Akses Store saat pengunjung beralih dari Manifestudio ke Store</span>
+              <span>Aktifkan Kode Akses Store saat pengunjung beralih dari Manifestudio ke Store</span>
             </label>
 
             <div class="admin-form-grid">
@@ -883,7 +883,7 @@
                   type="url"
                   id="store-access-store-origin-input"
                   value=""
-                  placeholder="https://domain-store-anda.my.id"
+                  placeholder="https://manifestore.my.id"
                   autocomplete="off"
                 />
               </div>
@@ -916,7 +916,7 @@
                 />
               </div>
               <div class="form-field">
-                <label for="store-access-prompt-title-input">Judul Modal Kunci Akses</label>
+                <label for="store-access-prompt-title-input">Judul Modal Kunci Akses Store</label>
                 <input
                   type="text"
                   id="store-access-prompt-title-input"
@@ -925,19 +925,99 @@
                 />
               </div>
               <div class="form-field admin-sum-field">
-                <label for="store-access-prompt-desc-input">Keterangan Modal Kunci Akses</label>
+                <label for="store-access-prompt-desc-input">Keterangan Modal Kunci Akses Store</label>
                 <input
                   type="text"
                   id="store-access-prompt-desc-input"
-                  value="Masukkan kunci akses khusus dari Admin untuk berpindah dari Manifestudio ke halaman Store."
+                  value="Masukkan kode akses resmi untuk melanjutkan ke halaman Store."
                   placeholder="Pesan petunjuk untuk pengguna..."
                 />
               </div>
             </div>
 
-            <div class="admin-vault-actions" style="display:flex;flex-wrap:wrap;gap:0.6rem;margin-top:0.9rem;align-items:center;">
+            <hr style="border:none;border-top:1px solid var(--border);margin:1.15rem 0 0.95rem;" />
+
+            <h3 class="admin-subhead" style="margin-bottom:0.4rem;">Enkripsi Akses Kontak &amp; Sosmed (WhatsApp, TikTok, Instagram)</h3>
+            <p class="admin-prod-meta" style="margin-bottom:0.7rem;">
+              Tombol WhatsApp, TikTok, dan Instagram di Manifestudio tidak pernah menampilkan nomor/username asli di kode web. Pengunjung wajib memasukkan kode akses sebelum server mengalihkan ke tujuan asli.
+            </p>
+
+            <label class="admin-checkbox-row" for="contact-access-enabled-toggle">
+              <input type="checkbox" id="contact-access-enabled-toggle" checked />
+              <span>Aktifkan Kode Akses untuk WhatsApp, TikTok &amp; Instagram di Manifestudio</span>
+            </label>
+
+            <label class="admin-checkbox-row" for="contact-access-same-key-toggle">
+              <input type="checkbox" id="contact-access-same-key-toggle" checked />
+              <span>Gunakan kunci yang sama dengan Kunci Akses Store (matikan untuk membuat kunci kontak terpisah)</span>
+            </label>
+
+            <div class="admin-form-grid">
+              <div class="form-field admin-sum-field" id="contact-access-key-field" hidden>
+                <label for="contact-access-key-input">Kunci Akses Kontak Terpisah (Hash di Server KV)</label>
+                <div class="token-input-row">
+                  <input
+                    type="password"
+                    id="contact-access-key-input"
+                    value=""
+                    placeholder="Kosongkan jika tidak mengganti kunci kontak (min. 6 karakter)"
+                    autocomplete="new-password"
+                    spellcheck="false"
+                    maxlength="64"
+                  />
+                  <button type="button" class="btn btn-secondary btn-sm" data-toggle-secret="contact-access-key-input">
+                    Lihat
+                  </button>
+                  <button type="button" id="contact-access-generate-btn" class="btn btn-secondary btn-sm">
+                    Acak Kunci
+                  </button>
+                </div>
+              </div>
+
+              <div class="form-field">
+                <label for="contact-whatsapp-input">Nomor WhatsApp Rahasia (Server KV)</label>
+                <input
+                  type="text"
+                  id="contact-whatsapp-input"
+                  value=""
+                  placeholder="62851xxxxxxxx"
+                  autocomplete="off"
+                />
+              </div>
+              <div class="form-field">
+                <label for="contact-instagram-input">URL Instagram Rahasia (Server KV)</label>
+                <input
+                  type="url"
+                  id="contact-instagram-input"
+                  value=""
+                  placeholder="https://www.instagram.com/username"
+                  autocomplete="off"
+                />
+              </div>
+              <div class="form-field">
+                <label for="contact-tiktok-input">URL TikTok Rahasia (Server KV)</label>
+                <input
+                  type="url"
+                  id="contact-tiktok-input"
+                  value=""
+                  placeholder="https://www.tiktok.com/@username"
+                  autocomplete="off"
+                />
+              </div>
+              <div class="form-field">
+                <label for="contact-prompt-desc-input">Keterangan Modal Akses Kontak</label>
+                <input
+                  type="text"
+                  id="contact-prompt-desc-input"
+                  value="Masukkan kode akses resmi untuk membuka tautan kontak."
+                  placeholder="Masukkan kode akses resmi..."
+                />
+              </div>
+            </div>
+
+            <div class="admin-vault-actions" style="display:flex;flex-wrap:wrap;gap:0.6rem;margin-top:0.95rem;align-items:center;">
               <button type="button" id="store-access-save-vault-btn" class="btn btn-primary btn-sm">
-                Simpan Kunci ke Server Vault
+                Simpan Pengaturan ke Server Vault
               </button>
               <button type="button" id="store-access-revoke-btn" class="btn btn-secondary btn-sm">
                 Cabut Semua Sesi Aktif
@@ -1221,9 +1301,9 @@
           <div class="admin-card">
             <div class="admin-card-head">
               <div>
-                <h2 class="admin-section-title">Kelola &amp; Sinkronkan 14 Menu Utilitas</h2>
+                <h2 class="admin-section-title">Kelola &amp; Sinkronkan 15 Menu Utilitas + Tanya Fitur</h2>
                 <p class="admin-subtitle">
-                  Aktifkan/nonaktifkan, urutkan, atau ubah ikon &amp; judul seluruh 14 menu utilitas (Jadwal Sholat hingga Novel Terpadu). Perubahan otomatis tersinkron ke Header Beranda, Kartu Pintasan, Halaman Utilitas, dan Banner Carousel.
+                  Aktifkan/nonaktifkan, urutkan, ubah ikon &amp; judul seluruh 15 fitur (Jadwal Sholat hingga Cek Nomor), serta atur asisten Customer Service Tanya Fitur. Perubahan otomatis tersinkron ke Manifestudio dan Manifestore.
                 </p>
               </div>
               <div class="admin-history-toolbar">
@@ -1358,6 +1438,6 @@
 
     <div id="toast-notification" class="toast-notification" role="status" aria-live="polite" hidden></div>
 
-    <script type="module" src="./js/admin.js?v=84"></script>
+    <script type="module" src="./js/admin.js?v=85"></script>
   </body>
 </html>

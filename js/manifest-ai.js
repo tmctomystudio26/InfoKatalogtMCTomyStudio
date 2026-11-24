@@ -15,11 +15,13 @@ import {
   buildOwnerContactPrivacyReply,
   buildResearchSearchQueries,
   buildUnifiedContextMessages,
+  detectManifestAiSiteMode,
   formatResearchContextBlock,
   getCooldownRemainingMs,
   getProviderMeta,
   getVoiceProfileById,
   isDirectOwnerContactQuery,
+  isRestrictedManifestudioQuery,
   mergeLiveModelCatalog,
   normalizeByokKeys,
   normalizeLimitMap,
@@ -27,7 +29,7 @@ import {
   recordProviderCooldown,
   redactSensitiveOwnerData,
   shouldPerformWebResearch,
-} from './manifest-ai-logic.js?v=67';
+} from './manifest-ai-logic.js?v=85';
 
 const MODEL_SYNC_TTL_MS = 6 * 60 * 60 * 1000; // 6 hours auto-refresh
 const RESEARCH_CACHE_TTL_MS = 10 * 60 * 1000; // 10 minutes live research cache
@@ -1338,15 +1340,27 @@ export async function sendManifestAiMessage({
   catalogData = null,
   signal = null,
   onDelta = () => {},
+  customSystemPrompt = '',
+  disableWebResearch = false,
+  siteMode = '',
+  localFallbackBuilder = null,
 } = {}) {
+  const effectiveSiteMode = siteMode || detectManifestAiSiteMode();
   const registry = liveRegistry || getCachedModelRegistry();
   const liveCatalog = catalogData || (await loadManifestudioCatalogData());
   let limitMap = loadStoredLimitMap();
 
-  // Direct owner/admin WhatsApp, email, or social-media inquiry: respond deterministically &
-  // instantaneously without risking any LLM contradiction or privacy leak!
-  if (isDirectOwnerContactQuery(prompt)) {
-    const safePrivacyReply = redactSensitiveOwnerData(buildOwnerContactPrivacyReply(), liveCatalog);
+  // Direct owner/admin contact or restricted Store/Manifestore probe on Manifestudio:
+  // respond deterministically with zero leakage!
+  if (
+    !customSystemPrompt &&
+    (isRestrictedManifestudioQuery(prompt, effectiveSiteMode) || isDirectOwnerContactQuery(prompt))
+  ) {
+    const safePrivacyReply = redactSensitiveOwnerData(
+      buildOwnerContactPrivacyReply(effectiveSiteMode),
+      liveCatalog,
+      { siteMode: effectiveSiteMode }
+    );
     if (onDelta) onDelta(safePrivacyReply);
     return {
       content: safePrivacyReply,
@@ -1354,7 +1368,7 @@ export async function sendManifestAiMessage({
         mode,
         failoverUsed: false,
         providerId: 'manifestudio-privacy-guard',
-        model: 'manifestudio-catalog-v66',
+        model: 'manifestudio-v85',
         latencyMs: 12,
       },
       limitMap,
@@ -1363,7 +1377,7 @@ export async function sendManifestAiMessage({
 
   // Silent live web research grounding for factual, culinary, travel, local & knowledge queries
   let researchContext = '';
-  if (shouldPerformWebResearch(prompt)) {
+  if (!disableWebResearch && shouldPerformWebResearch(prompt)) {
     try {
       researchContext = await fetchLiveWebResearch(prompt, { signal, timeoutMs: RESEARCH_TIMEOUT_MS });
     } catch {
@@ -1375,6 +1389,8 @@ export async function sendManifestAiMessage({
   const unifiedMessages = buildUnifiedContextMessages(history, prompt, {
     catalogData: liveCatalog,
     researchContext,
+    customSystemPrompt,
+    siteMode: effectiveSiteMode,
   });
 
   const turnIndex = freeTurnCounter;
@@ -1402,7 +1418,7 @@ export async function sendManifestAiMessage({
 
   const safeOnDelta = (partial) => {
     if (onDelta) {
-      onDelta(redactSensitiveOwnerData(partial, liveCatalog));
+      onDelta(redactSensitiveOwnerData(partial, liveCatalog, { siteMode: effectiveSiteMode }));
     }
   };
 
@@ -1480,11 +1496,16 @@ export async function sendManifestAiMessage({
     }
   }
 
-  // Phase 3: Verified zero-token local grounding fallback for greetings or Manifestudio/Tomy questions
+  // Phase 3: Verified zero-token local grounding fallback
   if (!winner) {
-    const localReply = buildLocalManifestudioFallback(prompt, liveCatalog);
+    const localReply =
+      typeof localFallbackBuilder === 'function'
+        ? localFallbackBuilder(prompt, liveCatalog)
+        : buildLocalManifestudioFallback(prompt, liveCatalog, { siteMode: effectiveSiteMode });
     if (localReply) {
-      const safeLocal = redactSensitiveOwnerData(localReply, liveCatalog);
+      const safeLocal = redactSensitiveOwnerData(localReply, liveCatalog, {
+        siteMode: effectiveSiteMode,
+      });
       if (onDelta) onDelta(safeLocal);
       return {
         content: safeLocal,
@@ -1492,7 +1513,7 @@ export async function sendManifestAiMessage({
           mode,
           failoverUsed: true,
           providerId: 'manifestudio-local',
-          model: 'manifestudio-catalog-v66',
+          model: 'manifestudio-v85',
           latencyMs: 20,
         },
         limitMap,
@@ -1501,22 +1522,22 @@ export async function sendManifestAiMessage({
 
     const anyLimit = allFailures.some((f) => f.isLimit);
     const errText = anyLimit
-      ? 'Batas akses gratis sementara sedang penuh di jaringan ini. Coba kirim ulang sebentar lagi, aktifkan Kuota Puter gratis (unlimited per akun), atau gunakan API Key pribadi Anda.'
-      : 'Koneksi ke layanan AI sedang sibuk sementara. Silakan coba kirim ulang sebentar lagi, aktifkan Kuota Puter gratis, atau gunakan API Key pribadi Anda.';
+      ? 'Layanan AI sedang ramai digunakan. Silakan kirim ulang beberapa saat lagi.'
+      : 'Koneksi ke layanan AI sedang sibuk sementara. Silakan coba kirim ulang sebentar lagi.';
     const err = new Error(errText);
     err.limitMap = limitMap;
     throw err;
   }
 
-  // Record smart post-success cooldowns for known per-window / per-model free buckets so the NEXT
-  // message immediately routes to a fresh model/network with ZERO wasted 402/429 round-trips!
   if (winner.channel === 'free-pollinations') {
     recordCooldown('free:pollinations', POLLINATIONS_RESET_MS, 'Jeda 45 dtk Pollinations');
   } else if (winner.channel === 'free-ovh') {
     recordCooldown(winner.id, OVH_PER_MODEL_COOLDOWN_MS, 'Kuota model OVH terpakai');
   }
 
-  const sanitizedContent = redactSensitiveOwnerData(winner.content, liveCatalog);
+  const sanitizedContent = redactSensitiveOwnerData(winner.content, liveCatalog, {
+    siteMode: effectiveSiteMode,
+  });
 
   return {
     content: sanitizedContent,

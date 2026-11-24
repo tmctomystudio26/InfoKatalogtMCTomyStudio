@@ -167,14 +167,14 @@ export const STUDIO_FAQ_ITEMS = Object.freeze([
       'Klik tombol Install di bagian atas atau bawah halaman. Di Chrome/Edge Android & Desktop akan muncul jendela pasang instan; di Safari iPhone/iPad cukup ketuk ikon Bagikan (Share) lalu pilih Tambah ke Layar Utama.',
   },
   {
-    question: 'Apakah Manifestudio berbeda dengan Manifestore?',
+    question: 'Bagaimana cara mencari panduan atau mengatasi kendala pada salah satu fitur?',
     answer:
-      'Ya. Manifestudio adalah platform terbuka khusus 15 fitur utilitas, hiburan, dan AI gratis. Sedangkan menu Store di bagian atas diperuntukkan bagi pengguna yang memiliki kunci akses khusus dari Admin.',
+      'Gunakan tombol Tanya Fitur di pojok kanan bawah layar kapan saja. Asisten fitur kami siap menjelaskan fungsi, langkah penggunaan, hingga solusi teknis untuk seluruh 15 fitur Manifestudio.',
   },
   {
-    question: 'Bagaimana jika ada fitur yang error atau saya ingin mengusulkan utilitas baru?',
+    question: 'Apakah fitur-fitur di Manifestudio bisa dibuka dengan cepat di HP maupun laptop?',
     answer:
-      'Anda dapat langsung menghubungi Admin melalui tombol WhatsApp atau media sosial resmi di bagian footer untuk melaporkan kendala maupun mengusulkan fitur utilitas baru.',
+      'Bisa. Tampilan Manifestudio menyesuaikan layar ponsel maupun desktop secara otomatis, dan setiap alat dimuat terpisah agar tetap ringan serta hemat kuota.',
   },
 ]);
 

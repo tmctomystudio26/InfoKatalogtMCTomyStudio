@@ -323,3 +323,136 @@ test('End-to-end 6-layer Store Access Vault: fail-closed -> GitHub PAT admin set
   assert.equal(goAfterRevoke.status, 302);
   assert.equal(goAfterRevoke.headers.get('location'), 'https://manifestudio.my.id/?gate=required');
 });
+
+test('Contact Access Vault gates WhatsApp, Instagram, and TikTok with separate key, zero status leak, and HttpOnly pass redirect', async () => {
+  const kv = createMemoryKv();
+  const env = { STORE_ACCESS_KV: kv };
+  const ghFetch = createMockGitHubFetch({ allowPush: true });
+  const nowSec = 1800005000;
+
+  // Admin configures Store key + separate Contact key + secret WA/IG/TikTok URLs
+  const saveRes = await handleAdminRequest(
+    new Request('https://manifestudio.my.id/api/store-access/admin', {
+      method: 'POST',
+      headers: {
+        Origin: 'https://manifestudio.my.id',
+        Authorization: 'Bearer ghp_valid_owner_token_123456',
+        'Content-Type': 'application/json',
+        [VAULT_CONSTANTS.csrfHeaderName]: VAULT_CONSTANTS.csrfHeaderValue,
+      },
+      body: JSON.stringify({
+        action: 'update',
+        enabled: true,
+        newKey: 'STORE-KEY-777',
+        storeOrigin: 'https://manifestore.my.id',
+        contactEnabled: true,
+        contactSameAsStoreKey: false,
+        newContactKey: 'KONTAK-VIP-99',
+        whatsappNumber: '6285122936027',
+        instagramUrl: 'https://www.instagram.com/tmctomystudio',
+        tiktokUrl: 'https://www.tiktok.com/@tmctomystudio',
+      }),
+    }),
+    env,
+    { nowSec, fetchImpl: ghFetch }
+  );
+  assert.equal(saveRes.status, 200);
+
+  // Public status MUST NOT leak raw WA number, IG handle, or TikTok handle
+  const statusRes = await handleStatusRequest(
+    new Request('https://manifestudio.my.id/api/store-access/status'),
+    env,
+    { nowSec }
+  );
+  const statusJson = await statusRes.json();
+  assert.equal(statusJson.contactEnabled, true);
+  assert.equal(statusJson.contactsConfigured.whatsapp, true);
+  assert.equal(statusJson.contactsConfigured.instagram, true);
+  assert.equal(statusJson.contactsConfigured.tiktok, true);
+  const statusStr = JSON.stringify(statusJson);
+  assert.equal(statusStr.includes('6285122936027'), false);
+  assert.equal(statusStr.includes('tmctomystudio'), false);
+
+  // Unauthorized /go?target=whatsapp redirects back cleanly without leaking WA URL
+  const blockedWa = await handleGoRequest(
+    new Request('https://manifestudio.my.id/api/store-access/go?target=whatsapp'),
+    env,
+    { nowSec }
+  );
+  assert.equal(blockedWa.status, 302);
+  assert.equal(blockedWa.headers.get('location'), 'https://manifestudio.my.id/?gate=required&target=whatsapp');
+
+  // Submitting Store key for Contact target when separate Contact key is enabled MUST fail
+  const wrongKeyForContact = await handleVerifyRequest(
+    new Request('https://manifestudio.my.id/api/store-access/verify', {
+      method: 'POST',
+      headers: {
+        'CF-Connecting-IP': '198.51.100.40',
+        Origin: 'https://manifestudio.my.id',
+        'Content-Type': 'application/json',
+        [VAULT_CONSTANTS.csrfHeaderName]: VAULT_CONSTANTS.csrfHeaderValue,
+      },
+      body: JSON.stringify({ key: 'STORE-KEY-777', target: 'whatsapp' }),
+    }),
+    env,
+    { nowSec }
+  );
+  assert.equal(wrongKeyForContact.status, 401);
+
+  // Submitting valid Contact key sets __Host-ms_contact_pass HttpOnly cookie
+  const okContact = await handleVerifyRequest(
+    new Request('https://manifestudio.my.id/api/store-access/verify', {
+      method: 'POST',
+      headers: {
+        'CF-Connecting-IP': '198.51.100.40',
+        Origin: 'https://manifestudio.my.id',
+        'Content-Type': 'application/json',
+        [VAULT_CONSTANTS.csrfHeaderName]: VAULT_CONSTANTS.csrfHeaderValue,
+      },
+      body: JSON.stringify({ key: 'kontak-vip-99', target: 'whatsapp' }),
+    }),
+    env,
+    { nowSec: nowSec + 5 }
+  );
+  assert.equal(okContact.status, 200);
+  const setCookie = okContact.headers.get('set-cookie') || '';
+  assert.ok(setCookie.startsWith('__Host-ms_contact_pass=v1.'));
+  assert.ok(setCookie.includes('HttpOnly'));
+  const okContactJson = await okContact.json();
+  assert.equal(okContactJson.goUrl, '/api/store-access/go?target=whatsapp');
+  assert.equal(JSON.stringify(okContactJson).includes('6285122936027'), false);
+
+  const cookiePair = setCookie.split(';')[0];
+
+  // Valid contact pass redirects to WhatsApp, Instagram, and TikTok
+  const goWa = await handleGoRequest(
+    new Request('https://manifestudio.my.id/api/store-access/go?target=whatsapp', {
+      headers: { Cookie: cookiePair },
+    }),
+    env,
+    { nowSec: nowSec + 10 }
+  );
+  assert.equal(goWa.status, 302);
+  assert.equal(goWa.headers.get('location'), 'https://wa.me/6285122936027');
+
+  const goIg = await handleGoRequest(
+    new Request('https://manifestudio.my.id/api/store-access/go?target=instagram', {
+      headers: { Cookie: cookiePair },
+    }),
+    env,
+    { nowSec: nowSec + 12 }
+  );
+  assert.equal(goIg.status, 302);
+  assert.equal(goIg.headers.get('location'), 'https://www.instagram.com/tmctomystudio');
+
+  const goTt = await handleGoRequest(
+    new Request('https://manifestudio.my.id/api/store-access/go?target=tiktok', {
+      headers: { Cookie: cookiePair },
+    }),
+    env,
+    { nowSec: nowSec + 14 }
+  );
+  assert.equal(goTt.status, 302);
+  assert.equal(goTt.headers.get('location'), 'https://www.tiktok.com/@tmctomystudio');
+});
+

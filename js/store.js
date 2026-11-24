@@ -1047,6 +1047,8 @@ export function normalizeUtilityConfig(utilities = {}) {
   const isLegacyUtilityList = (rawDesc.match(/·/g) || []).length >= 5;
   const cleanDescription = isLegacyUtilityList ? '' : rawDesc;
 
+  const rawFa = safe.featureAssistant && typeof safe.featureAssistant === 'object' ? safe.featureAssistant : {};
+
   return {
     callout: {
       icon:
@@ -1071,6 +1073,10 @@ export function normalizeUtilityConfig(utilities = {}) {
       subtitle:
         String(rawMusicHero.subtitle || DEFAULT_UTILITY_CONFIG.musicHero.subtitle).trim() ||
         DEFAULT_UTILITY_CONFIG.musicHero.subtitle,
+    },
+    featureAssistant: {
+      enabled: rawFa.enabled !== false,
+      welcomeMessage: String(rawFa.welcomeMessage || '').trim(),
     },
     items,
   };
