@@ -16,8 +16,8 @@ import {
   normalizeAndValidateUrl,
   parseBatchUrls,
   upsertShortlinkHistory,
-} from './shortlink-logic.js?v=89';
-import { executeCollaborativeBypass } from './shortlink.js?v=89';
+} from './shortlink-logic.js?v=90';
+import { executeCollaborativeBypass } from './shortlink.js?v=90';
 
 const QUICK_SAMPLES = [
   {

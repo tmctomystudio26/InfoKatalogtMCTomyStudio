@@ -59,8 +59,8 @@
       rel="stylesheet"
     />
 
-    <link rel="stylesheet" href="./css/tokens.css?v=87" />
-    <link rel="stylesheet" href="./css/styles.css?v=87" />
+    <link rel="stylesheet" href="./css/tokens.css?v=90" />
+    <link rel="stylesheet" href="./css/styles.css?v=90" />
     <script>
       (function () {
         try {
@@ -72,7 +72,7 @@
           var hasTab = Boolean((qs.get('tab') || qs.get('tool') || '').trim());
           document.documentElement.setAttribute('data-studio-view', hasTab ? 'tool' : 'home');
         } catch (e) {}
-        var CURRENT_CACHE = 'manifestudio-cache-v87';
+        var CURRENT_CACHE = 'manifestudio-cache-v90';
         if ('caches' in window) {
           caches.keys().then(function (keys) {
             keys.forEach(function (k) {
@@ -82,7 +82,7 @@
         }
         if ('serviceWorker' in navigator) {
           window.addEventListener('load', function () {
-            navigator.serviceWorker.register('./sw.js?v=87').then(function (reg) {
+            navigator.serviceWorker.register('./sw.js?v=90').then(function (reg) {
               reg.update();
             }).catch(function () {});
           });
@@ -394,6 +394,6 @@
     <div id="feature-cs-root" class="fcs-root"></div>
     <div id="store-access-modal-root" class="modal-overlay" hidden></div>
     <div id="toast-notification" class="toast-notification" role="status" aria-live="polite" hidden></div>
-    <script type="module" src="./js/tools-page.js?v=87"></script>
+    <script type="module" src="./js/tools-page.js?v=90"></script>
   </body>
 </html>

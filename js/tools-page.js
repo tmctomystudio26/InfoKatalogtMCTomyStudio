@@ -1,4 +1,4 @@
-import { createToolsHubController } from './tools-ui.js?v=87';
+import { createToolsHubController } from './tools-ui.js?v=90';
 import { getDefaultCatalogSnapshot, loadCatalogData } from './data.js?v=85';
 import {
   inferBannerUtilityId,
@@ -11,7 +11,7 @@ import {
   initPerformanceClass,
   resolveBannerTransition,
 } from './perf-guard.js?v=85';
-import { initPwaManager } from './pwa.js?v=85';
+import { initPwaManager } from './pwa.js?v=90';
 import {
   DOMAIN_CONFIG,
   STORE_VAULT_API,

@@ -19,7 +19,7 @@ import {
   parseAiSecurityReply,
   runLocalInstantBypass,
   stripTrackingParams,
-} from './shortlink-logic.js?v=89';
+} from './shortlink-logic.js?v=90';
 
 const EDGE_BYPASS_ENDPOINT = '/api/shortlink-bypass';
 const EDGE_TIMEOUT_MS = 24000;
