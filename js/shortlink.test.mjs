@@ -235,3 +235,73 @@ test('mergeBypassEngineResults & evaluateUrlSafety reject bogus API banner URLs 
   assert.match(safety.label, /Belum Tembus/i);
 });
 
+test('v89: rejects rip.linkvertise.lol portal redirects, tracks partialAdvance across safelinks, and preserves unresolvedAdWall label across Multi-AI warn consensus', () => {
+  const inputUrl = 'https://semawur.com/r1zyx';
+  const localResult = runLocalInstantBypass(inputUrl);
+  const edgeResponse = {
+    edgeTrace: {
+      resolvedUrl: 'https://sfl.gl/ready/go?t=abc123&a=1',
+      hops: [
+        { step: 1, url: inputUrl, status: 200, type: 'auto-submit-form', target: 'https://app.khaddavi.net/redirect.php?alias=r1zyx' },
+        { step: 2, url: 'https://app.khaddavi.net/redirect.php?alias=r1zyx', status: 200, type: 'safelinku-verify', target: 'https://sfl.gl/ready/go?t=abc123&a=1' },
+      ],
+      pageTitle: 'Just a moment...',
+      signals: ['safelinku_v3_solved', 'cloudflare_block'],
+      cfBlocked: true,
+    },
+    engines: [
+      {
+        engineId: 'trw-bypass',
+        name: 'TRW.LAT Multi-Bypass API',
+        category: 'open-source',
+        ok: true,
+        resolvedUrl: 'https://rip.linkvertise.lol/bypass?url=https%3A%2F%2Fsemawur.com%2Fr1zyx',
+        note: 'Portal bounce yang harus ditolak',
+      },
+      {
+        engineId: 'edge-redirect',
+        name: 'Pelacak Redirect & Inspektor Safelink',
+        category: 'edge',
+        ok: true,
+        resolvedUrl: 'https://sfl.gl/ready/go?t=abc123&a=1',
+        note: 'Berhasil melewati form semawur + SafelinkU v3',
+      },
+    ],
+  };
+
+  const merged = mergeBypassEngineResults({ inputUrl, localResult, edgeResponse });
+  assert.equal(merged.finalUrl, 'https://sfl.gl/ready/go?t=abc123&a=1');
+  assert.equal(merged.reachedDestination, false);
+  assert.equal(merged.stillOnShortener, true);
+  assert.equal(merged.partialAdvance, true);
+  // rip.linkvertise.lol must be rejected completely
+  const trwRow = merged.engineRows.find((r) => r.engineId === 'trw-bypass');
+  assert.equal(trwRow.resolvedUrl, '');
+  assert.equal(trwRow.ok, false);
+
+  const safety = evaluateUrlSafety(merged.finalUrl, {
+    inputUrl,
+    hopsCount: merged.hops.length,
+    edgeSignals: merged.edgeSignals,
+    partialAdvance: merged.partialAdvance,
+  });
+  assert.equal(safety.level, 'warn');
+  assert.equal(safety.unresolvedAdWall, true);
+  assert.equal(safety.partialAdvance, true);
+  assert.match(safety.label, /Baru Tembus Sebagian/i);
+
+  // AI consensus reporting 'warn' must NOT overwrite unresolvedAdWall label back to generic 'Waspada — Periksa Dulu'
+  const consensus = mergeAiSafetyConsensus(safety, [
+    { modelId: 'gemini', label: 'Gemini', parsed: { verdict: 'warn', summary: 'Domain safelink beriklan.', advice: 'Hati-hati.' } },
+    { modelId: 'chatgpt', label: 'ChatGPT', parsed: { verdict: 'warn', summary: 'Masih ada challenge Cloudflare.', advice: 'Lanjutkan hati-hati.' } },
+  ]);
+  assert.equal(consensus.level, 'warn');
+  assert.equal(consensus.label, safety.label);
+
+  // Expanded domain detection checks
+  assert.equal(detectShortlinkService('https://workink.net/123/abc').kind, 'ad-wall');
+  assert.equal(detectShortlinkService('https://tutwuri.id/xyz').kind, 'ad-wall');
+  assert.equal(detectShortlinkService('https://app.khaddavi.net/redirect.php?a=1').kind, 'ad-wall');
+});
+
+

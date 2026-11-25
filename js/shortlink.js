@@ -19,7 +19,7 @@ import {
   parseAiSecurityReply,
   runLocalInstantBypass,
   stripTrackingParams,
-} from './shortlink-logic.js?v=88';
+} from './shortlink-logic.js?v=89';
 
 const EDGE_BYPASS_ENDPOINT = '/api/shortlink-bypass';
 const EDGE_TIMEOUT_MS = 24000;
@@ -286,6 +286,7 @@ export async function executeCollaborativeBypass(
 
   let resolvedFinalUrl = merged.finalUrl;
   let reachedDestination = merged.reachedDestination;
+  let partialAdvance = merged.partialAdvance;
   let stillOnShortener = merged.stillOnShortener;
 
   if (finalSafety.aiExtractedUrl && finalSafety.aiExtractedUrl !== resolvedFinalUrl) {
@@ -293,6 +294,7 @@ export async function executeCollaborativeBypass(
     if (aiCheck.valid) {
       resolvedFinalUrl = stripTrackingParams(aiCheck.url).cleanUrl;
       reachedDestination = true;
+      partialAdvance = false;
       stillOnShortener = false;
     }
   }
@@ -303,6 +305,7 @@ export async function executeCollaborativeBypass(
     finalUrl: resolvedFinalUrl,
     bypassed: reachedDestination || resolvedFinalUrl !== check.url,
     reachedDestination,
+    partialAdvance,
     stillOnShortener,
     cfBlocked: merged.cfBlocked,
     serviceInfo,

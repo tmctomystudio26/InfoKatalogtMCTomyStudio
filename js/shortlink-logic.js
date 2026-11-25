@@ -10,32 +10,43 @@ export const SHORTLINK_HISTORY_KEY = 'manifestudio_shortlink_history_v1';
 export const KNOWN_SHORTENER_HOSTS = Object.freeze([
   'bit.ly', 'bitly.com', 'tinyurl.com', 't.co', 'goo.gl', 'ow.ly', 'is.gd', 'v.gd',
   'buff.ly', 'rebrand.ly', 'cutt.ly', 'rb.gy', 'shorturl.at', 'tiny.cc', 'bl.ink',
-  's.id', 's.shopee.co.id', 'shope.ee', 'vt.tiktok.com', 'vm.tiktok.com', 'youtu.be',
-  'l.facebook.com', 'lm.facebook.com', 'l.instagram.com', 'out.reddit.com',
-  'linkvertise.com', 'link-target.net', 'link-center.net', 'direct-link.net', 'filedm.com',
-  'ouo.io', 'ouo.press', 'shrinkme.io', 'shrinke.me', 'exe.io', 'exey.io', 'fc.lc',
-  'gplinks.co', 'gplinks.in', 'droplink.co', 'safelinku.com', 'safelinkblogger.com',
-  'sfl.gl', 'duit.cc', 'semawur.com', 'cararegistrasi.com', 'adfly.com', 'adf.ly',
-  'bc.vc', 'sh.st', 'gestyy.com', 'za.gl', 'clk.sh', 'aylink.co', 'loot-link.com',
-  'lootdest.org', 'work.ink', 'sub2unlock.com', 'sub4unlock.com', 'boost.ink',
-  'mboost.me', 'rekonise.com', 'social-unlock.com', 'paster.so', 'adfoc.us',
-  'bicolink.net', 'sfile.mobi', 'mediafire.com',
+  's.id', 't.ly', 'kutt.it', 'short.io', 'lnkd.in', 'dlvr.it', 'snip.ly', 'clck.ru',
+  'u.to', 'qr.ae', 'trib.al', 's.shopee.co.id', 'shope.ee', 'vt.tiktok.com', 'vm.tiktok.com',
+  'youtu.be', 'l.facebook.com', 'lm.facebook.com', 'l.instagram.com', 'out.reddit.com',
+  'linkvertise.com', 'linkvertise.net', 'linkvertise.download', 'link-to.net', 'link-target.net',
+  'link-center.net', 'link-hub.net', 'direct-link.net', 'file-link.net', 'up-to-down.net', 'filedm.com',
+  'ouo.io', 'ouo.press', 'shrinkme.io', 'shrinke.me', 'shrinkearn.com', 'exe.io', 'exey.io', 'fc.lc',
+  'gplinks.co', 'gplinks.in', 'droplink.co', 'safelinku.com', 'safelinkku.com', 'safelinkblogger.com',
+  'sfl.gl', 'sfl.ink', 'duit.cc', 'semawur.com', 'khaddavi.net', 'cararegistrasi.com', 'tutwuri.id',
+  'adfly.com', 'adf.ly', 'bc.vc', 'sh.st', 'gestyy.com', 'za.gl', 'clk.sh', 'clk.kim', 'clicksfly.com',
+  'aylink.co', 'ay.live', 'loot-link.com', 'lootdest.org', 'lootdest.com', 'lootlabs.gg',
+  'work.ink', 'workink.net', 'sub2unlock.com', 'sub2unlock.io', 'sub2unlock.me', 'sub2unlock.net',
+  'sub4unlock.com', 'sub4unlock.io', 'sub4unlock.me', 'boost.ink', 'bst.gg', 'bst.wtf', 'booo.st',
+  'boostylink.com', 'mboost.me', 'rekonise.com', 'social-unlock.com', 'socialwolvez.com', 'scwz.me',
+  'link-unlock.com', 'linkunlocker.com', 'paster.so', 'paster.gg', 'adfoc.us',
+  'bicolink.net', 'bicolink.com', 'bico.link', 'cuty.io', 'arolinks.com', 'vplink.in', 'bstlar.com',
+  'link4m.com', 'tpi.li', 'lockr.net', 'lockr.so', 'lockr.to', 'oke.io', 'tny.so', 'v2links.com',
+  'modijiurl.com', 'shareus.io', 'link1s.com', 'adrinolinks.in', 'yorurl.com', 'sfile.mobi', 'mediafire.com',
 ]);
 
 const AD_WALL_HOSTS = new Set([
-  'linkvertise.com', 'link-target.net', 'link-center.net', 'direct-link.net',
-  'ouo.io', 'ouo.press', 'shrinkme.io', 'shrinke.me', 'exe.io', 'exey.io', 'fc.lc',
-  'gplinks.co', 'gplinks.in', 'droplink.co', 'safelinku.com', 'sfl.gl', 'duit.cc',
-  'semawur.com', 'cararegistrasi.com', 'adf.ly', 'adfly.com', 'bc.vc', 'sh.st',
-  'za.gl', 'clk.sh', 'aylink.co', 'loot-link.com', 'lootdest.org', 'work.ink',
-  'sub2unlock.com', 'sub4unlock.com', 'adfoc.us', 'bicolink.net',
+  'linkvertise.com', 'linkvertise.net', 'link-to.net', 'link-target.net', 'link-center.net', 'direct-link.net',
+  'ouo.io', 'ouo.press', 'shrinkme.io', 'shrinke.me', 'shrinkearn.com', 'exe.io', 'exey.io', 'fc.lc',
+  'gplinks.co', 'gplinks.in', 'droplink.co', 'safelinku.com', 'safelinkku.com', 'sfl.gl', 'sfl.ink',
+  'duit.cc', 'semawur.com', 'khaddavi.net', 'cararegistrasi.com', 'tutwuri.id', 'adf.ly', 'adfly.com',
+  'bc.vc', 'sh.st', 'za.gl', 'clk.sh', 'clicksfly.com', 'aylink.co', 'loot-link.com', 'lootdest.org',
+  'lootdest.com', 'lootlabs.gg', 'work.ink', 'workink.net', 'sub2unlock.com', 'sub2unlock.io', 'sub2unlock.me',
+  'sub4unlock.com', 'sub4unlock.io', 'boost.ink', 'boostylink.com', 'mboost.me', 'rekonise.com',
+  'socialwolvez.com', 'link-unlock.com', 'paster.so', 'adfoc.us', 'bicolink.net', 'bicolink.com', 'bico.link',
+  'cuty.io', 'arolinks.com', 'vplink.in', 'bstlar.com', 'link4m.com', 'tpi.li', 'lockr.so', 'lockr.net',
+  'oke.io', 'v2links.com', 'modijiurl.com', 'shareus.io', 'link1s.com',
 ]);
 
 const TRACKING_PARAMS = new Set([
   'utm_source', 'utm_medium', 'utm_campaign', 'utm_term', 'utm_content', 'utm_id',
   'utm_reader', 'utm_name', 'utm_referrer', 'fbclid', 'gclid', 'gbraid', 'wbraid',
   'dclid', 'msclkid', 'yclid', 'mc_cid', 'mc_eid', 'igshid', 'igsh', 'si',
-  'spm', 'ref', 'ref_src', 'ref_url', 'src', 'feature', 'pp', 's', 't',
+  'spm', 'ref', 'ref_src', 'ref_url', 'src', 'feature', 'pp',
   '_hsenc', '_hsmi', 'mkt_tok', 'oly_anon_id', 'oly_enc_id', 'vero_id',
   'wickedid', 'twclid', 'ttclid', 'li_fat_id', 's_cid', 'scid', 'aff_id', 'click_id',
 ]);
@@ -298,11 +309,19 @@ export function stripTrackingParams(rawUrl = '') {
   try {
     const u = new URL(rawUrl);
     const removed = [];
+    const onShortener = isKnownShortenerHost(u.hostname);
+    const onTwitter = /(?:^|\.)(?:twitter\.com|x\.com)$/i.test(u.hostname);
     const keys = [...u.searchParams.keys()];
     for (const k of keys) {
       const low = k.toLowerCase();
-      // Keep YouTube timestamp 't' and short query keys on search engines
-      if (low === 't' && /(?:youtube\.com|youtu\.be)$/i.test(u.hostname)) continue;
+      // Only strip X/Twitter share tracking params 's' and 't' on twitter.com/x.com
+      if ((low === 't' || low === 's') && onTwitter) {
+        u.searchParams.delete(k);
+        removed.push(k);
+        continue;
+      }
+      // On unresolved shorteners/safelinks, preserve non-UTM keys (token/ref/source gates often depend on them)
+      if (onShortener && !low.startsWith('utm_') && low !== 'fbclid' && low !== 'gclid') continue;
       if (TRACKING_PARAMS.has(low) || low.startsWith('utm_')) {
         u.searchParams.delete(k);
         removed.push(k);
@@ -567,13 +586,17 @@ export function evaluateUrlSafety(finalUrl = '', { inputUrl = '', hopsCount = 0,
 
   const sameCleanUrl =
     stripTrackingParams(finalUrl).cleanUrl === stripTrackingParams(inputUrl || '').cleanUrl;
-  const unresolvedAdWall = Boolean(sameCleanUrl && isKnownShortenerHost(host));
+  const unresolvedAdWall = Boolean(
+    isKnownShortenerHost(host) && (sameCleanUrl || sigSet.has('cloudflare_block') || sigSet.has('captcha_challenge') || AD_WALL_HOSTS.has(rootDomain))
+  );
 
   if (unresolvedAdWall) {
     riskScore = Math.max(riskScore, sigSet.has('cloudflare_block') || AD_WALL_HOSTS.has(rootDomain) ? 35 : 25);
     findings.push({
       severity: 'medium',
-      text: 'Tujuan asli belum berhasil ditembus karena domain perantara mengunci akses dengan verifikasi browser manusia atau tautan sudah tidak aktif.',
+      text: !sameCleanUrl
+        ? `Sebagian lapisan berhasil ditembus hingga ${rootDomain}, namun tahap akhir masih mengunci akses dengan verifikasi browser manusia.`
+        : 'Tujuan asli belum berhasil ditembus karena domain perantara mengunci akses dengan verifikasi browser manusia atau tautan sudah tidak aktif.',
     });
   } else if (isOfficial && riskScore === 0) {
     findings.push({
@@ -597,7 +620,9 @@ export function evaluateUrlSafety(finalUrl = '', { inputUrl = '', hopsCount = 0,
     label = 'Berbahaya / Hindari';
   } else if (unresolvedAdWall) {
     level = 'warn';
-    label = 'Belum Tembus ke Tujuan — Terhalang Anti-Bot';
+    label = !sameCleanUrl
+      ? 'Baru Tembus Sebagian — Tahap Akhir Terhalang Anti-Bot'
+      : 'Belum Tembus ke Tujuan — Terhalang Anti-Bot';
   } else if (clampedRisk >= 22) {
     level = 'warn';
     label = 'Waspada — Periksa Dulu';
@@ -611,13 +636,15 @@ export function evaluateUrlSafety(finalUrl = '', { inputUrl = '', hopsCount = 0,
     rootDomain,
     isOfficial,
     unresolvedAdWall,
+    partialAdvance: Boolean(unresolvedAdWall && !sameCleanUrl),
     findings,
   };
 }
 
 const ENGINE_OWN_HOSTS = new Set([
   'bypass.vip', 'www.bypass.vip', 'api.bypass.vip', 'bypass.pm', 'ww17.bypass.pm',
-  'bypassx-omega.vercel.app', 'trw.lat', 'r.jina.ai', 'unshorten.me',
+  'bypassx-omega.vercel.app', 'trw.lat', 'rip.linkvertise.lol', 'shortlink-bypass.vercel.app',
+  'api.zapi.ink', 'r.jina.ai', 'unshorten.me',
 ]);
 
 function isBogusEngineCandidate(rawUrl = '') {
@@ -737,6 +764,7 @@ export function mergeBypassEngineResults({ inputUrl = '', localResult = null, ed
   const stillOnShortener = isKnownShortenerHost(finalHost);
   const movedPastInput = cleanFinal !== inputUrl && cleanFinal !== fallbackClean.cleanUrl;
   const reachedDestination = movedPastInput && !stillOnShortener;
+  const partialAdvance = movedPastInput && stillOnShortener;
   const bypassed = reachedDestination;
 
   const agreeingEngines = best ? best.engines : [];
@@ -747,6 +775,7 @@ export function mergeBypassEngineResults({ inputUrl = '', localResult = null, ed
     finalUrl: cleanFinal,
     bypassed,
     reachedDestination,
+    partialAdvance,
     stillOnShortener,
     cfBlocked: Boolean(edgeResponse?.edgeTrace?.cfBlocked || edgeSignals.includes('cloudflare_block')),
     trackingRemovedCount: removedParamsSet.size,
@@ -843,7 +872,7 @@ export function mergeAiSafetyConsensus(heuristicSafety, aiReports = []) {
 
   const labelMap = {
     safe: 'Aman Dibuka',
-    warn: 'Waspada — Periksa Dulu',
+    warn: heuristicSafety.unresolvedAdWall ? heuristicSafety.label : 'Waspada — Periksa Dulu',
     danger: 'Berbahaya / Hindari',
   };
 

@@ -1,29 +1,33 @@
 /**
- * Cloudflare Pages Edge Function: /api/shortlink-bypass (v88)
+ * Cloudflare Pages Edge Function: /api/shortlink-bypass (v89)
  *
  * Collaborative Multi-Engine Shortlink Bypass & Anti-Malware Edge Resolver:
  *  1. Strict SSRF & scheme protection on input AND every single redirect hop
  *     (blocks private IPv4/IPv6, loopback, link-local, cloud metadata, .local/.internal).
- *  2. Cookie-Jar Multi-Hop HTTP Redirect Tracer + Deep HTML/JS/Safelink/MediaFire/Sfile
+ *  2. Cookie-Jar Multi-Hop HTTP Redirect + Auto-Submit <form> + HTML/JS/Safelink/MediaFire/Sfile
  *     payload inspector (reads capped <= 220 KB HTML without executing untrusted scripts).
- *  3. Native Open-Source Service Solvers:
+ *  3. Universal & Native Open-Source Service Solvers:
+ *     - SafelinkU v3 / Semawur / Khaddavi / Tutwuri Native Session+Verify+Go Solver
+ *       (auto-detected by HTML signature on ANY custom WordPress safelink domain)
+ *     - Universal AdLinkFly HTML-Signature AJAX Solver (_csrfToken + ad_form_data on ANY domain)
  *     - Ouo.io / Ouo.press Native Solver (dynamic Google reCAPTCHA v3 anchor/reload x-token + /go/ POST)
  *     - Rekonise Direct JSON Unlock API (api.rekonise.com)
- *     - AdLinkFly Hidden Form / AJAX Solver (exe.io, fc.lc, shrinkme, clk.sh, gplinks, aylink, bicolink)
- *     - Work.ink / Boost.ink / Mboost.me / Paster.so embedded payload extractor
- *  4. Collaborative Community & Public Bypass APIs (all active, shutdown/parked URLs filtered out):
- *     - BypassX Open Community API (68 services / 109 domains: Linkvertise, LootLabs, Work.ink, Rekonise, Ouo, etc.)
- *     - TRW Open Community Bypass API (keyless Linkvertise/Lootlink/Work.ink/Ad-wall resolver)
+ *     - Bicolink Nonce + Go-Link Native Solver
+ *  4. Collaborative Community & Public Bypass APIs (runs on ALL unresolved/shortener URLs,
+ *     never gated by a narrow whitelist; filters out dead/shutdown/portal URLs):
+ *     - TRW Community Bypass API (active across Linkvertise, LootLabs, Rekonise, MBoost, Shorteners)
+ *     - BypassX Open Community API (68 services / 109+ domains)
  *     - Unshorten.me Public Redirect API
- *     - Jina Headless Reader Fallback (when origin blocks plain fetch with JS/403 challenge)
- *  5. Automatic Post-Resolution Chaining: if a resolved link is still another shortener/wrapper,
- *     automatically traces up to 2 extra chained hops toward the real final destination.
+ *     - Jina Headless Reader Inspector (fallback for JS/bot-wall pages)
+ *  5. Automatic Multi-Stage Chaining (up to 2 extra chained stages when Stage 1 lands on
+ *     another shortener/ad-wall, e.g. bit.ly -> semawur.com -> sfl.gl -> destination).
  */
 
 const MAX_HOPS = 12;
-const HOP_TIMEOUT_MS = 5500;
-const FAST_API_TIMEOUT_MS = 7000;
-const ADWALL_API_TIMEOUT_MS = 18000;
+const HOP_TIMEOUT_MS = 4500;
+const FAST_API_TIMEOUT_MS = 4500;
+const ADWALL_API_TIMEOUT_MS = 6500;
+const FAST_RACE_GRACE_MS = 1400;
 const MAX_HTML_BYTES = 220 * 1024;
 const USER_AGENT =
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36';
@@ -50,24 +54,33 @@ const PRIVATE_HOST_PATTERNS = [
 const AD_WALL_HOST_SET = new Set([
   'linkvertise.com', 'linkvertise.net', 'linkvertise.download', 'link-to.net',
   'direct-link.net', 'link-center.net', 'link-hub.net', 'link-target.net',
-  'link-target.org', 'file-link.net', 'up-to-down.net',
-  'ouo.io', 'ouo.press', 'shrinkme.io', 'shrinke.me', 'exe.io', 'exey.io', 'fc.lc',
-  'gplinks.co', 'gplinks.in', 'droplink.co', 'safelinku.com', 'safelinkblogger.com',
-  'sfl.gl', 'duit.cc', 'semawur.com', 'cararegistrasi.com', 'adf.ly', 'adfly.com',
-  'bc.vc', 'sh.st', 'za.gl', 'clk.sh', 'aylink.co', 'ay.live', 'loot-link.com',
-  'lootdest.org', 'lootdest.com', 'lootlabs.gg', 'work.ink', 'sub2unlock.com',
-  'sub2unlock.io', 'sub2unlock.net', 'sub4unlock.com', 'sub4unlock.io', 'boost.ink',
-  'bst.gg', 'bst.wtf', 'mboost.me', 'rekonise.com', 'social-unlock.com',
-  'paster.so', 'paster.gg', 'adfoc.us', 'bicolink.net', 'bicolink.com',
+  'link-target.org', 'file-link.net', 'up-to-down.net', 'filemail.com',
+  'ouo.io', 'ouo.press', 'shrinkme.io', 'shrinke.me', 'shrinkearn.com', 'exe.io', 'exey.io', 'fc.lc',
+  'gplinks.co', 'gplinks.in', 'droplink.co', 'safelinku.com', 'safelinkku.com', 'safelinkblogger.com',
+  'sfl.gl', 'sfl.ink', 'duit.cc', 'semawur.com', 'khaddavi.net', 'cararegistrasi.com', 'tutwuri.id',
+  'adf.ly', 'adfly.com', 'bc.vc', 'sh.st', 'za.gl', 'clk.sh', 'clk.kim', 'clicksfly.com',
+  'aylink.co', 'ay.live', 'loot-link.com', 'lootdest.org', 'lootdest.com', 'lootdest.info',
+  'lootdest.net', 'loots.gg', 'loot-reward.com', 'lootlabs.gg', 'work.ink', 'workink.net',
+  'sub2unlock.com', 'sub2unlock.io', 'sub2unlock.me', 'sub2unlock.net', 'sub2unlock.xyz',
+  'sub4unlock.com', 'sub4unlock.io', 'sub4unlock.me', 'sub4unlock.pro', 'subunlock.com', 'link2unlock.com',
+  'boost.ink', 'bst.gg', 'bst.wtf', 'booo.st', 'boostylink.com', 'mboost.me', 'move2link.com',
+  'rekonise.com', 'social-unlock.com', 'socialwolvez.com', 'scwz.me', 'link-unlock.com', 'linkunlocker.com',
+  'paster.so', 'paster.gg', 'adfoc.us', 'bicolink.net', 'bicolink.com', 'bico.link',
   'cuty.io', 'arolinks.com', 'vplink.in', 'bstlar.com', 'link4m.com', 'tpi.li',
+  'lockr.net', 'lockr.so', 'lockr.to', 'bstshrt.com', 'linkpays.in', 'publicearn.net',
+  'get.publicearn.net', 'shortxlinks.in', 'shortxlinks.com', 'lnbz.la', 'rinku.pro',
+  'gaterlnk.com', 'subnise.com', 'vipshort.in', 'link4sub.com', 'sub2s.com', 'unlocknow.net',
+  'oke.io', 'tny.so', 'v2links.com', 'modijiurl.com', 'shareus.io', 'link1s.com', 'adrinolinks.in',
+  'yorurl.com', 'payskip.org', 'short.am', 'du-link.in', 'stfly.me', 'earnl.xyz',
 ]);
 
 const SHORTENER_HOST_SET = new Set([
   ...AD_WALL_HOST_SET,
   'bit.ly', 'bitly.com', 'tinyurl.com', 't.co', 'goo.gl', 'ow.ly', 'is.gd', 'v.gd',
   'buff.ly', 'rebrand.ly', 'cutt.ly', 'rb.gy', 'shorturl.at', 'tiny.cc', 'bl.ink',
-  's.id', 's.shopee.co.id', 'shope.ee', 'vt.tiktok.com', 'vm.tiktok.com', 'youtu.be',
-  'l.facebook.com', 'lm.facebook.com', 'l.instagram.com', 'out.reddit.com',
+  's.id', 't.ly', 'kutt.it', 'short.io', 'lnkd.in', 'dlvr.it', 'snip.ly', 'clck.ru',
+  'u.to', 'qr.ae', 'trib.al', 's.shopee.co.id', 'shope.ee', 'vt.tiktok.com', 'vm.tiktok.com',
+  'youtu.be', 'l.facebook.com', 'lm.facebook.com', 'l.instagram.com', 'out.reddit.com',
   'sfile.mobi', 'mediafire.com',
 ]);
 
@@ -79,6 +92,9 @@ const BOGUS_HOSTS = new Set([
   'ww17.bypass.pm',
   'bypassx-omega.vercel.app',
   'trw.lat',
+  'rip.linkvertise.lol',
+  'shortlink-bypass.vercel.app',
+  'api.zapi.ink',
   'r.jina.ai',
   'unshorten.me',
   'challenges.cloudflare.com',
@@ -144,7 +160,7 @@ function isShortenerLikeUrl(urlStr = '') {
     const u = new URL(urlStr);
     if (hostMatchesSet(u.hostname, SHORTENER_HOST_SET)) return true;
     const h = normalizeHost(u.hostname);
-    return h.includes('safelink') || u.pathname.startsWith('/go/');
+    return h.includes('safelink') || h.includes('short') || u.pathname.startsWith('/go/') || u.pathname.startsWith('/ready/go');
   } catch {
     return false;
   }
@@ -153,7 +169,7 @@ function isShortenerLikeUrl(urlStr = '') {
 function isBogusBypassCandidate(candidateUrl = '', sourceUrl = '') {
   const text = String(candidateUrl || '').trim();
   if (!text) return true;
-  if (/FREE\s+API\s+SHUT\s+DOWN|bypass\.vip\/discord|not\s+found|error\s+bypassing/i.test(text)) {
+  if (/FREE\s+API\s+SHUT\s+DOWN|bypass\.vip\/discord|not\s+found|error\s+bypassing|unsupported\s+url/i.test(text)) {
     return true;
   }
   const check = isPublicSafeUrl(text);
@@ -167,6 +183,21 @@ function isBogusBypassCandidate(candidateUrl = '', sourceUrl = '') {
     if (cand.pathname.includes('/cdn-cgi/')) {
       return true;
     }
+    if (
+      /\.(?:css|js|mjs|map|png|jpe?g|gif|webp|avif|svg|ico|woff2?|ttf|eot|json|xml|rss)(?:$|[?#])/i.test(
+        cand.pathname
+      )
+    ) {
+      return true;
+    }
+    if (
+      /^(?:githubassets\.com|fonts\.googleapis\.com|fonts\.gstatic\.com|static\.cloudflareinsights\.com)$/i.test(
+        host
+      ) ||
+      host.endsWith('.githubassets.com')
+    ) {
+      return true;
+    }
     if (sourceUrl && check.url === sourceUrl) {
       return true;
     }
@@ -178,10 +209,13 @@ function isBogusBypassCandidate(candidateUrl = '', sourceUrl = '') {
 
 function decodeHtmlEntities(str = '') {
   return String(str || '')
+    .replace(/&#x([0-9a-f]+);/gi, (_, h) => String.fromCodePoint(parseInt(h, 16)))
+    .replace(/&#(\d+);/g, (_, d) => String.fromCodePoint(parseInt(d, 10)))
     .replaceAll('&amp;', '&')
     .replaceAll('&quot;', '"')
     .replaceAll('&#39;', "'")
     .replaceAll('&#x27;', "'")
+    .replaceAll('&apos;', "'")
     .replaceAll('&lt;', '<')
     .replaceAll('&gt;', '>')
     .trim();
@@ -207,12 +241,15 @@ function isCloudflareChallengeResponse(status, headers, html = '') {
   const cfMit = String(headers?.get?.('cf-mitigated') || '').toLowerCase();
   if (cfMit === 'challenge') return true;
   if ((status === 403 || status === 429 || status === 503) && html) {
-    const low = html.slice(0, 4000).toLowerCase();
+    const low = html.slice(0, 5000).toLowerCase();
     if (
       low.includes('<title>just a moment...</title>') ||
+      low.includes('attention required! | cloudflare') ||
+      low.includes('sorry, you have been blocked') ||
       low.includes('/cdn-cgi/challenge-platform') ||
       low.includes('cf-chl-') ||
-      low.includes('performing security verification')
+      low.includes('performing security verification') ||
+      low.includes('connection check')
     ) {
       return true;
     }
@@ -251,10 +288,82 @@ function extractHiddenInputs(html = '') {
     const tag = m[0];
     const nameMatch = tag.match(/\bname\s*=\s*["']([^"']+)["']/i);
     if (!nameMatch?.[1]) continue;
+    const typeMatch = tag.match(/\btype\s*=\s*["']([^"']+)["']/i);
+    const inputType = String(typeMatch?.[1] || 'hidden').toLowerCase();
+    if (['submit', 'button', 'image', 'reset', 'file'].includes(inputType)) continue;
     const valMatch = tag.match(/\bvalue\s*=\s*["']([^"']*)["']/i);
-    fields[nameMatch[1]] = valMatch ? decodeHtmlEntities(valMatch[1]) : '';
+    fields[decodeHtmlEntities(nameMatch[1])] = valMatch ? decodeHtmlEntities(valMatch[1]) : '';
   }
   return fields;
+}
+
+function extractAutoSubmitForm(html = '', baseUrl = '') {
+  const source = String(html || '');
+  const forms = [...source.matchAll(/<form\b([^>]*)>([\s\S]*?)<\/form>/gi)];
+  for (const f of forms) {
+    const openAttrs = f[1] || '';
+    const inner = f[2] || '';
+    const actionMatch = openAttrs.match(/\baction\s*=\s*["']([^"']+)["']/i);
+    if (!actionMatch?.[1]) continue;
+    const methodMatch = openAttrs.match(/\bmethod\s*=\s*["']?([a-z]+)/i);
+    const method = String(methodMatch?.[1] || 'GET').toUpperCase();
+    const fields = extractHiddenInputs(inner);
+    const fieldKeys = Object.keys(fields);
+
+    // Reject obvious search/login forms on normal destination sites
+    if (
+      /\b(?:search|q|query|username|password|email)\b/i.test(
+        `${openAttrs} ${fieldKeys.join(' ')}`
+      ) &&
+      !/newwpsafelink|ad_form_data|safelink/i.test(inner)
+    ) {
+      continue;
+    }
+
+    const formTagMatchesSubmit =
+      /id\s*=\s*["'](?:form|go-link|wpsafe-generate|safelink)["']|ad_form_data|newwpsafelink/i.test(
+        `${openAttrs} ${inner}`
+      ) || /\.submit\s*\(\s*\)/i.test(source);
+    const hasOnlyHiddenInputs =
+      fieldKeys.length > 0 &&
+      !/<(?:input[^>]+type\s*=\s*["'](?:text|email|password|search|tel|url|number)["']|textarea|select)/i.test(
+        inner
+      ) &&
+      !/search|login|signin/i.test(actionMatch[1]);
+
+    if (!formTagMatchesSubmit && !hasOnlyHiddenInputs) continue;
+    if (/ad_form_data/i.test(inner) && fields._csrfToken) {
+      return { kind: 'adlinkfly', actionUrl: new URL(decodeHtmlEntities(actionMatch[1]), baseUrl).toString(), method: 'POST', fields };
+    }
+
+    try {
+      const target = new URL(decodeHtmlEntities(actionMatch[1]), baseUrl);
+      if (method === 'GET') {
+        for (const [k, v] of Object.entries(fields)) {
+          target.searchParams.set(k, v);
+        }
+        const check = isPublicSafeUrl(target.toString());
+        if (check.safe && check.url !== baseUrl) {
+          return { kind: 'get', nextUrl: check.url, fields };
+        }
+      } else if (method === 'POST' && fieldKeys.length > 0) {
+        const check = isPublicSafeUrl(target.toString());
+        if (check.safe) {
+          return { kind: 'post', actionUrl: check.url, fields };
+        }
+      }
+    } catch {
+      // Ignore malformed form action
+    }
+  }
+  return null;
+}
+
+function isSafelinkUGateHtml(html = '') {
+  return (
+    /<div[^>]+id\s*=\s*["']verify["']/i.test(html) &&
+    (/second_open_placeholder/i.test(html) || /\/c\/assets\/[A-Za-z0-9_-]+\.js/i.test(html))
+  );
 }
 
 function extractRedirectFromHtml(html = '', baseUrl = '') {
@@ -266,7 +375,12 @@ function extractRedirectFromHtml(html = '', baseUrl = '') {
   const title = titleMatch ? decodeHtmlEntities(titleMatch[1].replace(/\s+/g, ' ')) : '';
 
   const resolveCandidate = (raw) => {
-    const cleaned = decodeHtmlEntities(String(raw || '').trim().replace(/^['"]|['"]$/g, ''));
+    const cleaned = decodeHtmlEntities(
+      String(raw || '')
+        .trim()
+        .replace(/^['"]|['"]$/g, '')
+        .replace(/\\\//g, '/')
+    );
     if (!cleaned || cleaned.startsWith('#') || /^javascript:/i.test(cleaned)) return '';
     try {
       const abs = new URL(cleaned, baseUrl).toString();
@@ -299,25 +413,33 @@ function extractRedirectFromHtml(html = '', baseUrl = '') {
     if (candidate) return { nextUrl: candidate, method: 'meta-refresh', title, signals };
   }
 
-  // 2. Direct JS redirect / target variables / Base64 atob payloads
+  // 2. Direct JS redirect / target variables
   const jsPatterns = [
-    /(?:window\.|top\.|self\.)?location(?:\.href)?\s*=\s*["'](https?:\/\/[^"'<>\\\s]{6,})["']/i,
+    /(?:window\.|top\.|self\.|document\.)?location(?:\.href)?\s*=\s*["'](https?:\/\/[^"'<>\\\s]{6,})["']/i,
     /(?:window\.|top\.|self\.)?location\.replace\(\s*["'](https?:\/\/[^"'<>\\\s]{6,})["']\s*\)/i,
     /(?:window\.|top\.|self\.)?location\.assign\(\s*["'](https?:\/\/[^"'<>\\\s]{6,})["']\s*\)/i,
-    /\b(?:targetUrl|finalUrl|redirectUrl|destinationUrl|link_target|go_url)\s*[:=]\s*["'](https?:\/\/[^"'<>\\\s]{6,})["']/i,
-    /atob\(\s*["']([A-Za-z0-9+/=_-]{16,768})["']\s*\)/i,
+    /\b(?:targetUrl|finalUrl|redirectUrl|destinationUrl|link_target|go_url|target_url|url_tujuan)\s*[:=]\s*["'](https?:\\?\/\\?\/[^"'<>\s]{6,})["']/i,
+    /"(?:url|destination|target|redirect)"\s*:\s*"(https?:\\?\/\\?\/[^"<>\s]{8,})"/i,
   ];
 
-  for (let i = 0; i < jsPatterns.length; i += 1) {
-    const m = source.match(jsPatterns[i]);
+  for (const re of jsPatterns) {
+    const m = source.match(re);
     if (!m?.[1]) continue;
-    const candidate = i === 4 ? tryBase64DecodeUrl(m[1]) : resolveCandidate(m[1]);
+    const candidate = resolveCandidate(m[1]);
     if (candidate && !isBogusBypassCandidate(candidate, baseUrl)) {
-      return { nextUrl: candidate, method: i === 4 ? 'js-base64' : 'js-redirect', title, signals };
+      return { nextUrl: candidate, method: 'js-redirect', title, signals };
     }
   }
 
-  // 3. Blogger / WordPress Safelink hidden Base64 tokens & MediaFire / Sfile / Get-Link buttons
+  // 3. Scan ALL atob(...) Base64 calls (avoid stopping at a non-URL first match)
+  for (const m of source.matchAll(/atob\(\s*["']([A-Za-z0-9+/=_-]{16,768})["']\s*\)/gi)) {
+    const candidate = tryBase64DecodeUrl(m[1]);
+    if (candidate && !isBogusBypassCandidate(candidate, baseUrl)) {
+      return { nextUrl: candidate, method: 'js-base64', title, signals };
+    }
+  }
+
+  // 4. Blogger / WordPress Safelink hidden Base64 tokens & MediaFire / Sfile / Get-Link buttons
   const safelinkInput = source.match(
     /<input[^>]+name\s*=\s*["'](?:newwpsafelink|safelink|go|u|target|link)["'][^>]+value\s*=\s*["']([^"']{12,})["']/i
   );
@@ -330,8 +452,10 @@ function extractRedirectFromHtml(html = '', baseUrl = '') {
 
   const anchorPatterns = [
     /<a[^>]+id\s*=\s*["']downloadButton["'][^>]+href\s*=\s*["'](https?:\/\/[^"'<>\\\s]{6,})["']/i,
+    /<a[^>]+id\s*=\s*["'](?:wpsafe-link|btn-main|btn-get-link|download)["'][^>]+href\s*=\s*["'](https?:\/\/[^"'<>\\\s]{6,})["']/i,
     /<a[^>]+(?:id|class)\s*=\s*["'][^"']*(?:get[-_]?link|skip[-_]?ad|go[-_]?link|btn[-_]?download|direct[-_]?link)[^"']*["'][^>]+href\s*=\s*["'](https?:\/\/[^"'<>\\\s]{6,})["']/i,
-    /<a[^>]+href\s*=\s*["'](https?:\/\/[^"'<>\\\s]{6,})["'][^>]+(?:id|class)\s*=\s*["'][^"']*(?:get[-_]?link|skip[-_]?ad|go[-_]?link|btn[-_]?download|direct[-_]?link)[^"']*["']/i,
+    /<a[^>]+href\s*=\s*["'](https?:\/\/[^"'<>\\\s]{6,})["'][^>]+(?:id|class)\s*=\s*["'][^"']*(?:get[-_]?link|skip[-_]?ad|go[-_]?link|btn[-_]?download|direct[-_]?link|wpsafe-link)[^"']*["']/i,
+    /data-(?:url|href|target)\s*=\s*["'](https?:\/\/[^"'<>\\\s]{6,})["']/i,
   ];
   for (const re of anchorPatterns) {
     const am = source.match(re);
@@ -370,18 +494,200 @@ async function readTextCapped(response, maxBytes = MAX_HTML_BYTES) {
   return text;
 }
 
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
 /**
- * Cookie-jar multi-hop HTTP & HTML/Safelink tracer.
+ * Solves SafelinkU v3 / Semawur / Khaddavi / Tutwuri gate starting from an already-fetched gate page + CookieJar.
+ */
+async function solveSafelinkUGateSession(pageUrl, jar, hops) {
+  const origin = new URL(pageUrl).origin;
+  const fp = 'a'.repeat(64);
+  const hashTag = '#' + btoa(fp);
+
+  const makeToken = () => {
+    const rawXsrf = jar.get('XSRF-TOKEN') || '';
+    if (!rawXsrf) return '';
+    const dec = decodeURIComponent(rawXsrf);
+    return dec.slice(0, 128 - hashTag.length) + hashTag;
+  };
+
+  const apiPost = async (apiPath, payload, referer) => {
+    const xsrf = decodeURIComponent(jar.get('XSRF-TOKEN') || '');
+    const res = await fetch(new URL(apiPath, origin).toString(), {
+      method: 'POST',
+      signal: AbortSignal.timeout(6500),
+      headers: {
+        'User-Agent': USER_AGENT,
+        'Content-Type': 'application/json',
+        Accept: 'application/json, */*',
+        Origin: origin,
+        Referer: referer,
+        Cookie: buildCookieHeader(jar),
+        ...(xsrf ? { 'X-XSRF-TOKEN': xsrf } : {}),
+      },
+      body: JSON.stringify(payload),
+    });
+    extractSetCookies(res, jar);
+    const text = await res.text().catch(() => '');
+    let json = null;
+    try {
+      json = JSON.parse(text);
+    } catch {
+      json = null;
+    }
+    return { status: res.status, ok: res.ok, json };
+  };
+
+  let currentPageUrl = pageUrl;
+  for (let round = 0; round < 4; round += 1) {
+    const token = makeToken();
+    if (!token) return { ok: false, reason: 'no_xsrf_cookie' };
+
+    const sess = await apiPost('/api/session', { _token: token }, currentPageUrl);
+    if (!sess.ok || !sess.json) {
+      return { ok: false, reason: `session_${sess.status}` };
+    }
+    if (sess.json.captcha === 'turnstile' || sess.json.passcode) {
+      return { ok: false, reason: 'turnstile_or_passcode' };
+    }
+
+    if (sess.json.step === 1) {
+      let ver = await apiPost('/api/verify', { _a: 0 }, currentPageUrl);
+      if (ver.status === 422) {
+        await sleep(3500);
+        ver = await apiPost('/api/verify', { _a: 0 }, currentPageUrl);
+      }
+      if (!ver.ok || !ver.json?.target) {
+        return { ok: false, reason: `verify_${ver.status}` };
+      }
+
+      let nextStepUrl = new URL(ver.json.target, origin).toString();
+      hops.push({
+        step: hops.length + 1,
+        url: currentPageUrl,
+        status: ver.status,
+        type: 'safelinku-verify',
+        target: nextStepUrl,
+      });
+
+      // Follow redirect.php -> article step 2
+      for (let rHop = 0; rHop < 4; rHop += 1) {
+        const check = isPublicSafeUrl(nextStepUrl);
+        if (!check.safe) return { ok: false, reason: 'unsafe_hop' };
+        const res = await fetch(check.url, {
+          method: 'GET',
+          redirect: 'manual',
+          signal: AbortSignal.timeout(HOP_TIMEOUT_MS),
+          headers: {
+            'User-Agent': USER_AGENT,
+            Referer: currentPageUrl,
+            Cookie: buildCookieHeader(jar),
+          },
+        });
+        extractSetCookies(res, jar);
+        const loc = res.headers.get('location');
+        if (res.status >= 300 && res.status < 400 && loc) {
+          const resolved = new URL(loc, check.url).toString();
+          hops.push({
+            step: hops.length + 1,
+            url: check.url,
+            status: res.status,
+            type: 'http-redirect',
+            target: resolved,
+          });
+          nextStepUrl = resolved;
+          continue;
+        }
+        if (res.body) await res.body.cancel().catch(() => {});
+        currentPageUrl = check.url;
+        break;
+      }
+      continue;
+    }
+
+    if (sess.json.step === 2) {
+      const a = Math.floor(Math.random() * 900) + 100;
+      const size = `${(1920 + a) * 2}.${(1080 + a) * 2}`;
+      let goRes = await apiPost('/api/go', { key: a, size, ado: null }, currentPageUrl);
+      if (goRes.status === 422) {
+        await sleep(3000);
+        goRes = await apiPost('/api/go', { key: a, size, ado: null }, currentPageUrl);
+      }
+      const dest = String(goRes.json?.url || '').trim();
+      const check = isPublicSafeUrl(dest);
+      if (goRes.ok && check.safe && !isBogusBypassCandidate(check.url, currentPageUrl)) {
+        hops.push({
+          step: hops.length + 1,
+          url: currentPageUrl,
+          status: goRes.status,
+          type: 'safelinku-go',
+          target: check.url,
+        });
+        return { ok: true, resolvedUrl: check.url };
+      }
+      return { ok: false, reason: `go_${goRes.status}` };
+    }
+
+    return { ok: false, reason: `unknown_step_${sess.json.step}` };
+  }
+
+  return { ok: false, reason: 'max_rounds' };
+}
+
+/**
+ * Solves AdLinkFly AJAX form (_csrfToken + ad_form_data -> /links/go) inside CookieJar.
+ */
+async function solveAdLinkFlyAjax(formInfo, pageUrl, jar, hops) {
+  const bodyStr = new URLSearchParams(formInfo.fields).toString();
+  const actionUrl = formInfo.actionUrl || new URL('/links/go', pageUrl).toString();
+
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    if (attempt > 0) await sleep(3500);
+    const res = await fetchJsonSafe(actionUrl, 5500, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
+        'X-Requested-With': 'XMLHttpRequest',
+        Origin: new URL(pageUrl).origin,
+        Referer: pageUrl,
+        Cookie: buildCookieHeader(jar),
+      },
+      body: bodyStr,
+    }).catch(() => null);
+
+    const dest = String(res?.json?.url || '').trim();
+    if (dest && !isBogusBypassCandidate(dest, pageUrl)) {
+      const check = isPublicSafeUrl(dest);
+      if (check.safe) {
+        hops.push({
+          step: hops.length + 1,
+          url: pageUrl,
+          status: res.status || 200,
+          type: 'adlinkfly-go',
+          target: check.url,
+        });
+        return { ok: true, resolvedUrl: check.url };
+      }
+    }
+  }
+  return { ok: false };
+}
+
+/**
+ * Cookie-jar multi-hop HTTP + Auto-Submit <form> + SafelinkU + AdLinkFly + HTML/JS tracer.
  */
 async function traceSafeRedirects(startUrl) {
   const hops = [];
   const signals = new Set();
   const jar = new Map();
   let current = startUrl;
+  let prevReferer = '';
   let finalTitle = '';
   let finalContentType = '';
   let finalStatus = 0;
   let cfBlocked = false;
+  let nextMethod = 'GET';
+  let nextPostBody = '';
 
   for (let i = 0; i < MAX_HOPS; i += 1) {
     const check = isPublicSafeUrl(current);
@@ -399,15 +705,23 @@ async function traceSafeRedirects(startUrl) {
         'Accept-Language': 'id-ID,id;q=0.9,en-US;q=0.8,en;q=0.7',
         'Upgrade-Insecure-Requests': '1',
       };
+      if (prevReferer) headers.Referer = prevReferer;
+      if (nextMethod === 'POST') {
+        headers['Content-Type'] = 'application/x-www-form-urlencoded';
+        headers.Origin = new URL(check.url).origin;
+      }
       const cookieHdr = buildCookieHeader(jar);
       if (cookieHdr) headers.Cookie = cookieHdr;
 
       const res = await fetch(check.url, {
-        method: 'GET',
+        method: nextMethod,
         redirect: 'manual',
         signal: controller.signal,
         headers,
+        ...(nextMethod === 'POST' ? { body: nextPostBody } : {}),
       });
+      nextMethod = 'GET';
+      nextPostBody = '';
       clearTimeout(timer);
       extractSetCookies(res, jar);
 
@@ -424,7 +738,7 @@ async function traceSafeRedirects(startUrl) {
         }
         const nextCheck = isPublicSafeUrl(resolvedNext);
         hops.push({
-          step: i + 1,
+          step: hops.length + 1,
           url: check.url,
           status: res.status,
           type: 'http-redirect',
@@ -434,6 +748,7 @@ async function traceSafeRedirects(startUrl) {
           if (!nextCheck.safe) signals.add('blocked_private_hop');
           break;
         }
+        prevReferer = check.url;
         current = nextCheck.url;
         continue;
       }
@@ -446,7 +761,7 @@ async function traceSafeRedirects(startUrl) {
           signals.add('cloudflare_block');
           signals.add('captcha_challenge');
           hops.push({
-            step: i + 1,
+            step: hops.length + 1,
             url: check.url,
             status: res.status,
             type: 'cloudflare-challenge',
@@ -455,27 +770,95 @@ async function traceSafeRedirects(startUrl) {
           break;
         }
 
-        const extracted = extractRedirectFromHtml(html, check.url);
-        if (extracted.title && !finalTitle) finalTitle = extracted.title;
-        extracted.signals.forEach((s) => signals.add(s));
+        const onShortenerOrEntry = i === 0 || isShortenerLikeUrl(check.url);
+        const hasExplicitSafelinkHtml =
+          isSafelinkUGateHtml(html) ||
+          (/ad_form_data/i.test(html) && /_csrfToken/i.test(html)) ||
+          /newwpsafelink|id\s*=\s*["']wpsafe-link["']/i.test(html);
 
-        if (extracted.nextUrl) {
-          hops.push({
-            step: i + 1,
-            url: check.url,
-            status: res.status,
-            type: extracted.method || 'html-redirect',
-            target: extracted.nextUrl,
-          });
-          current = extracted.nextUrl;
-          continue;
+        // Check SafelinkU v3 gate (semawur / khaddavi / safelinku / sfl.gl / tutwuri)
+        if (isSafelinkUGateHtml(html) && jar.has('XSRF-TOKEN')) {
+          signals.add('ad_countdown_wall');
+          const slOut = await solveSafelinkUGateSession(check.url, jar, hops);
+          if (slOut.ok && slOut.resolvedUrl) {
+            prevReferer = check.url;
+            current = slOut.resolvedUrl;
+            continue;
+          }
+          if (slOut.reason === 'turnstile_or_passcode') {
+            signals.add('captcha_challenge');
+          }
+        }
+
+        // Only run HTML redirect/form extraction when we are still on a shortener/entry hop
+        // OR the HTML itself matches an explicit safelink/meta-refresh gate (prevents false matches on github.com/wikipedia.org!)
+        const titleOnlyMatch = html.match(/<title[^>]*>([\s\S]{1,180}?)<\/title>/i);
+        if (titleOnlyMatch?.[1]) {
+          finalTitle = decodeHtmlEntities(titleOnlyMatch[1].replace(/\s+/g, ' '));
+        }
+
+        if (onShortenerOrEntry || hasExplicitSafelinkHtml) {
+          const extracted = extractRedirectFromHtml(html, check.url);
+          if (extracted.title) finalTitle = extracted.title;
+          extracted.signals.forEach((s) => signals.add(s));
+
+          if (extracted.nextUrl) {
+            hops.push({
+              step: hops.length + 1,
+              url: check.url,
+              status: res.status,
+              type: extracted.method || 'html-redirect',
+              target: extracted.nextUrl,
+            });
+            prevReferer = check.url;
+            current = extracted.nextUrl;
+            continue;
+          }
+
+          // Check auto-submit <form> (GET or POST) or Universal AdLinkFly AJAX form
+          const formInfo = extractAutoSubmitForm(html, check.url);
+          if (formInfo) {
+            if (formInfo.kind === 'adlinkfly') {
+              signals.add('ad_countdown_wall');
+              const alf = await solveAdLinkFlyAjax(formInfo, check.url, jar, hops);
+              if (alf.ok && alf.resolvedUrl) {
+                prevReferer = check.url;
+                current = alf.resolvedUrl;
+                continue;
+              }
+            } else if (formInfo.kind === 'get' && formInfo.nextUrl) {
+              hops.push({
+                step: hops.length + 1,
+                url: check.url,
+                status: res.status,
+                type: 'form-get',
+                target: formInfo.nextUrl,
+              });
+              prevReferer = check.url;
+              current = formInfo.nextUrl;
+              continue;
+            } else if (formInfo.kind === 'post' && formInfo.actionUrl) {
+              hops.push({
+                step: hops.length + 1,
+                url: check.url,
+                status: res.status,
+                type: 'form-post',
+                target: formInfo.actionUrl,
+              });
+              prevReferer = check.url;
+              current = formInfo.actionUrl;
+              nextMethod = 'POST';
+              nextPostBody = new URLSearchParams(formInfo.fields).toString();
+              continue;
+            }
+          }
         }
       } else if (res.body) {
         await res.body.cancel().catch(() => {});
       }
 
       hops.push({
-        step: i + 1,
+        step: hops.length + 1,
         url: check.url,
         status: res.status,
         type: 'destination',
@@ -485,7 +868,7 @@ async function traceSafeRedirects(startUrl) {
     } catch (err) {
       clearTimeout(timer);
       hops.push({
-        step: i + 1,
+        step: hops.length + 1,
         url: check.url,
         status: 0,
         type: err?.name === 'AbortError' ? 'timeout' : 'network-error',
@@ -497,7 +880,7 @@ async function traceSafeRedirects(startUrl) {
 
   return {
     engineId: 'edge-tracer',
-    name: 'Edge Cookie-Jar & HTML Inspector',
+    name: 'Edge Cookie-Jar & HTML/Form Inspector',
     category: 'edge',
     ok: hops.length > 0 && current !== startUrl && !isBogusBypassCandidate(current, startUrl),
     reachable: finalStatus > 0,
@@ -538,7 +921,7 @@ async function fetchJsonSafe(url, timeoutMs = FAST_API_TIMEOUT_MS, init = {}) {
 }
 
 /* --------------------------------------------------------------------------
- * Native Open-Source Service Solvers (Ouo.io, Rekonise, AdLinkFly)
+ * Native Open-Source Service Solvers (Ouo.io, Rekonise, Bicolink, AdLinkFly)
  * -------------------------------------------------------------------------- */
 
 async function solveGoogleRecaptchaV3(siteKey = '6Lcr1ncUAAAAAH3cghg6cOTPGARa8adOf-y9zv2x', co = 'aHR0cHM6Ly9vdW8ucHJlc3M6NDQz') {
@@ -765,42 +1148,65 @@ async function queryNativeServiceSolver(targetUrl) {
     if (host === 'rekonise.com') {
       return await solveRekoniseNative(targetUrl);
     }
-    // Generic AdLinkFly check on known AdLinkFly domains
-    if (/^(?:exe\.io|fc\.lc|shrinkme\.io|clk\.sh|gplinks\.co|droplink\.co|bicolink\.net|aylink\.co)$/.test(host)) {
+    // Bicolink nonce + /al/free/{slug} solver
+    if (host === 'bicolink.com' || host === 'bicolink.net' || host === 'bico.link') {
       const jar = new Map();
-      const firstRes = await fetch(targetUrl, {
-        method: 'GET',
-        redirect: 'follow',
-        signal: AbortSignal.timeout(5500),
-        headers: { 'User-Agent': USER_AGENT },
-      });
-      extractSetCookies(firstRes, jar);
-      const html = await firstRes.text().catch(() => '');
-      const fields = extractHiddenInputs(html);
-      if (fields.ad_form_data && fields._csrfToken) {
-        const formBody = new URLSearchParams(fields).toString();
-        const goRes = await fetchJsonSafe(`https://${host}/links/go`, 5500, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
-            'X-Requested-With': 'XMLHttpRequest',
-            Referer: firstRes.url || targetUrl,
-            Cookie: buildCookieHeader(jar),
-          },
-          body: formBody,
+      const origin = new URL(targetUrl).origin;
+      const slug = new URL(targetUrl).pathname.replace(/^\/+|\/+$/g, '').split('/').pop() || '';
+      if (slug) {
+        const freeUrl = `${origin}/al/free/${slug}`;
+        const p1 = await fetch(freeUrl, {
+          headers: { 'User-Agent': USER_AGENT, Referer: targetUrl },
+          signal: AbortSignal.timeout(5500),
         });
-        const dest = String(goRes?.json?.url || '').trim();
-        if (dest && !isBogusBypassCandidate(dest, targetUrl)) {
-          const check = isPublicSafeUrl(dest);
-          if (check.safe) {
+        extractSetCookies(p1, jar);
+        const h1 = await p1.text().catch(() => '');
+        if (isCloudflareChallengeResponse(p1.status, p1.headers, h1)) {
+          return {
+            engineId: 'native-solver',
+            name: 'Solver Native Open-Source',
+            category: 'open-source',
+            ok: false,
+            resolvedUrl: '',
+            cfBlocked: true,
+            latencyMs: Date.now() - started,
+            note: 'Bicolink membatasi koneksi non-browser',
+          };
+        }
+        const nonceMatch = h1.match(/var\s+nonce\s*=\s*["']([^"']+)["']/);
+        if (nonceMatch?.[1]) {
+          let sum = 0;
+          const nonce = nonceMatch[1];
+          for (let i = 0; i < nonce.length; i += 1) {
+            sum = (sum * 31 + nonce.charCodeAt(i) + i) % 1000000007;
+          }
+          const body = `nt_fb=${encodeURIComponent(sum.toString(36))}&nt_dari=tantangan`;
+          await fetch(`${origin}/al/verify/${slug}`, {
+            method: 'POST',
+            headers: {
+              'User-Agent': USER_AGENT,
+              'Content-Type': 'application/x-www-form-urlencoded',
+              Referer: freeUrl,
+              Cookie: buildCookieHeader(jar),
+            },
+            body,
+            signal: AbortSignal.timeout(5500),
+          });
+          const p2 = await fetch(freeUrl, {
+            headers: { 'User-Agent': USER_AGENT, Referer: freeUrl, Cookie: buildCookieHeader(jar) },
+            signal: AbortSignal.timeout(5500),
+          });
+          const h2 = await p2.text().catch(() => '');
+          const ext = extractRedirectFromHtml(h2, freeUrl);
+          if (ext.nextUrl) {
             return {
               engineId: 'native-solver',
               name: 'Solver Native Open-Source',
               category: 'open-source',
               ok: true,
-              resolvedUrl: check.url,
+              resolvedUrl: ext.nextUrl,
               latencyMs: Date.now() - started,
-              note: `Form AdLinkFly (${host}) berhasil diurai`,
+              note: 'Bicolink berhasil diurai',
             };
           }
         }
@@ -817,7 +1223,7 @@ async function queryNativeServiceSolver(targetUrl) {
     ok: false,
     resolvedUrl: '',
     latencyMs: Date.now() - started,
-    note: host ? `Siap untuk domain khusus (ouo/rekonise/adlink)` : 'Domain langsung',
+    note: host ? 'Aktif untuk pola SafelinkU/AdLinkFly/Ouo/Rekonise' : 'Domain langsung',
   };
 }
 
@@ -959,6 +1365,7 @@ async function queryJinaReaderFallback(targetUrl) {
     const valid = Boolean(
       res.ok &&
         candidate &&
+        !/Just a moment/i.test(txt.slice(0, 400)) &&
         !isBogusBypassCandidate(candidate, targetUrl) &&
         normalizeHost(new URL(candidate).hostname) !== normalizeHost(new URL(targetUrl).hostname)
     );
@@ -999,45 +1406,79 @@ function jsonResponse(payload, status = 200) {
   });
 }
 
-async function runStageEngines(targetUrl) {
-  const adWall = isAdWallHost(targetUrl);
-  const timeoutMs = adWall ? ADWALL_API_TIMEOUT_MS : FAST_API_TIMEOUT_MS;
+function raceWithGrace(promise, graceMs, fallbackObj) {
+  return Promise.race([
+    promise,
+    sleep(graceMs).then(() => fallbackObj),
+  ]);
+}
 
-  // Run Edge Tracer & Native Solver in parallel; only wait on slow ad-wall APIs when needed
-  const [edgeTrace, nativeRes, bypassXRes, trwRes, unMeRes] = await Promise.all([
-    traceSafeRedirects(targetUrl),
-    adWall
-      ? queryNativeServiceSolver(targetUrl)
-      : Promise.resolve({
+async function runStageEngines(targetUrl, deadlineMs = Date.now() + 14000) {
+  const adWall = isAdWallHost(targetUrl);
+  const remaining = Math.max(2500, deadlineMs - Date.now());
+  const timeoutMs = Math.min(adWall ? ADWALL_API_TIMEOUT_MS : FAST_API_TIMEOUT_MS, remaining);
+
+  // Always launch all engines in parallel so custom/unlisted shortlinks are NEVER skipped!
+  const edgePromise = traceSafeRedirects(targetUrl);
+  const nativePromise = queryNativeServiceSolver(targetUrl);
+  const trwPromise = queryTrwBypassApi(targetUrl, timeoutMs);
+  const bypassXPromise = queryBypassXApi(targetUrl, timeoutMs);
+  const unMePromise = queryUnshortenMe(targetUrl, FAST_API_TIMEOUT_MS);
+
+  // Wait for Edge Tracer first: if Edge already advanced cleanly OR already resolved past a multi-hop
+  // safelink onto the next stage URL, cap remaining external APIs to a quick 1.4s grace window
+  // instead of burning 7-16s before Stage 2 can start!
+  const edgeTrace = await edgePromise;
+  const edgeAlreadyClean = Boolean(
+    edgeTrace.ok &&
+      !edgeTrace.cfBlocked &&
+      edgeTrace.status > 0 &&
+      edgeTrace.status < 400 &&
+      !isShortenerLikeUrl(edgeTrace.resolvedUrl)
+  );
+  const edgeFoundNextStage = Boolean(
+    edgeTrace.ok &&
+      edgeTrace.resolvedUrl &&
+      edgeTrace.resolvedUrl !== targetUrl
+  );
+
+  const [nativeRes, trwRes, bypassXRes, unMeRes] =
+    edgeAlreadyClean || edgeFoundNextStage
+      ? await Promise.all([
+        raceWithGrace(nativePromise, FAST_RACE_GRACE_MS, {
           engineId: 'native-solver',
           name: 'Solver Native Open-Source',
           category: 'open-source',
           ok: false,
           resolvedUrl: '',
-          note: 'Domain non-adwall ditangani Edge Tracer',
+          note: 'Sudah diselesaikan Edge Tracer',
         }),
-    adWall
-      ? queryBypassXApi(targetUrl, timeoutMs)
-      : Promise.resolve({
-          engineId: 'bypassx-api',
-          name: 'BypassX Open Community API',
-          category: 'open-source',
-          ok: false,
-          resolvedUrl: '',
-          note: 'Tidak diperlukan untuk tautan langsung',
-        }),
-    adWall
-      ? queryTrwBypassApi(targetUrl, timeoutMs)
-      : Promise.resolve({
+        raceWithGrace(trwPromise, FAST_RACE_GRACE_MS, {
           engineId: 'trw-api',
           name: 'TRW Community Bypass API',
           category: 'open-source',
           ok: false,
           resolvedUrl: '',
-          note: 'Tidak diperlukan untuk tautan langsung',
+          note: 'Sudah diselesaikan Edge Tracer',
         }),
-    queryUnshortenMe(targetUrl, FAST_API_TIMEOUT_MS),
-  ]);
+        raceWithGrace(bypassXPromise, FAST_RACE_GRACE_MS, {
+          engineId: 'bypassx-api',
+          name: 'BypassX Open Community API',
+          category: 'open-source',
+          ok: false,
+          resolvedUrl: '',
+          note: 'Sudah diselesaikan Edge Tracer',
+        }),
+        raceWithGrace(unMePromise, FAST_RACE_GRACE_MS, {
+          engineId: 'unshorten-me',
+          name: 'Unshorten.me Public API',
+          category: 'public-api',
+          ok: false,
+          resolvedUrl: '',
+          note: 'Sudah diselesaikan Edge Tracer',
+        }),
+      ])
+    : await Promise.all([nativePromise, trwPromise, bypassXPromise, unMePromise]);
 
   const engines = [
     {
@@ -1055,15 +1496,31 @@ async function runStageEngines(targetUrl) {
         : 'Situs asal membatasi akses otomatis',
     },
     nativeRes,
-    bypassXRes,
     trwRes,
+    bypassXRes,
     unMeRes,
   ];
 
-  // If still unresolved & blocked by Cloudflare/JS on an ad-wall, try Jina headless reader once
-  const anySolved = engines.some((e) => e.ok && e.resolvedUrl && !isShortenerLikeUrl(e.resolvedUrl));
-  if (!anySolved && (edgeTrace.cfBlocked || adWall)) {
-    const jinaRes = await queryJinaReaderFallback(targetUrl);
+  // If still unresolved & blocked by Cloudflare/JS (and Edge didn't already advance to another stage), try Jina once if enough budget remains
+  const anyProgressedTarget = engines.some((e) => e.ok && e.resolvedUrl && e.resolvedUrl !== targetUrl);
+  const anyCleanTarget = engines.some(
+    (e) => e.ok && e.resolvedUrl && !isShortenerLikeUrl(e.resolvedUrl)
+  );
+  if (
+    !anyCleanTarget &&
+    !anyProgressedTarget &&
+    Date.now() + 3000 < deadlineMs &&
+    (edgeTrace.cfBlocked || adWall || isShortenerLikeUrl(targetUrl))
+  ) {
+    const jinaCap = Math.min(4200, Math.max(2500, deadlineMs - Date.now()));
+    const jinaRes = await raceWithGrace(queryJinaReaderFallback(targetUrl), jinaCap, {
+      engineId: 'jina-reader',
+      name: 'Headless Reader Inspector',
+      category: 'public-api',
+      ok: false,
+      resolvedUrl: '',
+      note: 'Halaman dilindungi verifikasi',
+    });
     engines.push(jinaRes);
   }
 
@@ -1099,54 +1556,70 @@ export async function handleShortlinkBypassRequest(request) {
     return jsonResponse({ ok: false, error: check.reason, blocked: true }, 400);
   }
 
+  const reqStarted = Date.now();
+  const reqDeadline = reqStarted + 15000;
+
   // Stage 1: Initial Multi-Engine Parallel Execution
-  const stage1 = await runStageEngines(check.url);
-  let allHops = [...stage1.edgeTrace.hops];
-  let allSignals = new Set(stage1.edgeTrace.signals);
+  const stage1 = await runStageEngines(check.url, reqDeadline);
+  const allHops = [...stage1.edgeTrace.hops];
+  const allSignals = new Set(stage1.edgeTrace.signals);
   let finalPageTitle = stage1.edgeTrace.pageTitle;
+  let finalEdgeResolvedUrl = stage1.edgeTrace.resolvedUrl;
+  let finalEdgeStatus = stage1.edgeTrace.status;
+  let finalEdgeContentType = stage1.edgeTrace.contentType;
+  let cfBlockedAny = Boolean(stage1.edgeTrace.cfBlocked || allSignals.has('cloudflare_block'));
   const engines = [...stage1.engines];
 
-  // Check if the resolved intermediate URL landed on ANOTHER shortlink/ad-wall (e.g. bit.ly -> linkvertise)
-  const solvedIntermediate =
-    engines.find((e) => e.ok && e.resolvedUrl && e.resolvedUrl !== check.url)?.resolvedUrl || '';
-  if (
-    solvedIntermediate &&
-    isShortenerLikeUrl(solvedIntermediate) &&
-    solvedIntermediate !== check.url
-  ) {
-    const stage2 = await runStageEngines(solvedIntermediate);
-    for (const h of stage2.edgeTrace.hops) {
+  // Chain up to 2 extra stages if intermediate URL landed on ANOTHER shortener/ad-wall (within 15s total budget)
+  let currentIntermediate =
+    engines.find((e) => e.ok && e.resolvedUrl && e.resolvedUrl !== check.url && isShortenerLikeUrl(e.resolvedUrl))
+      ?.resolvedUrl || '';
+  const visitedStages = new Set([check.url]);
+
+  for (let chainPass = 0; chainPass < 2; chainPass += 1) {
+    if (!currentIntermediate || visitedStages.has(currentIntermediate)) break;
+    if (Date.now() + 2500 > reqDeadline) break;
+    visitedStages.add(currentIntermediate);
+
+    const stageN = await runStageEngines(currentIntermediate, reqDeadline);
+    for (const h of stageN.edgeTrace.hops) {
       allHops.push({ ...h, step: allHops.length + 1 });
     }
-    stage2.edgeTrace.signals.forEach((s) => allSignals.add(s));
-    if (stage2.edgeTrace.pageTitle) finalPageTitle = stage2.edgeTrace.pageTitle;
+    stageN.edgeTrace.signals.forEach((s) => allSignals.add(s));
+    if (stageN.edgeTrace.pageTitle) finalPageTitle = stageN.edgeTrace.pageTitle;
+    if (stageN.edgeTrace.cfBlocked) cfBlockedAny = true;
+    if (stageN.edgeTrace.ok && stageN.edgeTrace.resolvedUrl) {
+      finalEdgeResolvedUrl = stageN.edgeTrace.resolvedUrl;
+      finalEdgeStatus = stageN.edgeTrace.status;
+      finalEdgeContentType = stageN.edgeTrace.contentType;
+    }
 
-    // Update engines with deeper Stage 2 resolution if they beat Stage 1
-    for (const e2 of stage2.engines) {
-      if (!e2.ok || !e2.resolvedUrl) continue;
-      const existing = engines.find((e) => e.engineId === e2.engineId);
+    let nextIntermediate = '';
+    for (const eN of stageN.engines) {
+      if (eN.cfBlocked) cfBlockedAny = true;
+      if (!eN.ok || !eN.resolvedUrl || eN.resolvedUrl === currentIntermediate) continue;
+      const existing = engines.find((e) => e.engineId === eN.engineId);
       if (existing) {
         existing.ok = true;
-        existing.resolvedUrl = e2.resolvedUrl;
-        existing.note = `${e2.note} (rantai lanjutan)`;
+        existing.resolvedUrl = eN.resolvedUrl;
+        existing.note = `${eN.note} (rantai lanjutan)`;
       } else {
-        engines.push(e2);
+        engines.push(eN);
+      }
+      if (!nextIntermediate && isShortenerLikeUrl(eN.resolvedUrl)) {
+        nextIntermediate = eN.resolvedUrl;
       }
     }
+    currentIntermediate = nextIntermediate;
   }
-
-  const cfBlockedAny =
-    stage1.edgeTrace.cfBlocked ||
-    allSignals.has('cloudflare_block') ||
-    engines.some((e) => e.cfBlocked);
 
   return jsonResponse({
     ok: true,
     inputUrl: check.url,
     edgeTrace: {
-      resolvedUrl: stage1.edgeTrace.resolvedUrl,
-      status: stage1.edgeTrace.status,
-      contentType: stage1.edgeTrace.contentType,
+      resolvedUrl: finalEdgeResolvedUrl,
+      status: finalEdgeStatus,
+      contentType: finalEdgeContentType,
       pageTitle: finalPageTitle,
       hops: allHops,
       signals: [...allSignals],

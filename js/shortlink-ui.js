@@ -16,8 +16,8 @@ import {
   normalizeAndValidateUrl,
   parseBatchUrls,
   upsertShortlinkHistory,
-} from './shortlink-logic.js?v=88';
-import { executeCollaborativeBypass } from './shortlink.js?v=88';
+} from './shortlink-logic.js?v=89';
+import { executeCollaborativeBypass } from './shortlink.js?v=89';
 
 const QUICK_SAMPLES = [
   {
@@ -271,9 +271,20 @@ export function createShortlinkController({ onToast = () => {} } = {}) {
 
     const urlBoxLabel = res.reachedDestination
       ? 'Tautan Tujuan Asli (Berhasil Di-Bypass — Bebas Iklan)'
+      : res.partialAdvance
+      ? 'Baru Tembus Sebagian (Lapisan Awal Terlewati — Tertahan Verifikasi Akhir)'
       : res.stillOnShortener
       ? 'Belum Tembus ke Tujuan Asli (Tertahan di Halaman Perantara)'
       : 'Tautan Terverifikasi';
+
+    const isGenericWaitTitle = /^(?:wait\.{0,3}|just a moment\.{0,3}|loading\.{0,3}|redirecting\.{0,3})$/i.test(
+      String(res.pageTitle || '').trim()
+    );
+    const showPageTitle =
+      res.pageTitle &&
+      !isGenericWaitTitle &&
+      !res.partialAdvance &&
+      (!res.reachedDestination || res.hops?.some((h) => h.target === res.finalUrl));
 
     return `
       <div class="slb-result-stack" data-testid="shortlink-result">
@@ -297,12 +308,12 @@ export function createShortlinkController({ onToast = () => {} } = {}) {
           <div class="slb-final-url-box">
             <div class="slb-final-url-label">
               <span>${urlBoxLabel}</span>
-              ${res.pageTitle ? `<span class="slb-page-title">${escapeHtml(res.pageTitle)}</span>` : ''}
+              ${showPageTitle ? `<span class="slb-page-title">${escapeHtml(res.pageTitle)}</span>` : ''}
             </div>
             <div class="slb-final-url-text mono-num" data-testid="shortlink-final-url">${escapeHtml(res.finalUrl)}</div>
             <div class="slb-final-actions">
               <button type="button" class="btn btn-primary btn-sm" id="slb-copy-final-btn">
-                ${res.stillOnShortener ? 'Salin Tautan Asal' : 'Salin Tautan Bersih'}
+                ${res.partialAdvance ? 'Salin Tautan Tahap Akhir' : res.stillOnShortener ? 'Salin Tautan Asal' : 'Salin Tautan Bersih'}
               </button>
               ${
                 res.stillOnShortener
@@ -314,7 +325,7 @@ export function createShortlinkController({ onToast = () => {} } = {}) {
               ${
                 safeHref && res.safety.level !== 'danger'
                   ? `<a href="${escapeHtml(safeHref)}" target="_blank" rel="noopener noreferrer nofollow" class="btn ${res.stillOnShortener ? 'btn-ghost' : 'btn-secondary'} btn-sm">
-                      ${res.stillOnShortener ? 'Buka di Tab Baru ↗' : 'Buka Tautan Aman ↗'}
+                      ${res.partialAdvance ? 'Lanjutkan Tahap Akhir ↗' : res.stillOnShortener ? 'Buka di Tab Baru ↗' : 'Buka Tautan Aman ↗'}
                     </a>`
                   : safeHref
                   ? `<a href="${escapeHtml(safeHref)}" target="_blank" rel="noopener noreferrer nofollow" class="btn btn-ghost btn-sm slb-danger-open-link">
@@ -327,8 +338,12 @@ export function createShortlinkController({ onToast = () => {} } = {}) {
 
           ${
             res.stillOnShortener
-              ? `<div class="slb-cleaned-strip">
-                  <strong>Catatan:</strong> Host <code>${escapeHtml(res.serviceInfo?.host || 'tujuan')}</code> membatasi akses otomatis dengan verifikasi Cloudflare/CAPTCHA atau tautannya sudah kadaluarsa, sehingga seluruh mesin bypass belum bisa menembus ke tujuan akhir tanpa interaksi manusia di browser.
+              ? `<div class="slb-cleaned-strip" style="display:block;line-height:1.5">
+                  <strong>Catatan:</strong> ${
+                    res.partialAdvance
+                      ? `Halaman perantara awal berhasil dilewati hingga <code>${escapeHtml(res.safety?.rootDomain || 'tahap akhir')}</code>, namun tahap terakhir masih membatasi akses server otomatis dengan verifikasi Cloudflare/CAPTCHA di browser.`
+                      : `Host <code>${escapeHtml(res.serviceInfo?.host || 'tujuan')}</code> membatasi akses otomatis dengan verifikasi Cloudflare/CAPTCHA atau tautannya sudah kadaluarsa, sehingga seluruh mesin bypass belum bisa menembus ke tujuan akhir tanpa interaksi manusia di browser.`
+                  }
                 </div>`
               : ''
           }
