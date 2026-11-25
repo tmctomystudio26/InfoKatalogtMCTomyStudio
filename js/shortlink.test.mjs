@@ -183,3 +183,55 @@ test('parseAiSecurityReply & mergeAiSafetyConsensus integrate Gemini, ChatGPT, C
   assert.equal(hist.length, 1);
   assert.equal(hist[0].finalUrl, 'https://github.com/google');
 });
+
+test('mergeBypassEngineResults & evaluateUrlSafety reject bogus API banner URLs and honestly report Cloudflare/anti-bot blocks', () => {
+  const inputUrl = 'https://ouo.io/0xljQ6';
+  const localResult = runLocalInstantBypass(inputUrl);
+  const edgeResponse = {
+    edgeTrace: {
+      resolvedUrl: inputUrl,
+      hops: [{ step: 1, url: inputUrl, status: 403, type: 'cloudflare-challenge', target: inputUrl }],
+      pageTitle: 'Just a moment...',
+      signals: ['cloudflare_block', 'captcha_challenge'],
+      cfBlocked: true,
+    },
+    engines: [
+      {
+        engineId: 'legacy-bad',
+        name: 'Legacy API',
+        category: 'open-source',
+        ok: true,
+        resolvedUrl: 'https://bypass.vip/discord',
+        note: 'Shut down banner',
+      },
+      {
+        engineId: 'parked-bad',
+        name: 'Parked API',
+        category: 'open-source',
+        ok: true,
+        resolvedUrl: 'http://ww17.bypass.pm/bypass2?url=foo',
+        note: 'Parked',
+      },
+    ],
+  };
+
+  const merged = mergeBypassEngineResults({ inputUrl, localResult, edgeResponse });
+  assert.equal(merged.finalUrl, inputUrl);
+  assert.equal(merged.reachedDestination, false);
+  assert.equal(merged.stillOnShortener, true);
+  assert.equal(merged.cfBlocked, true);
+  assert.equal(
+    merged.engineRows.filter((r) => r.engineId !== 'local-decoder').every((r) => r.resolvedUrl === ''),
+    true
+  );
+
+  const safety = evaluateUrlSafety(merged.finalUrl, {
+    inputUrl,
+    hopsCount: merged.hops.length,
+    edgeSignals: merged.edgeSignals,
+  });
+  assert.equal(safety.level, 'warn');
+  assert.equal(safety.unresolvedAdWall, true);
+  assert.match(safety.label, /Belum Tembus/i);
+});
+

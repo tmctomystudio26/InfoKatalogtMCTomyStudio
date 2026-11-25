@@ -16,8 +16,8 @@ import {
   normalizeAndValidateUrl,
   parseBatchUrls,
   upsertShortlinkHistory,
-} from './shortlink-logic.js?v=87';
-import { executeCollaborativeBypass } from './shortlink.js?v=87';
+} from './shortlink-logic.js?v=88';
+import { executeCollaborativeBypass } from './shortlink.js?v=88';
 
 const QUICK_SAMPLES = [
   {
@@ -31,8 +31,13 @@ const QUICK_SAMPLES = [
     note: 'Bersih Pelacak',
   },
   {
-    label: 'Shortlink Publik (TinyURL)',
-    url: 'https://tinyurl.com/2p8d6r8w',
+    label: 'Ad-Wall Nyata (Linkvertise)',
+    url: 'https://linkvertise.com/329510/test-it-out/1',
+    note: 'BypassX + TRW',
+  },
+  {
+    label: 'Shortlink Publik (is.gd)',
+    url: 'https://is.gd/GNaB4E',
     note: 'Multi-API',
   },
   {
@@ -264,6 +269,12 @@ export function createShortlinkController({ onToast = () => {} } = {}) {
     const safeHref = getSafeOpenHref(res.finalUrl);
     const totalTrailSteps = (res.localSteps?.length || 0) + (res.hops?.length || 0);
 
+    const urlBoxLabel = res.reachedDestination
+      ? 'Tautan Tujuan Asli (Berhasil Di-Bypass — Bebas Iklan)'
+      : res.stillOnShortener
+      ? 'Belum Tembus ke Tujuan Asli (Tertahan di Halaman Perantara)'
+      : 'Tautan Terverifikasi';
+
     return `
       <div class="slb-result-stack" data-testid="shortlink-result">
         <!-- 1. Safety Verdict & Final Destination Hero -->
@@ -285,18 +296,25 @@ export function createShortlinkController({ onToast = () => {} } = {}) {
 
           <div class="slb-final-url-box">
             <div class="slb-final-url-label">
-              <span>${res.bypassed ? 'Tautan Tujuan Langsung (Bersih Tanpa Iklan)' : 'Tautan Terverifikasi'}</span>
+              <span>${urlBoxLabel}</span>
               ${res.pageTitle ? `<span class="slb-page-title">${escapeHtml(res.pageTitle)}</span>` : ''}
             </div>
             <div class="slb-final-url-text mono-num" data-testid="shortlink-final-url">${escapeHtml(res.finalUrl)}</div>
             <div class="slb-final-actions">
               <button type="button" class="btn btn-primary btn-sm" id="slb-copy-final-btn">
-                Salin Tautan Bersih
+                ${res.stillOnShortener ? 'Salin Tautan Asal' : 'Salin Tautan Bersih'}
               </button>
               ${
+                res.stillOnShortener
+                  ? `<button type="button" class="btn btn-secondary btn-sm" id="slb-retry-btn">
+                      Coba Pindai Ulang
+                    </button>`
+                  : ''
+              }
+              ${
                 safeHref && res.safety.level !== 'danger'
-                  ? `<a href="${escapeHtml(safeHref)}" target="_blank" rel="noopener noreferrer nofollow" class="btn btn-secondary btn-sm">
-                      Buka Tautan Aman ↗
+                  ? `<a href="${escapeHtml(safeHref)}" target="_blank" rel="noopener noreferrer nofollow" class="btn ${res.stillOnShortener ? 'btn-ghost' : 'btn-secondary'} btn-sm">
+                      ${res.stillOnShortener ? 'Buka di Tab Baru ↗' : 'Buka Tautan Aman ↗'}
                     </a>`
                   : safeHref
                   ? `<a href="${escapeHtml(safeHref)}" target="_blank" rel="noopener noreferrer nofollow" class="btn btn-ghost btn-sm slb-danger-open-link">
@@ -306,6 +324,14 @@ export function createShortlinkController({ onToast = () => {} } = {}) {
               }
             </div>
           </div>
+
+          ${
+            res.stillOnShortener
+              ? `<div class="slb-cleaned-strip">
+                  <strong>Catatan:</strong> Host <code>${escapeHtml(res.serviceInfo?.host || 'tujuan')}</code> membatasi akses otomatis dengan verifikasi Cloudflare/CAPTCHA atau tautannya sudah kadaluarsa, sehingga seluruh mesin bypass belum bisa menembus ke tujuan akhir tanpa interaksi manusia di browser.
+                </div>`
+              : ''
+          }
 
           ${
             res.removedParams?.length > 0
@@ -699,6 +725,12 @@ export function createShortlinkController({ onToast = () => {} } = {}) {
     containerEl.querySelector('#slb-copy-final-btn')?.addEventListener('click', () => {
       if (state.result?.finalUrl) {
         copyText(state.result.finalUrl);
+      }
+    });
+
+    containerEl.querySelector('#slb-retry-btn')?.addEventListener('click', () => {
+      if (state.result?.inputUrl) {
+        runSingleBypass(state.result.inputUrl);
       }
     });
 

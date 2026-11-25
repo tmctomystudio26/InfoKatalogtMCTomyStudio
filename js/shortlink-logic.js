@@ -546,10 +546,15 @@ export function evaluateUrlSafety(finalUrl = '', { inputUrl = '', hopsCount = 0,
       text: 'Terdeteksi halaman tunggu iklan (safelink countdown) pada tautan asal.',
     });
   }
-  if (sigSet.has('captcha_challenge')) {
+  if (sigSet.has('cloudflare_block')) {
+    findings.push({
+      severity: 'medium',
+      text: 'Server tujuan melindungi halaman dengan tantangan interaktif Cloudflare (403) yang membatasi akses otomatis.',
+    });
+  } else if (sigSet.has('captcha_challenge')) {
     findings.push({
       severity: 'info',
-      text: 'Situs asal memakai proteksi anti-bot (CAPTCHA/Cloudflare) sehingga sebagian lapisan perlu dibuka di browser.',
+      text: 'Situs asal memakai proteksi anti-bot (CAPTCHA/Turnstile) sehingga sebagian lapisan perlu dibuka di browser.',
     });
   }
   if (sigSet.has('blocked_private_hop')) {
@@ -560,7 +565,17 @@ export function evaluateUrlSafety(finalUrl = '', { inputUrl = '', hopsCount = 0,
     });
   }
 
-  if (isOfficial && riskScore === 0) {
+  const sameCleanUrl =
+    stripTrackingParams(finalUrl).cleanUrl === stripTrackingParams(inputUrl || '').cleanUrl;
+  const unresolvedAdWall = Boolean(sameCleanUrl && isKnownShortenerHost(host));
+
+  if (unresolvedAdWall) {
+    riskScore = Math.max(riskScore, sigSet.has('cloudflare_block') || AD_WALL_HOSTS.has(rootDomain) ? 35 : 25);
+    findings.push({
+      severity: 'medium',
+      text: 'Tujuan asli belum berhasil ditembus karena domain perantara mengunci akses dengan verifikasi browser manusia atau tautan sudah tidak aktif.',
+    });
+  } else if (isOfficial && riskScore === 0) {
     findings.push({
       severity: 'safe',
       text: `Domain tujuan (${rootDomain}) terverifikasi sebagai platform publik tepercaya dengan HTTPS.`,
@@ -572,15 +587,6 @@ export function evaluateUrlSafety(finalUrl = '', { inputUrl = '', hopsCount = 0,
     });
   }
 
-  // Note if input was still unresolved ad-wall
-  if (finalUrl === inputUrl && isKnownShortenerHost(host) && AD_WALL_HOSTS.has(rootDomain)) {
-    riskScore = Math.max(riskScore, 30);
-    findings.push({
-      severity: 'medium',
-      text: 'Tautan masih berada di domain safelink/iklan karena dilindungi tantangan browser khusus.',
-    });
-  }
-
   const clampedRisk = Math.max(0, Math.min(100, riskScore));
   const trustScore = 100 - clampedRisk;
 
@@ -589,6 +595,9 @@ export function evaluateUrlSafety(finalUrl = '', { inputUrl = '', hopsCount = 0,
   if (clampedRisk >= 55) {
     level = 'danger';
     label = 'Berbahaya / Hindari';
+  } else if (unresolvedAdWall) {
+    level = 'warn';
+    label = 'Belum Tembus ke Tujuan — Terhalang Anti-Bot';
   } else if (clampedRisk >= 22) {
     level = 'warn';
     label = 'Waspada — Periksa Dulu';
@@ -601,8 +610,27 @@ export function evaluateUrlSafety(finalUrl = '', { inputUrl = '', hopsCount = 0,
     trustScore,
     rootDomain,
     isOfficial,
+    unresolvedAdWall,
     findings,
   };
+}
+
+const ENGINE_OWN_HOSTS = new Set([
+  'bypass.vip', 'www.bypass.vip', 'api.bypass.vip', 'bypass.pm', 'ww17.bypass.pm',
+  'bypassx-omega.vercel.app', 'trw.lat', 'r.jina.ai', 'unshorten.me',
+]);
+
+function isBogusEngineCandidate(rawUrl = '') {
+  const s = String(rawUrl || '').trim();
+  if (!s) return true;
+  if (/FREE\s+API\s+SHUT\s+DOWN|bypass\.vip\/discord/i.test(s)) return true;
+  try {
+    const h = new URL(s).hostname.toLowerCase();
+    if (ENGINE_OWN_HOSTS.has(h) || /^ww\d+\./i.test(h)) return true;
+  } catch {
+    return true;
+  }
+  return false;
 }
 
 /**
@@ -614,6 +642,7 @@ export function mergeBypassEngineResults({ inputUrl = '', localResult = null, ed
   const engineRows = [];
 
   const registerCandidate = (rawUrl, weight, engineName) => {
+    if (isBogusEngineCandidate(rawUrl)) return;
     const check = normalizeAndValidateUrl(rawUrl);
     if (!check.valid) return;
     const cleaned = stripTrackingParams(check.url).cleanUrl;
@@ -624,7 +653,7 @@ export function mergeBypassEngineResults({ inputUrl = '', localResult = null, ed
     // Reward direct non-shortener destinations strongly over unresolved shortlinks
     let score = weight;
     if (!isSameAsInput) score += 25;
-    if (!stillShortener) score += 45;
+    if (!stillShortener) score += 55;
     if (cleaned.startsWith('https://')) score += 5;
 
     const existing = candidates.get(cleaned);
@@ -660,7 +689,7 @@ export function mergeBypassEngineResults({ inputUrl = '', localResult = null, ed
         : 'Tidak ada muatan terenkripsi di URL',
     });
     if (localResult.cleanUrl) {
-      registerCandidate(localResult.cleanUrl, localResult.unwrapped ? 40 : 12, 'Dekoder Lokal Instan');
+      registerCandidate(localResult.cleanUrl, localResult.unwrapped ? 40 : 10, 'Dekoder Lokal Instan');
     }
   }
 
@@ -668,18 +697,20 @@ export function mergeBypassEngineResults({ inputUrl = '', localResult = null, ed
   const remoteEngines = Array.isArray(edgeResponse?.engines) ? edgeResponse.engines : [];
   for (const eng of remoteEngines) {
     if (!eng || !eng.name) continue;
+    const safeResolved = isBogusEngineCandidate(eng.resolvedUrl) ? '' : eng.resolvedUrl;
+    const engOk = Boolean(eng.ok && safeResolved);
     engineRows.push({
       engineId: eng.engineId || eng.name.toLowerCase().replace(/\s+/g, '-'),
       name: eng.name,
       category: eng.category || 'public-api',
-      ok: Boolean(eng.ok),
-      resolvedUrl: eng.resolvedUrl || '',
-      note: eng.note || (eng.ok ? 'Berhasil diurai' : 'Tidak ada hasil tambahan'),
+      ok: engOk,
+      resolvedUrl: safeResolved || '',
+      note: eng.note || (engOk ? 'Berhasil diurai' : 'Tidak ada hasil tambahan'),
     });
-    if (eng.resolvedUrl) {
+    if (safeResolved) {
       const weight =
         eng.category === 'open-source' ? 50 : eng.category === 'edge' ? 45 : 35;
-      registerCandidate(eng.resolvedUrl, eng.ok ? weight : 10, eng.name);
+      registerCandidate(safeResolved, engOk ? weight : 10, eng.name);
     }
   }
 
@@ -695,17 +726,29 @@ export function mergeBypassEngineResults({ inputUrl = '', localResult = null, ed
   const postStrip = stripTrackingParams(rawFinalUrl);
   postStrip.removedParams.forEach((p) => removedParamsSet.add(p));
 
-  const bypassed =
-    finalUrl !== inputUrl &&
-    finalUrl !== fallbackClean.cleanUrl &&
-    Boolean(best && !best.stillShortener);
+  const cleanFinal = postStrip.cleanUrl || finalUrl;
+  const finalHost = (() => {
+    try {
+      return new URL(cleanFinal).hostname.toLowerCase();
+    } catch {
+      return '';
+    }
+  })();
+  const stillOnShortener = isKnownShortenerHost(finalHost);
+  const movedPastInput = cleanFinal !== inputUrl && cleanFinal !== fallbackClean.cleanUrl;
+  const reachedDestination = movedPastInput && !stillOnShortener;
+  const bypassed = reachedDestination;
 
   const agreeingEngines = best ? best.engines : [];
+  const edgeSignals = Array.isArray(edgeResponse?.edgeTrace?.signals) ? edgeResponse.edgeTrace.signals : [];
 
   return {
     inputUrl,
-    finalUrl: postStrip.cleanUrl || finalUrl,
+    finalUrl: cleanFinal,
     bypassed,
+    reachedDestination,
+    stillOnShortener,
+    cfBlocked: Boolean(edgeResponse?.edgeTrace?.cfBlocked || edgeSignals.includes('cloudflare_block')),
     trackingRemovedCount: removedParamsSet.size,
     removedParams: [...removedParamsSet],
     agreeingEngines,
@@ -714,7 +757,7 @@ export function mergeBypassEngineResults({ inputUrl = '', localResult = null, ed
     engineRows,
     hops: Array.isArray(edgeResponse?.edgeTrace?.hops) ? edgeResponse.edgeTrace.hops : [],
     pageTitle: String(edgeResponse?.edgeTrace?.pageTitle || '').trim(),
-    edgeSignals: Array.isArray(edgeResponse?.edgeTrace?.signals) ? edgeResponse.edgeTrace.signals : [],
+    edgeSignals,
   };
 }
 

@@ -19,10 +19,10 @@ import {
   parseAiSecurityReply,
   runLocalInstantBypass,
   stripTrackingParams,
-} from './shortlink-logic.js?v=87';
+} from './shortlink-logic.js?v=88';
 
 const EDGE_BYPASS_ENDPOINT = '/api/shortlink-bypass';
-const EDGE_TIMEOUT_MS = 11000;
+const EDGE_TIMEOUT_MS = 24000;
 const AI_AUDIT_TIMEOUT_MS = 11000;
 
 let _manifestAiMod = null;
@@ -74,6 +74,8 @@ async function callEdgeShortlinkApi(targetUrl, signal = null) {
 async function runMultiAiSecurityEnsemble({
   inputUrl,
   finalUrl,
+  reachedDestination,
+  stillOnShortener,
   pageTitle,
   hops,
   edgeSignals,
@@ -90,7 +92,8 @@ async function runMultiAiSecurityEnsemble({
 
   const auditPrompt = [
     `Tautan Awal: ${inputUrl}`,
-    `Tautan Tujuan Terurai: ${finalUrl}`,
+    `Tautan Terakhir Terbaca: ${finalUrl}`,
+    `Status Bypass: ${reachedDestination ? 'Berhasil tembus ke tujuan akhir' : stillOnShortener ? 'Belum tembus (tertahan tantangan anti-bot / server shortlink)' : 'Tautan langsung'}`,
     pageTitle ? `Judul Halaman Terdeteksi: ${pageTitle}` : '',
     `Jumlah Pengalihan: ${hops.length}`,
     edgeSignals.length > 0 ? `Sinyal Halaman: ${edgeSignals.join(', ')}` : '',
@@ -110,14 +113,9 @@ async function runMultiAiSecurityEnsemble({
   const byokKeys = aiMod.loadStoredByokKeys ? aiMod.loadStoredByokKeys() : [];
   const liveRegistry = aiMod.getCachedModelRegistry ? aiMod.getCachedModelRegistry() : null;
 
-  // Dispatch parallel Multi-AI verification across flagship labs (Gemini, ChatGPT, Claude, Grok, DeepSeek)
-  // Using smart quota-aware fan-out: if user has BYOK keys, query them + free ensemble; otherwise run
-  // 2 independent focused ensemble passes (Gemini/DeepSeek + ChatGPT/Claude/Grok pool) with crisp timeout.
   const activePanel = AI_ENSEMBLE_MODELS.slice(0, 5);
   const byokProviderIds = new Set(byokKeys.map((k) => k.providerId));
 
-  // Select up to 3 distinct provider perspectives to run concurrently for genuine multi-AI consensus
-  // without burning excessive free gateway rate limits.
   const perspectives = [
     {
       modelId: 'gemini',
@@ -139,7 +137,6 @@ async function runMultiAiSecurityEnsemble({
     },
   ];
 
-  // If user configured Claude or Grok BYOK keys, include them directly too!
   if (byokProviderIds.has('claude')) {
     perspectives.push({ modelId: 'claude', label: 'Claude', focusProviderId: 'claude', mode: 'single' });
   }
@@ -186,7 +183,6 @@ async function runMultiAiSecurityEnsemble({
     }
   };
 
-  // Run primary perspective + secondary cross-check concurrently
   const settled = await Promise.allSettled(perspectives.slice(0, 2).map(runSinglePerspective));
   if (signal?.aborted) throw new Error('ABORTED');
 
@@ -194,7 +190,6 @@ async function runMultiAiSecurityEnsemble({
     .filter((s) => s.status === 'fulfilled' && s.value)
     .map((s) => s.value);
 
-  // If neither succeeded (e.g. network offline), try the 3rd perspective once quickly
   if (reports.length === 0 && perspectives[2]) {
     const third = await runSinglePerspective(perspectives[2]);
     if (third) reports.push(third);
@@ -226,15 +221,27 @@ export async function executeCollaborativeBypass(
   const localResult = runLocalInstantBypass(check.url);
   const edgeTargetUrl = localResult.unwrapped ? localResult.resolvedUrl : check.url;
 
-  // Layer 2: Collaborative Edge Redirect/HTML Inspector + Open-Source/Public Bypass APIs
-  onStage('Menghubungkan mesin Bypass Open-Source, API Publik & Pelacak Pengalihan...');
+  // Layer 2: Collaborative Edge Cookie-Jar Tracer + Native Solvers + Open-Source/Public APIs
+  onStage('Menjalankan Solver Native, BypassX, TRW, Unshorten & Edge Tracer...');
   const edgeResponse = await callEdgeShortlinkApi(edgeTargetUrl, signal);
   if (signal?.aborted) throw new Error('ABORTED');
 
-  // Re-run local unwrapper on the edge-resolved URL in case the final redirect landed on a safelink/tracking wrapper
-  const postLocal = edgeResponse?.edgeTrace?.resolvedUrl
-    ? runLocalInstantBypass(edgeResponse.edgeTrace.resolvedUrl)
-    : null;
+  // Re-run local unwrapper on any resolved remote URL (handles safelink/UTM wrappers inside API output)
+  const solvedCandidates = [
+    edgeResponse?.edgeTrace?.resolvedUrl,
+    ...(Array.isArray(edgeResponse?.engines)
+      ? edgeResponse.engines.filter((e) => e?.ok && e?.resolvedUrl).map((e) => e.resolvedUrl)
+      : []),
+  ].filter(Boolean);
+
+  let postLocal = null;
+  for (const cand of solvedCandidates) {
+    const testLocal = runLocalInstantBypass(cand);
+    if (testLocal.unwrapped || (testLocal.removedParams?.length || 0) > 0) {
+      postLocal = testLocal;
+      break;
+    }
+  }
 
   const merged = mergeBypassEngineResults({
     inputUrl: check.url,
@@ -263,6 +270,8 @@ export async function executeCollaborativeBypass(
     const aiOut = await runMultiAiSecurityEnsemble({
       inputUrl: check.url,
       finalUrl: merged.finalUrl,
+      reachedDestination: merged.reachedDestination,
+      stillOnShortener: merged.stillOnShortener,
       pageTitle: merged.pageTitle,
       hops: merged.hops,
       edgeSignals: merged.edgeSignals,
@@ -275,14 +284,16 @@ export async function executeCollaborativeBypass(
     }
   }
 
-  // If Multi-AI uncovered a cleaner nested destination URL, adopt it safely
   let resolvedFinalUrl = merged.finalUrl;
-  let bypassedFlag = merged.bypassed;
+  let reachedDestination = merged.reachedDestination;
+  let stillOnShortener = merged.stillOnShortener;
+
   if (finalSafety.aiExtractedUrl && finalSafety.aiExtractedUrl !== resolvedFinalUrl) {
     const aiCheck = normalizeAndValidateUrl(finalSafety.aiExtractedUrl);
     if (aiCheck.valid) {
       resolvedFinalUrl = stripTrackingParams(aiCheck.url).cleanUrl;
-      bypassedFlag = true;
+      reachedDestination = true;
+      stillOnShortener = false;
     }
   }
 
@@ -290,7 +301,10 @@ export async function executeCollaborativeBypass(
     ok: true,
     inputUrl: check.url,
     finalUrl: resolvedFinalUrl,
-    bypassed: bypassedFlag || resolvedFinalUrl !== check.url,
+    bypassed: reachedDestination || resolvedFinalUrl !== check.url,
+    reachedDestination,
+    stillOnShortener,
+    cfBlocked: merged.cfBlocked,
     serviceInfo,
     pageTitle: merged.pageTitle,
     trackingRemovedCount: merged.trackingRemovedCount,

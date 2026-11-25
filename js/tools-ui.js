@@ -67,7 +67,7 @@ const loadManifestAiMod = () => (_manifestAiMod ? Promise.resolve(_manifestAiMod
 const loadPlagiarismMod = () => (_plagiarismMod ? Promise.resolve(_plagiarismMod) : import('./plagiarism-ui.js?v=79').then((m) => (_plagiarismMod = m)));
 const loadNovelMod = () => (_novelMod ? Promise.resolve(_novelMod) : import('./novel-ui.js?v=79').then((m) => (_novelMod = m)));
 const loadCallerIdMod = () => (_callerIdMod ? Promise.resolve(_callerIdMod) : import('./callerid-ui.js?v=79').then((m) => (_callerIdMod = m)));
-const loadShortlinkMod = () => (_shortlinkMod ? Promise.resolve(_shortlinkMod) : import('./shortlink-ui.js?v=87').then((m) => (_shortlinkMod = m)));
+const loadShortlinkMod = () => (_shortlinkMod ? Promise.resolve(_shortlinkMod) : import('./shortlink-ui.js?v=88').then((m) => (_shortlinkMod = m)));
 
 function renderLazyLoadingCard(label = 'Utilitas') {
   return `
