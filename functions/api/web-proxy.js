@@ -242,7 +242,10 @@ function buildStealthHeaders(node = 'proxy-stealth', accept = 'text/html,applica
   };
 }
 
-async function fetchWithSafeRedirects(startUrl, { node = 'proxy-stealth', timeoutMs = DEFAULT_TIMEOUT_MS, accept } = {}) {
+async function fetchWithSafeRedirects(
+  startUrl,
+  { node = 'proxy-stealth', timeoutMs = DEFAULT_TIMEOUT_MS, accept, range, referer, method = 'GET' } = {}
+) {
   let currentUrl = startUrl;
   const hops = [];
 
@@ -251,15 +254,23 @@ async function fetchWithSafeRedirects(startUrl, { node = 'proxy-stealth', timeou
     if (!check.ok) {
       throw new Error(check.reason || 'URL tujuan diblokir oleh proteksi keamanan.');
     }
+    const headers = buildStealthHeaders(node, accept);
+    if (range) headers.Range = range;
+    if (referer) {
+      const refCheck = validatePublicProxyUrl(referer);
+      if (refCheck.ok) {
+        headers.Referer = refCheck.url;
+      }
+    }
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), timeoutMs);
     let res;
     try {
       res = await fetch(check.url, {
-        method: 'GET',
+        method: method === 'HEAD' ? 'HEAD' : 'GET',
         redirect: 'manual',
         signal: controller.signal,
-        headers: buildStealthHeaders(node, accept),
+        headers,
       });
     } finally {
       clearTimeout(timer);
@@ -437,7 +448,15 @@ export function extractMediaFromHtml(html, baseUrl, pageTitle = '') {
       mime: mime || (finalKind === 'audio' ? 'audio/mpeg' : isHls ? 'application/vnd.apple.mpegurl' : 'video/mp4'),
       title: pageTitle || 'Media Terdeteksi',
       source,
-      proxyDownloadUrl: `/api/web-proxy?mode=download&url=${encodeURIComponent(resolved)}`,
+      proxyDownloadUrl: `/api/web-proxy?mode=download&url=${encodeURIComponent(resolved)}&ref=${encodeURIComponent(
+        (() => {
+          try {
+            return `${new URL(baseUrl).origin}/`;
+          } catch {
+            return '';
+          }
+        })()
+      )}`,
     });
   };
 
@@ -495,7 +514,37 @@ export function extractMediaFromHtml(html, baseUrl, pageTitle = '') {
  *  - Strips untrusted inline executable scripts (prevents pop-ups, anti-adblock traps, cryptominers)
  *  - Resolves relative assets via <base> and injects a tiny safe navigation & media postMessage bridge
  */
-export function sanitizeAndRewriteHtml(rawHtml, finalUrl, { adBlock = true, antiTrack = true, darkTheme = false } = {}) {
+export function buildProxiedAssetUrl(rawUrl, baseUrl, proxyOrigin = '') {
+  const s = String(rawUrl || '').trim();
+  if (!s || /^data:/i.test(s) || /^blob:/i.test(s) || /^javascript:/i.test(s) || /^#/i.test(s)) {
+    return s;
+  }
+  if (s.includes('/api/web-proxy?mode=asset')) {
+    return s;
+  }
+  let resolved;
+  try {
+    resolved = new URL(s, baseUrl).toString();
+  } catch {
+    return s;
+  }
+  if (!/^https?:\/\//i.test(resolved)) return s;
+  if (!proxyOrigin) return resolved;
+  let refOrigin = '';
+  try {
+    refOrigin = `${new URL(baseUrl).origin}/`;
+  } catch {
+    refOrigin = '';
+  }
+  const refPart = refOrigin ? `&ref=${encodeURIComponent(refOrigin)}` : '';
+  return `${proxyOrigin}/api/web-proxy?mode=asset&url=${encodeURIComponent(resolved)}${refPart}`;
+}
+
+export function sanitizeAndRewriteHtml(
+  rawHtml,
+  finalUrl,
+  { adBlock = true, antiTrack = true, darkTheme = false, proxyOrigin = '', detectedMedia = [] } = {}
+) {
   let html = String(rawHtml || '');
   let blockedAds = 0;
   let blockedTrackers = 0;
@@ -539,8 +588,9 @@ export function sanitizeAndRewriteHtml(rawHtml, finalUrl, { adBlock = true, anti
   // Clean any Wayback Archive toolbar or /web/<timestamp>/ URL prefixes so CSS & images never 404
   html = cleanWaybackHtml(html);
 
-  // Strip 1x1 tracking pixel images and promote lazy-loaded data-src images so news photos load without JS
-  html = html.replace(/<img\b([^>]*)>/gi, (full, attrs) => {
+  // Strip 1x1 tracking pixel images, promote lazy-loaded data-* thumbnails, and route through asset proxy
+  // so thumbnails on ISP-blocked or anti-hotlink sites ALWAYS render cleanly
+  html = html.replace(/<img\b([^>]*)>/gi, (_full, attrs) => {
     if (antiTrack) {
       if (matchesAnyPattern(attrs, TRACKER_DOMAIN_PATTERNS) || matchesAnyPattern(attrs, AD_DOMAIN_PATTERNS)) {
         blockedTrackers += 1;
@@ -552,29 +602,149 @@ export function sanitizeAndRewriteHtml(rawHtml, finalUrl, { adBlock = true, anti
       }
     }
     let nextAttrs = attrs;
-    const lazyMatch = nextAttrs.match(/\b(?:data-src|data-original|data-lazy-src|data-img-src)\s*=\s*["']([^"']+)["']/i);
-    if (lazyMatch?.[1] && !/^javascript:/i.test(lazyMatch[1])) {
-      const currentSrc = nextAttrs.match(/\bsrc\s*=\s*["']([^"']*)["']/i)?.[1] || '';
-      const isPlaceholder =
-        !currentSrc ||
-        /^data:image\//i.test(currentSrc) ||
-        /(blank|spacer|placeholder|loading|transparent|1x1)/i.test(currentSrc);
-      if (isPlaceholder) {
-        const cleanLazy = escapeHtmlAttr(lazyMatch[1]);
-        if (/\bsrc\s*=/i.test(nextAttrs)) {
-          nextAttrs = nextAttrs.replace(/\bsrc\s*=\s*["'][^"']*["']/i, `src="${cleanLazy}"`);
-        } else {
-          nextAttrs = ` src="${cleanLazy}"${nextAttrs}`;
-        }
+    const lazyMatch = nextAttrs.match(
+      /\b(?:data-src|data-original|data-lazy-src|data-lazy|data-img-src|data-thumb|data-echo|data-url|data-image)\s*=\s*["']([^"']+)["']/i
+    );
+    const currentSrc = nextAttrs.match(/\bsrc\s*=\s*["']([^"']*)["']/i)?.[1] || '';
+    const isPlaceholder =
+      !currentSrc ||
+      /^data:image\//i.test(currentSrc) ||
+      /(blank|spacer|placeholder|loading|transparent|1x1|pixel\.gif|grey\.gif)/i.test(currentSrc);
+
+    let chosenSrc = currentSrc;
+    const hasValidLazy =
+      Boolean(lazyMatch?.[1]) && !/^(?:javascript|data):/i.test(lazyMatch[1].trim());
+    if (hasValidLazy && (isPlaceholder || lazyMatch[1].trim() !== currentSrc.trim())) {
+      chosenSrc = lazyMatch[1];
+    } else if (!chosenSrc || isPlaceholder) {
+      // Fallback: extract first URL from data-srcset or srcset if src is empty/placeholder
+      const srcsetMatch = nextAttrs.match(/\b(?:data-srcset|srcset)\s*=\s*["']([^"']+)["']/i);
+      if (srcsetMatch?.[1]) {
+        const firstUrl = srcsetMatch[1].split(',')[0].trim().split(/\s+/)[0];
+        if (firstUrl && !/^javascript:/i.test(firstUrl)) chosenSrc = firstUrl;
       }
     }
-    // Strip crossorigin attribute on <img> so opaque srcdoc iframes don't trigger strict CORS failures on CDN images/SVGs
-    nextAttrs = nextAttrs.replace(/\s+crossorigin(?:\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+))?/gi, '');
+
+    if (chosenSrc) {
+      const proxiedImg = escapeHtmlAttr(buildProxiedAssetUrl(decodeHtmlEntities(chosenSrc), finalUrl, proxyOrigin));
+      if (/\bsrc\s*=/i.test(nextAttrs)) {
+        nextAttrs = nextAttrs.replace(/\bsrc\s*=\s*["'][^"']*["']/i, `src="${proxiedImg}"`);
+      } else {
+        nextAttrs = ` src="${proxiedImg}"${nextAttrs}`;
+      }
+      // Drop unproxied srcset so browser uses our proxied src instead of hitting blocked CDNs directly
+      if (proxyOrigin) {
+        nextAttrs = nextAttrs.replace(/\s+(?:data-)?srcset\s*=\s*(?:"[^"]*"|'[^']*')/gi, '');
+      }
+    }
+
+    // Strip crossorigin attribute & eager-load lazy thumbnails
+    nextAttrs = nextAttrs
+      .replace(/\s+crossorigin(?:\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+))?/gi, '')
+      .replace(/\s+loading\s*=\s*["']lazy["']/gi, '');
     if (!/\breferrerpolicy\s*=/i.test(nextAttrs)) {
       nextAttrs = ` referrerpolicy="no-referrer"${nextAttrs}`;
     }
     return `<img${nextAttrs}>`;
   });
+
+  // Rewrite <video> & <audio> src/poster through streaming Range-capable asset proxy so videos PLAY smoothly
+  html = html.replace(/<(video|audio)\b([^>]*)>/gi, (_full, tag, attrs) => {
+    let nextAttrs = attrs.replace(/\s+crossorigin(?:\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+))?/gi, '');
+    const lazySrc = nextAttrs.match(/\b(?:data-src|data-video-src|data-url)\s*=\s*["']([^"']+)["']/i)?.[1];
+    const rawSrc = nextAttrs.match(/\bsrc\s*=\s*["']([^"']+)["']/i)?.[1] || lazySrc || '';
+    if (rawSrc && !/^javascript:/i.test(rawSrc)) {
+      const proxied = escapeHtmlAttr(buildProxiedAssetUrl(decodeHtmlEntities(rawSrc), finalUrl, proxyOrigin));
+      if (/\bsrc\s*=/i.test(nextAttrs)) {
+        nextAttrs = nextAttrs.replace(/\bsrc\s*=\s*["'][^"']*["']/i, `src="${proxied}"`);
+      } else {
+        nextAttrs = ` src="${proxied}"${nextAttrs}`;
+      }
+    }
+    const lazyPoster = nextAttrs.match(/\bdata-poster\s*=\s*["']([^"']+)["']/i)?.[1];
+    const rawPoster = nextAttrs.match(/\bposter\s*=\s*["']([^"']+)["']/i)?.[1] || lazyPoster || '';
+    if (rawPoster && !/^javascript:/i.test(rawPoster)) {
+      const proxiedPoster = escapeHtmlAttr(buildProxiedAssetUrl(decodeHtmlEntities(rawPoster), finalUrl, proxyOrigin));
+      if (/\bposter\s*=/i.test(nextAttrs)) {
+        nextAttrs = nextAttrs.replace(/\bposter\s*=\s*["'][^"']*["']/i, `poster="${proxiedPoster}"`);
+      } else {
+        nextAttrs = ` poster="${proxiedPoster}"${nextAttrs}`;
+      }
+    }
+    if (!/\bcontrols\b/i.test(nextAttrs)) nextAttrs += ' controls';
+    if (tag.toLowerCase() === 'video' && !/\bplaysinline\b/i.test(nextAttrs)) nextAttrs += ' playsinline';
+    if (!/\bpreload\s*=/i.test(nextAttrs)) nextAttrs += ' preload="metadata"';
+    return `<${tag}${nextAttrs}>`;
+  });
+
+  // Rewrite <source src="..."> inside <video>/<audio>/<picture> through streaming asset proxy
+  html = html.replace(/<source\b([^>]*)>/gi, (_full, attrs) => {
+    let nextAttrs = attrs;
+    const lazySrc = nextAttrs.match(/\b(?:data-src|data-url)\s*=\s*["']([^"']+)["']/i)?.[1];
+    const rawSrc = nextAttrs.match(/\bsrc\s*=\s*["']([^"']+)["']/i)?.[1] || lazySrc || '';
+    if (rawSrc && !/^javascript:/i.test(rawSrc)) {
+      const proxied = escapeHtmlAttr(buildProxiedAssetUrl(decodeHtmlEntities(rawSrc), finalUrl, proxyOrigin));
+      if (/\bsrc\s*=/i.test(nextAttrs)) {
+        nextAttrs = nextAttrs.replace(/\bsrc\s*=\s*["'][^"']*["']/i, `src="${proxied}"`);
+      } else {
+        nextAttrs = ` src="${proxied}"${nextAttrs}`;
+      }
+    }
+    if (proxyOrigin && /\bsrcset\s*=/i.test(nextAttrs)) {
+      const srcsetVal = nextAttrs.match(/\bsrcset\s*=\s*["']([^"']+)["']/i)?.[1] || '';
+      const firstUrl = srcsetVal.split(',')[0].trim().split(/\s+/)[0];
+      if (firstUrl && !/^javascript:/i.test(firstUrl)) {
+        const proxiedSet = escapeHtmlAttr(buildProxiedAssetUrl(decodeHtmlEntities(firstUrl), finalUrl, proxyOrigin));
+        nextAttrs = nextAttrs.replace(/\bsrcset\s*=\s*["'][^"']*["']/i, `srcset="${proxiedSet}"`);
+      }
+    }
+    return `<source${nextAttrs}>`;
+  });
+
+  // If a page's JS normally hydrates <video> at runtime (so <video> has no src and no child <source src>),
+  // automatically attach the first detected video stream (proxied) so playback works immediately!
+  const fallbackVideoMedia = Array.isArray(detectedMedia)
+    ? detectedMedia.find((m) => m && m.kind === 'video' && m.url)
+    : null;
+  if (fallbackVideoMedia?.url) {
+    const fallbackProxiedVideo = escapeHtmlAttr(
+      buildProxiedAssetUrl(fallbackVideoMedia.url, finalUrl, proxyOrigin)
+    );
+    html = html.replace(/<video\b([^>]*)>([\s\S]*?)<\/video>/gi, (full, attrs, inner) => {
+      const hasDirectSrc = /\bsrc\s*=\s*["'][^"']+["']/i.test(attrs);
+      const hasChildSource = /<source\b[^>]*\bsrc\s*=\s*["'][^"']+["']/i.test(inner);
+      if (hasDirectSrc || hasChildSource) return full;
+      return `<video${attrs} src="${fallbackProxiedVideo}">${inner}</video>`;
+    });
+  }
+
+  // Promote lazy background thumbnails (data-bg / data-background-image) & proxy inline background-image URLs
+  html = html.replace(
+    /<(div|a|span|section|article|figure|li)\b([^>]*\b(?:data-bg|data-background|data-background-image)\s*=\s*["']([^"']+)["'][^>]*)>/gi,
+    (_full, tag, attrs, bgUrl) => {
+      if (!bgUrl || /^javascript:/i.test(bgUrl)) return `<${tag}${attrs}>`;
+      const proxiedBg = escapeHtmlAttr(buildProxiedAssetUrl(decodeHtmlEntities(bgUrl), finalUrl, proxyOrigin));
+      if (/\bstyle\s*=\s*["']/i.test(attrs)) {
+        const updated = attrs.replace(
+          /\bstyle\s*=\s*(["'])([^"']*)\1/i,
+          (_m, q, st) => `style=${q}${st};background-image:url('${proxiedBg}');background-size:cover;background-position:center;${q}`
+        );
+        return `<${tag}${updated}>`;
+      }
+      return `<${tag}${attrs} style="background-image:url('${proxiedBg}');background-size:cover;background-position:center;">`;
+    }
+  );
+
+  if (proxyOrigin) {
+    html = html.replace(
+      /background(?:-image)?\s*:\s*url\(\s*(['"]?)(https?:\/\/[^'")\s]+)\1\s*\)/gi,
+      (_full, _q, rawBg) => {
+        if (rawBg.includes('/api/web-proxy?mode=asset')) return _full;
+        const proxied = buildProxiedAssetUrl(decodeHtmlEntities(rawBg), finalUrl, proxyOrigin);
+        return `background-image:url("${proxied}")`;
+      }
+    );
+  }
 
   // Promote async <link rel="preload" as="style"> to real stylesheets & strip crossorigin/integrity
   // so sandboxed srcdoc iframes (opaque null origin) never drop external site CSS
@@ -607,6 +777,8 @@ export function sanitizeAndRewriteHtml(rawHtml, finalUrl, { adBlock = true, anti
     <style data-manifest-proxy-style>
       html, body { max-width: 100% !important; overflow-x: hidden !important; }
       img, video, iframe, table { max-width: 100% !important; height: auto; }
+      img[src], img.lazyload, img.lazy, img.lozad, .lazyload, .lazy { opacity: 1 !important; visibility: visible !important; }
+      video { background: #000000; display: block; }
       [id*="google_ads"], [id*="div-gpt-ad"], [class*="adsbygoogle"], [class*="ad-banner"], [class*="ad-slot"],
       [class*="advertisement"], [class*="billboard-ad"], [class*="top-banner-ad"], [class*="ads-wrapper"],
       [class*="popup-ad"], [class*="sponsored-ad"], [id*="taboola"], [id*="outbrain"],
@@ -881,9 +1053,10 @@ async function fetchViaFallbackMirror(targetUrl, preferredNode = 'reader-antibot
 }
 
 /**
- * Privacy Web Search across DuckDuckGo HTML, Wikipedia OpenSearch, and SearXNG public relays.
+ * Privacy Web Search across Google Privat (basic HTML + News RSS), DuckDuckGo HTML, Wikipedia OpenSearch,
+ * and Multi-Search public relays — zero personal cookies or tracking headers.
  */
-async function handlePrivacySearch(query, engine = 'duckduckgo') {
+async function handlePrivacySearch(query, engine = 'google') {
   const q = String(query || '').trim().slice(0, 260);
   if (!q) {
     return jsonResponse({ ok: false, error: 'Masukkan kata kunci pencarian.' }, 400);
@@ -892,8 +1065,92 @@ async function handlePrivacySearch(query, engine = 'duckduckgo') {
   const results = [];
   const usedEngines = [];
 
-  // Engine A: DuckDuckGo HTML (free, privacy-first, no cookies)
-  if (engine === 'duckduckgo' || engine === 'auto' || engine === 'searxng') {
+  // Engine G: Google Search Privat (clean basic HTML `gbv=1` + Google News RSS fallback, 0 cookies)
+  if (engine === 'google' || engine === 'auto' || engine === 'searxng') {
+    try {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 7500);
+      const res = await fetch(
+        `https://www.google.com/search?q=${encodeURIComponent(q)}&hl=id&gl=id&num=12&gbv=1`,
+        {
+          headers: {
+            'User-Agent': 'Mozilla/5.0 (compatible; Lynx/2.8.9rel.1 libwww-FM/2.14)',
+            Accept: 'text/html,application/xhtml+xml;q=0.9,*/*;q=0.8',
+            'Accept-Language': 'id-ID,id;q=0.9,en-US;q=0.8',
+          },
+          signal: controller.signal,
+        }
+      ).finally(() => clearTimeout(timer));
+
+      if (res.ok) {
+        const html = await readTextCapped(res, 240 * 1024);
+        const gRe = /<a[^>]+href="\/url\?q=(https?:\/\/[^"&]+)[^"]*"[^>]*>([\s\S]*?)<\/a>/gi;
+        let match;
+        while ((match = gRe.exec(html)) !== null && results.length < 12) {
+          let href = '';
+          try {
+            href = decodeURIComponent(decodeHtmlEntities(match[1]));
+          } catch {
+            href = decodeHtmlEntities(match[1]);
+          }
+          if (/google\.com\/(?:preferences|accounts|policies|support|webhp|search)/i.test(href)) continue;
+          const check = validatePublicProxyUrl(href);
+          if (!check.ok || results.some((r) => r.url === check.url)) continue;
+          const rawTitle = decodeHtmlEntities(match[2].replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim());
+          if (!rawTitle || rawTitle.length < 3 || /^cached$|^similar$/i.test(rawTitle)) continue;
+          results.push({
+            title: rawTitle.slice(0, 140),
+            url: check.url,
+            displayHost: check.hostname,
+            snippet: `Hasil Google Privat untuk "${q}" — dibuka aman lewat jalur proxy tanpa pelacak.`,
+            source: 'Google Privat',
+          });
+        }
+        if (results.length > 0) usedEngines.push('Google Privat');
+      }
+    } catch {
+      // Fallback below
+    }
+
+    // Google News RSS supplement when Google Web HTML returns < 4 items (reliable from Edge IPs!)
+    if (engine === 'google' && results.length < 4) {
+      try {
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), 5500);
+        const rssRes = await fetch(
+          `https://news.google.com/rss/search?q=${encodeURIComponent(q)}&hl=id&gl=ID&ceid=ID:id`,
+          { headers: buildStealthHeaders('proxy-stealth', 'application/rss+xml,text/xml'), signal: controller.signal }
+        ).finally(() => clearTimeout(timer));
+        if (rssRes.ok) {
+          const xml = await readTextCapped(rssRes, 140 * 1024);
+          const itemRe = /<item>[\s\S]*?<title>([\s\S]*?)<\/title>[\s\S]*?<link>([\s\S]*?)<\/link>[\s\S]*?(?:<source[^>]*>([\s\S]*?)<\/source>)?[\s\S]*?<\/item>/gi;
+          let m;
+          let addedNews = 0;
+          while ((m = itemRe.exec(xml)) !== null && addedNews < 5 && results.length < 12) {
+            const title = decodeHtmlEntities(m[1].replace(/<!\[CDATA\[|\]\]>/g, '').trim());
+            const link = decodeHtmlEntities(m[2].replace(/<!\[CDATA\[|\]\]>/g, '').trim());
+            const src = decodeHtmlEntities((m[3] || 'Google News').replace(/<!\[CDATA\[|\]\]>/g, '').trim());
+            const check = validatePublicProxyUrl(link);
+            if (!check.ok || !title || results.some((r) => r.url === check.url)) continue;
+            results.push({
+              title: title.slice(0, 150),
+              url: check.url,
+              displayHost: src || check.hostname,
+              snippet: `Indeks Google News (${src}) — dibuka privat tanpa cookie.`,
+              source: 'Google News',
+            });
+            addedNews += 1;
+          }
+          if (addedNews > 0 && !usedEngines.includes('Google News')) usedEngines.push('Google News');
+        }
+      } catch {
+        // Ignore RSS failure
+      }
+    }
+  }
+
+  // Engine A: DuckDuckGo HTML (free, privacy-first, no cookies; also acts as instant organic backup for Google mode)
+  if (engine === 'duckduckgo' || engine === 'auto' || engine === 'searxng' || (engine === 'google' && results.length < 6)) {
     try {
       const controller = new AbortController();
       const timer = setTimeout(() => controller.abort(), 8500);
@@ -906,7 +1163,7 @@ async function handlePrivacySearch(query, engine = 'duckduckgo') {
         const html = await readTextCapped(res, 220 * 1024);
         const itemRe = /<a[^>]+class="result__a"[^>]+href="([^"]+)"[^>]*>([\s\S]*?)<\/a>[\s\S]*?(?:<a[^>]+class="result__snippet"[^>]*>([\s\S]*?)<\/a>|<div[^>]+class="result__snippet"[^>]*>([\s\S]*?)<\/div>)?/gi;
         let match;
-        while ((match = itemRe.exec(html)) !== null && results.length < 12) {
+        while ((match = itemRe.exec(html)) !== null && results.length < 14) {
           let href = decodeHtmlEntities(match[1]);
           // Unwrap DuckDuckGo uddg redirect
           const uddgMatch = href.match(/[?&]uddg=([^&]+)/i);
@@ -918,7 +1175,7 @@ async function handlePrivacySearch(query, engine = 'duckduckgo') {
             }
           }
           const check = validatePublicProxyUrl(href);
-          if (!check.ok) continue;
+          if (!check.ok || results.some((r) => r.url === check.url)) continue;
           const title = decodeHtmlEntities(match[2].replace(/<[^>]+>/g, ''));
           const snippet = decodeHtmlEntities((match[3] || match[4] || '').replace(/<[^>]+>/g, ''));
           if (title) {
@@ -927,11 +1184,13 @@ async function handlePrivacySearch(query, engine = 'duckduckgo') {
               url: check.url,
               displayHost: check.hostname,
               snippet: snippet || 'Hasil pencarian privat bebas pelacak.',
-              source: 'DuckDuckGo Privacy',
+              source: engine === 'google' ? 'Google Relay · Web' : 'DuckDuckGo Privacy',
             });
           }
         }
-        if (results.length > 0) usedEngines.push('DuckDuckGo Privacy');
+        if (results.length > 0 && !usedEngines.includes('DuckDuckGo Privacy')) {
+          usedEngines.push(engine === 'google' ? 'Google Web Relay' : 'DuckDuckGo Privacy');
+        }
       }
     } catch {
       // Fallback below
@@ -1027,9 +1286,14 @@ async function handlePrivacySearch(query, engine = 'duckduckgo') {
 }
 
 /**
- * Streams a public media/asset file safely through the edge proxy for VidMate downloads or proxied previews.
+ * Streams a public image, video, audio, or HLS stream safely through the edge proxy with full
+ * HTTP Range (206 Partial Content) support, anti-hotlink Referer forwarding, and strict SSRF/malware guards.
  */
-async function handleAssetOrDownload(targetUrl, asDownload = false) {
+async function handleAssetOrDownload(
+  targetUrl,
+  asDownload = false,
+  { rangeHeader = '', refererUrl = '', proxyOrigin = '', method = 'GET' } = {}
+) {
   const check = validatePublicProxyUrl(targetUrl);
   if (!check.ok) {
     return jsonResponse({ ok: false, error: check.reason }, 400);
@@ -1042,12 +1306,33 @@ async function handleAssetOrDownload(targetUrl, asDownload = false) {
   }
 
   try {
-    const { response, finalUrl } = await fetchWithSafeRedirects(check.url, {
+    const primaryReferer = refererUrl || `${new URL(check.url).origin}/`;
+    let fetched = await fetchWithSafeRedirects(check.url, {
       node: 'vpn-relay',
-      timeoutMs: 14000,
+      timeoutMs: 18000,
       accept: '*/*',
+      range: !asDownload && rangeHeader ? rangeHeader : '',
+      referer: primaryReferer,
+      method,
     });
-    if (!response.ok) {
+    if (fetched.response.status === 403) {
+      // Some CDNs block cross-site Referer while others require same-origin Referer; retry cleanly without Referer
+      try {
+        await fetched.response.body?.cancel?.();
+      } catch {
+        // ignore
+      }
+      fetched = await fetchWithSafeRedirects(check.url, {
+        node: 'proxy-stealth',
+        timeoutMs: 16000,
+        accept: '*/*',
+        range: !asDownload && rangeHeader ? rangeHeader : '',
+        referer: '',
+        method,
+      });
+    }
+    const { response, finalUrl } = fetched;
+    if (!response.ok && response.status !== 206) {
       return jsonResponse({ ok: false, error: `Server sumber mengembalikan status ${response.status}.` }, 502);
     }
 
@@ -1056,39 +1341,77 @@ async function handleAssetOrDownload(targetUrl, asDownload = false) {
       return jsonResponse({ ok: false, error: 'Tipe berkas berbahaya diblokir oleh anti-malware.' }, 403);
     }
 
-    const contentLen = Number(response.headers.get('content-length') || 0);
-    if (contentLen > MAX_ASSET_BYTES) {
-      return jsonResponse(
-        { ok: false, error: 'Ukuran berkas melebihi batas proxy 14 MB. Gunakan tombol salin tautan langsung.' },
-        413
-      );
-    }
-
-    const buf = await response.arrayBuffer();
-    if (buf.byteLength > MAX_ASSET_BYTES) {
-      return jsonResponse(
-        { ok: false, error: 'Ukuran berkas melebihi batas proxy 14 MB.' },
-        413
-      );
-    }
-
     const filenameRaw = new URL(finalUrl).pathname.split('/').pop() || 'manifestudio-media.mp4';
     const safeFilename = filenameRaw.replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 80) || 'manifestudio-media.mp4';
 
+    // Rewrite HLS .m3u8 playlists so video segments also stream cleanly through the proxy
+    const isHlsPlaylist =
+      !asDownload &&
+      (/(mpegurl|m3u8)/i.test(contentType) || /\.m3u8(\?|$)/i.test(new URL(finalUrl).pathname));
+    if (isHlsPlaylist) {
+      const m3u8Text = await readTextCapped(response, 512 * 1024);
+      const rewritten = m3u8Text
+        .split(/\r?\n/)
+        .map((line) => {
+          const trimmed = line.trim();
+          if (!trimmed) return line;
+          if (trimmed.startsWith('#')) {
+            return line.replace(/URI="([^"]+)"/gi, (_m, uri) => `URI="${buildProxiedAssetUrl(uri, finalUrl, proxyOrigin)}"`);
+          }
+          return buildProxiedAssetUrl(trimmed, finalUrl, proxyOrigin);
+        })
+        .join('\n');
+      return new Response(rewritten, {
+        status: 200,
+        headers: {
+          'Content-Type': 'application/vnd.apple.mpegurl; charset=utf-8',
+          'Access-Control-Allow-Origin': '*',
+          'Cross-Origin-Resource-Policy': 'cross-origin',
+          'Cache-Control': 'private, max-age=60',
+          'X-Content-Type-Options': 'nosniff',
+          'Referrer-Policy': 'no-referrer',
+        },
+      });
+    }
+
     const outHeaders = new Headers({
       'Content-Type': contentType,
-      'Cache-Control': 'no-store',
+      'Access-Control-Allow-Origin': '*',
+      'Access-Control-Expose-Headers': 'Content-Length, Content-Range, Accept-Ranges, Content-Type',
+      'Cross-Origin-Resource-Policy': 'cross-origin',
+      'Cache-Control': asDownload ? 'no-store' : 'private, max-age=300',
       'X-Content-Type-Options': 'nosniff',
       'Referrer-Policy': 'no-referrer',
     });
+
+    const acceptRanges = response.headers.get('accept-ranges');
+    const contentRange = response.headers.get('content-range');
+    const contentLength = response.headers.get('content-length');
+    const contentEncoding = response.headers.get('content-encoding');
+    if (acceptRanges) outHeaders.set('Accept-Ranges', acceptRanges);
+    else if (/^(video|audio)\//i.test(contentType)) outHeaders.set('Accept-Ranges', 'bytes');
+    if (contentRange) outHeaders.set('Content-Range', contentRange);
+    // Only forward Content-Length when upstream was NOT compressed (fetch transparently decompresses gzip/br bodies)
+    if (contentLength && !contentEncoding) outHeaders.set('Content-Length', contentLength);
+
     if (asDownload) {
+      if (Number(contentLength || 0) > MAX_ASSET_BYTES) {
+        return jsonResponse(
+          { ok: false, error: 'Ukuran berkas melebihi batas unduh langsung 14 MB. Gunakan tombol salin tautan langsung.' },
+          413
+        );
+      }
       outHeaders.set('Content-Disposition', `attachment; filename="${safeFilename}"`);
     }
 
-    return new Response(buf, { status: 200, headers: outHeaders });
+    // Stream directly without buffering entire video files into memory!
+    return new Response(method === 'HEAD' ? null : response.body, {
+      status: response.status === 206 ? 206 : 200,
+      headers: outHeaders,
+    });
   } catch (err) {
     return jsonResponse(
-      { ok: false, error: err instanceof Error ? err.message : 'Gagal mengunduh media melalui proxy.' },
+      { ok: false, error: err instanceof Error ? err.message : 'Gagal memuat media melalui proxy.' },
       502
     );
   }
@@ -1097,6 +1420,7 @@ async function handleAssetOrDownload(targetUrl, asDownload = false) {
 export async function handleWebProxyRequest(request) {
   try {
     const reqUrl = new URL(request.url);
+    const proxyOrigin = reqUrl.origin;
     let body = {};
     if (request.method === 'POST') {
       try {
@@ -1108,9 +1432,10 @@ export async function handleWebProxyRequest(request) {
 
     const mode = String(body.mode || reqUrl.searchParams.get('mode') || 'browse').trim().toLowerCase();
     const rawUrl = String(body.url || reqUrl.searchParams.get('url') || '').trim();
+    const refererUrl = String(body.ref || reqUrl.searchParams.get('ref') || '').trim();
     const query = String(body.q || reqUrl.searchParams.get('q') || '').trim();
     const node = String(body.node || reqUrl.searchParams.get('node') || 'proxy-stealth').trim().toLowerCase();
-    const engine = String(body.engine || reqUrl.searchParams.get('engine') || 'duckduckgo').trim().toLowerCase();
+    const engine = String(body.engine || reqUrl.searchParams.get('engine') || 'google').trim().toLowerCase();
     const adBlock = body.adBlock !== false && reqUrl.searchParams.get('adBlock') !== '0';
     const antiTrack = body.antiTrack !== false && reqUrl.searchParams.get('antiTrack') !== '0';
     const darkTheme = Boolean(body.darkTheme || reqUrl.searchParams.get('darkTheme') === '1');
@@ -1120,7 +1445,12 @@ export async function handleWebProxyRequest(request) {
     }
 
     if (mode === 'asset' || mode === 'download') {
-      return handleAssetOrDownload(rawUrl, mode === 'download');
+      return handleAssetOrDownload(rawUrl, mode === 'download', {
+        rangeHeader: request.headers.get('range') || '',
+        refererUrl,
+        proxyOrigin,
+        method: request.method,
+      });
     }
 
     // Default mode: browse
@@ -1168,7 +1498,7 @@ export async function handleWebProxyRequest(request) {
           const mediaKind = contentType.startsWith('audio/') ? 'audio' : 'video';
           const safeTitle = new URL(finalUrl).pathname.split('/').pop() || 'Media Langsung';
           const security = buildSecurityAudit(finalUrl, { contentType });
-          const proxyPlayUrl = `/api/web-proxy?mode=asset&url=${encodeURIComponent(finalUrl)}`;
+          const proxyPlayUrl = `${proxyOrigin}/api/web-proxy?mode=asset&url=${encodeURIComponent(finalUrl)}`;
           const playerHtml = `<!doctype html><html><head><meta charset="utf-8"><style>
             body{margin:0;min-height:100vh;display:grid;place-items:center;background:#090d16;color:#f8fafc;font-family:system-ui,sans-serif;padding:24px;}
             video,audio{max-width:100%;max-height:82vh;border-radius:12px;box-shadow:0 20px 50px rgba(0,0,0,.5);}
@@ -1282,6 +1612,8 @@ export async function handleWebProxyRequest(request) {
       adBlock,
       antiTrack,
       darkTheme,
+      proxyOrigin,
+      detectedMedia: media,
     });
     const totalTrackersBlocked = sanitized.blockedTrackers + validation.strippedTrackers.length;
     const security = buildSecurityAudit(finalUrl, {
@@ -1332,6 +1664,22 @@ export async function onRequestGet(context) {
   return handleWebProxyRequest(context.request);
 }
 
+export async function onRequestHead(context) {
+  return handleWebProxyRequest(context.request);
+}
+
 export async function onRequestPost(context) {
   return handleWebProxyRequest(context.request);
+}
+
+export async function onRequestOptions() {
+  return new Response(null, {
+    status: 204,
+    headers: {
+      'Access-Control-Allow-Origin': '*',
+      'Access-Control-Allow-Methods': 'GET, HEAD, POST, OPTIONS',
+      'Access-Control-Allow-Headers': 'Content-Type, Range',
+      'Cache-Control': 'no-store',
+    },
+  });
 }

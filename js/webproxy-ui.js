@@ -22,7 +22,7 @@ import {
   createBrowserTab,
   normalizeProxyInput,
   pushTabHistoryEntry,
-} from './webproxy-logic.js?v=91';
+} from './webproxy-logic.js?v=93';
 import {
   WEBPROXY_THEME_CATEGORIES,
   WEBPROXY_THEMES,
@@ -42,7 +42,7 @@ import {
   saveWebProxyPrefs,
   triggerVidmateDownload,
   wipePrivateLocalHistory,
-} from './webproxy.js?v=91';
+} from './webproxy.js?v=93';
 
 function escapeHtml(str) {
   return String(str ?? '')
@@ -888,6 +888,19 @@ export function createWebProxyController({ rootEl, onToast = () => {} }) {
               <h2>Hasil Pencarian Privat: "${escapeHtml(tab.searchQuery)}"</h2>
               <p>Mesin: ${escapeHtml((tab.searchEngines || ['Privacy Relay']).join(' · '))} · 0 Pelacak · Klik hasil untuk membuka di dalam Peramban Proxy.</p>
             </div>
+            <div class="wpb-home-engine-row" role="group" aria-label="Ganti mesin pencari">
+              ${PRIVACY_SEARCH_ENGINES.map(
+                (eng) => `
+                  <button
+                    type="button"
+                    class="wpb-cat-chip ${state.prefs.searchEngine === eng.id ? 'is-active' : ''}"
+                    data-wpb-search-engine-rerun="${escapeHtml(eng.id)}"
+                  >
+                    ${escapeHtml(eng.label)}
+                  </button>
+                `
+              ).join('')}
+            </div>
           </div>
           ${
             results.length === 0
@@ -928,6 +941,7 @@ export function createWebProxyController({ rootEl, onToast = () => {} }) {
             class="wpb-proxy-iframe"
             title="${escapeHtml(tab.title || 'Konten Peramban Proxy')}"
             sandbox="allow-forms allow-scripts"
+            allow="fullscreen; autoplay; encrypted-media; picture-in-picture"
             referrerpolicy="no-referrer"
             srcdoc="${escapeHtml(tab.html)}"
           ></iframe>
@@ -1272,6 +1286,19 @@ export function createWebProxyController({ rootEl, onToast = () => {} }) {
       btn.addEventListener('click', () => {
         const eng = btn.getAttribute('data-wpb-search-engine');
         if (eng) updatePref({ searchEngine: eng });
+      });
+    });
+
+    rootEl.querySelectorAll('[data-wpb-search-engine-rerun]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const eng = btn.getAttribute('data-wpb-search-engine-rerun');
+        const tab = getActiveTab();
+        if (eng) {
+          updatePref({ searchEngine: eng });
+          if (tab?.searchQuery) {
+            navigateInput(tab.searchQuery, { pushHistory: false });
+          }
+        }
       });
     });
 

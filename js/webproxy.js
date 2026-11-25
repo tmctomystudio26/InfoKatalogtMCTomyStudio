@@ -8,7 +8,7 @@ import {
   buildBrowserAiSystemPrompt,
   isSocialVideoPlatformUrl,
   mergeDetectedMediaLists,
-} from './webproxy-logic.js?v=91';
+} from './webproxy-logic.js?v=93';
 
 const PREFS_STORAGE_KEY = 'manifestudio_wpb_prefs_v1';
 const HISTORY_STORAGE_KEY = 'manifestudio_wpb_history_v1';
@@ -25,7 +25,7 @@ async function getDownloaderModule() {
 
 async function getManifestAiModule() {
   if (_manifestAiMod) return _manifestAiMod;
-  _manifestAiMod = await import('./manifest-ai.js?v=87');
+  _manifestAiMod = await import('./manifest-ai.js?v=91');
   return _manifestAiMod;
 }
 
@@ -33,7 +33,7 @@ export function loadWebProxyPrefs() {
   const defaults = {
     themeId: 'cyber-owl',
     routingMode: 'proxy-stealth',
-    searchEngine: 'duckduckgo',
+    searchEngine: 'google',
     incognitoMode: true, // Default 100% zero history
     adBlock: true,
     antiTrack: true,

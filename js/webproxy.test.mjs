@@ -24,6 +24,7 @@ import {
   pushTabHistoryEntry,
 } from './webproxy-logic.js';
 import {
+  buildProxiedAssetUrl,
   cleanWaybackHtml,
   extractMediaFromHtml,
   sanitizeAndRewriteHtml,
@@ -207,9 +208,47 @@ test('v92 Web Proxy Backend: preserves async preload CSS, removes crossorigin bl
   assert.equal(sanitized.sanitizedHtml.includes('color-scheme: dark'), false);
 });
 
+test('v93 Web Proxy Backend: rewrites lazy thumbnails, video/source/poster, data-bg, and empty JS-hydrated video tags through Range-capable asset proxy', () => {
+  const origin = 'https://manifestudio.my.id';
+  const proxiedUrl = buildProxiedAssetUrl('/thumbs/card1.jpg', 'https://video.example.com/watch/1', origin);
+  assert.ok(proxiedUrl.startsWith(`${origin}/api/web-proxy?mode=asset&url=`));
+  assert.ok(proxiedUrl.includes(encodeURIComponent('https://video.example.com/thumbs/card1.jpg')));
+  assert.ok(proxiedUrl.includes(encodeURIComponent('https://video.example.com/')));
+  assert.equal(buildProxiedAssetUrl('data:image/png;base64,AAA', 'https://video.example.com/', origin), 'data:image/png;base64,AAA');
+
+  const mediaHtml = `
+    <html><body>
+      <img class="lazyload" src="/placeholder.png" data-thumb="https://cdn.blocked.example/thumb1.webp" srcset="https://cdn.blocked.example/thumb1-2x.webp 2x" loading="lazy" />
+      <div class="card-bg" data-bg="/covers/cover2.jpg"></div>
+      <video poster="/posters/p1.jpg"><source src="https://stream.blocked.example/clip.mp4" type="video/mp4"></video>
+      <video id="js-player" poster="/posters/p2.jpg"></video>
+    </body></html>
+  `;
+  const res = sanitizeAndRewriteHtml(mediaHtml, 'https://video.example.com/watch/1', {
+    adBlock: true,
+    antiTrack: true,
+    proxyOrigin: origin,
+    detectedMedia: [{ url: 'https://stream.blocked.example/hydrated.mp4', kind: 'video' }],
+  });
+
+  // Lazy thumbnail promoted, routed through asset proxy, and unproxied srcset stripped
+  assert.ok(res.sanitizedHtml.includes(encodeURIComponent('https://cdn.blocked.example/thumb1.webp')));
+  assert.equal(res.sanitizedHtml.includes('srcset='), false);
+  assert.equal(res.sanitizedHtml.includes('loading="lazy"'), false);
+  assert.ok(res.sanitizedHtml.includes('img.lazyload'));
+  // data-bg promoted and proxied
+  assert.ok(res.sanitizedHtml.includes(encodeURIComponent('https://video.example.com/covers/cover2.jpg')));
+  // <video> poster, <source> src, and empty JS-hydrated <video> auto-bound through asset proxy with controls & playsinline
+  assert.ok(res.sanitizedHtml.includes(encodeURIComponent('https://video.example.com/posters/p1.jpg')));
+  assert.ok(res.sanitizedHtml.includes(encodeURIComponent('https://stream.blocked.example/clip.mp4')));
+  assert.ok(res.sanitizedHtml.includes(encodeURIComponent('https://stream.blocked.example/hydrated.mp4')));
+  assert.match(res.sanitizedHtml, /<video[^>]*controls[^>]*playsinline/i);
+});
+
 test('v91 Web Proxy: security audit, multi-tab history, Incognito zero-history guarantee, and Multi-AI context', () => {
   assert.equal(PROXY_ROUTING_MODES.length, 4);
-  assert.equal(PRIVACY_SEARCH_ENGINES.length, 3);
+  assert.equal(PRIVACY_SEARCH_ENGINES.length, 4);
+  assert.ok(PRIVACY_SEARCH_ENGINES.some((e) => e.id === 'google'), 'Google Privat search engine must be available');
   assert.ok(BROWSER_AI_MODELS.length >= 6);
   assert.ok(DEFAULT_SPEED_DIAL_SITES.length >= 8);
 

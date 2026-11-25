@@ -36,6 +36,7 @@ export const PROXY_ROUTING_MODES = Object.freeze([
 ]);
 
 export const PRIVACY_SEARCH_ENGINES = Object.freeze([
+  { id: 'google', label: 'Google Privat', badge: 'Google' },
   { id: 'duckduckgo', label: 'DuckDuckGo Privat', badge: 'Anti-Lacak' },
   { id: 'wikipedia', label: 'Wikipedia Cepat', badge: 'Ensiklopedia' },
   { id: 'searxng', label: 'Multi-Search Relay', badge: 'Gabungan' },
@@ -52,11 +53,19 @@ export const BROWSER_AI_MODELS = Object.freeze([
 
 export const DEFAULT_SPEED_DIAL_SITES = Object.freeze([
   {
+    id: 'sd-google',
+    title: 'Google Privat',
+    subtitle: 'Cari di Google Aman',
+    url: 'https://www.google.com/webhp?hl=id&gbv=1',
+    accent: '#2563eb',
+    glyph: 'G',
+  },
+  {
     id: 'sd-wiki',
     title: 'Wikipedia ID',
     subtitle: 'Ensiklopedia Bebas',
     url: 'https://id.wikipedia.org/wiki/Halaman_Utama',
-    accent: '#2563eb',
+    accent: '#0284c7',
     glyph: 'W',
   },
   {
