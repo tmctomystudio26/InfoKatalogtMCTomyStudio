@@ -1,13 +1,15 @@
 /**
- * Tanya Fitur — Floating Customer Service AI Assistant UI (v85)
+ * Tanya Fitur — Floating Customer Service AI Assistant UI (v86)
  *
- * Replaces the old idle floating black circle with a purposeful, responsive "Tanya Fitur"
- * Customer Service button & drawer powered by the Manifest AI streaming engine.
- * - Strictly answers feature questions & visitor troubleshooting based on verified facts.
- * - Offers quick-action chips + direct "Buka Manifest AI" shortcut when visitors ask off-topic questions.
+ * - Floating "Tanya Fitur" button with built-in × dismiss button (persisted cleanly)
+ *   and footer trigger support so users can hide the floating pill and reopen anytime from footer.
+ * - Powered by Manifest AI streaming engine with full Markdown + HTML table renderer (`renderMarkdownSafe`),
+ *   natural courtesy replies ("Terimakasih", "Oke", "Berhasil"), context-aware follow-ups,
+ *   and zero-leak confidentiality guards.
  */
 
 import {
+  buildFeatureCsCourtesyReply,
   buildFeatureCsGreetingReply,
   buildFeatureCsLocalFallback,
   buildFeatureCsOffTopicReply,
@@ -15,7 +17,10 @@ import {
   buildFeatureCsSystemPrompt,
   classifyFeatureCsIntent,
   sanitizeFeatureCsReply,
-} from './feature-cs-logic.js?v=85';
+} from './feature-cs-logic.js?v=86';
+import { renderMarkdownSafe } from './manifest-ai-logic.js?v=86';
+
+const FCS_FAB_HIDDEN_KEY = 'manifestudio_fcs_fab_hidden_v1';
 
 function escapeHtml(str = '') {
   return String(str || '')
@@ -26,44 +31,24 @@ function escapeHtml(str = '') {
     .replaceAll("'", '&#39;');
 }
 
-function renderSimpleMarkdown(md = '') {
-  const escaped = escapeHtml(md);
-  const lines = escaped.split('\n');
-  const html = [];
-  let inList = false;
-
-  const formatInline = (line) =>
-    line
-      .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
-      .replace(/\*(.+?)\*/g, '<em>$1</em>')
-      .replace(/`([^`]+)`/g, '<code>$1</code>');
-
-  for (const rawLine of lines) {
-    const trimmed = rawLine.trim();
-    if (!trimmed) {
-      if (inList) {
-        html.push('</ul>');
-        inList = false;
-      }
-      continue;
-    }
-    const bulletMatch = trimmed.match(/^(?:-|\*|\d+\.)\s+(.+)$/);
-    if (bulletMatch) {
-      if (!inList) {
-        html.push('<ul class="fcs-md-list">');
-        inList = true;
-      }
-      html.push(`<li>${formatInline(bulletMatch[1])}</li>`);
-    } else {
-      if (inList) {
-        html.push('</ul>');
-        inList = false;
-      }
-      html.push(`<p>${formatInline(trimmed)}</p>`);
-    }
+function readFabDismissed() {
+  try {
+    return localStorage.getItem(FCS_FAB_HIDDEN_KEY) === '1';
+  } catch {
+    return false;
   }
-  if (inList) html.push('</ul>');
-  return html.join('');
+}
+
+function writeFabDismissed(hidden) {
+  try {
+    if (hidden) {
+      localStorage.setItem(FCS_FAB_HIDDEN_KEY, '1');
+    } else {
+      localStorage.removeItem(FCS_FAB_HIDDEN_KEY);
+    }
+  } catch {
+    // Ignore storage errors
+  }
 }
 
 const QUICK_PROMPTS = [
@@ -81,6 +66,7 @@ export function createFeatureCsController({
   let rootEl = null;
   let isOpen = false;
   let isSending = false;
+  let fabDismissed = readFabDismissed();
   let abortCtrl = null;
   let manifestAiModPromise = null;
   let messages = [];
@@ -98,7 +84,7 @@ export function createFeatureCsController({
 
   function loadManifestAiEngine() {
     if (!manifestAiModPromise) {
-      manifestAiModPromise = import('./manifest-ai.js?v=85');
+      manifestAiModPromise = import('./manifest-ai.js?v=86');
     }
     return manifestAiModPromise;
   }
@@ -117,8 +103,14 @@ export function createFeatureCsController({
 
   function syncVisibility() {
     const cfg = getConfig() || {};
+    const isEnabled = cfg.enabled !== false;
     const root = ensureRoot();
-    root.hidden = cfg.enabled === false;
+    root.hidden = !isEnabled;
+
+    // Also sync footer "Tanya Fitur" trigger button visibility with Admin toggle
+    document.querySelectorAll('[data-open-feature-cs]').forEach((el) => {
+      el.hidden = !isEnabled;
+    });
   }
 
   function scrollMessagesToBottom() {
@@ -144,7 +136,7 @@ export function createFeatureCsController({
                 isUser
                   ? `<p>${escapeHtml(m.content)}</p>`
                   : m.content
-                    ? renderSimpleMarkdown(m.content)
+                    ? renderMarkdownSafe(sanitizeFeatureCsReply(m.content))
                     : '<div class="fcs-typing" aria-label="Mengetik jawaban"><span></span><span></span><span></span></div>'
               }
               ${
@@ -177,23 +169,36 @@ export function createFeatureCsController({
     const root = ensureRoot();
     syncVisibility();
 
+    const showFab = !fabDismissed;
+
     root.innerHTML = `
-      <button
-        type="button"
-        id="feature-cs-fab"
-        class="fcs-fab ${isOpen ? 'is-open' : ''}"
-        aria-label="${isOpen ? 'Tutup bantuan Tanya Fitur' : 'Buka layanan Tanya Fitur'}"
-        aria-expanded="${isOpen}"
-      >
-        <span class="fcs-fab-icon" aria-hidden="true">
-          ${
-            isOpen
-              ? '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>'
-              : '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M7.9 20A9 9 0 1 0 4 16.1L2 22Z"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><path d="M12 17h.01"/></svg>'
-          }
-        </span>
-        <span class="fcs-fab-label">Tanya Fitur</span>
-      </button>
+      <div class="fcs-fab-cluster" id="feature-cs-fab-cluster" ${showFab ? '' : 'hidden'}>
+        <button
+          type="button"
+          id="feature-cs-fab-close"
+          class="fcs-fab-close-btn"
+          title="Sembunyikan tombol Tanya Fitur (tetap bisa dibuka dari bagian bawah halaman)"
+          aria-label="Tutup tombol mengambang Tanya Fitur"
+        >
+          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+        </button>
+        <button
+          type="button"
+          id="feature-cs-fab"
+          class="fcs-fab ${isOpen ? 'is-open' : ''}"
+          aria-label="${isOpen ? 'Tutup bantuan Tanya Fitur' : 'Buka layanan Tanya Fitur'}"
+          aria-expanded="${isOpen}"
+        >
+          <span class="fcs-fab-icon" aria-hidden="true">
+            ${
+              isOpen
+                ? '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>'
+                : '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M7.9 20A9 9 0 1 0 4 16.1L2 22Z"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><path d="M12 17h.01"/></svg>'
+            }
+          </span>
+          <span class="fcs-fab-label">Tanya Fitur</span>
+        </button>
+      </div>
 
       <div id="fcs-backdrop" class="fcs-backdrop" ${isOpen ? '' : 'hidden'}></div>
 
@@ -253,7 +258,27 @@ export function createFeatureCsController({
     renderMessages();
   }
 
-  function openDrawer() {
+  function dismissFab() {
+    fabDismissed = true;
+    writeFabDismissed(true);
+    if (isOpen) {
+      closeDrawer();
+      return;
+    }
+    renderShell();
+  }
+
+  function restoreFab() {
+    fabDismissed = false;
+    writeFabDismissed(false);
+    renderShell();
+  }
+
+  function openDrawer({ restoreFloating = false } = {}) {
+    if (restoreFloating && fabDismissed) {
+      fabDismissed = false;
+      writeFabDismissed(false);
+    }
     isOpen = true;
     renderShell();
     requestAnimationFrame(() => {
@@ -277,13 +302,23 @@ export function createFeatureCsController({
     if (!prompt || isSending) return;
 
     ensureGreetingMessage();
-    messages.push({ role: 'user', content: prompt });
-    const intent = classifyFeatureCsIntent(prompt);
+    const hasPriorContext = messages.some((m) => m.role === 'user');
     const activeTab = typeof getActiveTab === 'function' ? getActiveTab() : null;
 
-    // Instant deterministic guard for greetings, restricted probes, or off-topic universal prompts
+    messages.push({ role: 'user', content: prompt });
+    const intent = classifyFeatureCsIntent(prompt, {
+      hasContext: hasPriorContext,
+      activeTabId: activeTab || '',
+    });
+
+    // Instant deterministic replies for greetings, courtesies ("Terimakasih"), restricted probes, or clear off-topic
     if (intent === 'greeting') {
       messages.push({ role: 'assistant', content: buildFeatureCsGreetingReply(), showUniversalCta: false });
+      renderMessages();
+      return;
+    }
+    if (intent === 'courtesy') {
+      messages.push({ role: 'assistant', content: buildFeatureCsCourtesyReply(prompt), showUniversalCta: false });
       renderMessages();
       return;
     }
@@ -325,7 +360,8 @@ export function createFeatureCsController({
         customSystemPrompt,
         disableWebResearch: true,
         siteMode: 'utilities',
-        localFallbackBuilder: (p) => buildFeatureCsLocalFallback(p, activeTab || ''),
+        localFallbackBuilder: (p) =>
+          buildFeatureCsLocalFallback(p, activeTab || '', { hasContext: hasPriorContext }),
         onDelta: (partial) => {
           messages[botIndex].content = sanitizeFeatureCsReply(partial);
           renderMessages();
@@ -333,7 +369,7 @@ export function createFeatureCsController({
       });
 
       const finalSafe = sanitizeFeatureCsReply(
-        res?.content || buildFeatureCsLocalFallback(prompt, activeTab || '')
+        res?.content || buildFeatureCsLocalFallback(prompt, activeTab || '', { hasContext: hasPriorContext })
       );
       messages[botIndex].content = finalSafe;
       messages[botIndex].streaming = false;
@@ -343,7 +379,7 @@ export function createFeatureCsController({
           messages[botIndex].content || 'Permintaan dibatalkan.';
       } else {
         messages[botIndex].content = sanitizeFeatureCsReply(
-          buildFeatureCsLocalFallback(prompt, activeTab || '')
+          buildFeatureCsLocalFallback(prompt, activeTab || '', { hasContext: hasPriorContext })
         );
       }
       messages[botIndex].streaming = false;
@@ -355,6 +391,10 @@ export function createFeatureCsController({
   }
 
   function bindEvents() {
+    rootEl?.querySelector('#feature-cs-fab-close')?.addEventListener('click', (e) => {
+      e.stopPropagation();
+      dismissFab();
+    });
     rootEl?.querySelector('#feature-cs-fab')?.addEventListener('click', () => {
       if (isOpen) closeDrawer();
       else openDrawer();
@@ -389,6 +429,9 @@ export function createFeatureCsController({
   return {
     open: openDrawer,
     close: closeDrawer,
+    dismissFab,
+    restoreFab,
+    isFabDismissed: () => fabDismissed,
     refreshConfig: () => {
       syncVisibility();
       if (!isOpen && messages.length <= 1) {

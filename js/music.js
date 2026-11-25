@@ -74,6 +74,7 @@ const MUSIC_CLICK_PLAY_KEY = 'manifestudio_music_clickplay_v1';
 const LEGACY_MUSIC_STREAM_CACHE_KEY = 'manifestudio_music_stream_cache_v1';
 const MUSIC_STREAM_CACHE_KEY = 'manifestudio_music_stream_cache_v2';
 const MUSIC_HEADSET_MODE_KEY = 'manifestudio_music_headset_v1';
+const MUSIC_FAB_HIDDEN_KEY = 'manifestudio_music_fab_hidden_v1';
 
 // Community open-source YT Music / YouTube search API endpoints + parallel Tioo/Ummy audio stream resolvers
 const SIPUTZX_YT_SEARCH_URL = 'https://api.siputzx.my.id/api/s/youtube';
@@ -1511,6 +1512,13 @@ export function initMusicPlayer() {
   let isPlaying = false;
   let isLoading = false;
   let isOpen = false;
+  let fabDismissed = (() => {
+    try {
+      return localStorage.getItem(MUSIC_FAB_HIDDEN_KEY) === '1';
+    } catch {
+      return false;
+    }
+  })();
   let miniPlaylistPickerOpen = false;
   let miniPlaylistFeedback = '';
   let explicitPaused = Boolean(initialSession.explicitPaused);
@@ -3772,12 +3780,22 @@ export function initMusicPlayer() {
         <div class="music-pop-footer">
           ${
             isOnMusicTab
-              ? `<span class="music-drag-tip">Pemutar YouTube Music aktif · Tekan & geser tombol bulat untuk pindah posisi</span>`
+              ? `<span class="music-drag-tip">Pemutar YouTube Music aktif · Tekan &amp; geser tombol bulat untuk pindah posisi</span>`
               : `<a href="./tools.html?tab=music" class="music-open-hub-link ytm-mini-open-link" data-music-control="true">
                   <span>Buka Tampilan Penuh YouTube Music</span>
                   <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg>
                 </a>`
           }
+          <button
+            type="button"
+            id="music-dismiss-fab-btn"
+            class="music-dismiss-fab-btn"
+            data-music-control="true"
+            aria-label="Tutup dan sembunyikan ikon musik sepenuhnya"
+          >
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="m15 9-6 6"/><path d="m9 9 6 6"/></svg>
+            <span>Tutup Ikon Musik Sepenuhnya</span>
+          </button>
         </div>
       </div>
 
@@ -3785,8 +3803,7 @@ export function initMusicPlayer() {
         type="button"
         id="music-fab-btn"
         data-music-control="true"
-        class="music-fab-btn ytm-fab-btn ${isPlaying ? 'is-playing' : ''} ${!currentTrack && !isPlaying && !isLoading && !isOpen ? 'is-idle-hidden' : ''}"
-        ${!currentTrack && !isPlaying && !isLoading && !isOpen ? 'hidden' : ''}
+        class="music-fab-btn ytm-fab-btn ${isPlaying ? 'is-playing' : ''}"
         aria-label="${isOpen ? 'Tutup pemutar musik minimalis' : 'Buka pemutar musik YouTube Music (bisa digeser)'}"
         aria-expanded="${isOpen}"
         title="YouTube Music Player · Ketuk untuk buka atau tekan & geser"
@@ -3794,10 +3811,10 @@ export function initMusicPlayer() {
         <span class="music-fab-eq" aria-hidden="true">
           <span></span><span></span><span></span>
         </span>
-        <svg class="music-fab-note" width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 14.5c-2.49 0-4.5-2.01-4.5-4.5S9.51 7.5 12 7.5s4.5 2.01 4.5 4.5-2.01 4.5-4.5 4.5zm-1.5-6.75v4.5l4-2.25-4-2.25z"/></svg>
       </button>
     `;
 
+    root.hidden = fabDismissed;
     bindWidgetEvents();
   }
 
@@ -3930,6 +3947,11 @@ export function initMusicPlayer() {
       e.stopPropagation();
       isOpen = false;
       renderWidget();
+    });
+
+    root.querySelector('#music-dismiss-fab-btn')?.addEventListener('click', (e) => {
+      e.stopPropagation();
+      controller.dismissFab();
     });
 
     root.querySelector('#music-playpause-btn')?.addEventListener('click', (e) => {
@@ -4092,8 +4114,43 @@ export function initMusicPlayer() {
       return next.pipHeadsetMode;
     },
 
+    dismissFab() {
+      fabDismissed = true;
+      isOpen = false;
+      try {
+        localStorage.setItem(MUSIC_FAB_HIDDEN_KEY, '1');
+      } catch {
+        // Ignore
+      }
+      if (isPlaying || isLoading) {
+        this.pause({ external: false });
+      }
+      if (isPipOpen) {
+        this.closePiP();
+      }
+      root.hidden = true;
+      renderWidget();
+    },
+
+    restoreFab() {
+      if (!fabDismissed && !root.hidden) return;
+      fabDismissed = false;
+      try {
+        localStorage.removeItem(MUSIC_FAB_HIDDEN_KEY);
+      } catch {
+        // Ignore
+      }
+      root.hidden = false;
+      renderWidget();
+    },
+
+    isFabDismissed() {
+      return fabDismissed;
+    },
+
     playTrack(track, { startSeconds = 0, queueMode = null, playlistId = '', selectionSource = 'user' } = {}) {
       if (!track) return;
+      if (fabDismissed) this.restoreFab();
       trackSelectionSource = selectionSource === 'auto' ? 'auto' : 'user';
       if (queueMode) {
         activeQueueMode = queueMode;
@@ -5189,7 +5246,11 @@ export function initMusicPlayer() {
     (e) => {
       const target = e.target;
       if (!(target instanceof Element)) return;
-      if (root.contains(target) || target.closest('[data-music-control], .music-hub-panel')) {
+      if (
+        fabDismissed ||
+        root.contains(target) ||
+        target.closest('[data-music-control], .music-hub-panel, #feature-cs-root, .fcs-root, [data-open-feature-cs]')
+      ) {
         return;
       }
       const isMediaElement = Boolean(target.closest('video, audio'));

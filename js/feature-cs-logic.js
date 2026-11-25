@@ -316,11 +316,20 @@ export const PLATFORM_GENERAL_KB = Object.freeze({
 const CS_GREETING_RE =
   /^(p+|ping|halo+|hai+|hi+|hey+|permisi|assalamualaikum|selamat\s+(pagi|siang|sore|malam)|tes+|test+)[\s!?.]*$/i;
 
+const CS_COURTESY_RE =
+  /^(?:alhamdulillah|terima\s*kasih|terimakasih|makasih+|makasi+|mksh|thanks?|thank\s*you|tq|thx|ty|tengkyu|syukron|hatur\s*nuhun|oke+|ok+|okay|okey|sip+|siap+|baik+|baiklah|mantap+|keren+|bagus+|hebat+|paham+|mengerti|jelas+|noted|done|berhasil|sukses|sudah\s*bisa|udah\s*bisa|work+|aman+|sama[\s-]*sama|dadah|bye+)(?:[\s,!?.]+(?:alhamdulillah|min|kak|bang|mas|mbak|gan|bro|ya+|yah|dong|deh|banyak|banget|bgt|sekali|bantuannya|infonya|penjelasannya|sangat\s+membantu|membantu|sama[\s-]*sama|terima\s*kasih|terimakasih|makasih+|thanks?|oke+|ok+|sip+|siap+|mantap+|keren+|bagus+|done|berhasil|sukses|work+|sudah\s*bisa|udah\s*bisa|aman+|paham+|jelas+))*[\s!?.🙏👍❤️😊✨🚀]*$/i;
+
 const CS_RESTRICTED_RE =
   /\b(manifestore|katalog\s*(?:produk|akun|store|toko)|akun\s+premium|beli\s+(?:akun|capcut|netflix|canva|spotify|youtube\s+premium|viu|vidio|wetv|prime|zoom|gemini|turnitin)|harga\s+(?:capcut|netflix|canva|spotify|youtube|viu|vidio|wetv|prime|zoom|turnitin|akun|paket)|cara\s+(?:order|pesan|beli|checkout)|bayar\s+(?:nanti|belakangan)|kode\s*voucher|(?:kode|kunci)\s*akses|password\s*(?:store|admin|brankas)|tmctomystudio|(?:nomor|no\.?|kontak|link|akun)\s*(?:wa|whatsapp|instagram|ig|tiktok|admin|owner|pemilik|tomy)|whatsapp\s*(?:admin|owner|tomy)|instagram\s*(?:admin|owner|tomy|resmi)|tiktok\s*(?:admin|owner|tomy|resmi)|cloudflare\s*kv|pbkdf2|hmac|admin\.html|catalog\.json)\b/i;
 
+const CS_CLEAR_OFF_TOPIC_RE =
+  /\b(resep|masak(?:an)?|memasak|nasi\s*goreng|presiden|sejarah|perang\s*dunia|puisi|pantun|cerpen|lirik\s*lengkap|coding|koding|python|javascript|java\b|c\+\+|php\b|html\b|css\b|react\b|sql\b|quicksort|algoritma|matematika|kalkulus|integral|turunan|fisika|kimia|biologi|rumus\s*(?:luas|volume|fisika|kimia|excel)|terjemahkan|translate|curhat|galau|ramalan|zodiak|shio|saham|kripto|crypto|bitcoin|buatkan\s*(?:makalah|esai|essay|artikel|surat|cv|caption|kode|program|script|skrip|cerita|soal)|siapa\s+(?:penemu|presiden|raja|pahlawan|pemain|artis)|ibukota|ibu\s*kota|hitung(?:kan)?\s+\d+)\b/i;
+
 const CS_FEATURE_TOPIC_RE =
-  /\b(manifestudio|tanya\s*fitur|fitur|menu|utilitas|alat|tools?|manifest\s*ai|drama\s*pendek|dracin|yt\s*music|musik|lagu|playlist|download(?:er)?|unduh|watermark|kompres(?:or)?|perkecil|konversi|convert|ubah\s*format|audio\s*editor|potong\s*(?:lagu|audio)|equalizer|\beq\b|karaoke|vokal|cari\s*judul\s*lagu|shazam|plagiarisme|plagiat|skripsi|ocr|no\s*repository|novel|audiobook|jadwal\s*sholat|sholat|salat|imsak|adzan|kemenag|cuaca|hujan|suhu|uv|jam\s*dunia|globe|zona\s*waktu|speedtest|kecepatan\s*internet|ping|jitter|cek\s*nomor|spam|caller\s*id|install|instal|pwa|aplikasi|offline|tema|mode\s*(?:gelap|terang)|dark\s*mode|light\s*mode|privasi|aman|gratis|login|error|eror|gagal|macet|lemot|buffering|tidak\s*bisa|gak\s*bisa|nggak\s*bisa|kendala|masalah|cara\s*(?:pakai|gunakan|menggunakan|buka|simpan|ekspor|pindah)|bantuan|panduan|rekomendasi\s*fitur|ada\s*fitur\s*apa|daftar\s*fitur|semua\s*fitur|pdf|docx|word|excel|mp3|mp4|wav|webp|avif|zip)\b/i;
+  /\b(manifestudio|tanya\s*fitur|fitur|menu|utilitas|alat|tools?|manifest\s*ai|drama\s*pendek|dracin|yt\s*music|musik|lagu|playlist|download(?:er)?|unduh|watermark|kompres(?:or)?|perkecil|konversi|convert|ubah\s*format|audio\s*editor|potong\s*(?:lagu|audio)|equalizer|\beq\b|karaoke|vokal|cari\s*judul\s*lagu|shazam|plagiarisme|plagiat|skripsi|ocr|no\s*repository|novel|audiobook|jadwal\s*sholat|sholat|salat|imsak|adzan|kemenag|cuaca|hujan|suhu|uv|jam\s*dunia|globe|zona\s*waktu|speedtest|kecepatan\s*internet|ping|jitter|cek\s*nomor|spam|caller\s*id|install|instal|pwa|aplikasi|offline|tema|mode\s*(?:gelap|terang)|dark\s*mode|light\s*mode|privasi|aman|gratis|login|error|eror|gagal|macet|lemot|buffering|tidak\s*bisa|gak\s*bisa|nggak\s*bisa|kendala|masalah|cara\s*(?:pakai|gunakan|menggunakan|buka|simpan|ekspor|pindah|kerja)|bantuan|panduan|rekomendasi\s*fitur|ada\s*fitur\s*apa|daftar\s*fitur|semua\s*fitur|pdf|docx|word|excel|mp3|mp4|wav|webp|avif|zip|layar\s*penuh|fullscreen|subtitle|sub\s*indo|suara|volume|mikrofon|mic|gps|lokasi|tombol|ikon|icon|tutup|close|sembunyikan)\b/i;
+
+const CS_FOLLOWUP_RE =
+  /\b(terus|lalu|selanjutnya|gimana|bagaimana|caranya|contoh(?:nya)?|detail(?:nya)?|lebih\s*(?:lengkap|jelas|detail)|maksudnya|kok|kenapa|mengapa|bisa\s*(?:gak|nggak|tidak|di|untuk)|aman\s*(?:gak|nggak|tidak)|gratis\s*(?:gak|nggak|tidak)|perlu\s*login|ada\s*batas(?:an)?|maksimal|minimal|ukuran|durasi|kualitas|iphone|ios|android|safari|chrome|edge|laptop|pc|desktop|hp|masih\s*(?:gagal|eror|error|sama|belum)|tetap\s*(?:gagal|tidak)|sudah\s*coba|udah\s*coba|yang\s*mana|nomor\s*\d+|poin\s*\d+|langkah|beda(?:nya)?|bedanya|jelaskan\s*(?:lagi|ulang|semua|satu|per\s*satu)|cara\s*kerja|fitur\s*ini|halaman\s*ini|web\s*ini|situs\s*ini)\b/i;
 
 const CS_CONTACT_CHANNEL_RE =
   /\b(wa|whatsapp|instagram|\big\b|tiktok|sosmed|media\s*sosial|email|gmail|nomor\s*(?:hp|telp|wa)|kontak)\b/i;
@@ -332,20 +341,29 @@ const CS_MEDIA_TOOL_ACTION_RE =
 
 /**
  * Classifies a visitor message in the "Tanya Fitur" Customer Service drawer.
+ * Context-aware: handles natural Indonesian courtesies/thanks and follow-up questions smoothly.
  * @param {string} prompt
- * @returns {'empty' | 'greeting' | 'restricted_leak' | 'feature_support' | 'off_topic'}
+ * @param {{ hasContext?: boolean, activeTabId?: string }} [opts]
+ * @returns {'empty' | 'greeting' | 'courtesy' | 'restricted_leak' | 'feature_support' | 'off_topic'}
  */
-export function classifyFeatureCsIntent(prompt = '') {
+export function classifyFeatureCsIntent(prompt = '', { hasContext = false, activeTabId = '' } = {}) {
   const clean = String(prompt || '').trim();
   if (!clean) return 'empty';
   if (CS_GREETING_RE.test(clean)) return 'greeting';
+  if (CS_COURTESY_RE.test(clean)) return 'courtesy';
   if (
     CS_RESTRICTED_RE.test(clean) ||
     (CS_CONTACT_CHANNEL_RE.test(clean) && CS_OWNER_TARGET_RE.test(clean) && !CS_MEDIA_TOOL_ACTION_RE.test(clean))
   ) {
     return 'restricted_leak';
   }
+  if (CS_CLEAR_OFF_TOPIC_RE.test(clean) && !/\b(manifestudio|fitur|kompres|konversi|plagiarisme|downloader|drama\s*pendek|yt\s*music|audio\s*editor|jadwal\s*sholat|cuaca|speedtest|cek\s*nomor|novel)\b/i.test(clean)) {
+    return 'off_topic';
+  }
   if (CS_FEATURE_TOPIC_RE.test(clean)) return 'feature_support';
+  if ((hasContext || Boolean(activeTabId)) && CS_FOLLOWUP_RE.test(clean)) {
+    return 'feature_support';
+  }
   return 'off_topic';
 }
 
@@ -357,6 +375,17 @@ export function buildFeatureCsGreetingReply() {
     '',
     'Fitur apa yang ingin Anda tanyakan hari ini?',
   ].join('\n');
+}
+
+export function buildFeatureCsCourtesyReply(prompt = '') {
+  const lower = String(prompt || '').toLowerCase();
+  if (/\b(terima\s*kasih|terimakasih|makasih|makasi|mksh|thanks?|thank\s*you|tq|thx|ty|tengkyu|syukron|hatur\s*nuhun)\b/i.test(lower)) {
+    return 'Sama-sama! Senang sekali bisa membantu. Jika nanti ada pertanyaan lain atau mengalami kendala pada salah satu dari **15 fitur Manifestudio**, silakan chat di **Tanya Fitur** kapan saja ya!';
+  }
+  if (/\b(berhasil|sudah\s*bisa|udah\s*bisa|work|mantap|keren|bagus|hebat)\b/i.test(lower)) {
+    return 'Senang mendengarnya! Semoga fitur Manifestudio terus membantu aktivitas Anda. Kalau butuh panduan fitur lainnya, tinggal tanya saja di sini.';
+  }
+  return 'Siap, senang bisa membantu! Jika ada fitur lain yang ingin Anda pelajari atau ada kendala saat menggunakannya, silakan tanyakan kapan saja.';
 }
 
 export function buildFeatureCsRestrictedReply() {
@@ -396,6 +425,8 @@ export function buildFeatureCsSystemPrompt(activeTabId = '') {
     '2. TOLAK TOPIK DI LUAR FITUR: Jika pengguna menanyakan topik umum di luar Manifestudio (tugas sekolah, coding, resep, puisi, sejarah, matematika, berita, curhat, dll.), tolak dengan ramah dan arahkan pengguna untuk membuka menu "Manifest AI" yang bersifat universal.',
     '3. FAKTA & DATA 100% AKURAT: Gunakan HANYA fakta dari basis pengetahuan di bawah ini. Jangan pernah mengarang tombol, fitur, atau batasan yang tidak ada.',
     '4. KERAHASIAAN MUTLAK: DILARANG KERAS menyebut, mengonfirmasi, atau membocorkan nama toko/store eksternal, katalog akun berbayar, harga produk, WhatsApp, Instagram, TikTok, email, ataupun istilah teknis sistem/admin.',
+    '5. FORMAT RAPI UNTUK HP: Jawab dengan daftar bernomor atau bullet singkat yang enak dibaca di layar HP. DILARANG memakai tag HTML mentah seperti `<br>` dan hindari tabel Markdown lebar.',
+    '6. RESPON HUMANIS: Jika pengunjung mengucapkan terima kasih, oke, paham, atau puas, balas dengan ramah layaknya CS manusia sungguhan — JANGAN pernah menolak ucapan terima kasih.',
     '',
     '=== BASIS PENGETAHUAN RESMI MANIFESTUDIO (15 FITUR) ===',
     kbText,
@@ -411,10 +442,11 @@ export function buildFeatureCsSystemPrompt(activeTabId = '') {
 /**
  * Deterministic factual fallback from verified KB if external AI gateways are busy.
  */
-export function buildFeatureCsLocalFallback(prompt = '', activeTabId = '') {
+export function buildFeatureCsLocalFallback(prompt = '', activeTabId = '', { hasContext = false } = {}) {
   const lower = String(prompt || '').toLowerCase();
-  const intent = classifyFeatureCsIntent(prompt);
+  const intent = classifyFeatureCsIntent(prompt, { hasContext, activeTabId });
   if (intent === 'greeting') return buildFeatureCsGreetingReply();
+  if (intent === 'courtesy') return buildFeatureCsCourtesyReply(prompt);
   if (intent === 'restricted_leak') return buildFeatureCsRestrictedReply();
   if (intent === 'off_topic') return buildFeatureCsOffTopicReply();
 
@@ -474,11 +506,23 @@ export function buildFeatureCsLocalFallback(prompt = '', activeTabId = '') {
 }
 
 /**
- * Post-output sanitizer ensuring CS responses never leak Store/Contacts or raw system internals.
+ * Post-output sanitizer ensuring CS responses never leak Store/Contacts, raw system internals,
+ * or ugly raw HTML tags like `<br>` inside Markdown bubbles/tables.
  */
 export function sanitizeFeatureCsReply(text = '') {
   let out = String(text || '').trim();
   if (!out) return '';
+  // Normalize raw HTML <br> tags safely: inline bullet inside Markdown table rows, real newline outside
+  out = out
+    .split('\n')
+    .map((line) => {
+      if (/^\s*\|.*\|\s*$/.test(line)) {
+        return line.replace(/<br\s*\/?>/gi, ' · ');
+      }
+      return line.replace(/<br\s*\/?>/gi, '\n');
+    })
+    .join('\n');
+  out = out.replace(/<\/?(?:p|div|span|b|i|strong|em|ul|ol|li|table|tr|td|th|thead|tbody)[^>]*>/gi, '');
   out = out.replace(/https?:\/\/(?:www\.)?manifestore\.my\.id[^\s)]*/gi, 'https://manifestudio.my.id/');
   out = out.replace(/\bmanifestore(?:\.my\.id)?\b/gi, 'layanan terkait');
   out = out.replace(/https?:\/\/(?:wa\.me|api\.whatsapp\.com|www\.instagram\.com|instagram\.com|www\.tiktok\.com|tiktok\.com)[^\s)]*/gi, '[tautan dilindungi]');

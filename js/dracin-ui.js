@@ -18,7 +18,9 @@ import {
   buildEpisodeList,
   buildEpisodeRanges,
   clampEpisodeNumber,
+  computeDracinVerticalDragOffset,
   computePreloadEpisodeTargets,
+  decideDracinVerticalSwipeOutcome,
   filterDracinCatalog,
   formatDracinUserError,
   formatShortQualityBadge,
@@ -35,7 +37,7 @@ import {
   shouldPreserveFullscreenOnEpisodeChange,
   toggleFavoriteDramaId,
   upsertWatchHistory,
-} from './dracin-logic.js?v=79';
+} from './dracin-logic.js?v=86';
 import {
   clearDracinFeedCaches,
   fetchAiDramaInsights,
@@ -208,7 +210,11 @@ export function createDracinController({ onToast = () => {} } = {}) {
   let hostEl = null;
   let swipeHintTimer = null;
   let wheelLockUntil = 0;
-  let touchStartY = null;
+  let wheelAccumY = 0;
+  let wheelSnapTimer = null;
+  let swipeAnimating = false;
+  let swipeResetTimer = null;
+  let suppressNextTapUntil = 0;
   let hasInitialFetched = false;
   let globalListenersBound = false;
   let cinemaFsHistoryPushed = false;
@@ -879,6 +885,105 @@ export function createDracinController({ onToast = () => {} } = {}) {
     });
   }
 
+  function getAdjacentSwipeInfo(drama) {
+    if (!drama) {
+      return {
+        prev: { available: false, badge: 'Awal', title: '', sub: '', poster: '' },
+        next: { available: false, badge: 'Akhir', title: '', sub: '', poster: '' },
+      };
+    }
+    const nav = getNextPrevEpisode(state.currentEpisode, drama.totalEpisodes);
+    const poster = drama.poster || drama.fallbackPoster || '';
+    const fypQueue = state.fypMode ? getFypQueue() : [];
+    const curFypIdx = fypQueue.length ? fypQueue.findIndex((d) => d.id === drama.id) : -1;
+
+    let prev;
+    if (nav.hasPrev) {
+      prev = {
+        available: true,
+        badge: `↑ Episode ${nav.prev}`,
+        title: drama.title,
+        sub: `${drama.platformName} · Ep ${nav.prev} / ${nav.total}`,
+        poster,
+      };
+    } else if (state.fypMode && fypQueue.length > 1) {
+      const prevIdx = ((curFypIdx >= 0 ? curFypIdx : 0) - 1 + fypQueue.length) % fypQueue.length;
+      const prevDrama = fypQueue[prevIdx] || drama;
+      prev = {
+        available: true,
+        badge: '↑ Drama FYP Sebelumnya',
+        title: prevDrama.title,
+        sub: `${prevDrama.platformName} · Ep 1–${prevDrama.totalEpisodes}`,
+        poster: prevDrama.poster || prevDrama.fallbackPoster || poster,
+      };
+    } else {
+      prev = {
+        available: false,
+        badge: 'Episode 1',
+        title: drama.title,
+        sub: 'Ini adalah episode paling awal',
+        poster,
+      };
+    }
+
+    let next;
+    if (nav.hasNext) {
+      next = {
+        available: true,
+        badge: `↓ Episode ${nav.next}`,
+        title: drama.title,
+        sub: `${drama.platformName} · Ep ${nav.next} / ${nav.total}`,
+        poster,
+      };
+    } else if (state.fypMode && fypQueue.length > 1) {
+      const nextIdx = ((curFypIdx >= 0 ? curFypIdx : 0) + 1) % fypQueue.length;
+      const nextDrama = fypQueue[nextIdx] || drama;
+      next = {
+        available: true,
+        badge: '↓ Drama FYP Berikutnya',
+        title: nextDrama.title,
+        sub: `${nextDrama.platformName} · Ep 1–${nextDrama.totalEpisodes}`,
+        poster: nextDrama.poster || nextDrama.fallbackPoster || poster,
+      };
+    } else {
+      next = {
+        available: false,
+        badge: 'Episode Terakhir',
+        title: drama.title,
+        sub: 'Tamat · Pilih drama lain di daftar',
+        poster,
+      };
+    }
+
+    return { prev, next };
+  }
+
+  function renderSwipePreviewInnerHtml(slot) {
+    const safePoster = slot?.poster ? escapeHtml(slot.poster) : '';
+    return `
+      ${
+        safePoster
+          ? `<img class="dracin-swipe-preview-bg" src="${safePoster}" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer" />`
+          : ''
+      }
+      <div class="dracin-swipe-preview-scrim"></div>
+      <div class="dracin-swipe-preview-meta">
+        <span class="dracin-swipe-preview-badge">${escapeHtml(slot?.badge || '')}</span>
+        <strong class="dracin-swipe-preview-title">${escapeHtml(slot?.title || '')}</strong>
+        <span class="dracin-swipe-preview-sub">${escapeHtml(slot?.sub || '')}</span>
+      </div>
+    `;
+  }
+
+  function syncSwipePreviewSlides(drama) {
+    if (!hostEl || !drama) return;
+    const slots = getAdjacentSwipeInfo(drama);
+    const prevEl = hostEl.querySelector('#dracin-swipe-prev-preview');
+    const nextEl = hostEl.querySelector('#dracin-swipe-next-preview');
+    if (prevEl) prevEl.innerHTML = renderSwipePreviewInnerHtml(slots.prev);
+    if (nextEl) nextEl.innerHTML = renderSwipePreviewInnerHtml(slots.next);
+  }
+
   function syncPlayerEpisodeUiInPlace(drama) {
     if (!hostEl || !drama) return;
     const stageEl = hostEl.querySelector('#dracin-player-stage');
@@ -953,6 +1058,8 @@ export function createDracinController({ onToast = () => {} } = {}) {
       pickerWrap.innerHTML = renderEpisodePickerGrid(drama, false);
       bindEpisodePickerEvents(pickerWrap);
     }
+
+    syncSwipePreviewSlides(drama);
 
     const drawer = stageEl.querySelector('.dracin-fs-drawer');
     const drawerBody = drawer?.querySelector('.dracin-fs-drawer-body');
@@ -2826,6 +2933,8 @@ export function createDracinController({ onToast = () => {} } = {}) {
       <div id="dracin-stage-tap-layer" class="dracin-stage-tap-layer" aria-hidden="true"></div>
     `;
 
+    const swipeSlots = getAdjacentSwipeInfo(drama);
+
     return `
       <div class="dracin-player-layout">
         <div class="dracin-player-col">
@@ -2857,13 +2966,19 @@ export function createDracinController({ onToast = () => {} } = {}) {
             data-fullscreen="${state.isFullscreen ? 'true' : 'false'}"
             data-clean-screen="${state.isFullscreen && state.cleanScreen ? 'true' : 'false'}"
           >
-            ${mediaSurfaceHtml}
+            <div id="dracin-swipe-track" class="dracin-swipe-track" data-testid="dracin-swipe-track">
+              <div id="dracin-swipe-prev-preview" class="dracin-swipe-preview is-prev" aria-hidden="true">
+                ${renderSwipePreviewInnerHtml(swipeSlots.prev)}
+              </div>
 
-            <!-- Real Buffering / Decrypting Loader -->
-            <div id="dracin-media-loader" class="dracin-media-loader" ${state.resolvingStream ? '' : 'hidden'}>
-              <div class="dracin-spinner" aria-hidden="true"></div>
-              <span>${escapeHtml(state.streamStatusText || 'Memuat video HD asli...')}</span>
-            </div>
+              <div class="dracin-swipe-current">
+                ${mediaSurfaceHtml}
+
+                <!-- Real Buffering / Decrypting Loader -->
+                <div id="dracin-media-loader" class="dracin-media-loader" ${state.resolvingStream ? '' : 'hidden'}>
+                  <div class="dracin-spinner" aria-hidden="true"></div>
+                  <span>${escapeHtml(state.streamStatusText || 'Memuat video HD asli...')}</span>
+                </div>
 
             <!-- Real Stream Error Overlay with VIP-Free Server & Cross-Platform Failover -->
             <div id="dracin-media-error" class="dracin-media-error" ${state.streamError ? '' : 'hidden'}>
@@ -2916,24 +3031,6 @@ export function createDracinController({ onToast = () => {} } = {}) {
                 </button>
               </div>
             </div>
-
-            <!-- Swipe / Episode Switch Toast -->
-            <div id="dracin-swipe-toast" class="dracin-swipe-toast" role="status" ${state.swipeHintText ? '' : 'hidden'}>
-              ${escapeHtml(state.swipeHintText)}
-            </div>
-
-            <!-- Clean Screen Minimal Restore Button -->
-            <button
-              type="button"
-              id="dracin-restore-hud-btn"
-              class="dracin-restore-hud-btn"
-              data-testid="dracin-restore-hud-btn"
-              aria-label="Tampilkan kembali menu pemutar"
-              ${state.isFullscreen && state.cleanScreen ? '' : 'hidden'}
-            >
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>
-              <span>Tampilkan Menu</span>
-            </button>
 
             <!-- Right Vertical Short-Drama Action Rail -->
             <div class="dracin-action-rail" aria-label="Kontrol cepat pemutar">
@@ -3008,7 +3105,7 @@ export function createDracinController({ onToast = () => {} } = {}) {
                 <span id="dracin-stage-platform-name">${escapeHtml(drama.platformName)}</span>
                 <span aria-hidden="true">·</span>
                 <span id="dracin-stage-server-label">${escapeHtml(activeServer?.label || 'Streaming Native HD')}</span>
-                <span id="dracin-fs-swipe-hint" ${state.isFullscreen ? '' : 'hidden'}>· Geser / Scroll ↑↓ pindah ep</span>
+                <span id="dracin-fs-swipe-hint">· Geser ↑↓ pindah ep</span>
               </div>
 
               <div
@@ -3043,6 +3140,30 @@ export function createDracinController({ onToast = () => {} } = {}) {
                 </button>
               </div>
             </div>
+              </div>
+
+              <div id="dracin-swipe-next-preview" class="dracin-swipe-preview is-next" aria-hidden="true">
+                ${renderSwipePreviewInnerHtml(swipeSlots.next)}
+              </div>
+            </div>
+
+            <!-- Swipe / Episode Switch Toast -->
+            <div id="dracin-swipe-toast" class="dracin-swipe-toast" role="status" ${state.swipeHintText ? '' : 'hidden'}>
+              ${escapeHtml(state.swipeHintText)}
+            </div>
+
+            <!-- Clean Screen Minimal Restore Button -->
+            <button
+              type="button"
+              id="dracin-restore-hud-btn"
+              class="dracin-restore-hud-btn"
+              data-testid="dracin-restore-hud-btn"
+              aria-label="Tampilkan kembali menu pemutar"
+              ${state.isFullscreen && state.cleanScreen ? '' : 'hidden'}
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>
+              <span>Tampilkan Menu</span>
+            </button>
           </div>
 
           <!-- Quality / Server Switcher & Subtitle Controls -->
@@ -3832,6 +3953,7 @@ export function createDracinController({ onToast = () => {} } = {}) {
     hostEl.querySelector('#dracin-toggle-play-btn')?.addEventListener('click', togglePlayPauseInPlace);
 
     hostEl.querySelector('#dracin-stage-tap-layer')?.addEventListener('click', () => {
+      if (Date.now() < suppressNextTapUntil) return;
       if (state.isFullscreen && state.cleanScreen) {
         setCleanScreenMode(false);
         return;
@@ -3951,17 +4073,98 @@ export function createDracinController({ onToast = () => {} } = {}) {
     bindCrossPlatformEvents(hostEl.querySelector('#dracin-cross-platform-box'), getActiveDrama());
 
     const stageEl = hostEl.querySelector('#dracin-player-stage');
-    if (stageEl) {
+    const swipeTrackEl = hostEl.querySelector('#dracin-swipe-track');
+    if (stageEl && swipeTrackEl) {
+      const INTERACTIVE_SELECTOR =
+        'button, a, input, select, textarea, .dracin-progress-track, .dracin-fs-drawer, .dracin-media-error';
+      let dragSession = null;
+
+      const clearSwipeResetTimer = () => {
+        if (swipeResetTimer) {
+          clearTimeout(swipeResetTimer);
+          swipeResetTimer = null;
+        }
+      };
+
+      const resetTrackInstant = () => {
+        clearSwipeResetTimer();
+        swipeAnimating = false;
+        swipeTrackEl.style.transition = 'none';
+        swipeTrackEl.style.transform = 'translate3d(0px, 0px, 0px)';
+        stageEl.classList.remove('is-swiping');
+      };
+
+      const animateSnapBack = () => {
+        clearSwipeResetTimer();
+        swipeAnimating = true;
+        swipeTrackEl.style.transition = 'transform 260ms cubic-bezier(0.22, 1, 0.36, 1)';
+        swipeTrackEl.style.transform = 'translate3d(0px, 0px, 0px)';
+        swipeResetTimer = setTimeout(() => {
+          swipeAnimating = false;
+          swipeTrackEl.style.transition = 'none';
+          stageEl.classList.remove('is-swiping');
+          swipeResetTimer = null;
+        }, 270);
+      };
+
+      const animateCommitStep = (direction) => {
+        clearSwipeResetTimer();
+        const h = Math.max(240, stageEl.clientHeight || 640);
+        const targetY = direction > 0 ? -h : h;
+        swipeAnimating = true;
+        stageEl.classList.add('is-swiping');
+        swipeTrackEl.style.transition = 'transform 240ms cubic-bezier(0.22, 1, 0.36, 1)';
+        swipeTrackEl.style.transform = `translate3d(0px, ${targetY}px, 0px)`;
+        swipeResetTimer = setTimeout(() => {
+          resetTrackInstant();
+          handleEpisodeStep(direction);
+        }, 245);
+      };
+
       stageEl.addEventListener(
         'wheel',
         (e) => {
-          if (!state.isFullscreen || state.fullscreenDrawerOpen) return;
-          if (Math.abs(e.deltaY) < 28) return;
+          if (state.fullscreenDrawerOpen || swipeAnimating) return;
+          if (!state.isFullscreen) return;
+          if (Math.abs(e.deltaY) < 4) return;
           e.preventDefault();
           const now = Date.now();
           if (now < wheelLockUntil) return;
-          wheelLockUntil = now + 520;
-          handleEpisodeStep(e.deltaY > 0 ? 1 : -1);
+
+          const drama = getActiveDrama();
+          const slots = getAdjacentSwipeInfo(drama);
+          const stageHeight = Math.max(240, stageEl.clientHeight || 640);
+          wheelAccumY += -e.deltaY * 0.62;
+          const offset = computeDracinVerticalDragOffset({
+            rawDeltaY: wheelAccumY,
+            stageHeight,
+            hasPrev: slots.prev.available,
+            hasNext: slots.next.available,
+          });
+          stageEl.classList.add('is-swiping');
+          swipeTrackEl.style.transition = 'transform 90ms linear';
+          swipeTrackEl.style.transform = `translate3d(0px, ${offset}px, 0px)`;
+
+          if (wheelSnapTimer) clearTimeout(wheelSnapTimer);
+          const wheelCommitPx = Math.max(115, Math.round(stageHeight * 0.22));
+          if (offset <= -wheelCommitPx && slots.next.available) {
+            wheelAccumY = 0;
+            wheelLockUntil = now + 680;
+            animateCommitStep(1);
+            return;
+          }
+          if (offset >= wheelCommitPx && slots.prev.available) {
+            wheelAccumY = 0;
+            wheelLockUntil = now + 680;
+            animateCommitStep(-1);
+            return;
+          }
+
+          wheelSnapTimer = setTimeout(() => {
+            wheelAccumY = 0;
+            animateSnapBack();
+            wheelSnapTimer = null;
+          }, 190);
         },
         { passive: false }
       );
@@ -3969,25 +4172,107 @@ export function createDracinController({ onToast = () => {} } = {}) {
       stageEl.addEventListener(
         'touchstart',
         (e) => {
-          if (!state.isFullscreen || state.fullscreenDrawerOpen) return;
-          touchStartY = e.touches?.[0]?.clientY ?? null;
+          if (state.fullscreenDrawerOpen || swipeAnimating) return;
+          if (e.touches.length !== 1) return;
+          if (e.target && typeof e.target.closest === 'function' && e.target.closest(INTERACTIVE_SELECTOR)) {
+            dragSession = null;
+            return;
+          }
+          const t = e.touches[0];
+          const drama = getActiveDrama();
+          const slots = getAdjacentSwipeInfo(drama);
+          dragSession = {
+            startX: t.clientX,
+            startY: t.clientY,
+            lastY: t.clientY,
+            lastTime: performance.now(),
+            velocity: 0,
+            lockedAxis: null,
+            currentOffset: 0,
+            stageHeight: Math.max(240, stageEl.clientHeight || 640),
+            hasPrev: slots.prev.available,
+            hasNext: slots.next.available,
+          };
+          syncSwipePreviewSlides(drama);
         },
         { passive: true }
       );
 
       stageEl.addEventListener(
-        'touchend',
+        'touchmove',
         (e) => {
-          if (!state.isFullscreen || state.fullscreenDrawerOpen || touchStartY === null) return;
-          const endY = e.changedTouches?.[0]?.clientY ?? touchStartY;
-          const delta = touchStartY - endY;
-          touchStartY = null;
-          if (Math.abs(delta) >= 54) {
-            handleEpisodeStep(delta > 0 ? 1 : -1);
+          if (!dragSession || state.fullscreenDrawerOpen || swipeAnimating) return;
+          const t = e.touches?.[0];
+          if (!t) return;
+          const dx = t.clientX - dragSession.startX;
+          const dy = t.clientY - dragSession.startY;
+
+          if (!dragSession.lockedAxis) {
+            if (Math.abs(dy) < 8 && Math.abs(dx) < 8) return;
+            if (Math.abs(dy) >= Math.abs(dx) * 1.15) {
+              dragSession.lockedAxis = 'y';
+            } else {
+              dragSession.lockedAxis = 'x';
+              return;
+            }
           }
+          if (dragSession.lockedAxis !== 'y') return;
+
+          if (e.cancelable) e.preventDefault();
+
+          const now = performance.now();
+          const dt = Math.max(1, now - dragSession.lastTime);
+          const instVel = (t.clientY - dragSession.lastY) / dt;
+          dragSession.velocity = dragSession.velocity * 0.45 + instVel * 0.55;
+          dragSession.lastY = t.clientY;
+          dragSession.lastTime = now;
+
+          const offset = computeDracinVerticalDragOffset({
+            rawDeltaY: dy,
+            stageHeight: dragSession.stageHeight,
+            hasPrev: dragSession.hasPrev,
+            hasNext: dragSession.hasNext,
+          });
+          dragSession.currentOffset = offset;
+
+          stageEl.classList.add('is-swiping');
+          swipeTrackEl.style.transition = 'none';
+          swipeTrackEl.style.transform = `translate3d(0px, ${offset}px, 0px)`;
         },
-        { passive: true }
+        { passive: false }
       );
+
+      const finishTouchDrag = (cancelled = false) => {
+        if (!dragSession) return;
+        const session = dragSession;
+        dragSession = null;
+
+        if (session.lockedAxis !== 'y') return;
+        if (Math.abs(session.currentOffset) > 10) {
+          suppressNextTapUntil = Date.now() + 280;
+        }
+        if (cancelled || Math.abs(session.currentOffset) < 4) {
+          animateSnapBack();
+          return;
+        }
+
+        const outcome = decideDracinVerticalSwipeOutcome({
+          deltaY: session.currentOffset,
+          velocityPxPerMs: session.velocity,
+          stageHeight: session.stageHeight,
+          hasPrev: session.hasPrev,
+          hasNext: session.hasNext,
+        });
+
+        if (outcome.action === 'next' || outcome.action === 'prev') {
+          animateCommitStep(outcome.direction);
+        } else {
+          animateSnapBack();
+        }
+      };
+
+      stageEl.addEventListener('touchend', () => finishTouchDrag(false), { passive: true });
+      stageEl.addEventListener('touchcancel', () => finishTouchDrag(true), { passive: true });
     }
 
     hostEl.querySelector('#dracin-clip-file-input')?.addEventListener('change', (e) => {

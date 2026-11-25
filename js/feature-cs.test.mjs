@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 
 import {
   FEATURE_CS_KNOWLEDGE_BASE,
+  buildFeatureCsCourtesyReply,
   buildFeatureCsGreetingReply,
   buildFeatureCsLocalFallback,
   buildFeatureCsOffTopicReply,
@@ -16,7 +17,12 @@ import {
   buildUnifiedContextMessages,
   isRestrictedManifestudioQuery,
   redactSensitiveOwnerData,
+  renderMarkdownSafe,
 } from './manifest-ai-logic.js';
+import {
+  computeDracinVerticalDragOffset,
+  decideDracinVerticalSwipeOutcome,
+} from './dracin-logic.js';
 
 test('FEATURE_CS_KNOWLEDGE_BASE covers all 15 Manifestudio utilities', () => {
   assert.equal(FEATURE_CS_KNOWLEDGE_BASE.length, 15);
@@ -42,9 +48,18 @@ test('FEATURE_CS_KNOWLEDGE_BASE covers all 15 Manifestudio utilities', () => {
   }
 });
 
-test('classifyFeatureCsIntent separates greeting, restricted_leak, feature_support, and off_topic', () => {
+test('classifyFeatureCsIntent handles courtesy, follow-ups, greeting, restricted_leak, feature_support, and off_topic', () => {
   assert.equal(classifyFeatureCsIntent('Halo'), 'greeting');
   assert.equal(classifyFeatureCsIntent('P'), 'greeting');
+
+  // Natural courtesies must NEVER trigger off_topic!
+  for (const msg of ['Terimakasih', 'Terima kasih banyak', 'Makasih min!', 'Oke siap', 'Mantap berhasil!', 'Done work']) {
+    assert.equal(classifyFeatureCsIntent(msg), 'courtesy', `Expected courtesy for "${msg}"`);
+  }
+
+  // Context-aware follow-up questions remain inside feature_support
+  assert.equal(classifyFeatureCsIntent('Terus caranya gimana?', { hasContext: true }), 'feature_support');
+  assert.equal(classifyFeatureCsIntent('Kalau masih gagal?', { hasContext: true }), 'feature_support');
 
   assert.equal(classifyFeatureCsIntent('Berapa harga Netflix Premium di Manifestore?'), 'restricted_leak');
   assert.equal(classifyFeatureCsIntent('Minta nomor WhatsApp admin dong'), 'restricted_leak');
@@ -61,9 +76,25 @@ test('classifyFeatureCsIntent separates greeting, restricted_leak, feature_suppo
   assert.equal(classifyFeatureCsIntent('Buatkan kode Python sorting quicksort'), 'off_topic');
 });
 
+test('Tanya Fitur courtesy reply is warm & human and sanitization cleans raw <br> tags for Markdown tables', () => {
+  const courtesy = buildFeatureCsCourtesyReply('Terimakasih');
+  assert.match(courtesy, /sama-sama/i);
+  assert.doesNotMatch(courtesy, /mohon maaf/i);
+
+  const rawTable = '| # | Fitur | Cara Kerja |\n|---|---|---|\n| 1 | **Manifest AI** | Chat AI.<br>- Cepat<br/>- Gratis |';
+  const cleaned = sanitizeFeatureCsReply(rawTable);
+  assert.doesNotMatch(cleaned, /<br\s*\/?>/i);
+
+  const html = renderMarkdownSafe(cleaned);
+  assert.match(html, /<table class="mai-md-table">/);
+  assert.doesNotMatch(html, /\|---\|/);
+  assert.doesNotMatch(html, /&lt;br/i);
+});
+
 test('Tanya Fitur replies & fallback never leak Manifestore, contacts, or raw system strings', () => {
   const samples = [
     buildFeatureCsGreetingReply(),
+    buildFeatureCsCourtesyReply('Makasih'),
     buildFeatureCsRestrictedReply(),
     buildFeatureCsOffTopicReply(),
     buildFeatureCsLocalFallback('Cara pakai Downloader tanpa watermark'),
@@ -119,4 +150,45 @@ test('Manifest AI utilities mode isolates Manifestudio from Store/Manifestore/Co
   const sysContent = msgs.find((m) => m.role === 'system')?.content || '';
   assert.doesNotMatch(sysContent, /Netflix Premium/i);
   assert.doesNotMatch(sysContent, /6285122936027|tmctomystudio/i);
+});
+
+test('Drama Pendek TikTok vertical swipe physics tracks 1:1, rubber-bands at edges, and never jumps abruptly on slight drag', () => {
+  // 1:1 tracking when adjacent episode exists
+  assert.equal(
+    computeDracinVerticalDragOffset({ rawDeltaY: -120, stageHeight: 640, hasPrev: true, hasNext: true }),
+    -120
+  );
+  // Rubber-band resistance on Episode 1 when pulling down
+  const ep1Bounce = computeDracinVerticalDragOffset({ rawDeltaY: 200, stageHeight: 640, hasPrev: false, hasNext: true });
+  assert.ok(ep1Bounce > 0 && ep1Bounce < 80, `Expected damped rubber-band bounce, got ${ep1Bounce}`);
+
+  // Small/slow scroll snaps back smoothly instead of abruptly jumping scene
+  assert.deepEqual(
+    decideDracinVerticalSwipeOutcome({ deltaY: -65, velocityPxPerMs: -0.1, stageHeight: 640, hasPrev: true, hasNext: true }),
+    { action: 'snap_back', direction: 0 }
+  );
+
+  // Dragging past 24% height commits to next episode
+  assert.deepEqual(
+    decideDracinVerticalSwipeOutcome({ deltaY: -180, velocityPxPerMs: -0.15, stageHeight: 640, hasPrev: true, hasNext: true }),
+    { action: 'next', direction: 1 }
+  );
+
+  // Intentional fast flick up commits to next episode
+  assert.deepEqual(
+    decideDracinVerticalSwipeOutcome({ deltaY: -62, velocityPxPerMs: -0.7, stageHeight: 640, hasPrev: true, hasNext: true }),
+    { action: 'next', direction: 1 }
+  );
+
+  // Dragging down past threshold commits to prev episode
+  assert.deepEqual(
+    decideDracinVerticalSwipeOutcome({ deltaY: 185, velocityPxPerMs: 0.2, stageHeight: 640, hasPrev: true, hasNext: true }),
+    { action: 'prev', direction: -1 }
+  );
+
+  // Cannot commit prev when hasPrev is false
+  assert.deepEqual(
+    decideDracinVerticalSwipeOutcome({ deltaY: 200, velocityPxPerMs: 0.8, stageHeight: 640, hasPrev: false, hasNext: true }),
+    { action: 'snap_back', direction: 0 }
+  );
 });

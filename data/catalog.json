@@ -50,11 +50,8 @@
     ],
     "storeAccess": {
       "enabled": true,
-      "accessKeyEncoded": "mskey:v1:00000c007f1f1c6d04",
-      "accessKeyPreviewLength": 9,
       "promptTitle": "Akses Khusus Store",
       "promptDescription": "Masukkan kunci akses khusus dari Admin untuk berpindah dari Manifestudio ke halaman Store.",
-      "storeOrigin": "https://manifestore.my.id",
       "utilitiesOrigin": "https://manifestudio.my.id",
       "storeBrandName": "Manifestore",
       "utilitiesBrandName": "Manifestudio"

@@ -3464,5 +3464,75 @@ export function extractNunoWatchPayload(
   };
 }
 
+/**
+ * Computes 1:1 vertical drag offset (px) for the TikTok-style short-drama vertical feed.
+ * Tracks finger 1:1 toward available next/prev episodes and applies tactile rubber-band
+ * resistance when pulling past the first or last boundary.
+ */
+export function computeDracinVerticalDragOffset({
+  rawDeltaY = 0,
+  stageHeight = 640,
+  hasPrev = true,
+  hasNext = true,
+} = {}) {
+  const h = Math.max(240, Number(stageHeight) || 640);
+  const dy = Number(rawDeltaY) || 0;
+  if (dy === 0) return 0;
+
+  // Pulling UP (dy < 0) reveals NEXT episode sliding up from bottom
+  if (dy < 0) {
+    if (hasNext) {
+      return Math.max(-h, dy);
+    }
+    const maxBounce = Math.round(h * 0.18);
+    return Math.max(-maxBounce, Math.round(dy * 0.24));
+  }
+
+  // Pulling DOWN (dy > 0) reveals PREVIOUS episode sliding down from top
+  if (hasPrev) {
+    return Math.min(h, dy);
+  }
+  const maxBounce = Math.round(h * 0.18);
+  return Math.min(maxBounce, Math.round(dy * 0.24));
+}
+
+/**
+ * Decides whether a vertical drag gesture commits to switching episode/drama
+ * or springs smoothly back to the current scene (never abruptly jumping on slight touches).
+ */
+export function decideDracinVerticalSwipeOutcome({
+  deltaY = 0,
+  velocityPxPerMs = 0,
+  stageHeight = 640,
+  hasPrev = true,
+  hasNext = true,
+} = {}) {
+  const h = Math.max(240, Number(stageHeight) || 640);
+  const dy = Number(deltaY) || 0;
+  const vel = Number(velocityPxPerMs) || 0;
+  const commitDistance = Math.max(96, Math.round(h * 0.24));
+  const flickMinDistance = 48;
+  const flickVelocityThreshold = 0.52;
+
+  // Swiped UP -> Next episode (dy < 0)
+  if (dy < 0 && hasNext) {
+    const absDy = -dy;
+    const isFlickUp = vel <= -flickVelocityThreshold && absDy >= flickMinDistance;
+    if (absDy >= commitDistance || isFlickUp) {
+      return { action: 'next', direction: 1 };
+    }
+  }
+
+  // Swiped DOWN -> Previous episode (dy > 0)
+  if (dy > 0 && hasPrev) {
+    const isFlickDown = vel >= flickVelocityThreshold && dy >= flickMinDistance;
+    if (dy >= commitDistance || isFlickDown) {
+      return { action: 'prev', direction: -1 };
+    }
+  }
+
+  return { action: 'snap_back', direction: 0 };
+}
+
 
 

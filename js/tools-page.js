@@ -1,4 +1,4 @@
-import { createToolsHubController } from './tools-ui.js?v=85';
+import { createToolsHubController } from './tools-ui.js?v=86';
 import { getDefaultCatalogSnapshot, loadCatalogData } from './data.js?v=85';
 import {
   inferBannerUtilityId,
@@ -32,7 +32,7 @@ import {
   groupStudioFeaturesByCategory,
   parseStudioRoute,
 } from './studio-home.js?v=85';
-import { createFeatureCsController } from './feature-cs-ui.js?v=85';
+import { createFeatureCsController } from './feature-cs-ui.js?v=86';
 
 const THEME_STORAGE_KEY = 'manifestudio_theme_v1';
 const VALID_TABS = new Set([
@@ -1315,8 +1315,17 @@ function applyBrandToToolsPage(brandRaw) {
     const installBtn = socialContainer.querySelector('#footer-install-link');
     const lockSvg =
       '<svg class="footer-lock-mini" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>';
+    const csHiddenAttr = activeCatalogData?.utilities?.featureCsEnabled === false ? ' hidden' : '';
     // On Manifestudio, NEVER expose raw WhatsApp numbers or social handles in DOM — route all through Vault gate
     socialContainer.innerHTML = `
+      <button type="button" id="footer-tanya-fitur-btn" class="footer-link-btn" data-open-feature-cs="true"${csHiddenAttr}>
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M7.9 20A9 9 0 1 0 4 16.1L2 22Z" />
+          <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3" />
+          <path d="M12 17h.01" />
+        </svg>
+        <span>Tanya Fitur</span>
+      </button>
       <button type="button" class="footer-link-btn" data-vault-target="store">
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
         <span>Akses Store</span>
@@ -1361,6 +1370,13 @@ function bindStudioSectionEvents() {
       return;
     }
 
+    const openFeatureCsEl = e.target.closest?.('[data-open-feature-cs]');
+    if (openFeatureCsEl) {
+      e.preventDefault();
+      featureCs?.open?.({ restoreFloating: true });
+      return;
+    }
+
     const openToolEl = e.target.closest?.('[data-studio-open-tool]');
     if (openToolEl) {
       if (openToolEl.tagName === 'A' && (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button !== 0)) {
@@ -1368,7 +1384,14 @@ function bindStudioSectionEvents() {
       }
       e.preventDefault();
       const targetTab = openToolEl.getAttribute('data-studio-open-tool');
-      if (targetTab) enterToolView(targetTab, { pushState: true });
+      if (targetTab) {
+        if (targetTab === 'music') {
+          import('./music.js?v=86')
+            .then((m) => m.initMusicPlayer?.()?.restoreFab?.())
+            .catch(() => {});
+        }
+        enterToolView(targetTab, { pushState: true });
+      }
     }
   });
 
@@ -1517,26 +1540,21 @@ async function bootstrap() {
     applyTheme();
   });
 
-  // Load floating YT Music bundle ONLY if user opened tab=music or is actively resuming playback
-  let wasMusicPlaying = false;
-  try {
-    const raw = sessionStorage.getItem('manifestudio_music_session_v1');
-    if (raw) {
-      const s = JSON.parse(raw);
-      wasMusicPlaying = Boolean(s?.wasPlaying && !s?.explicitPaused);
-    }
-  } catch {
-    // Ignore
-  }
-  const isVideoOrAudioTab =
-    currentTab === 'dracin' ||
-    currentTab === 'audioeditor' ||
-    currentTab === 'songfinder' ||
-    currentTab === 'downloader';
-  if (currentTab === 'music' || (wasMusicPlaying && !isVideoOrAudioTab)) {
-    import('./music.js?v=85')
-      .then((m) => m.initMusicPlayer?.())
+  // Keep floating YT Music icon available on Manifestudio (hidden only if user explicitly closed it inside popover)
+  const bootMusicWidget = () => {
+    import('./music.js?v=86')
+      .then((m) => {
+        const ctrl = m.initMusicPlayer?.();
+        if (currentTab === 'music') {
+          ctrl?.restoreFab?.();
+        }
+      })
       .catch(() => {});
+  };
+  if (typeof requestIdleCallback === 'function') {
+    requestIdleCallback(bootMusicWidget, { timeout: 600 });
+  } else {
+    setTimeout(bootMusicWidget, 80);
   }
 
   try {

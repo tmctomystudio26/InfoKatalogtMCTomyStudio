@@ -59,8 +59,8 @@
       rel="stylesheet"
     />
 
-    <link rel="stylesheet" href="./css/tokens.css?v=85" />
-    <link rel="stylesheet" href="./css/styles.css?v=85" />
+    <link rel="stylesheet" href="./css/tokens.css?v=86" />
+    <link rel="stylesheet" href="./css/styles.css?v=86" />
     <script>
       (function () {
         try {
@@ -72,7 +72,7 @@
           var hasTab = Boolean((qs.get('tab') || qs.get('tool') || '').trim());
           document.documentElement.setAttribute('data-studio-view', hasTab ? 'tool' : 'home');
         } catch (e) {}
-        var CURRENT_CACHE = 'manifestudio-cache-v85';
+        var CURRENT_CACHE = 'manifestudio-cache-v86';
         if ('caches' in window) {
           caches.keys().then(function (keys) {
             keys.forEach(function (k) {
@@ -82,7 +82,7 @@
         }
         if ('serviceWorker' in navigator) {
           window.addEventListener('load', function () {
-            navigator.serviceWorker.register('./sw.js?v=85').then(function (reg) {
+            navigator.serviceWorker.register('./sw.js?v=86').then(function (reg) {
               reg.update();
             }).catch(function () {});
           });
@@ -377,6 +377,10 @@
               <span>Instagram</span>
               <svg class="footer-lock-mini" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
             </button>
+            <button type="button" id="footer-tanya-fitur-btn" class="footer-link-btn footer-tanya-fitur-btn" data-open-feature-cs="true">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7.9 20A9 9 0 1 0 4 16.1L2 22Z"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><path d="M12 17h.01"/></svg>
+              <span>Tanya Fitur</span>
+            </button>
             <button type="button" id="footer-install-link" class="footer-link-btn">
               Install PWA
             </button>
@@ -389,6 +393,6 @@
     <div id="feature-cs-root" class="fcs-root"></div>
     <div id="store-access-modal-root" class="modal-overlay" hidden></div>
     <div id="toast-notification" class="toast-notification" role="status" aria-live="polite" hidden></div>
-    <script type="module" src="./js/tools-page.js?v=85"></script>
+    <script type="module" src="./js/tools-page.js?v=86"></script>
   </body>
 </html>
