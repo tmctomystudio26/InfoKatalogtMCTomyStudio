@@ -232,13 +232,13 @@ test('Novel Excerpt / OCR Matcher achieves 100% on verbatim match and handles OC
 test('Utility #14 (novel) is registered cleanly in store.js and data/catalog.json', () => {
   const storeItem = DEFAULT_UTILITY_CONFIG.items.find((it) => it.id === 'novel');
   assert.ok(storeItem, 'novel must be registered in DEFAULT_UTILITY_CONFIG.items');
-  assert.equal(DEFAULT_UTILITY_CONFIG.items.length, 16);
+  assert.equal(DEFAULT_UTILITY_CONFIG.items.length, 17);
 
   const catalogUrl = new URL('../data/catalog.json', import.meta.url);
   const catalog = JSON.parse(fs.readFileSync(catalogUrl, 'utf8'));
   const catItem = catalog.utilities.items.find((it) => it.id === 'novel');
   assert.ok(catItem, 'novel must be registered in data/catalog.json');
-  assert.equal(catalog.utilities.items.length, 16);
+  assert.equal(catalog.utilities.items.length, 17);
 });
 
 test('v71 Novel cover proxy routes hotlink-protected covers via wsrv.nl and keeps procedural covers corner-clean', () => {

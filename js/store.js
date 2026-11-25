@@ -528,7 +528,7 @@ export function inferBannerUtilityId(banner = {}) {
   const href = String(banner?.href || '').trim();
   const match = href.match(/[?&](?:tab|tool)=([a-z0-9_-]+)/i);
   if (match && match[1]) return match[1].toLowerCase();
-  const idMatch = String(banner?.id || '').match(/^banner-(prayer|weather|worldclock|speedtest|downloader|shortlink|compressor|converter|songfinder|music|dracin|audioeditor|manifestai|plagiarism|novel|callerid)$/i);
+  const idMatch = String(banner?.id || '').match(/^banner-(prayer|weather|worldclock|speedtest|downloader|shortlink|webproxy|compressor|converter|songfinder|music|dracin|audioeditor|manifestai|plagiarism|novel|callerid)$/i);
   return idMatch ? idMatch[1].toLowerCase() : '';
 }
 
@@ -737,6 +737,18 @@ export const DEFAULT_BANNERS = [
     scrim: 'downloader',
     enabled: true,
   },
+  {
+    id: 'banner-webproxy',
+    utilityId: 'webproxy',
+    kicker: 'Menu Utilitas · Proxy, VPN & VidMate',
+    heading: 'Peramban Proxy — Jelajah Privat, Anti-Iklan & Unduh Media',
+    sub: 'Mode Proxy & VPN Relay gratis, 108+ tema, layar penuh, Multi-AI, deteksi unduh video otomatis, & mode tanpa riwayat 100% privat.',
+    ctaLabel: 'Buka Peramban →',
+    href: './tools.html?tab=webproxy',
+    image: './assets/banners/banner-webproxy.jpg',
+    scrim: 'emerald',
+    enabled: true,
+  },
 ];
 
 export function normalizeOpenGraphConfig(brand = {}) {
@@ -804,7 +816,7 @@ export const DEFAULT_UTILITY_CONFIG = {
   callout: {
     icon: './assets/icons/menu-utilitas.svg',
     title: 'Menu Utilitas',
-    badge: '16 Fitur Gratis',
+    badge: '17 Fitur Gratis',
     description: '',
     autoCountBadge: true,
   },
@@ -1006,6 +1018,18 @@ export const DEFAULT_UTILITY_CONFIG = {
       heroTitle: 'Shortlink Bypass & Audit Keamanan Tautan Langsung',
       heroDescription:
         'Gabungkan Dekoder Instan Lokal, Pelacak Redirect & Inspektor Safelink, Bypass.VIP, Bypass.PM, Unshorten.me, Unshorten.it, serta Konsensus Multi-AI (Gemini, ChatGPT, Claude, Grok, DeepSeek) untuk menuju link tujuan aman tanpa iklan berulang.',
+    },
+    {
+      id: 'webproxy',
+      label: 'Peramban Proxy',
+      icon: './assets/icons/tool-webproxy.svg',
+      pageTitle: 'Peramban Proxy & VPN Privat — Anti-Iklan, 108+ Tema & Deteksi Media',
+      pageSubtitle:
+        'Jelajah web 100% privat lewat Mode Proxy & VPN Relay gratis, bebas iklan & malware, mode layar penuh, Multi-AI (Gemini, ChatGPT, DeepSeek, Grok, Meta), 108+ tema, & deteksi unduh media otomatis ala VidMate.',
+      heroKicker: 'Mode Proxy & VPN Relay Gratis · Anti-Iklan · VidMate Auto Media · 108+ Tema',
+      heroTitle: 'Peramban Proxy Privat — Jelajah Bebas Iklan, Multi-AI & Unduh Video Otomatis',
+      heroDescription:
+        'Nikmati peramban web privat lengkap dengan multi-tab, kolom URL & pencarian anti-lacak, mode Proxy/VPN Relay/Reader Anti-Bot gratis, mode tanpa riwayat (Incognito default), proteksi anti-malware, asisten Multi-AI, 108+ tema, layar penuh, dan deteksi media otomatis.',
     },
   ],
 };

@@ -1,8 +1,8 @@
 {
   "id": "/?app=utilities",
-  "name": "Manifestudio — 16 Utilitas Gratis Terpadu",
+  "name": "Manifestudio — 17 Utilitas Gratis Terpadu",
   "short_name": "Manifestudio",
-  "description": "16 fitur utilitas gratis tanpa login: Jadwal Sholat Kemenag RI, Cuaca, Jam Dunia, Speedtest, Downloader, Shortlink Bypass, Kompresor HD, Drama Pendek, YT Music, Manifest AI, Novel & Cek Nomor.",
+  "description": "17 fitur utilitas gratis tanpa login: Peramban Proxy & VPN, Jadwal Sholat Kemenag RI, Cuaca, Jam Dunia, Speedtest, Downloader, Shortlink Bypass, Kompresor HD, Drama Pendek, YT Music, Manifest AI, Novel & Cek Nomor.",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",

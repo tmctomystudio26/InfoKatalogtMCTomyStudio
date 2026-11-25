@@ -130,6 +130,33 @@ export const FEATURE_CS_KNOWLEDGE_BASE = Object.freeze([
     ],
   },
   {
+    id: 'webproxy',
+    name: 'Peramban Proxy',
+    category: 'Harian & Keamanan',
+    keywords: [
+      'peramban proxy', 'web proxy', 'proxy', 'vpn', 'vpn relay', 'browser', 'peramban',
+      'incognito', 'tanpa riwayat', 'riwayat penelusuran', 'anti iklan', 'adblock',
+      'vidmate', 'deteksi media', 'unduh video otomatis', 'tema peramban', 'layar penuh',
+      'jelajah privat', 'browsing privat', 'buka situs', 'anti malware', 'anti bobol',
+    ],
+    summary: 'Peramban web privat dengan Mode Proxy & VPN Relay gratis, pemblokir iklan/pelacak/malware, 108+ tema, mode layar penuh, Multi-AI, & deteksi unduh media otomatis ala VidMate.',
+    details: [
+      'Menyediakan 4 jalur koneksi gratis tanpa biaya: Mode Proxy (Edge Stealth), Mode VPN Relay (Multi-API Tunnel), Mode Reader Anti-Bot, dan Auto Multi-Engine.',
+      'Secara default mengaktifkan Mode Tanpa Riwayat (Incognito 100% Privat) tanpa catatan server; pengguna tetap dapat mengaktifkan riwayat lokal khusus di perangkat sendiri dan menghapusnya kapan saja.',
+      'Dilengkapi pemblokir iklan/pop-up/pelacak otomatis, proteksi anti-malware & sandbox anti-bobol, mode layar penuh dengan bilah pintasan cepat, 108+ tema peramban, asisten Multi-AI (Gemini, ChatGPT, DeepSeek, Grok, Meta), serta deteksi media video/audio otomatis (cara kerja VidMate).',
+    ],
+    steps: [
+      'Buka fitur Peramban Proxy dari beranda Manifestudio.',
+      'Ketik alamat website atau kata kunci pencarian privat di kolom omnibox, atau klik salah satu pintasan Speed Dial.',
+      'Gunakan tombol di bilah atas untuk mengganti Mode Proxy/VPN Relay, membuka panel Media (VidMate) saat video terdeteksi, bertanya ke Multi-AI, mengganti 108+ Tema, mengatur Privasi/Riwayat, atau masuk Mode Layar Penuh.',
+    ],
+    troubleshooting: [
+      'Jika suatu situs menolak akses karena proteksi anti-bot ketat, klik tombol "Coba Mode Reader Anti-Bot" atau alihkan jalur koneksi ke Mode VPN Relay / Auto Multi-Engine.',
+      'Jika video di sebuah situs belum muncul di panel Media, buka panel Media lalu tempelkan tautan halaman video dan tekan Pindai.',
+      'Jika ingin menghapus seluruh riwayat lokal setelah mengaktifkan opsi riwayat, buka ikon perisai Privasi lalu klik "Hapus Semua" atau aktifkan kembali Mode Tanpa Riwayat.',
+    ],
+  },
+  {
     id: 'compressor',
     name: 'Kompresor HD',
     category: 'Downloader & File',
@@ -343,7 +370,7 @@ export const PLATFORM_GENERAL_KB = Object.freeze({
   theme:
     'Anda bisa mengganti tampilan **Mode Terang / Mode Gelap** kapan saja melalui tombol ikon matahari/bulan di pojok kanan atas halaman.',
   privacy:
-    'Seluruh 16 fitur Manifestudio gratis tanpa perlu login. Fitur pemrosesan berkas (Kompresor HD, Konversi File, Audio Editor, Cek Plagiarisme) berjalan lokal di perangkat Anda sehingga privasi file tetap terjaga.',
+    'Seluruh 17 fitur Manifestudio gratis tanpa perlu login. Fitur pemrosesan berkas (Kompresor HD, Konversi File, Audio Editor, Cek Plagiarisme) berjalan lokal di perangkat Anda, dan Peramban Proxy aktif dalam mode Incognito 0 riwayat tanpa pelacak.',
   navigation:
     'Dari beranda, ketuk salah satu ikon fitur untuk membuka halaman penuhnya. Di dalam halaman fitur, gunakan tombol **Semua Fitur** untuk kembali ke beranda atau ketuk tombol **Pindah Fitur** di kanan atas untuk berpindah cepat ke fitur lain.',
 });
@@ -367,7 +394,7 @@ const CS_CLEAR_OFF_TOPIC_RE =
   /\b(resep|masak(?:an)?|memasak|nasi\s*goreng|presiden|sejarah|perang\s*dunia|puisi|pantun|cerpen|lirik\s*lengkap|coding|koding|python|javascript|java\b|c\+\+|php\b|html\b|css\b|react\b|sql\b|quicksort|algoritma|matematika|kalkulus|integral|turunan|fisika|kimia|biologi|rumus\s*(?:luas|volume|fisika|kimia|excel)|terjemahkan|translate|curhat|galau|ramalan|zodiak|shio|saham|kripto|crypto|bitcoin|buatkan\s*(?:makalah|esai|essay|artikel|surat|cv|caption|kode|program|script|skrip|cerita|soal)|siapa\s+(?:penemu|presiden|raja|pahlawan|pemain|artis)|ibukota|ibu\s*kota|hitung(?:kan)?\s+\d+)\b/i;
 
 const CS_MANIFESTUDIO_CONTEXT_RE =
-  /\b(manifestudio|tanya\s*fitur|fitur|menu|utilitas|manifest\s*ai|drama|dracin|episode|yt\s*music|musik|download(?:er)?|shortlink|bypass|safelink|kompres(?:or)?|konversi|audio\s*editor|cari\s*judul\s*lagu|plagiarisme|plagiat|novel|sholat|cuaca|jam\s*dunia|globe|speedtest|cek\s*nomor|pwa|install|tema|dark\s*mode|light\s*mode)\b/i;
+  /\b(manifestudio|tanya\s*fitur|fitur|menu|utilitas|manifest\s*ai|drama|dracin|episode|yt\s*music|musik|download(?:er)?|shortlink|bypass|safelink|peramban|proxy|vpn|incognito|vidmate|kompres(?:or)?|konversi|audio\s*editor|cari\s*judul\s*lagu|plagiarisme|plagiat|novel|sholat|cuaca|jam\s*dunia|globe|speedtest|cek\s*nomor|pwa|install|tema|dark\s*mode|light\s*mode)\b/i;
 
 const CS_CONTACT_CHANNEL_RE =
   /\b(wa|whatsapp|instagram|\big\b|tiktok|sosmed|media\s*sosial|email|gmail|nomor\s*(?:hp|telp|wa)|kontak)\b/i;
@@ -375,7 +402,7 @@ const CS_CONTACT_CHANNEL_RE =
 const CS_OWNER_TARGET_RE = /\b(admin|owner|pemilik|tomy|tuan|pribadi)\b/i;
 
 const CS_MEDIA_TOOL_ACTION_RE =
-  /\b(download(?:er)?|unduh|watermark|kompres(?:or)?|perkecil|konversi|convert|reels|story|carousel|mp3|mp4|shortlink|bypass)\b/i;
+  /\b(download(?:er)?|unduh|watermark|kompres(?:or)?|perkecil|konversi|convert|reels|story|carousel|mp3|mp4|shortlink|bypass|proxy|vpn|vidmate)\b/i;
 
 /**
  * AI-First / Blocklist-Only classifier for the "Tanya Fitur" Customer Service drawer.
@@ -430,7 +457,7 @@ export function buildFeatureCsGreetingReply() {
   return [
     'Halo! Selamat datang di **Tanya Fitur — Layanan Bantuan Manifestudio**.',
     '',
-    'Saya siap membantu menjelaskan cara pakai, keunggulan, format yang didukung, hingga solusi jika ada kendala pada **16 fitur Manifestudio** (seperti Manifest AI, Drama Pendek, YT Music, Downloader, Shortlink Bypass, Kompresor HD, Konversi File, Audio Editor, Cek Plagiarisme, Novel, Jadwal Sholat, Cuaca, Speedtest, Cek Nomor, dan lainnya).',
+    'Saya siap membantu menjelaskan cara pakai, keunggulan, format yang didukung, hingga solusi jika ada kendala pada **17 fitur Manifestudio** (seperti Manifest AI, Peramban Proxy, Drama Pendek, YT Music, Downloader, Shortlink Bypass, Kompresor HD, Konversi File, Audio Editor, Cek Plagiarisme, Novel, Jadwal Sholat, Cuaca, Speedtest, Cek Nomor, dan lainnya).',
     '',
     'Ada fitur atau kendala apa yang bisa saya bantu hari ini?',
   ].join('\n');
@@ -439,7 +466,7 @@ export function buildFeatureCsGreetingReply() {
 export function buildFeatureCsCourtesyReply(prompt = '') {
   const lower = String(prompt || '').toLowerCase();
   if (/\b(terima\s*kasih|terimakasih|makasih|makasi|mksh|thanks?|thank\s*you|tq|thx|ty|tengkyu|syukron|hatur\s*nuhun)\b/i.test(lower)) {
-    return 'Sama-sama! Senang sekali bisa membantu. Jika nanti ada pertanyaan lain atau mengalami kendala pada salah satu dari **16 fitur Manifestudio**, silakan chat di **Tanya Fitur** kapan saja ya!';
+    return 'Sama-sama! Senang sekali bisa membantu. Jika nanti ada pertanyaan lain atau mengalami kendala pada salah satu dari **17 fitur Manifestudio**, silakan chat di **Tanya Fitur** kapan saja ya!';
   }
   if (/\b(berhasil|sudah\s*bisa|udah\s*bisa|work|mantap|keren|bagus|hebat)\b/i.test(lower)) {
     return 'Senang mendengarnya! Semoga fitur Manifestudio terus membantu aktivitas Anda. Kalau butuh panduan fitur lainnya, tinggal tanya saja di sini.';
@@ -449,7 +476,7 @@ export function buildFeatureCsCourtesyReply(prompt = '') {
 
 export function buildFeatureCsRestrictedReply() {
   return [
-    'Mohon maaf, **Tanya Fitur** hanya melayani pertanyaan seputar penggunaan dan pemecahan kendala pada **16 fitur gratis di Manifestudio**.',
+    'Mohon maaf, **Tanya Fitur** hanya melayani pertanyaan seputar penggunaan dan pemecahan kendala pada **17 fitur gratis di Manifestudio**.',
     '',
     'Saya tidak memiliki akses maupun informasi mengenai layanan eksternal, kontak pribadi, akun media sosial, ataupun pengaturan internal. Ada fitur Manifestudio yang ingin saya bantu jelaskan?',
   ].join('\n');
@@ -457,14 +484,14 @@ export function buildFeatureCsRestrictedReply() {
 
 export function buildFeatureCsOffTopicReply() {
   return [
-    'Mohon maaf, menu **Tanya Fitur** dirancang khusus sebagai Customer Service untuk membantu pertanyaan seputar **16 fitur Manifestudio** dan pemecahan kendala pengguna.',
+    'Mohon maaf, menu **Tanya Fitur** dirancang khusus sebagai Customer Service untuk membantu pertanyaan seputar **17 fitur Manifestudio** dan pemecahan kendala pengguna.',
     '',
     'Untuk pertanyaan umum di luar fitur Manifestudio (seperti coding, tugas, tulisan, riset, matematika, atau obrolan bebas), silakan buka menu **Manifest AI** — asisten AI universal kami siap membantu topik apa saja!',
   ].join('\n');
 }
 
 /**
- * Builds the strict Customer Service system prompt grounded in all 16 verified features.
+ * Builds the strict Customer Service system prompt grounded in all 17 verified features.
  */
 export function buildFeatureCsSystemPrompt(activeTabId = '') {
   const activeFeat = FEATURE_CS_KNOWLEDGE_BASE.find((f) => f.id === activeTabId);
@@ -481,14 +508,14 @@ export function buildFeatureCsSystemPrompt(activeTabId = '') {
       : 'Konteks halaman saat ini: Pengunjung sedang berada di Beranda Manifestudio.',
     'ATURAN KETAT (WAJIB DIPATUHI 100%):',
     '1. PAHAMI KELUHAN NATURAL PENGGUNA: Tangani keluhan sehari-hari pengunjung dengan cerdas dan empatik (misalnya "ngelag ketika menonton drama", "drama tidak lengkap", "link penuh iklan", "video tidak ada suara", "file gagal diubah") berdasarkan fakta fitur di bawah ini. JANGAN PERNAH menolak keluhan atau pertanyaan fitur hanya karena gaya bahasanya santai atau singkat.',
-    '2. RUANG LINGKUP TERBATAS (KHUSUS CS MANIFESTUDIO): HANYA jawab pertanyaan mengenai 16 fitur Manifestudio, cara penggunaan, format/batasan nyata, privasi, install aplikasi (PWA), tema terang/gelap, dan pemecahan masalah/kendala pengunjung.',
+    '2. RUANG LINGKUP TERBATAS (KHUSUS CS MANIFESTUDIO): HANYA jawab pertanyaan mengenai 17 fitur Manifestudio, cara penggunaan, format/batasan nyata, privasi, install aplikasi (PWA), tema terang/gelap, dan pemecahan masalah/kendala pengunjung.',
     '3. TOLAK HANYA TOPIK JELAS DI LUAR FITUR: Jika pengguna menanyakan topik umum yang sama sekali tidak terkait Manifestudio (tugas sekolah, coding, resep, puisi, sejarah, matematika, politik, berita, curhat), tolak dengan ramah dan arahkan ke menu "Manifest AI" yang bersifat universal.',
     '4. FAKTA & DATA 100% AKURAT: Gunakan HANYA fakta dari basis pengetahuan di bawah ini. Jangan pernah mengarang tombol, fitur, atau batasan yang tidak ada.',
     '5. KERAHASIAAN MUTLAK: DILARANG KERAS menyebut, mengonfirmasi, atau membocorkan nama toko/store eksternal, katalog akun berbayar, harga produk, WhatsApp, Instagram, TikTok, email, ataupun istilah teknis sistem/admin.',
     '6. FORMAT RAPI UNTUK HP: Jawab dengan daftar bernomor atau bullet singkat yang enak dibaca di layar HP. DILARANG memakai tag HTML mentah seperti `<br>` dan hindari tabel Markdown lebar.',
     '7. RESPON HUMANIS: Jika pengunjung mengucapkan terima kasih, oke, paham, atau puas, balas dengan hangat layaknya CS manusia sungguhan.',
     '',
-    '=== BASIS PENGETAHUAN RESMI MANIFESTUDIO (16 FITUR) ===',
+    '=== BASIS PENGETAHUAN RESMI MANIFESTUDIO (17 FITUR) ===',
     kbText,
     '',
     '=== INFORMASI PLATFORM UMUM ===',
@@ -518,7 +545,7 @@ export function buildFeatureCsLocalFallback(prompt = '', activeTabId = '', { has
   }
   if (/\b(daftar\s*fitur|semua\s*fitur|ada\s*fitur\s*apa|fitur\s*apa\s*saja)\b/i.test(lower)) {
     const list = FEATURE_CS_KNOWLEDGE_BASE.map((f, i) => `${i + 1}. **${f.name}** — ${f.summary}`).join('\n');
-    return `Manifestudio menyediakan **16 fitur gratis tanpa login**:\n\n${list}\n\nKetuk salah satu ikon fitur di beranda untuk langsung menggunakannya!`;
+    return `Manifestudio menyediakan **17 fitur gratis tanpa login**:\n\n${list}\n\nKetuk salah satu ikon fitur di beranda untuk langsung menggunakannya!`;
   }
 
   // Targeted smart troubleshooting for common Drama Pendek complaints
@@ -585,7 +612,7 @@ export function buildFeatureCsLocalFallback(prompt = '', activeTabId = '', { has
   }
 
   return [
-    'Saya siap membantu seputar **16 fitur Manifestudio** (Manifest AI, Drama Pendek, YT Music, Downloader, Shortlink Bypass, Kompresor HD, Konversi File, Audio Editor, Cari Judul Lagu, Cek Plagiarisme, Novel Terpadu, Jadwal Sholat, Prakiraan Cuaca, Jam Dunia & Globe, Speedtest, dan Cek Nomor).',
+    'Saya siap membantu seputar **17 fitur Manifestudio** (Manifest AI, Peramban Proxy, Drama Pendek, YT Music, Downloader, Shortlink Bypass, Kompresor HD, Konversi File, Audio Editor, Cari Judul Lagu, Cek Plagiarisme, Novel Terpadu, Jadwal Sholat, Prakiraan Cuaca, Jam Dunia & Globe, Speedtest, dan Cek Nomor).',
     '',
     'Boleh ceritakan fitur mana yang sedang Anda gunakan dan kendala apa yang muncul agar saya bisa berikan solusi yang paling tepat?',
   ].join('\n');

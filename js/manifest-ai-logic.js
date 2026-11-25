@@ -22,7 +22,7 @@ export const DEFAULT_MANIFESTUDIO_PROFILE = Object.freeze({
   whatsappMasked: '62xxxxxxxxxx',
   socialMasked: '@t***********o',
   summary:
-    'Platform web mandiri 16 utilitas digital, AI, dan hiburan gratis tanpa login serta tanpa iklan, dibuat dan dikelola oleh Tomy.',
+    'Platform web mandiri 17 utilitas digital, AI, dan hiburan gratis tanpa login serta tanpa iklan, dibuat dan dikelola oleh Tomy.',
   utilities: [
     'Manifest AI (chat AI multi-model gratis tanpa API key, streaming cepat, riset web & mode suara)',
     'Cek Plagiarisme (pindai kemiripan naskah PDF/DOCX/OCR, prinsip No Repository, laporan PDF)',
@@ -33,6 +33,7 @@ export const DEFAULT_MANIFESTUDIO_PROFILE = Object.freeze({
     'Cari Judul Lagu & Sumber Video (identifikasi lagu dari rekaman/audio dan pencarian sumber video)',
     'Downloader Sosmed All-in-One (TikTok, IG, YouTube, FB: video HD tanpa watermark, MP3, foto carousel, story)',
     'Shortlink Bypass (lewati shortlink & safelink beriklan/pop-up dengan Multi-API open-source + Audit Keamanan Multi-AI anti-malware)',
+    'Peramban Proxy (jelajah web privat dengan Mode Proxy & VPN Relay gratis, pemblokir iklan & malware, layar penuh, 108+ tema, Multi-AI, mode tanpa riwayat, & deteksi unduh video otomatis ala VidMate)',
     'Kompresor Foto & Video HD (anti-pecah sosmed, preset TikTok/IG/WA HD, proses lokal di browser)',
     'Konversi Semua File (85+ kombinasi format: DOCX, Excel, PDF, foto, video, audio, ZIP lokal di browser)',
     'Jadwal Sholat & Imsakiyah (resmi Kemenag RI se-Indonesia + GPS otomatis + hitung mundur adzan)',
@@ -84,17 +85,17 @@ export const MANIFEST_AI_SYSTEM_PROMPT = [
 
 export const MANIFEST_AI_UTILITIES_SYSTEM_PROMPT = [
   'Kamu adalah Manifest AI, asisten AI universal resmi di platform Manifestudio (https://manifestudio.my.id/) yang dibuat dan dikelola oleh Tomy (update 2026).',
-  'Peranmu di menu Manifest AI adalah ASISTEN AI UNIVERSAL — kamu bebas membantu segala topik (belajar, coding, matematika, tulisan, ide kreatif, teknologi, berita, sains, tips harian, hingga menjelaskan 16 fitur gratis di Manifestudio).',
-  'Identitas resmi Manifestudio (16 Fitur Gratis Tanpa Login): Manifest AI, Cek Plagiarisme, Novel Terpadu, Drama Pendek, YT Music Player, Audio Editor Studio AI, Cari Judul Lagu & Sumber Video, Downloader Sosmed, Shortlink Bypass, Kompresor Foto & Video HD, Konversi Semua File, Jadwal Sholat & Imsakiyah, Prakiraan Cuaca Real-Time, Jam Dunia UTC & Globe 3D, Speedtest Internet, dan Cek Nomor Telepon.',
+  'Peranmu di menu Manifest AI adalah ASISTEN AI UNIVERSAL — kamu bebas membantu segala topik (belajar, coding, matematika, tulisan, ide kreatif, teknologi, berita, sains, tips harian, hingga menjelaskan 17 fitur gratis di Manifestudio).',
+  'Identitas resmi Manifestudio (17 Fitur Gratis Tanpa Login): Manifest AI, Cek Plagiarisme, Novel Terpadu, Drama Pendek, YT Music Player, Audio Editor Studio AI, Cari Judul Lagu & Sumber Video, Downloader Sosmed, Shortlink Bypass, Peramban Proxy, Kompresor Foto & Video HD, Konversi Semua File, Jadwal Sholat & Imsakiyah, Prakiraan Cuaca Real-Time, Jam Dunia UTC & Globe 3D, Speedtest Internet, dan Cek Nomor Telepon.',
   'ATURAN ISOLASI & PRIVASI MUTLAK DI MANIFESTUDIO (WAJIB DIPATUHI 100%):',
   '1. DILARANG KERAS menyebut, mengonfirmasi, mempromosikan, atau membocorkan keberadaan Manifestore, toko/store, katalog produk, akun premium (harga/daftar produk seperti CapCut/Netflix/Canva/Turnitin berbayar), metode pembayaran, voucher, cara order, maupun tautan domain lain.',
   '2. DILARANG KERAS menampilkan atau menebak nomor WhatsApp/telepon, username TikTok/Instagram, email pribadi, kode akses, nama file/sistem internal, maupun detail konfigurasi admin.',
-  '3. Jika pengguna bertanya tentang toko/store, katalog produk, harga akun premium, atau kontak admin/sosmed di Manifestudio, jawab singkat dan sopan bahwa layanan Manifestudio berfokus pada 16 fitur utilitas digital, AI, dan hiburan gratis tanpa login, serta informasi toko maupun kontak pribadi tidak tersedia melalui Manifest AI.',
+  '3. Jika pengguna bertanya tentang toko/store, katalog produk, harga akun premium, atau kontak admin/sosmed di Manifestudio, jawab singkat dan sopan bahwa layanan Manifestudio berfokus pada 17 fitur utilitas digital, AI, dan hiburan gratis tanpa login, serta informasi toko maupun kontak pribadi tidak tersedia melalui Manifest AI.',
   '4. Selalu jawab PESAN TERAKHIR pengguna secara langsung, akurat, anti-halusinasi, dan dalam bahasa yang sama dengan pengguna.',
 ].join('\n');
 
 const MANIFESTUDIO_QUERY_RE =
-  /\b(man[ie]f[eu]s?t?studio|manifest\s*studio|manifest\s*ai|tomy|tmctomystudio|tuan|pemilik|pembuat|pencipta|siapa\s+(kamu|anda|pembuat|pemilik|tuan)|kamu\s+siapa|anda\s+siapa|katalog|akun\s+premium|menu\s+utilitas|fitur\s+di\s+sini|kontak\s+admin|whatsapp\s+admin|wa\s+admin|whatsapp\s+owner|wa\s+owner|sosmed|media\s+sosial|instagram|tiktok|cara\s+order|cara\s+pesan|bayar\s+nanti|bayar\s+belakangan|dracin|drama\s+china|drama\s+pendek|audio\s+editor|cek\s+plagiarisme|cek\s+nomor|shortlink\s*bypass|safelink|novel\s+terpadu|jadwal\s+sholat|kompresor\s+hd|konversi\s+file|speedtest|yt\s*music)\b/i;
+  /\b(man[ie]f[eu]s?t?studio|manifest\s*studio|manifest\s*ai|tomy|tmctomystudio|tuan|pemilik|pembuat|pencipta|siapa\s+(kamu|anda|pembuat|pemilik|tuan)|kamu\s+siapa|anda\s+siapa|katalog|akun\s+premium|menu\s+utilitas|fitur\s+di\s+sini|kontak\s+admin|whatsapp\s+admin|wa\s+admin|whatsapp\s+owner|wa\s+owner|sosmed|media\s+sosial|instagram|tiktok|cara\s+order|cara\s+pesan|bayar\s+nanti|bayar\s+belakangan|dracin|drama\s+china|drama\s+pendek|audio\s+editor|cek\s+plagiarisme|cek\s+nomor|shortlink\s*bypass|safelink|peramban\s*proxy|web\s*proxy|vpn\s*relay|novel\s+terpadu|jadwal\s+sholat|kompresor\s+hd|konversi\s+file|speedtest|yt\s*music)\b/i;
 
 export function isManifestudioQuery(text = '') {
   return MANIFESTUDIO_QUERY_RE.test(String(text || ''));
@@ -135,7 +136,7 @@ export function buildOwnerContactPrivacyReply(siteMode = 'utilities') {
   const resolvedMode = detectManifestAiSiteMode(siteMode);
   if (resolvedMode === 'utilities') {
     return [
-      'Maaf, **Manifest AI** di **Manifestudio** hanya melayani pertanyaan umum serta informasi seputar **16 fitur utilitas digital, AI, dan hiburan gratis** di platform ini.',
+      'Maaf, **Manifest AI** di **Manifestudio** hanya melayani pertanyaan umum serta informasi seputar **17 fitur utilitas digital, AI, dan hiburan gratis** di platform ini.',
       '',
       'Informasi kontak pribadi, akun media sosial, kode akses, maupun layanan di luar fitur utilitas tidak dapat ditampilkan melalui percakapan AI.',
     ].join('\n');

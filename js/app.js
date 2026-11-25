@@ -23,8 +23,8 @@ import {
   syncPaymentOptionsWithBrand,
   updateCartQty,
   validateOrderForm,
-} from './store.js?v=80';
-import { initPwaManager } from './pwa.js?v=80';
+} from './store.js?v=91';
+import { initPwaManager } from './pwa.js?v=91';
 import {
   computeBannerHydrationWindow,
   initPerformanceClass,

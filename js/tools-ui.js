@@ -29,7 +29,7 @@ import {
   searchCitiesOnline,
   setManualLocation,
 } from './location.js?v=78';
-import { normalizeUtilityConfig } from './store.js?v=87';
+import { normalizeUtilityConfig } from './store.js?v=91';
 
 // On-demand cached dynamic module loaders (v87):
 // Keeps initial tools.html boot tiny (<100KB) even on slow 2G/3G mobile networks.
@@ -47,6 +47,7 @@ let _plagiarismMod = null;
 let _novelMod = null;
 let _callerIdMod = null;
 let _shortlinkMod = null;
+let _webproxyMod = null;
 
 const loadGlobeMod = () => (_globeMod ? Promise.resolve(_globeMod) : import('./globe.js?v=79').then((m) => (_globeMod = m)));
 const loadSpeedtestMod = () => (_speedtestMod ? Promise.resolve(_speedtestMod) : import('./speedtest.js?v=79').then((m) => (_speedtestMod = m)));
@@ -68,6 +69,7 @@ const loadPlagiarismMod = () => (_plagiarismMod ? Promise.resolve(_plagiarismMod
 const loadNovelMod = () => (_novelMod ? Promise.resolve(_novelMod) : import('./novel-ui.js?v=79').then((m) => (_novelMod = m)));
 const loadCallerIdMod = () => (_callerIdMod ? Promise.resolve(_callerIdMod) : import('./callerid-ui.js?v=79').then((m) => (_callerIdMod = m)));
 const loadShortlinkMod = () => (_shortlinkMod ? Promise.resolve(_shortlinkMod) : import('./shortlink-ui.js?v=90').then((m) => (_shortlinkMod = m)));
+const loadWebproxyMod = () => (_webproxyMod ? Promise.resolve(_webproxyMod) : import('./webproxy-ui.js?v=91').then((m) => (_webproxyMod = m)));
 
 function renderLazyLoadingCard(label = 'Utilitas') {
   return `
@@ -514,6 +516,7 @@ export function createToolsHubController({
   let novelCtrl = null;
   let callerIdCtrl = null;
   let shortlinkCtrl = null;
+  let webproxyCtrl = null;
   let isHubSeeking = false;
   let tabMountToken = 0;
   let lastUtilitiesSignature = '';
@@ -4626,6 +4629,15 @@ export function createToolsHubController({
     `;
   }
 
+  function renderWebproxyPanel() {
+    return `
+      <section class="tool-panel webproxy-panel" aria-label="Peramban Proxy dan VPN Privat">
+        ${renderSubPanelIntro('webproxy')}
+        <div id="webproxy-hub-mount"></div>
+      </section>
+    `;
+  }
+
   function bindToolEvents() {
     rootEl.querySelectorAll('[data-tool-subtab]').forEach((btn) => {
       btn.addEventListener('click', () => {
@@ -5625,6 +5637,29 @@ export function createToolsHubController({
     } else if (shortlinkCtrl) {
       shortlinkCtrl.unmount();
     }
+
+    if (toolState.activeSubTab === 'webproxy') {
+      const wpbMount = rootEl.querySelector('#webproxy-hub-mount');
+      if (wpbMount) {
+        if (webproxyCtrl) {
+          webproxyCtrl.mount();
+        } else {
+          wpbMount.innerHTML = renderLazyLoadingCard('Peramban Proxy');
+          loadWebproxyMod()
+            .then(({ createWebProxyController }) => {
+              if (!mounted || tabMountToken !== currentMountToken || toolState.activeSubTab !== 'webproxy') return;
+              const liveMount = rootEl.querySelector('#webproxy-hub-mount');
+              if (!liveMount) return;
+              webproxyCtrl = createWebProxyController({ rootEl: liveMount, onToast });
+              webproxyCtrl.mount();
+            })
+            .catch(() => {});
+        }
+      }
+    } else if (webproxyCtrl) {
+      webproxyCtrl.unmount();
+      webproxyCtrl = null;
+    }
   }
 
   function renderPrayerSearchResultsHtml(subDistrictResults = [], filteredCities = []) {
@@ -5690,6 +5725,8 @@ export function createToolsHubController({
         ? renderCallerIdPanel()
         : toolState.activeSubTab === 'shortlink'
         ? renderShortlinkPanel()
+        : toolState.activeSubTab === 'webproxy'
+        ? renderWebproxyPanel()
         : renderDownloaderPanel();
 
     const visibleUtilityItems = (toolState.utilities?.items || []).filter((it) => it.enabled !== false);
@@ -5776,7 +5813,8 @@ export function createToolsHubController({
         subTab === 'plagiarism' ||
         subTab === 'novel' ||
         subTab === 'callerid' ||
-        subTab === 'shortlink'
+        subTab === 'shortlink' ||
+        subTab === 'webproxy'
       ) {
         toolState.activeSubTab = subTab;
       }
@@ -5844,6 +5882,10 @@ export function createToolsHubController({
       if (shortlinkCtrl) {
         shortlinkCtrl.unmount();
       }
+      if (webproxyCtrl) {
+        webproxyCtrl.unmount();
+        webproxyCtrl = null;
+      }
       stopLiveTimers();
       if (rootEl) rootEl.innerHTML = '';
     },
@@ -5856,6 +5898,7 @@ export function createToolsHubController({
       novelCtrl?.redrawTheme?.();
       callerIdCtrl?.redrawTheme?.();
       shortlinkCtrl?.redrawTheme?.();
+      webproxyCtrl?.redrawTheme?.();
     },
   };
 }
