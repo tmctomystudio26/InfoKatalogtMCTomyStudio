@@ -26,9 +26,9 @@ const MAX_ASSET_BYTES = 14 * 1024 * 1024;
 const DEFAULT_TIMEOUT_MS = 11000;
 
 const PRIVACY_USER_AGENTS = [
-  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
-  'Mozilla/5.0 (Macintosh; Intel Mac OS X 14_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Safari/605.1.15',
-  'Mozilla/5.0 (X11; Linux x86_64; rv:132.0) Gecko/20100101 Firefox/132.0',
+  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36',
+  'Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.6998.135 Mobile Safari/537.36',
+  'Mozilla/5.0 (Macintosh; Intel Mac OS X 14_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.1 Safari/605.1.15',
 ];
 
 const AD_DOMAIN_PATTERNS = [
@@ -225,26 +225,230 @@ export function validatePublicProxyUrl(raw) {
 }
 
 function pickPrivacyUserAgent(node = 'proxy-stealth') {
-  if (node === 'vpn-relay') return PRIVACY_USER_AGENTS[2];
-  if (node === 'reader-antibot') return PRIVACY_USER_AGENTS[1];
+  if (node === 'vpn-relay') return PRIVACY_USER_AGENTS[1];
+  if (node === 'reader-antibot') return PRIVACY_USER_AGENTS[2];
   return PRIVACY_USER_AGENTS[0];
 }
 
-function buildStealthHeaders(node = 'proxy-stealth', accept = 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8') {
-  return {
-    'User-Agent': pickPrivacyUserAgent(node),
+function buildStealthHeaders(
+  node = 'proxy-stealth',
+  accept = 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
+  { isAsset = false, assetKind = 'video' } = {}
+) {
+  const ua = pickPrivacyUserAgent(node);
+  const isMobile = /Android|Mobile/i.test(ua);
+  const isChrome = /Chrome\/134/i.test(ua);
+
+  if (isAsset) {
+    const h = {
+      'User-Agent': ua,
+      Accept:
+        accept ||
+        (assetKind === 'image'
+          ? 'image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8'
+          : '*/*'),
+      'Accept-Language': 'id-ID,id;q=0.9,en-US;q=0.8,en;q=0.7',
+      'Sec-Fetch-Dest': assetKind === 'image' ? 'image' : assetKind === 'audio' ? 'audio' : 'video',
+      'Sec-Fetch-Mode': 'no-cors',
+      'Sec-Fetch-Site': 'cross-site',
+    };
+    if (isChrome) {
+      h['Sec-Ch-Ua'] = '"Chromium";v="134", "Not:A-Brand";v="24", "Google Chrome";v="134"';
+      h['Sec-Ch-Ua-Mobile'] = isMobile ? '?1' : '?0';
+      h['Sec-Ch-Ua-Platform'] = isMobile ? '"Android"' : '"Windows"';
+    }
+    return h;
+  }
+
+  const h = {
+    'User-Agent': ua,
     Accept: accept,
-    'Accept-Language': node === 'vpn-relay' ? 'en-US,en;q=0.9,id;q=0.7' : 'id-ID,id;q=0.9,en-US;q=0.8,en;q=0.7',
-    DNT: '1',
-    'Sec-GPC': '1',
+    'Accept-Language': node === 'vpn-relay' ? 'en-US,en;q=0.9,id;q=0.8' : 'id-ID,id;q=0.9,en-US;q=0.8,en;q=0.7',
     'Upgrade-Insecure-Requests': '1',
-    'Cache-Control': 'no-cache',
+    'Sec-Fetch-Dest': 'document',
+    'Sec-Fetch-Mode': 'navigate',
+    'Sec-Fetch-Site': 'none',
+    'Sec-Fetch-User': '?1',
   };
+  if (isChrome) {
+    h['Sec-Ch-Ua'] = '"Chromium";v="134", "Not:A-Brand";v="24", "Google Chrome";v="134"';
+    h['Sec-Ch-Ua-Mobile'] = isMobile ? '?1' : '?0';
+    h['Sec-Ch-Ua-Platform'] = isMobile ? '"Android"' : '"Windows"';
+  }
+  return h;
+}
+
+function captureEphemeralCookies(response, hostname, cookieJar) {
+  if (!cookieJar || !hostname) return;
+  let setCookies = [];
+  if (typeof response.headers.getSetCookie === 'function') {
+    setCookies = response.headers.getSetCookie();
+  } else {
+    const raw = response.headers.get('set-cookie');
+    if (raw) setCookies = raw.split(/,(?=\s*[a-zA-Z0-9_.-]+=)/);
+  }
+  if (!setCookies.length) return;
+  const hostMap = cookieJar.get(hostname) || new Map();
+  for (const line of setCookies) {
+    const pair = String(line || '').split(';')[0].trim();
+    const eq = pair.indexOf('=');
+    if (eq > 0) {
+      const k = pair.slice(0, eq).trim();
+      const v = pair.slice(eq + 1).trim();
+      if (k && k.length < 120 && v.length < 2048) hostMap.set(k, v);
+    }
+  }
+  cookieJar.set(hostname, hostMap);
+}
+
+function serializeEphemeralCookies(hostname, cookieJar) {
+  if (!cookieJar || !hostname) return '';
+  const parts = [];
+  for (const [jarHost, map] of cookieJar.entries()) {
+    if (hostname === jarHost || hostname.endsWith(`.${jarHost}`)) {
+      for (const [k, v] of map.entries()) {
+        parts.push(`${k}=${v}`);
+      }
+    }
+  }
+  return parts.join('; ');
+}
+
+/**
+ * Normalizes generic upstream MIME types (like application/octet-stream) to the true media MIME
+ * based on URL extension so `X-Content-Type-Options: nosniff` never blocks valid thumbnails or videos.
+ */
+export function inferMediaMimeFromUrl(urlStr, rawContentType = '') {
+  const ct = String(rawContentType || '').split(';')[0].trim().toLowerCase();
+  const isGeneric =
+    !ct ||
+    ct === 'application/octet-stream' ||
+    ct === 'binary/octet-stream' ||
+    ct === 'application/force-download' ||
+    ct === 'text/plain';
+  if (!isGeneric) return ct;
+
+  let pathname = '';
+  try {
+    pathname = new URL(urlStr).pathname.toLowerCase();
+  } catch {
+    pathname = String(urlStr || '').toLowerCase();
+  }
+  if (/\.webp$/i.test(pathname)) return 'image/webp';
+  if (/\.(?:jpe?g|jfif)$/i.test(pathname)) return 'image/jpeg';
+  if (/\.png$/i.test(pathname)) return 'image/png';
+  if (/\.gif$/i.test(pathname)) return 'image/gif';
+  if (/\.avif$/i.test(pathname)) return 'image/avif';
+  if (/\.svg$/i.test(pathname)) return 'image/svg+xml';
+  if (/\.ico$/i.test(pathname)) return 'image/x-icon';
+  if (/\.mp4$|\.m4v$/i.test(pathname)) return 'video/mp4';
+  if (/\.webm$/i.test(pathname)) return 'video/webm';
+  if (/\.mov$/i.test(pathname)) return 'video/quicktime';
+  if (/\.m3u8$/i.test(pathname)) return 'application/vnd.apple.mpegurl';
+  if (/\.ts$/i.test(pathname)) return 'video/mp2t';
+  if (/\.mp3$/i.test(pathname)) return 'audio/mpeg';
+  if (/\.m4a$/i.test(pathname)) return 'audio/mp4';
+  if (/\.ogg$/i.test(pathname)) return 'audio/ogg';
+  if (/\.wav$/i.test(pathname)) return 'audio/wav';
+  return ct || 'application/octet-stream';
+}
+
+/**
+ * Detects HTML-level redirects, `Please visit https://...` stubs, JS location redirects,
+ * simple literal `document.cookie` gates, and anti-bot interstitial pages so the proxy
+ * automatically unwraps them or fails over to a headless HTML mirror instead of trapping users.
+ */
+export function detectInterstitialOrRedirect(rawHtml, currentUrl) {
+  const html = String(rawHtml || '');
+  if (!html.trim()) return null;
+
+  // 1. <meta http-equiv="refresh" content="0; url=https://...">
+  const metaRefresh =
+    html.match(/<meta[^>]+http-equiv\s*=\s*["']refresh["'][^>]+content\s*=\s*["'][^"']*url\s*=\s*([^"'\s;>]+)["']/i) ||
+    html.match(/<meta[^>]+content\s*=\s*["'][^"']*url\s*=\s*([^"'\s;>]+)["'][^>]+http-equiv\s*=\s*["']refresh["']/i);
+  if (metaRefresh?.[1]) {
+    const targetUrl = resolveSafeHttpUrl(decodeHtmlEntities(metaRefresh[1]).replace(/^['"]|['"]$/g, ''), currentUrl);
+    if (targetUrl) {
+      return { kind: 'meta-refresh', targetUrl, cookies: [] };
+    }
+  }
+
+  const plainText = extractPlainTextSnippet(html, 900);
+  const isCompactStub = plainText.length < 480;
+
+  // 2. Simple literal JS cookie gate (e.g. document.cookie="human=1; path=/"; location.reload())
+  const cookies = [];
+  if (isCompactStub && /document\.cookie\s*=/i.test(html)) {
+    const cookieRe = /document\.cookie\s*=\s*["']([a-zA-Z0-9_.-]{1,64}=[^;"'\r\n]{1,256})/gi;
+    let cm;
+    while ((cm = cookieRe.exec(html)) !== null) {
+      cookies.push(cm[1]);
+    }
+  }
+
+  // 3. JS location redirect on stub pages
+  if (isCompactStub) {
+    const jsRedirect = html.match(
+      /(?:window|self|top|document)?\.?location(?:\.href)?\s*=\s*["'](https?:\/\/[^"'\s<>]+|\/[^"'\s<>]+)["']|location\.(?:replace|assign)\(\s*["'](https?:\/\/[^"'\s<>]+|\/[^"'\s<>]+)["']\s*\)/i
+    );
+    const rawJsUrl = jsRedirect?.[1] || jsRedirect?.[2] || '';
+    if (rawJsUrl) {
+      const targetUrl = resolveSafeHttpUrl(decodeHtmlEntities(rawJsUrl), currentUrl);
+      if (targetUrl) {
+        return { kind: cookies.length ? 'cookie-gate' : 'js-redirect', targetUrl, cookies };
+      }
+    }
+  }
+
+  // 4. "Please visit https://..." / "Moved Permanently" / "Redirecting to..." stub pages
+  if (
+    isCompactStub &&
+    /(?:please\s+visit|click\s+here\s+to\s+(?:continue|proceed|visit)|moved\s+permanently|document\s+has\s+moved|object\s+moved|redirecting\s+to|you\s+are\s+being\s+redirected)/i.test(
+      plainText
+    )
+  ) {
+    const anchorMatch = html.match(/<a[^>]+href\s*=\s*["']([^"']+)["']/i);
+    const plainUrlMatch = plainText.match(/https?:\/\/[^\s"'<>]+/i);
+    const candidate = anchorMatch?.[1] || plainUrlMatch?.[0] || '';
+    const targetUrl = candidate ? resolveSafeHttpUrl(decodeHtmlEntities(candidate), currentUrl) : '';
+    return {
+      kind: 'visit-stub',
+      targetUrl: targetUrl || currentUrl,
+      cookies,
+    };
+  }
+
+  // 5. Simple cookie-gate reload on same URL
+  if (cookies.length > 0 && /location\.reload|window\.location/i.test(html)) {
+    return { kind: 'cookie-gate', targetUrl: currentUrl, cookies };
+  }
+
+  // 6. Anti-bot / Cloudflare / DDoS-Guard interstitial stub
+  if (
+    plainText.length < 900 &&
+    /(?:just\s+a\s+moment|checking\s+your\s+browser|enable\s+javascript\s+and\s+cookies|attention\s+required!\s*\|\s*cloudflare|verify\s+you\s+are\s+human|ddos-guard|one\s+more\s+step|cf-browser-verification)/i.test(
+      `${plainText} ${html.slice(0, 2000)}`
+    )
+  ) {
+    return { kind: 'antibot-challenge', targetUrl: currentUrl, cookies };
+  }
+
+  return null;
 }
 
 async function fetchWithSafeRedirects(
   startUrl,
-  { node = 'proxy-stealth', timeoutMs = DEFAULT_TIMEOUT_MS, accept, range, referer, method = 'GET' } = {}
+  {
+    node = 'proxy-stealth',
+    timeoutMs = DEFAULT_TIMEOUT_MS,
+    accept,
+    range,
+    referer,
+    method = 'GET',
+    isAsset = false,
+    assetKind = 'video',
+    cookieJar = new Map(),
+  } = {}
 ) {
   let currentUrl = startUrl;
   const hops = [];
@@ -254,7 +458,7 @@ async function fetchWithSafeRedirects(
     if (!check.ok) {
       throw new Error(check.reason || 'URL tujuan diblokir oleh proteksi keamanan.');
     }
-    const headers = buildStealthHeaders(node, accept);
+    const headers = buildStealthHeaders(node, accept, { isAsset, assetKind });
     if (range) headers.Range = range;
     if (referer) {
       const refCheck = validatePublicProxyUrl(referer);
@@ -262,6 +466,11 @@ async function fetchWithSafeRedirects(
         headers.Referer = refCheck.url;
       }
     }
+    const cookieHeader = serializeEphemeralCookies(check.hostname, cookieJar);
+    if (cookieHeader) {
+      headers.Cookie = cookieHeader;
+    }
+
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), timeoutMs);
     let res;
@@ -276,12 +485,13 @@ async function fetchWithSafeRedirects(
       clearTimeout(timer);
     }
 
+    captureEphemeralCookies(res, check.hostname, cookieJar);
     hops.push({ url: check.url, status: res.status });
 
     if (res.status >= 300 && res.status < 400) {
       const location = res.headers.get('location');
       if (!location) {
-        return { response: res, finalUrl: check.url, hops };
+        return { response: res, finalUrl: check.url, hops, cookieJar };
       }
       let nextUrl;
       try {
@@ -293,7 +503,7 @@ async function fetchWithSafeRedirects(
       continue;
     }
 
-    return { response: res, finalUrl: check.url, hops };
+    return { response: res, finalUrl: check.url, hops, cookieJar };
   }
 
   throw new Error('Terlalu banyak pengalihan (redirect loop terdeteksi).');
@@ -577,9 +787,27 @@ export function sanitizeAndRewriteHtml(
       blockedTrackers += 1;
       return '';
     }
-    // Keep harmless video embeds (YouTube/Vimeo/Dailymotion) sandboxed, block unknown ad frames
-    if (/(youtube\.com|youtube-nocookie\.com|youtu\.be|player\.vimeo\.com|dailymotion\.com)/i.test(attrs)) {
-      return full.replace(/<iframe/i, '<iframe referrerpolicy="no-referrer" loading="lazy"');
+    // Keep legitimate video embed iframes (YouTube/Vimeo/Dailymotion/embed players) safely sandboxed, block ad frames
+    if (
+      /(youtube\.com|youtube-nocookie\.com|youtu\.be|player\.vimeo\.com|dailymotion\.com|ok\.ru|vk\.com\/video|rumble\.com|archive\.org\/embed|streamable\.com|\/embed\/|\/player\/|player\.|stream\.)/i.test(
+        attrs
+      )
+    ) {
+      let cleanedFrame = full.replace(/\s+sandbox\s*=\s*(?:"[^"]*"|'[^']*')/gi, '');
+      const lazyIframeSrc = attrs.match(/\bdata-src\s*=\s*["']([^"']+)["']/i)?.[1];
+      const curIframeSrc = attrs.match(/\bsrc\s*=\s*["']([^"']*)["']/i)?.[1] || '';
+      if (lazyIframeSrc && (!curIframeSrc || curIframeSrc === 'about:blank') && !/^javascript:/i.test(lazyIframeSrc)) {
+        const resolvedFrameSrc = escapeHtmlAttr(resolveSafeHttpUrl(decodeHtmlEntities(lazyIframeSrc), finalUrl) || lazyIframeSrc);
+        if (/\bsrc\s*=/i.test(cleanedFrame)) {
+          cleanedFrame = cleanedFrame.replace(/\bsrc\s*=\s*["'][^"']*["']/i, `src="${resolvedFrameSrc}"`);
+        } else {
+          cleanedFrame = cleanedFrame.replace(/<iframe/i, `<iframe src="${resolvedFrameSrc}"`);
+        }
+      }
+      return cleanedFrame.replace(
+        /<iframe/i,
+        '<iframe referrerpolicy="no-referrer" loading="lazy" allow="fullscreen; autoplay; encrypted-media; picture-in-picture" sandbox="allow-scripts allow-same-origin allow-presentation allow-forms"'
+      );
     }
     blockedAds += 1;
     return '';
@@ -589,7 +817,7 @@ export function sanitizeAndRewriteHtml(
   html = cleanWaybackHtml(html);
 
   // Strip 1x1 tracking pixel images, promote lazy-loaded data-* thumbnails, and route through asset proxy
-  // so thumbnails on ISP-blocked or anti-hotlink sites ALWAYS render cleanly
+  // with `data-wpb-orig` preserved for automatic 3-tier self-healing fallback (proxy -> wsrv.nl -> direct)
   html = html.replace(/<img\b([^>]*)>/gi, (_full, attrs) => {
     if (antiTrack) {
       if (matchesAnyPattern(attrs, TRACKER_DOMAIN_PATTERNS) || matchesAnyPattern(attrs, AD_DOMAIN_PATTERNS)) {
@@ -626,13 +854,18 @@ export function sanitizeAndRewriteHtml(
     }
 
     if (chosenSrc) {
-      const proxiedImg = escapeHtmlAttr(buildProxiedAssetUrl(decodeHtmlEntities(chosenSrc), finalUrl, proxyOrigin));
+      const decodedChosen = decodeHtmlEntities(chosenSrc);
+      const absOrig = resolveSafeHttpUrl(decodedChosen, finalUrl);
+      const proxiedImg = escapeHtmlAttr(buildProxiedAssetUrl(decodedChosen, finalUrl, proxyOrigin));
       if (/\bsrc\s*=/i.test(nextAttrs)) {
         nextAttrs = nextAttrs.replace(/\bsrc\s*=\s*["'][^"']*["']/i, `src="${proxiedImg}"`);
       } else {
         nextAttrs = ` src="${proxiedImg}"${nextAttrs}`;
       }
-      // Drop unproxied srcset so browser uses our proxied src instead of hitting blocked CDNs directly
+      if (absOrig && !/\bdata-wpb-orig\s*=/i.test(nextAttrs)) {
+        nextAttrs += ` data-wpb-orig="${escapeHtmlAttr(absOrig)}"`;
+      }
+      // Drop unproxied srcset so browser uses our proxied src + 3-tier self-healing loader
       if (proxyOrigin) {
         nextAttrs = nextAttrs.replace(/\s+(?:data-)?srcset\s*=\s*(?:"[^"]*"|'[^']*')/gi, '');
       }
@@ -648,27 +881,37 @@ export function sanitizeAndRewriteHtml(
     return `<img${nextAttrs}>`;
   });
 
-  // Rewrite <video> & <audio> src/poster through streaming Range-capable asset proxy so videos PLAY smoothly
+  // Rewrite <video> & <audio> src/poster through streaming Range-capable asset proxy with self-healing metadata
   html = html.replace(/<(video|audio)\b([^>]*)>/gi, (_full, tag, attrs) => {
     let nextAttrs = attrs.replace(/\s+crossorigin(?:\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+))?/gi, '');
     const lazySrc = nextAttrs.match(/\b(?:data-src|data-video-src|data-url)\s*=\s*["']([^"']+)["']/i)?.[1];
     const rawSrc = nextAttrs.match(/\bsrc\s*=\s*["']([^"']+)["']/i)?.[1] || lazySrc || '';
     if (rawSrc && !/^javascript:/i.test(rawSrc)) {
-      const proxied = escapeHtmlAttr(buildProxiedAssetUrl(decodeHtmlEntities(rawSrc), finalUrl, proxyOrigin));
+      const decoded = decodeHtmlEntities(rawSrc);
+      const absOrig = resolveSafeHttpUrl(decoded, finalUrl);
+      const proxied = escapeHtmlAttr(buildProxiedAssetUrl(decoded, finalUrl, proxyOrigin));
       if (/\bsrc\s*=/i.test(nextAttrs)) {
         nextAttrs = nextAttrs.replace(/\bsrc\s*=\s*["'][^"']*["']/i, `src="${proxied}"`);
       } else {
         nextAttrs = ` src="${proxied}"${nextAttrs}`;
       }
+      if (absOrig && !/\bdata-wpb-orig\s*=/i.test(nextAttrs)) {
+        nextAttrs += ` data-wpb-orig="${escapeHtmlAttr(absOrig)}"`;
+      }
     }
     const lazyPoster = nextAttrs.match(/\bdata-poster\s*=\s*["']([^"']+)["']/i)?.[1];
     const rawPoster = nextAttrs.match(/\bposter\s*=\s*["']([^"']+)["']/i)?.[1] || lazyPoster || '';
     if (rawPoster && !/^javascript:/i.test(rawPoster)) {
-      const proxiedPoster = escapeHtmlAttr(buildProxiedAssetUrl(decodeHtmlEntities(rawPoster), finalUrl, proxyOrigin));
+      const decodedPoster = decodeHtmlEntities(rawPoster);
+      const absPoster = resolveSafeHttpUrl(decodedPoster, finalUrl);
+      const proxiedPoster = escapeHtmlAttr(buildProxiedAssetUrl(decodedPoster, finalUrl, proxyOrigin));
       if (/\bposter\s*=/i.test(nextAttrs)) {
         nextAttrs = nextAttrs.replace(/\bposter\s*=\s*["'][^"']*["']/i, `poster="${proxiedPoster}"`);
       } else {
         nextAttrs = ` poster="${proxiedPoster}"${nextAttrs}`;
+      }
+      if (absPoster && !/\bdata-wpb-orig-poster\s*=/i.test(nextAttrs)) {
+        nextAttrs += ` data-wpb-orig-poster="${escapeHtmlAttr(absPoster)}"`;
       }
     }
     if (!/\bcontrols\b/i.test(nextAttrs)) nextAttrs += ' controls';
@@ -677,32 +920,33 @@ export function sanitizeAndRewriteHtml(
     return `<${tag}${nextAttrs}>`;
   });
 
-  // Rewrite <source src="..."> inside <video>/<audio>/<picture> through streaming asset proxy
+  // Unwrap <picture> <source srcset> (so self-healing <img> wins) & rewrite video/audio <source src>
   html = html.replace(/<source\b([^>]*)>/gi, (_full, attrs) => {
     let nextAttrs = attrs;
+    const isImageSource = /\bsrcset\s*=/i.test(nextAttrs) && !/\bsrc\s*=/i.test(nextAttrs);
+    if (proxyOrigin && isImageSource) {
+      return '';
+    }
     const lazySrc = nextAttrs.match(/\b(?:data-src|data-url)\s*=\s*["']([^"']+)["']/i)?.[1];
     const rawSrc = nextAttrs.match(/\bsrc\s*=\s*["']([^"']+)["']/i)?.[1] || lazySrc || '';
     if (rawSrc && !/^javascript:/i.test(rawSrc)) {
-      const proxied = escapeHtmlAttr(buildProxiedAssetUrl(decodeHtmlEntities(rawSrc), finalUrl, proxyOrigin));
+      const decoded = decodeHtmlEntities(rawSrc);
+      const absOrig = resolveSafeHttpUrl(decoded, finalUrl);
+      const proxied = escapeHtmlAttr(buildProxiedAssetUrl(decoded, finalUrl, proxyOrigin));
       if (/\bsrc\s*=/i.test(nextAttrs)) {
         nextAttrs = nextAttrs.replace(/\bsrc\s*=\s*["'][^"']*["']/i, `src="${proxied}"`);
       } else {
         nextAttrs = ` src="${proxied}"${nextAttrs}`;
       }
-    }
-    if (proxyOrigin && /\bsrcset\s*=/i.test(nextAttrs)) {
-      const srcsetVal = nextAttrs.match(/\bsrcset\s*=\s*["']([^"']+)["']/i)?.[1] || '';
-      const firstUrl = srcsetVal.split(',')[0].trim().split(/\s+/)[0];
-      if (firstUrl && !/^javascript:/i.test(firstUrl)) {
-        const proxiedSet = escapeHtmlAttr(buildProxiedAssetUrl(decodeHtmlEntities(firstUrl), finalUrl, proxyOrigin));
-        nextAttrs = nextAttrs.replace(/\bsrcset\s*=\s*["'][^"']*["']/i, `srcset="${proxiedSet}"`);
+      if (absOrig && !/\bdata-wpb-orig\s*=/i.test(nextAttrs)) {
+        nextAttrs += ` data-wpb-orig="${escapeHtmlAttr(absOrig)}"`;
       }
     }
     return `<source${nextAttrs}>`;
   });
 
   // If a page's JS normally hydrates <video> at runtime (so <video> has no src and no child <source src>),
-  // automatically attach the first detected video stream (proxied) so playback works immediately!
+  // automatically attach the first detected video stream (proxied + original fallback) so playback works immediately!
   const fallbackVideoMedia = Array.isArray(detectedMedia)
     ? detectedMedia.find((m) => m && m.kind === 'video' && m.url)
     : null;
@@ -710,11 +954,12 @@ export function sanitizeAndRewriteHtml(
     const fallbackProxiedVideo = escapeHtmlAttr(
       buildProxiedAssetUrl(fallbackVideoMedia.url, finalUrl, proxyOrigin)
     );
+    const fallbackOrigVideo = escapeHtmlAttr(fallbackVideoMedia.url);
     html = html.replace(/<video\b([^>]*)>([\s\S]*?)<\/video>/gi, (full, attrs, inner) => {
       const hasDirectSrc = /\bsrc\s*=\s*["'][^"']+["']/i.test(attrs);
       const hasChildSource = /<source\b[^>]*\bsrc\s*=\s*["'][^"']+["']/i.test(inner);
       if (hasDirectSrc || hasChildSource) return full;
-      return `<video${attrs} src="${fallbackProxiedVideo}">${inner}</video>`;
+      return `<video${attrs} src="${fallbackProxiedVideo}" data-wpb-orig="${fallbackOrigVideo}">${inner}</video>`;
     });
   }
 
@@ -786,17 +1031,115 @@ export function sanitizeAndRewriteHtml(
     </style>
   `;
 
-  // Safe navigation bridge inside sandboxed iframe (NO allow-same-origin, communicates solely via postMessage)
+  // Safe navigation + 3-tier self-healing thumbnail/video/HLS bridge inside sandboxed iframe
+  // (NO allow-same-origin, communicates solely via postMessage)
+  const hlsVendorUrl = proxyOrigin ? `${proxyOrigin}/js/vendor/hls.min.js` : '';
   const navBridgeScript = `
     <script data-manifest-proxy-nav>
       (function(){
         var BASE = ${JSON.stringify(finalUrl)};
+        var HLS_SRC = ${JSON.stringify(hlsVendorUrl)};
         function resolveNav(raw) {
           if (!raw) return '';
           var s = String(raw).trim();
           if (!s || s.startsWith('#') || /^javascript:/i.test(s) || /^mailto:/i.test(s) || /^tel:/i.test(s)) return '';
           try { return new URL(s, BASE).toString(); } catch (e) { return ''; }
         }
+        function wsrvUrl(orig) {
+          return 'https://wsrv.nl/?url=' + encodeURIComponent(orig) + '&n=-1';
+        }
+        // 3-Tier Self-Healing Image & Video Recovery (Proxy -> wsrv.nl -> Direct)
+        document.addEventListener('error', function(e) {
+          var el = e.target;
+          if (!el || !el.tagName) return;
+          var tag = el.tagName.toUpperCase();
+          if (tag === 'IMG') {
+            var orig = el.getAttribute('data-wpb-orig');
+            if (!orig) return;
+            var step = Number(el.getAttribute('data-wpb-fb') || '0');
+            if (step === 0) {
+              el.setAttribute('data-wpb-fb', '1');
+              el.src = wsrvUrl(orig);
+            } else if (step === 1) {
+              el.setAttribute('data-wpb-fb', '2');
+              el.src = orig;
+            }
+            return;
+          }
+          if (tag === 'SOURCE' && el.parentElement && el.parentElement.tagName === 'VIDEO') {
+            var vParent = el.parentElement;
+            var sOrig = el.getAttribute('data-wpb-orig');
+            var sStep = Number(el.getAttribute('data-wpb-fb') || '0');
+            if (sOrig && sStep === 0) {
+              el.setAttribute('data-wpb-fb', '1');
+              el.src = sOrig;
+              try { vParent.load(); } catch (err) {}
+            }
+            return;
+          }
+          if (tag === 'VIDEO' || tag === 'AUDIO') {
+            var mOrig = el.getAttribute('data-wpb-orig');
+            var mStep = Number(el.getAttribute('data-wpb-fb') || '0');
+            if (mOrig && mStep === 0) {
+              el.setAttribute('data-wpb-fb', '1');
+              el.src = mOrig;
+              try { el.load(); } catch (err) {}
+            }
+          }
+        }, true);
+
+        // Self-healing <video poster> + Same-Origin HLS.js auto-engine for .m3u8 streams
+        function initMediaEnhancements() {
+          var videos = document.querySelectorAll('video');
+          var hlsTargets = [];
+          videos.forEach(function(v) {
+            var origPoster = v.getAttribute('data-wpb-orig-poster');
+            if (origPoster && v.poster && v.poster.indexOf('/api/web-proxy?mode=asset') !== -1) {
+              var probe = new Image();
+              probe.referrerPolicy = 'no-referrer';
+              probe.onerror = function() {
+                var p2 = new Image();
+                p2.referrerPolicy = 'no-referrer';
+                p2.onload = function() { v.poster = wsrvUrl(origPoster); };
+                p2.onerror = function() { v.poster = origPoster; };
+                p2.src = wsrvUrl(origPoster);
+              };
+              probe.src = v.poster;
+            }
+            var srcEl = v.querySelector('source[src]');
+            var activeUrl = v.getAttribute('src') || (srcEl && srcEl.getAttribute('src')) || '';
+            var origUrl = v.getAttribute('data-wpb-orig') || (srcEl && srcEl.getAttribute('data-wpb-orig')) || '';
+            if (/\.m3u8(?:$|[?#%&])/i.test(origUrl) || /\.m3u8(?:$|[?#%&])/i.test(activeUrl)) {
+              hlsTargets.push({ video: v, proxied: activeUrl, orig: origUrl });
+            }
+          });
+          if (hlsTargets.length > 0 && HLS_SRC) {
+            var sc = document.createElement('script');
+            sc.src = HLS_SRC;
+            sc.onload = function() {
+              if (!window.Hls || !window.Hls.isSupported()) return;
+              hlsTargets.forEach(function(item) {
+                var hls = new window.Hls({ enableWorker: false, lowLatencyMode: false });
+                var triedDirect = false;
+                hls.on(window.Hls.Events.ERROR, function(_ev, data) {
+                  if (data && data.fatal && !triedDirect && item.orig && item.orig !== item.proxied) {
+                    triedDirect = true;
+                    hls.loadSource(item.orig);
+                  }
+                });
+                hls.loadSource(item.proxied || item.orig);
+                hls.attachMedia(item.video);
+              });
+            };
+            document.head.appendChild(sc);
+          }
+        }
+        if (document.readyState === 'loading') {
+          document.addEventListener('DOMContentLoaded', initMediaEnhancements);
+        } else {
+          initMediaEnhancements();
+        }
+
         document.addEventListener('click', function(e) {
           var a = e.target && e.target.closest ? e.target.closest('a[href]') : null;
           if (!a) return;
@@ -914,16 +1257,83 @@ export function cleanWaybackHtml(rawHtml = '') {
 }
 
 /**
- * Fallback reader mirror (Jina AI Reader / AllOrigins / Wayback Raw id_ Snapshot) for anti-bot sites.
+ * Fallback anti-bot mirror cascade:
+ *  1. Jina Headless Browser (`X-Return-Format: html`) — executes JS challenges, resolves "Please visit" stubs,
+ *     hydrates lazy thumbnails & video elements, and returns REAL full-CSS HTML!
+ *  2. AllOrigins & CodeTabs community relays — bypass Cloudflare-Worker IP blocks
+ *  3. Jina Clean Markdown Reader — clean article fallback
+ *  4. Wayback Archive Raw (`id_`) — historical snapshot fallback
  */
 async function fetchViaFallbackMirror(targetUrl, preferredNode = 'reader-antibot', { allowWayback = true } = {}) {
   const attempts = [];
 
-  // 1. Jina Reader (clean, free open-source anti-bot reader)
+  // 1. Jina Headless HTML Mirror (preserves real site layout, thumbnails & video tags while bypassing JS/cookie walls)
   if (preferredNode === 'reader-antibot' || preferredNode === 'multi-hop-auto' || preferredNode === 'vpn-relay') {
     try {
       const controller = new AbortController();
-      const timer = setTimeout(() => controller.abort(), 9000);
+      const timer = setTimeout(() => controller.abort(), 11000);
+      const res = await fetch(`https://r.jina.ai/${targetUrl}`, {
+        headers: {
+          'X-Return-Format': 'html',
+          'X-No-Cache': 'true',
+          'X-Timeout': '10',
+        },
+        signal: controller.signal,
+      }).finally(() => clearTimeout(timer));
+
+      if (res.ok) {
+        const html = await readTextCapped(res, MAX_HTML_BYTES);
+        const looksHtml = /<(?:html|body|div|main|article|section|video|img)\b/i.test(html);
+        const stub = detectInterstitialOrRedirect(html, targetUrl);
+        if (looksHtml && html.trim().length > 220 && !stub) {
+          return {
+            ok: true,
+            relayUsed: 'Headless Anti-Bot Browser Relay',
+            html,
+            textSnippet: extractPlainTextSnippet(html),
+            title: '',
+          };
+        }
+      }
+      attempts.push({ relay: 'Jina Headless HTML', status: res.status });
+    } catch {
+      attempts.push({ relay: 'Jina Headless HTML', status: 'timeout' });
+    }
+  }
+
+  // 2. AllOrigins & CodeTabs free community proxies (non-Cloudflare-Worker egress IPs)
+  for (const relay of [
+    { name: 'AllOrigins Community Relay', url: `https://api.allorigins.win/raw?url=${encodeURIComponent(targetUrl)}` },
+    { name: 'CodeTabs Community Relay', url: `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(targetUrl)}` },
+  ]) {
+    try {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 7500);
+      const res = await fetch(relay.url, { signal: controller.signal }).finally(() => clearTimeout(timer));
+      if (res.ok) {
+        const html = await readTextCapped(res, MAX_HTML_BYTES);
+        const stub = detectInterstitialOrRedirect(html, targetUrl);
+        if (html.trim().length > 120 && !stub) {
+          return {
+            ok: true,
+            relayUsed: relay.name,
+            html,
+            textSnippet: extractPlainTextSnippet(html),
+            title: '',
+          };
+        }
+      }
+      attempts.push({ relay: relay.name, status: res.status });
+    } catch {
+      attempts.push({ relay: relay.name, status: 'timeout' });
+    }
+  }
+
+  // 3. Jina Clean Markdown Reader (always-readable clean text + images fallback)
+  if (preferredNode === 'reader-antibot' || preferredNode === 'multi-hop-auto' || preferredNode === 'vpn-relay') {
+    try {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 8500);
       const res = await fetch(`https://r.jina.ai/${targetUrl}`, {
         headers: {
           Accept: 'text/plain',
@@ -952,7 +1362,7 @@ async function fetchViaFallbackMirror(targetUrl, preferredNode = 'reader-antibot
               const trimmed = block.trim();
               if (!trimmed) return '';
               const formatted = escapeHtmlAttr(trimmed)
-                .replace(mdImgRe, '<figure><img src="$2" alt="$1" loading="lazy" referrerpolicy="no-referrer"></figure>')
+                .replace(mdImgRe, '<figure><img src="$2" alt="$1" referrerpolicy="no-referrer"></figure>')
                 .replace(mdLinkRe, '<a href="$2">$1</a>')
                 .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
                 .replace(/\n/g, '<br>');
@@ -992,31 +1402,7 @@ async function fetchViaFallbackMirror(targetUrl, preferredNode = 'reader-antibot
     }
   }
 
-  // 2. AllOrigins free community proxy
-  try {
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 8500);
-    const res = await fetch(`https://api.allorigins.win/raw?url=${encodeURIComponent(targetUrl)}`, {
-      signal: controller.signal,
-    }).finally(() => clearTimeout(timer));
-    if (res.ok) {
-      const html = await readTextCapped(res, MAX_HTML_BYTES);
-      if (html.trim().length > 60) {
-        return {
-          ok: true,
-          relayUsed: 'AllOrigins Community Relay',
-          html,
-          textSnippet: extractPlainTextSnippet(html),
-          title: '',
-        };
-      }
-    }
-    attempts.push({ relay: 'AllOrigins', status: res.status });
-  } catch {
-    attempts.push({ relay: 'AllOrigins', status: 'timeout' });
-  }
-
-  // 3. Wayback Archive Raw Snapshot (uses id_ flag + cleanWaybackHtml so CSS & images stay intact)
+  // 4. Wayback Archive Raw Snapshot (uses id_ flag + cleanWaybackHtml so CSS & images stay intact)
   if (allowWayback) {
     try {
       const controller = new AbortController();
@@ -1306,37 +1692,90 @@ async function handleAssetOrDownload(
   }
 
   try {
-    const primaryReferer = refererUrl || `${new URL(check.url).origin}/`;
+    const targetPath = new URL(check.url).pathname;
+    const isLikelyImage = /\.(?:jpe?g|png|webp|gif|avif|svg|ico|jfif)(?:$|\?)/i.test(targetPath);
+    const isLikelyAudio = /\.(?:mp3|m4a|ogg|wav|aac|flac)(?:$|\?)/i.test(targetPath);
+    const assetKind = isLikelyImage ? 'image' : isLikelyAudio ? 'audio' : 'video';
+    const targetOriginRef = `${new URL(check.url).origin}/`;
+    const primaryReferer = refererUrl || targetOriginRef;
+
     let fetched = await fetchWithSafeRedirects(check.url, {
-      node: 'vpn-relay',
+      node: 'proxy-stealth',
       timeoutMs: 18000,
-      accept: '*/*',
+      accept: isLikelyImage ? 'image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8' : '*/*',
       range: !asDownload && rangeHeader ? rangeHeader : '',
       referer: primaryReferer,
       method,
+      isAsset: true,
+      assetKind,
     });
-    if (fetched.response.status === 403) {
-      // Some CDNs block cross-site Referer while others require same-origin Referer; retry cleanly without Referer
+
+    // Failover 1: try target's own origin Referer if page Referer was rejected
+    if ((fetched.response.status === 401 || fetched.response.status === 403) && primaryReferer !== targetOriginRef) {
       try {
         await fetched.response.body?.cancel?.();
       } catch {
         // ignore
       }
       fetched = await fetchWithSafeRedirects(check.url, {
-        node: 'proxy-stealth',
+        node: 'vpn-relay',
         timeoutMs: 16000,
-        accept: '*/*',
+        accept: isLikelyImage ? 'image/avif,image/webp,image/apng,image/*,*/*;q=0.8' : '*/*',
+        range: !asDownload && rangeHeader ? rangeHeader : '',
+        referer: targetOriginRef,
+        method,
+        isAsset: true,
+        assetKind,
+      });
+    }
+
+    // Failover 2: try with NO Referer (some CDNs strictly reject any cross-site Referer)
+    if (fetched.response.status === 401 || fetched.response.status === 403) {
+      try {
+        await fetched.response.body?.cancel?.();
+      } catch {
+        // ignore
+      }
+      fetched = await fetchWithSafeRedirects(check.url, {
+        node: 'reader-antibot',
+        timeoutMs: 15000,
+        accept: isLikelyImage ? 'image/avif,image/webp,image/apng,image/*,*/*;q=0.8' : '*/*',
         range: !asDownload && rangeHeader ? rangeHeader : '',
         referer: '',
         method,
+        isAsset: true,
+        assetKind,
       });
     }
+
+    // Failover 3 (Images): if origin CDN blocks Cloudflare Worker IPs (403/5xx), fetch via free open-source wsrv.nl CDN
+    if (!asDownload && isLikelyImage && !fetched.response.ok) {
+      try {
+        await fetched.response.body?.cancel?.();
+      } catch {
+        // ignore
+      }
+      try {
+        const wsrvController = new AbortController();
+        const wsrvTimer = setTimeout(() => wsrvController.abort(), 9000);
+        const wsrvRes = await fetch(`https://wsrv.nl/?url=${encodeURIComponent(check.url)}&n=-1`, {
+          method: method === 'HEAD' ? 'HEAD' : 'GET',
+          signal: wsrvController.signal,
+        }).finally(() => clearTimeout(wsrvTimer));
+        if (wsrvRes.ok) {
+          fetched = { response: wsrvRes, finalUrl: check.url, hops: fetched.hops };
+        }
+      } catch {
+        // Keep original status error
+      }
+    }
+
     const { response, finalUrl } = fetched;
     if (!response.ok && response.status !== 206) {
       return jsonResponse({ ok: false, error: `Server sumber mengembalikan status ${response.status}.` }, 502);
     }
 
-    const contentType = String(response.headers.get('content-type') || 'application/octet-stream').split(';')[0].trim();
+    const contentType = inferMediaMimeFromUrl(finalUrl, response.headers.get('content-type') || '');
     if (/application\/x-msdownload|application\/vnd\.android\.package-archive|application\/x-sh/i.test(contentType)) {
       return jsonResponse({ ok: false, error: 'Tipe berkas berbahaya diblokir oleh anti-malware.' }, 403);
     }
@@ -1583,6 +2022,63 @@ export async function handleWebProxyRequest(request) {
           }
         } else {
           rawHtml = await readTextCapped(fetched.response, MAX_HTML_BYTES);
+
+          // Automatically unwrap HTML meta-refresh, JS redirects, literal cookie-gates, and
+          // "Please visit https://..." / anti-bot challenge stubs (up to 3 safe hops + Headless Browser failover)
+          const ephemeralJar = fetched.cookieJar || new Map();
+          const visitedHtmlHops = new Set([finalUrl]);
+          for (let hHop = 0; hHop < 3; hHop += 1) {
+            const stub = detectInterstitialOrRedirect(rawHtml, finalUrl);
+            if (!stub) break;
+
+            // Attach any literal cookies from a cookie-gate page to this request's ephemeral jar only
+            if (stub.cookies?.length) {
+              try {
+                const hName = new URL(finalUrl).hostname.toLowerCase();
+                const map = ephemeralJar.get(hName) || new Map();
+                for (const kv of stub.cookies) {
+                  const eq = kv.indexOf('=');
+                  if (eq > 0) map.set(kv.slice(0, eq).trim(), kv.slice(eq + 1).trim());
+                }
+                ephemeralJar.set(hName, map);
+              } catch {
+                // ignore
+              }
+            }
+
+            const targetIsNew = stub.targetUrl && !visitedHtmlHops.has(stub.targetUrl);
+            if (stub.kind !== 'antibot-challenge' && (targetIsNew || stub.kind === 'cookie-gate')) {
+              const nextTarget = stub.targetUrl || finalUrl;
+              visitedHtmlHops.add(nextTarget);
+              try {
+                const nextFetched = await fetchWithSafeRedirects(nextTarget, {
+                  node: hHop === 0 ? node : 'proxy-stealth',
+                  timeoutMs: DEFAULT_TIMEOUT_MS,
+                  referer: finalUrl,
+                  cookieJar: ephemeralJar,
+                });
+                finalUrl = nextFetched.finalUrl;
+                statusCode = nextFetched.response.status;
+                if (statusCode >= 200 && statusCode < 400) {
+                  rawHtml = await readTextCapped(nextFetched.response, MAX_HTML_BYTES);
+                  continue;
+                }
+              } catch {
+                // Fall through to headless anti-bot mirror below
+              }
+            }
+
+            // Still stuck on "Please visit https://..." loop or anti-bot JS challenge -> Headless Browser Mirror!
+            const mirror = await fetchViaFallbackMirror(stub.targetUrl || finalUrl, 'multi-hop-auto');
+            if (mirror.ok) {
+              rawHtml = mirror.html;
+              finalUrl = stub.targetUrl || finalUrl;
+              relayUsed = `${mirror.relayUsed} (Anti-Redirect Auto)`;
+              usedFallback = true;
+              statusCode = 200;
+            }
+            break;
+          }
         }
       } catch (directErr) {
         const mirror = await fetchViaFallbackMirror(validation.url, 'multi-hop-auto');

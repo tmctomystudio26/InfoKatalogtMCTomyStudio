@@ -26,7 +26,9 @@ import {
 import {
   buildProxiedAssetUrl,
   cleanWaybackHtml,
+  detectInterstitialOrRedirect,
   extractMediaFromHtml,
+  inferMediaMimeFromUrl,
   sanitizeAndRewriteHtml,
   validatePublicProxyUrl,
 } from '../functions/api/web-proxy.js';
@@ -243,6 +245,53 @@ test('v93 Web Proxy Backend: rewrites lazy thumbnails, video/source/poster, data
   assert.ok(res.sanitizedHtml.includes(encodeURIComponent('https://stream.blocked.example/clip.mp4')));
   assert.ok(res.sanitizedHtml.includes(encodeURIComponent('https://stream.blocked.example/hydrated.mp4')));
   assert.match(res.sanitizedHtml, /<video[^>]*controls[^>]*playsinline/i);
+});
+
+test('v94 Web Proxy Backend: unwraps Please-visit/meta-refresh/JS-redirect/cookie-gate stubs, normalizes MIME types, and injects 3-tier self-healing img/video/HLS recovery', () => {
+  // 1. "Please visit https://..." stub detection
+  const pleaseVisitHtml = `<html><body><h1>Please visit <a href="https://mirror.example.com/watch">https://mirror.example.com/watch</a></h1></body></html>`;
+  const stub1 = detectInterstitialOrRedirect(pleaseVisitHtml, 'https://old.example.com/');
+  assert.equal(stub1?.kind, 'visit-stub');
+  assert.equal(stub1?.targetUrl, 'https://mirror.example.com/watch');
+
+  // 2. Meta-refresh detection
+  const metaHtml = `<html><head><meta http-equiv="refresh" content="0; url=/real-home"></head><body>Redirecting...</body></html>`;
+  const stub2 = detectInterstitialOrRedirect(metaHtml, 'https://portal.example.com/');
+  assert.equal(stub2?.kind, 'meta-refresh');
+  assert.equal(stub2?.targetUrl, 'https://portal.example.com/real-home');
+
+  // 3. Literal cookie-gate detection
+  const cookieHtml = `<html><head><script>document.cookie="human_ok=1; path=/"; location.reload();</script></head><body>Please wait...</body></html>`;
+  const stub3 = detectInterstitialOrRedirect(cookieHtml, 'https://gate.example.com/page');
+  assert.equal(stub3?.kind, 'cookie-gate');
+  assert.deepEqual(stub3?.cookies, ['human_ok=1']);
+
+  // 4. Normal page must NOT trigger interstitial detection
+  const normalPage = `<html><body><main><h1>Berita Hari Ini</h1><p>${'Konten artikel lengkap tentang teknologi dan ekonomi Indonesia. '.repeat(20)}</p></main></body></html>`;
+  assert.equal(detectInterstitialOrRedirect(normalPage, 'https://news.example.com/1'), null);
+
+  // 5. MIME normalization fixes application/octet-stream so nosniff never breaks media
+  assert.equal(inferMediaMimeFromUrl('https://cdn.example.com/thumb.webp', 'application/octet-stream'), 'image/webp');
+  assert.equal(inferMediaMimeFromUrl('https://cdn.example.com/video.mp4', 'binary/octet-stream'), 'video/mp4');
+  assert.equal(inferMediaMimeFromUrl('https://cdn.example.com/live.m3u8', 'text/plain'), 'application/vnd.apple.mpegurl');
+  assert.equal(inferMediaMimeFromUrl('https://cdn.example.com/photo', 'image/jpeg; charset=utf-8'), 'image/jpeg');
+
+  // 6. 3-tier self-healing attributes (data-wpb-orig, data-wpb-orig-poster, wsrv.nl, same-origin hls.min.js)
+  const origin = 'https://manifestudio.my.id';
+  const htmlWithHls = `
+    <html><body>
+      <picture><source srcset="https://cdn.example.com/a.avif"><img src="https://cdn.example.com/a.jpg" alt="Card"></picture>
+      <video poster="https://cdn.example.com/p.jpg"><source src="https://cdn.example.com/stream.m3u8" type="application/vnd.apple.mpegurl"></video>
+    </body></html>
+  `;
+  const rewritten = sanitizeAndRewriteHtml(htmlWithHls, 'https://watch.example.com/v/1', { proxyOrigin: origin });
+  assert.ok(rewritten.sanitizedHtml.includes('data-wpb-orig="https://cdn.example.com/a.jpg"'));
+  assert.ok(rewritten.sanitizedHtml.includes('data-wpb-orig-poster="https://cdn.example.com/p.jpg"'));
+  assert.ok(rewritten.sanitizedHtml.includes('data-wpb-orig="https://cdn.example.com/stream.m3u8"'));
+  assert.ok(rewritten.sanitizedHtml.includes('https://wsrv.nl/?url='));
+  assert.ok(rewritten.sanitizedHtml.includes(`${origin}/js/vendor/hls.min.js`));
+  // <picture> <source srcset> unwrapped so self-healing <img> controls fallback
+  assert.equal(rewritten.sanitizedHtml.includes('a.avif'), false);
 });
 
 test('v91 Web Proxy: security audit, multi-tab history, Incognito zero-history guarantee, and Multi-AI context', () => {
