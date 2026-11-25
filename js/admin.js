@@ -100,6 +100,7 @@ const BANNER_IMAGE_PRESETS = [
   { value: './assets/banners/banner-plagiarism.jpg', label: 'Maskot Cek Plagiarisme' },
   { value: './assets/banners/banner-novel.jpg', label: 'Maskot Novel Terpadu' },
   { value: './assets/banners/banner-callerid.jpg', label: 'Maskot Cek Nomor & Anti-Spam' },
+  { value: './assets/banners/banner-shortlink.jpg', label: 'Maskot Shortlink Bypass (Anti-Malware)' },
   { value: '', label: 'Tanpa Gambar (Hanya Gradien Warna)' },
 ];
 
@@ -132,6 +133,7 @@ const UTILITY_ICON_PRESETS = [
   { value: './assets/icons/tool-plagiarism.svg', label: 'Ikon Cek Plagiarisme' },
   { value: './assets/icons/tool-novel.svg', label: 'Ikon Novel Terpadu' },
   { value: './assets/icons/tool-callerid.svg', label: 'Ikon Cek Nomor & Anti-Spam' },
+  { value: './assets/icons/tool-shortlink.svg', label: 'Ikon Shortlink Bypass' },
 ];
 
 const adminState = {
@@ -4526,7 +4528,7 @@ function renderUtilitiesSettings() {
             <div>
               <strong class="admin-social-title">Asisten Mengambang "Tanya Fitur" (Customer Service AI)</strong>
               <div class="admin-prod-meta">
-                Tampil di pojok kanan bawah Manifestudio — khusus menjawab pertanyaan &amp; pemecahan masalah 15 fitur secara faktual.
+                Tampil di pojok kanan bawah Manifestudio — khusus menjawab pertanyaan &amp; pemecahan masalah 16 fitur secara faktual.
               </div>
             </div>
           </div>

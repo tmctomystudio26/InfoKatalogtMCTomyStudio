@@ -528,7 +528,7 @@ export function inferBannerUtilityId(banner = {}) {
   const href = String(banner?.href || '').trim();
   const match = href.match(/[?&](?:tab|tool)=([a-z0-9_-]+)/i);
   if (match && match[1]) return match[1].toLowerCase();
-  const idMatch = String(banner?.id || '').match(/^banner-(prayer|weather|worldclock|speedtest|downloader|compressor|converter|songfinder|music|dracin|audioeditor|manifestai|plagiarism|novel|callerid)$/i);
+  const idMatch = String(banner?.id || '').match(/^banner-(prayer|weather|worldclock|speedtest|downloader|shortlink|compressor|converter|songfinder|music|dracin|audioeditor|manifestai|plagiarism|novel|callerid)$/i);
   return idMatch ? idMatch[1].toLowerCase() : '';
 }
 
@@ -725,6 +725,18 @@ export const DEFAULT_BANNERS = [
     scrim: 'emerald',
     enabled: true,
   },
+  {
+    id: 'banner-shortlink',
+    utilityId: 'shortlink',
+    kicker: 'Menu Utilitas · Multi-API & Multi-AI',
+    heading: 'Shortlink Bypass — Anti-Iklan, Pop-Up & Malware',
+    sub: 'Lewati tautan pemendek & safelink berulang dengan kolaborasi Multi-API & Multi-AI, bersihkan pelacak, & cek keamanan tujuan.',
+    ctaLabel: 'Bypass Link →',
+    href: './tools.html?tab=shortlink',
+    image: './assets/banners/banner-shortlink.jpg',
+    scrim: 'downloader',
+    enabled: true,
+  },
 ];
 
 export function normalizeOpenGraphConfig(brand = {}) {
@@ -792,7 +804,7 @@ export const DEFAULT_UTILITY_CONFIG = {
   callout: {
     icon: './assets/icons/menu-utilitas.svg',
     title: 'Menu Utilitas',
-    badge: '15 Fitur Gratis',
+    badge: '16 Fitur Gratis',
     description: '',
     autoCountBadge: true,
   },
@@ -982,6 +994,18 @@ export const DEFAULT_UTILITY_CONFIG = {
       heroTitle: 'Cek Nomor Telepon, Operator, Verifikasi Resmi & Anti-Spam',
       heroDescription:
         'Analisis format E.164 & HLR operator, verifikasi nomor resmi Bank/OJK/Polri/Ekspedisi, cek laporan spam CallShield GitHub & OSINT publik, serta kelola tag komunitas dan daftar blokir pribadi langsung di browser.',
+    },
+    {
+      id: 'shortlink',
+      label: 'Shortlink Bypass',
+      icon: './assets/icons/tool-shortlink.svg',
+      pageTitle: 'Shortlink Bypass — Anti-Iklan, Pop-Up & Anti-Malware (Multi-API + Multi-AI)',
+      pageSubtitle:
+        'Bongkar tautan pendek & safelink menuju alamat tujuan langsung tanpa iklan pop-up, bersihkan pelacak UTM, dan audit keamanan phishing/malware bersama Multi-API & Multi-AI.',
+      heroKicker: 'Multi-API Open-Source + Konsensus Multi-AI · Anti-Malware & Anti-Pop-Up',
+      heroTitle: 'Shortlink Bypass & Audit Keamanan Tautan Langsung',
+      heroDescription:
+        'Gabungkan Dekoder Instan Lokal, Pelacak Redirect & Inspektor Safelink, Bypass.VIP, Bypass.PM, Unshorten.me, Unshorten.it, serta Konsensus Multi-AI (Gemini, ChatGPT, Claude, Grok, DeepSeek) untuk menuju link tujuan aman tanpa iklan berulang.',
     },
   ],
 };

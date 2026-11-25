@@ -1825,8 +1825,9 @@ test('normalizeYtMusicTrack supports hybrid tracks with both videoId and backgro
 test('normalizeUtilityConfig, upsertUtilityItemInCatalog, and describeCatalogChanges manage utility icons, labels, page headers, and YT Music hero card', () => {
   const base = getDefaultCatalogSnapshot();
   const util = normalizeUtilityConfig(base.utilities);
-  assert.equal(util.items.length, 15);
+  assert.equal(util.items.length, 16);
   assert.equal(util.items.some((i) => i.id === 'downloader' && i.label === 'Downloader'), true);
+  assert.equal(util.items.some((i) => i.id === 'shortlink' && i.label === 'Shortlink Bypass'), true);
   assert.equal(util.items.some((i) => i.id === 'converter' && i.label === 'Konversi File'), true);
   assert.equal(util.items.some((i) => i.id === 'songfinder' && i.label === 'Cari Judul Lagu'), true);
   assert.equal(util.items.some((i) => i.id === 'dracin' && i.label === 'Drama Pendek'), true);
@@ -1836,7 +1837,7 @@ test('normalizeUtilityConfig, upsertUtilityItemInCatalog, and describeCatalogCha
   assert.equal(util.items.some((i) => i.id === 'novel' && i.label === 'Novel Terpadu'), true);
   assert.equal(util.items.some((i) => i.id === 'callerid' && i.label === 'Cek Nomor'), true);
   assert.equal(util.musicHero.icon, './assets/icons/tool-music.svg');
-  assert.ok(DEFAULT_UTILITY_CONFIG.items.length === 15);
+  assert.ok(DEFAULT_UTILITY_CONFIG.items.length === 16);
 
   let next = upsertUtilityItemInCatalog(base, {
     id: 'downloader',
@@ -4400,7 +4401,7 @@ test('Manifest AI v60 maintains unified grounded conversation memory, per-user c
   assert.ok(safeHtml.includes('data-mai-copy-code="0"'));
 });
 
-test('v75: normalizeUtilityConfig auto-counts 15 enabled utilities, strips legacy dot list, and preserves custom order', () => {
+test('v87: normalizeUtilityConfig auto-counts 16 enabled utilities, strips legacy dot list, and preserves custom order', () => {
   const legacyUtil = normalizeUtilityConfig({
     callout: {
       title: 'Menu Utilitas',
@@ -4415,11 +4416,11 @@ test('v75: normalizeUtilityConfig auto-counts 15 enabled utilities, strips legac
     ],
   });
 
-  assert.equal(legacyUtil.items.length, 15);
+  assert.equal(legacyUtil.items.length, 16);
   assert.equal(legacyUtil.items[0].id, 'novel');
   assert.equal(legacyUtil.items[1].id, 'callerid');
   assert.equal(legacyUtil.items.find((it) => it.id === 'speedtest')?.enabled, false);
-  assert.equal(legacyUtil.callout.badge, '14 Fitur Gratis');
+  assert.equal(legacyUtil.callout.badge, '15 Fitur Gratis');
   assert.equal(legacyUtil.callout.description, '');
 
   const snapshot = getDefaultCatalogSnapshot();
@@ -4428,17 +4429,18 @@ test('v75: normalizeUtilityConfig auto-counts 15 enabled utilities, strips legac
   assert.equal(novelIdx, 12);
 });
 
-test('v75: syncAllMenusAndBanners & computeAdminSyncStatus track synced, attention, and draft states across 16 mascot banners', () => {
-  assert.equal(DEFAULT_BANNERS.length, 16);
+test('v87: syncAllMenusAndBanners & computeAdminSyncStatus track synced, attention, and draft states across 17 mascot banners', () => {
+  assert.equal(DEFAULT_BANNERS.length, 17);
   assert.equal(normalizeBannerScrim('is-emerald'), 'emerald');
   assert.equal(inferBannerUtilityId({ href: './tools.html?tab=plagiarism' }), 'plagiarism');
   assert.equal(inferBannerUtilityId({ href: './tools.html?tab=callerid' }), 'callerid');
+  assert.equal(inferBannerUtilityId({ href: './tools.html?tab=shortlink' }), 'shortlink');
 
   const live = getDefaultCatalogSnapshot();
   const initialStatus = computeAdminSyncStatus(live, live, { source: 'remote', dirty: false, checkedAt: '10:00' });
   assert.equal(initialStatus.overallStatus, 'synced');
-  assert.equal(initialStatus.metrics.activeUtilities, 15);
-  assert.equal(initialStatus.metrics.activeBanners, 16);
+  assert.equal(initialStatus.metrics.activeUtilities, 16);
+  assert.equal(initialStatus.metrics.activeBanners, 17);
   assert.equal(initialStatus.metrics.calloutBadgeSynced, true);
 
   // Disabling 1 utility without syncing banners puts status into 'attention'
@@ -4450,13 +4452,13 @@ test('v75: syncAllMenusAndBanners & computeAdminSyncStatus track synced, attenti
     checkedAt: '10:01',
   });
   assert.equal(attentionStatus.overallStatus, 'attention');
-  assert.equal(attentionStatus.metrics.activeUtilities, 14);
+  assert.equal(attentionStatus.metrics.activeUtilities, 15);
   assert.equal(attentionStatus.metrics.extraDisabledUtilityBanners.length, 1);
 
-  // 1-click sync reconciles banners (15 active = Katalog + 14 utilities) and switches status to 'draft'
+  // 1-click sync reconciles banners (16 active = Katalog + 15 utilities) and switches status to 'draft'
   const syncedDraft = syncAllMenusAndBanners(disabledDraft);
-  assert.equal(syncedDraft.utilities.callout.badge, '14 Fitur Gratis');
-  assert.equal(syncedDraft.banners.length, 15);
+  assert.equal(syncedDraft.utilities.callout.badge, '15 Fitur Gratis');
+  assert.equal(syncedDraft.banners.length, 16);
   assert.equal(
     syncedDraft.banners.some((b) => inferBannerUtilityId(b) === 'speedtest'),
     false
@@ -4471,14 +4473,14 @@ test('v75: syncAllMenusAndBanners & computeAdminSyncStatus track synced, attenti
   assert.equal(draftStatus.metrics.extraDisabledUtilityBanners.length, 0);
 });
 
-test('v75: live data/catalog.json is 100% synced with 15 utilities, 16 Gen-Z mascot banners, and valid banner images on disk', () => {
+test('v87: live data/catalog.json is 100% synced with 16 utilities, 17 Gen-Z mascot banners, and valid banner images on disk', () => {
   const repoRoot = path.resolve(path.dirname(new URL(import.meta.url).pathname), '..');
   const catalogJson = JSON.parse(fs.readFileSync(path.join(repoRoot, 'data', 'catalog.json'), 'utf8'));
 
-  assert.equal(catalogJson.utilities.items.length, 15);
-  assert.equal(catalogJson.utilities.callout.badge, '15 Fitur Gratis');
+  assert.equal(catalogJson.utilities.items.length, 16);
+  assert.equal(catalogJson.utilities.callout.badge, '16 Fitur Gratis');
   assert.equal(catalogJson.utilities.callout.description, '');
-  assert.equal(catalogJson.banners.length, 16);
+  assert.equal(catalogJson.banners.length, 17);
 
   const syncStatus = computeAdminSyncStatus(catalogJson, catalogJson, { source: 'remote', dirty: false });
   assert.equal(syncStatus.overallStatus, 'synced');

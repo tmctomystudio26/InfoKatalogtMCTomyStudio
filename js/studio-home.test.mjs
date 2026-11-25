@@ -24,8 +24,8 @@ test('buildStudioHeroBanners produces Flagship slide + all enabled utility masco
     brandName: 'Manifestudio',
   });
 
-  // 1 flagship hero + 15 utility banners = 16 slides
-  assert.equal(slides.length, 16);
+  // 1 flagship hero + 16 utility banners = 17 slides
+  assert.equal(slides.length, 17);
   assert.equal(slides[0].isFlagship, true);
   assert.equal(slides[0].href, '#fitur');
   assert.equal(slides[0].utilityId, null);
@@ -36,10 +36,11 @@ test('buildStudioHeroBanners produces Flagship slide + all enabled utility masco
 
   // Every subsequent slide maps directly to an active utilityId
   const utilSlides = slides.slice(1);
-  assert.equal(utilSlides.length, 15);
+  assert.equal(utilSlides.length, 16);
   assert.ok(utilSlides.every((s) => Boolean(s.utilityId)));
   assert.ok(utilSlides.some((s) => s.utilityId === 'dracin'));
   assert.ok(utilSlides.some((s) => s.utilityId === 'manifestai'));
+  assert.ok(utilSlides.some((s) => s.utilityId === 'shortlink'));
 
   // Respects disabled utility toggle from Admin
   const withDisabled = normalizeUtilityConfig({
@@ -49,14 +50,14 @@ test('buildStudioHeroBanners produces Flagship slide + all enabled utility masco
     ),
   });
   const filteredSlides = buildStudioHeroBanners(DEFAULT_BANNERS, withDisabled, inferBannerUtilityId);
-  assert.equal(filteredSlides.length, 15);
+  assert.equal(filteredSlides.length, 16);
   assert.equal(filteredSlides.some((s) => s.utilityId === 'speedtest'), false);
 });
 
 test('buildStudioFeatureDirectory & filterStudioFeatures support category tabs and keyword search', () => {
   const utilities = normalizeUtilityConfig(DEFAULT_UTILITY_CONFIG);
   const dir = buildStudioFeatureDirectory(utilities);
-  assert.equal(dir.length, 15);
+  assert.equal(dir.length, 16);
   assert.ok(dir.every((f) => f.id && f.label && f.summary && f.icon && f.category));
 
   // Category filter
@@ -69,7 +70,7 @@ test('buildStudioFeatureDirectory & filterStudioFeatures support category tabs a
   const mediaFiles = filterStudioFeatures(dir, { category: 'media-files' });
   assert.deepEqual(
     mediaFiles.map((f) => f.id).sort(),
-    ['compressor', 'converter', 'downloader']
+    ['compressor', 'converter', 'downloader', 'shortlink']
   );
 
   // Keyword search
@@ -127,6 +128,6 @@ test('parseStudioRoute, buildStudioRouteUrl & groupStudioFeaturesByCategory powe
   // Category grouping for compact Quick-Switch select
   const groups = groupStudioFeaturesByCategory(buildStudioFeatureDirectory(utilities));
   assert.equal(groups.length, 4);
-  assert.equal(groups.reduce((acc, g) => acc + g.items.length, 0), 15);
+  assert.equal(groups.reduce((acc, g) => acc + g.items.length, 0), 16);
 });
 

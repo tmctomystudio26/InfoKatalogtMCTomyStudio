@@ -17,8 +17,8 @@ import {
   buildFeatureCsSystemPrompt,
   classifyFeatureCsIntent,
   sanitizeFeatureCsReply,
-} from './feature-cs-logic.js?v=86';
-import { renderMarkdownSafe } from './manifest-ai-logic.js?v=86';
+} from './feature-cs-logic.js?v=87';
+import { renderMarkdownSafe } from './manifest-ai-logic.js?v=87';
 
 const FCS_FAB_HIDDEN_KEY = 'manifestudio_fcs_fab_hidden_v1';
 
@@ -53,9 +53,9 @@ function writeFabDismissed(hidden) {
 
 const QUICK_PROMPTS = [
   'Ada fitur apa saja di sini?',
+  'Cara pakai Shortlink Bypass',
+  'Drama pendek ngelag / patah-patah',
   'Cara download video tanpa watermark',
-  'Kompres video biar tidak pecah',
-  'Cara install aplikasi di HP',
 ];
 
 export function createFeatureCsController({
@@ -84,7 +84,7 @@ export function createFeatureCsController({
 
   function loadManifestAiEngine() {
     if (!manifestAiModPromise) {
-      manifestAiModPromise = import('./manifest-ai.js?v=86');
+      manifestAiModPromise = import('./manifest-ai.js?v=87');
     }
     return manifestAiModPromise;
   }

@@ -1,11 +1,11 @@
-import { createToolsHubController } from './tools-ui.js?v=86';
+import { createToolsHubController } from './tools-ui.js?v=87';
 import { getDefaultCatalogSnapshot, loadCatalogData } from './data.js?v=85';
 import {
   inferBannerUtilityId,
   normalizeBanners,
   normalizeBrandConfig,
   normalizeUtilityConfig,
-} from './store.js?v=85';
+} from './store.js?v=87';
 import {
   computeBannerHydrationWindow,
   initPerformanceClass,
@@ -19,7 +19,7 @@ import {
   normalizeStoreAccessConfig,
   resolveDisplayBrand,
   resolveSiteContext,
-} from './domain-router.js?v=85';
+} from './domain-router.js?v=87';
 import {
   STUDIO_CATEGORIES,
   STUDIO_FAQ_ITEMS,
@@ -31,8 +31,8 @@ import {
   filterStudioFeatures,
   groupStudioFeaturesByCategory,
   parseStudioRoute,
-} from './studio-home.js?v=85';
-import { createFeatureCsController } from './feature-cs-ui.js?v=86';
+} from './studio-home.js?v=87';
+import { createFeatureCsController } from './feature-cs-ui.js?v=87';
 
 const THEME_STORAGE_KEY = 'manifestudio_theme_v1';
 const VALID_TABS = new Set([
@@ -41,6 +41,7 @@ const VALID_TABS = new Set([
   'worldclock',
   'speedtest',
   'downloader',
+  'shortlink',
   'compressor',
   'converter',
   'songfinder',
@@ -1484,7 +1485,7 @@ async function bootstrap() {
 
   initPwaManager({
     appName: getStoreAccessCfg().utilitiesBrandName || 'Manifestudio',
-    appDesc: 'Akses 15 fitur utilitas gratis lebih cepat dari layar utama & tetap nyaman dibuka offline.',
+    appDesc: 'Akses 16 fitur utilitas gratis lebih cepat dari layar utama & tetap nyaman dibuka offline.',
   });
 
   bindStudioSectionEvents();

@@ -3,7 +3,7 @@
  *
  * Powers the standalone platform experience on https://manifestudio.my.id/:
  *  - Multi-banner hero showcase (Flagship Slide + all active utility mascot banners)
- *  - Categorized & searchable 15-Feature Directory
+ *  - Categorized & searchable 16-Feature Directory
  *  - Editorial platform value pillars & Manifestudio-specific FAQ
  */
 
@@ -72,6 +72,13 @@ export const STUDIO_FEATURE_META = Object.freeze({
     highlights: 'Tanpa Watermark · Video HD & MP3 · Multi-Platform',
     keywords: 'download unduh tiktok youtube instagram facebook reels mp4 mp3 watermark',
   },
+  shortlink: {
+    category: 'media-files',
+    categoryLabel: 'Downloader & File',
+    summary: 'Lewati tautan shortlink & safelink penuh iklan, hapus pelacak UTM, dan periksa potensi phishing/malware dengan Multi-API & Multi-AI.',
+    highlights: 'Multi-API + Multi-AI · Anti-Malware · Mode Batch',
+    keywords: 'shortlink bypass safelink anti iklan malware phishing bitly ouo linkvertise unshorten link',
+  },
   compressor: {
     category: 'media-files',
     categoryLabel: 'Downloader & File',
@@ -128,7 +135,7 @@ export const STUDIO_VALUE_PILLARS = Object.freeze([
     index: '01',
     title: 'Gratis Penuh Tanpa Login',
     description:
-      'Semua 15 alat digital, hiburan, dan AI dapat dipakai langsung tanpa registrasi akun, tanpa paywall, dan tanpa iklan mengganggu.',
+      'Semua 16 alat digital, hiburan, dan AI dapat dipakai langsung tanpa registrasi akun, tanpa paywall, dan tanpa iklan mengganggu.',
   },
   {
     index: '02',
@@ -152,9 +159,9 @@ export const STUDIO_VALUE_PILLARS = Object.freeze([
 
 export const STUDIO_FAQ_ITEMS = Object.freeze([
   {
-    question: 'Apakah seluruh 15 fitur di Manifestudio benar-benar gratis dan tanpa login?',
+    question: 'Apakah seluruh 16 fitur di Manifestudio benar-benar gratis dan tanpa login?',
     answer:
-      'Ya. Seluruh 15 fitur utilitas, hiburan, dan AI di Manifestudio dapat langsung Anda gunakan secara gratis tanpa perlu membuat akun atau masuk terlebih dahulu.',
+      'Ya. Seluruh 16 fitur utilitas, hiburan, dan AI di Manifestudio dapat langsung Anda gunakan secara gratis tanpa perlu membuat akun atau masuk terlebih dahulu.',
   },
   {
     question: 'Apakah file saya aman saat menggunakan Kompresor HD, Konversi File, Audio Editor, atau Cek Plagiarisme?',
@@ -169,7 +176,7 @@ export const STUDIO_FAQ_ITEMS = Object.freeze([
   {
     question: 'Bagaimana cara mencari panduan atau mengatasi kendala pada salah satu fitur?',
     answer:
-      'Gunakan tombol Tanya Fitur di pojok kanan bawah layar kapan saja. Asisten fitur kami siap menjelaskan fungsi, langkah penggunaan, hingga solusi teknis untuk seluruh 15 fitur Manifestudio.',
+      'Gunakan tombol Tanya Fitur di pojok kanan bawah layar kapan saja. Asisten fitur kami siap menjelaskan fungsi, langkah penggunaan, hingga solusi teknis untuk seluruh 16 fitur Manifestudio.',
   },
   {
     question: 'Apakah fitur-fitur di Manifestudio bisa dibuka dengan cepat di HP maupun laptop?',
@@ -198,14 +205,14 @@ export function buildStudioHeroBanners(
   const brandName = String(opts.brandName || 'Manifestudio').trim() || 'Manifestudio';
   const enabledItems = (utilitiesConfig?.items || []).filter((it) => it && it.enabled !== false);
   const enabledMap = new Map(enabledItems.map((it) => [it.id, it]));
-  const enabledCount = enabledItems.length || 15;
+  const enabledCount = enabledItems.length || 16;
 
   const flagshipSlide = {
     id: 'studio-hero-flagship',
     utilityId: null,
     kicker: `${brandName} · ${enabledCount} Fitur Digital Gratis`,
     heading: 'Satu Platform Ringan untuk AI, Hiburan & Alat Harian Tanpa Login',
-    sub: 'Akses Manifest AI, Drama Pendek, YT Music, Downloader, Kompresor HD, Cek Plagiarisme, hingga Cek Nomor dalam satu tempat yang cepat dan rapi.',
+    sub: 'Akses Manifest AI, Drama Pendek, YT Music, Downloader, Shortlink Bypass, Kompresor HD, Cek Plagiarisme, hingga Cek Nomor dalam satu tempat yang cepat dan rapi.',
     ctaLabel: `Jelajahi ${enabledCount} Fitur →`,
     href: '#fitur',
     image: './assets/banners/banner-manifestai.jpg',

@@ -204,7 +204,7 @@ test('Manifest AI v63 rotates across 4 independent free networks and survives fu
   // Markdown XSS safety still holds
   const html = renderMarkdownSafe('**Manifestudio** <script>alert(1)</script>');
   assert.ok(html.includes('<strong>Manifestudio</strong>') && !html.includes('<script>'));
-  assert.ok(DEFAULT_MANIFESTUDIO_PROFILE.utilities.length === 15);
+  assert.ok(DEFAULT_MANIFESTUDIO_PROFILE.utilities.length === 16);
 });
 
 test('Manifest AI v64 strictly censors leaked owner WhatsApp, phones, socials, and emails while preserving prices & normal numbers', () => {

@@ -29,9 +29,9 @@ import {
   searchCitiesOnline,
   setManualLocation,
 } from './location.js?v=78';
-import { normalizeUtilityConfig } from './store.js?v=78';
+import { normalizeUtilityConfig } from './store.js?v=87';
 
-// On-demand cached dynamic module loaders (v76):
+// On-demand cached dynamic module loaders (v87):
 // Keeps initial tools.html boot tiny (<100KB) even on slow 2G/3G mobile networks.
 let _globeMod = null;
 let _speedtestMod = null;
@@ -46,6 +46,7 @@ let _manifestAiMod = null;
 let _plagiarismMod = null;
 let _novelMod = null;
 let _callerIdMod = null;
+let _shortlinkMod = null;
 
 const loadGlobeMod = () => (_globeMod ? Promise.resolve(_globeMod) : import('./globe.js?v=79').then((m) => (_globeMod = m)));
 const loadSpeedtestMod = () => (_speedtestMod ? Promise.resolve(_speedtestMod) : import('./speedtest.js?v=79').then((m) => (_speedtestMod = m)));
@@ -62,10 +63,11 @@ const loadMusicMods = () =>
       });
 const loadDracinMod = () => (_dracinMod ? Promise.resolve(_dracinMod) : import('./dracin-ui.js?v=86').then((m) => (_dracinMod = m)));
 const loadAudioEditorMod = () => (_audioEditorMod ? Promise.resolve(_audioEditorMod) : import('./audio-editor-ui.js?v=79').then((m) => (_audioEditorMod = m)));
-const loadManifestAiMod = () => (_manifestAiMod ? Promise.resolve(_manifestAiMod) : import('./manifest-ai-ui.js?v=85').then((m) => (_manifestAiMod = m)));
+const loadManifestAiMod = () => (_manifestAiMod ? Promise.resolve(_manifestAiMod) : import('./manifest-ai-ui.js?v=87').then((m) => (_manifestAiMod = m)));
 const loadPlagiarismMod = () => (_plagiarismMod ? Promise.resolve(_plagiarismMod) : import('./plagiarism-ui.js?v=79').then((m) => (_plagiarismMod = m)));
 const loadNovelMod = () => (_novelMod ? Promise.resolve(_novelMod) : import('./novel-ui.js?v=79').then((m) => (_novelMod = m)));
 const loadCallerIdMod = () => (_callerIdMod ? Promise.resolve(_callerIdMod) : import('./callerid-ui.js?v=79').then((m) => (_callerIdMod = m)));
+const loadShortlinkMod = () => (_shortlinkMod ? Promise.resolve(_shortlinkMod) : import('./shortlink-ui.js?v=87').then((m) => (_shortlinkMod = m)));
 
 function renderLazyLoadingCard(label = 'Utilitas') {
   return `
@@ -511,6 +513,7 @@ export function createToolsHubController({
   let plagiarismCtrl = null;
   let novelCtrl = null;
   let callerIdCtrl = null;
+  let shortlinkCtrl = null;
   let isHubSeeking = false;
   let tabMountToken = 0;
   let lastUtilitiesSignature = '';
@@ -4614,6 +4617,15 @@ export function createToolsHubController({
     `;
   }
 
+  function renderShortlinkPanel() {
+    return `
+      <section class="tool-panel shortlink-panel" aria-label="Shortlink Bypass Anti-Iklan dan Anti-Malware">
+        ${renderSubPanelIntro('shortlink')}
+        <div id="shortlink-hub-mount"></div>
+      </section>
+    `;
+  }
+
   function bindToolEvents() {
     rootEl.querySelectorAll('[data-tool-subtab]').forEach((btn) => {
       btn.addEventListener('click', () => {
@@ -5591,6 +5603,28 @@ export function createToolsHubController({
     } else if (callerIdCtrl) {
       callerIdCtrl.unmount();
     }
+
+    if (toolState.activeSubTab === 'shortlink') {
+      const slbMount = rootEl.querySelector('#shortlink-hub-mount');
+      if (slbMount) {
+        if (shortlinkCtrl) {
+          shortlinkCtrl.mount(slbMount);
+        } else {
+          slbMount.innerHTML = renderLazyLoadingCard('Shortlink Bypass');
+          loadShortlinkMod()
+            .then(({ createShortlinkController }) => {
+              if (!mounted || tabMountToken !== currentMountToken || toolState.activeSubTab !== 'shortlink') return;
+              const liveMount = rootEl.querySelector('#shortlink-hub-mount');
+              if (!liveMount) return;
+              if (!shortlinkCtrl) shortlinkCtrl = createShortlinkController({ onToast });
+              shortlinkCtrl.mount(liveMount);
+            })
+            .catch(() => {});
+        }
+      }
+    } else if (shortlinkCtrl) {
+      shortlinkCtrl.unmount();
+    }
   }
 
   function renderPrayerSearchResultsHtml(subDistrictResults = [], filteredCities = []) {
@@ -5654,6 +5688,8 @@ export function createToolsHubController({
         ? renderNovelPanel()
         : toolState.activeSubTab === 'callerid'
         ? renderCallerIdPanel()
+        : toolState.activeSubTab === 'shortlink'
+        ? renderShortlinkPanel()
         : renderDownloaderPanel();
 
     const visibleUtilityItems = (toolState.utilities?.items || []).filter((it) => it.enabled !== false);
@@ -5739,7 +5775,8 @@ export function createToolsHubController({
         subTab === 'manifestai' ||
         subTab === 'plagiarism' ||
         subTab === 'novel' ||
-        subTab === 'callerid'
+        subTab === 'callerid' ||
+        subTab === 'shortlink'
       ) {
         toolState.activeSubTab = subTab;
       }
@@ -5804,6 +5841,9 @@ export function createToolsHubController({
       if (callerIdCtrl) {
         callerIdCtrl.unmount();
       }
+      if (shortlinkCtrl) {
+        shortlinkCtrl.unmount();
+      }
       stopLiveTimers();
       if (rootEl) rootEl.innerHTML = '';
     },
@@ -5815,6 +5855,7 @@ export function createToolsHubController({
       plagiarismCtrl?.redrawTheme?.();
       novelCtrl?.redrawTheme?.();
       callerIdCtrl?.redrawTheme?.();
+      shortlinkCtrl?.redrawTheme?.();
     },
   };
 }

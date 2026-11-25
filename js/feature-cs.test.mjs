@@ -24,8 +24,8 @@ import {
   decideDracinVerticalSwipeOutcome,
 } from './dracin-logic.js';
 
-test('FEATURE_CS_KNOWLEDGE_BASE covers all 15 Manifestudio utilities', () => {
-  assert.equal(FEATURE_CS_KNOWLEDGE_BASE.length, 15);
+test('FEATURE_CS_KNOWLEDGE_BASE covers all 16 Manifestudio utilities including Shortlink Bypass', () => {
+  assert.equal(FEATURE_CS_KNOWLEDGE_BASE.length, 16);
   const ids = new Set(FEATURE_CS_KNOWLEDGE_BASE.map((f) => f.id));
   for (const expected of [
     'manifestai',
@@ -36,6 +36,7 @@ test('FEATURE_CS_KNOWLEDGE_BASE covers all 15 Manifestudio utilities', () => {
     'audioeditor',
     'songfinder',
     'downloader',
+    'shortlink',
     'compressor',
     'converter',
     'prayer',
@@ -52,10 +53,23 @@ test('classifyFeatureCsIntent handles courtesy, follow-ups, greeting, restricted
   assert.equal(classifyFeatureCsIntent('Halo'), 'greeting');
   assert.equal(classifyFeatureCsIntent('P'), 'greeting');
 
-  // Natural courtesies must NEVER trigger off_topic!
-  for (const msg of ['Terimakasih', 'Terima kasih banyak', 'Makasih min!', 'Oke siap', 'Mantap berhasil!', 'Done work']) {
+  // Natural courtesies (including multi-word Indonesian thank-yous) must NEVER trigger off_topic!
+  for (const msg of [
+    'Terimakasih',
+    'Terimakasih atas informasinya',
+    'Terima kasih banyak infonya min',
+    'Makasih ya bantuannya!',
+    'Oke siap',
+    'Mantap berhasil!',
+    'Done work',
+  ]) {
     assert.equal(classifyFeatureCsIntent(msg), 'courtesy', `Expected courtesy for "${msg}"`);
   }
+
+  // Real user complaints from screenshots MUST route to feature_support (never off_topic!)
+  assert.equal(classifyFeatureCsIntent('Ngelag ketika menonton drama'), 'feature_support');
+  assert.equal(classifyFeatureCsIntent('Drama tidak lengkap'), 'feature_support');
+  assert.equal(classifyFeatureCsIntent('Cara pakai Shortlink Bypass biar aman dari malware'), 'feature_support');
 
   // Context-aware follow-up questions remain inside feature_support
   assert.equal(classifyFeatureCsIntent('Terus caranya gimana?', { hasContext: true }), 'feature_support');
@@ -74,6 +88,18 @@ test('classifyFeatureCsIntent handles courtesy, follow-ups, greeting, restricted
   assert.equal(classifyFeatureCsIntent('Buatkan resep nasi goreng kampung yang enak'), 'off_topic');
   assert.equal(classifyFeatureCsIntent('Siapa presiden Indonesia pertama?'), 'off_topic');
   assert.equal(classifyFeatureCsIntent('Buatkan kode Python sorting quicksort'), 'off_topic');
+
+  // Verify dedicated local troubleshooting fallbacks for drama lag, incomplete episodes, and shortlink bypass
+  const lagReply = buildFeatureCsLocalFallback('Ngelag ketika menonton drama');
+  assert.match(lagReply, /540P|480P|buffering|server/i);
+  assert.doesNotMatch(lagReply, /Mohon maaf, menu \*\*Tanya Fitur\*\* dirancang khusus/i);
+
+  const incompleteReply = buildFeatureCsLocalFallback('Drama tidak lengkap');
+  assert.match(incompleteReply, /ongoing|episode|platform|Refresh/i);
+  assert.doesNotMatch(incompleteReply, /Mohon maaf, menu \*\*Tanya Fitur\*\* dirancang khusus/i);
+
+  const slbReply = buildFeatureCsLocalFallback('Cara pakai Shortlink Bypass');
+  assert.match(slbReply, /Shortlink Bypass/i);
 });
 
 test('Tanya Fitur courtesy reply is warm & human and sanitization cleans raw <br> tags for Markdown tables', () => {
