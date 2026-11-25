@@ -1169,11 +1169,12 @@ export function createWebProxyController({ rootEl, onToast = () => {} }) {
             ? `<div class="wpb-fs-shortcuts" role="toolbar" aria-label="Pintasan Layar Penuh" data-testid="wpb-fullscreen-shortcuts">
                 <button type="button" class="wpb-fs-btn" id="wpb-fs-home">Beranda</button>
                 <button type="button" class="wpb-fs-btn" id="wpb-fs-focus-url">Cari / URL</button>
+                <button type="button" class="wpb-fs-btn" id="wpb-fs-cycle-mode">Mode: ${escapeHtml(activeModeObj.shortLabel)}</button>
                 <button type="button" class="wpb-fs-btn" data-wpb-drawer="media">Unduh Media${mediaCount > 0 ? ` (${mediaCount})` : ''}</button>
                 <button type="button" class="wpb-fs-btn" data-wpb-drawer="ai">Multi-AI</button>
                 <button type="button" class="wpb-fs-btn" data-wpb-drawer="themes">108+ Tema</button>
                 <button type="button" class="wpb-fs-btn" data-wpb-drawer="privacy">${state.prefs.incognitoMode ? 'Incognito ON' : 'Privasi'}</button>
-                <button type="button" class="wpb-fs-btn is-exit" id="wpb-fs-exit">Tutup Layar Penuh</button>
+                <button type="button" class="wpb-fs-btn is-exit" id="wpb-fs-exit">Keluar</button>
               </div>`
             : ''
         }
@@ -1207,12 +1208,14 @@ export function createWebProxyController({ rootEl, onToast = () => {} }) {
       inp?.select();
     });
 
-    rootEl.querySelector('#wpb-cycle-mode-btn')?.addEventListener('click', () => {
+    const cycleModeHandler = () => {
       const idx = PROXY_ROUTING_MODES.findIndex((m) => m.id === state.prefs.routingMode);
       const next = PROXY_ROUTING_MODES[(idx + 1) % PROXY_ROUTING_MODES.length];
       updatePref({ routingMode: next.id });
       onToast(`Mode koneksi beralih ke ${next.label} (${next.badge}).`);
-    });
+    };
+    rootEl.querySelector('#wpb-cycle-mode-btn')?.addEventListener('click', cycleModeHandler);
+    rootEl.querySelector('#wpb-fs-cycle-mode')?.addEventListener('click', cycleModeHandler);
 
     rootEl.querySelector('#wpb-omnibox-form')?.addEventListener('submit', (e) => {
       e.preventDefault();

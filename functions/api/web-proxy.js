@@ -536,9 +536,12 @@ export function sanitizeAndRewriteHtml(rawHtml, finalUrl, { adBlock = true, anti
     return '';
   });
 
-  // Strip 1x1 tracking pixel images
-  if (antiTrack) {
-    html = html.replace(/<img\b([^>]*)>/gi, (full, attrs) => {
+  // Clean any Wayback Archive toolbar or /web/<timestamp>/ URL prefixes so CSS & images never 404
+  html = cleanWaybackHtml(html);
+
+  // Strip 1x1 tracking pixel images and promote lazy-loaded data-src images so news photos load without JS
+  html = html.replace(/<img\b([^>]*)>/gi, (full, attrs) => {
+    if (antiTrack) {
       if (matchesAnyPattern(attrs, TRACKER_DOMAIN_PATTERNS) || matchesAnyPattern(attrs, AD_DOMAIN_PATTERNS)) {
         blockedTrackers += 1;
         return '';
@@ -547,9 +550,48 @@ export function sanitizeAndRewriteHtml(rawHtml, finalUrl, { adBlock = true, anti
         blockedTrackers += 1;
         return '';
       }
-      return full.replace(/<img/i, '<img referrerpolicy="no-referrer"');
-    });
-  }
+    }
+    let nextAttrs = attrs;
+    const lazyMatch = nextAttrs.match(/\b(?:data-src|data-original|data-lazy-src|data-img-src)\s*=\s*["']([^"']+)["']/i);
+    if (lazyMatch?.[1] && !/^javascript:/i.test(lazyMatch[1])) {
+      const currentSrc = nextAttrs.match(/\bsrc\s*=\s*["']([^"']*)["']/i)?.[1] || '';
+      const isPlaceholder =
+        !currentSrc ||
+        /^data:image\//i.test(currentSrc) ||
+        /(blank|spacer|placeholder|loading|transparent|1x1)/i.test(currentSrc);
+      if (isPlaceholder) {
+        const cleanLazy = escapeHtmlAttr(lazyMatch[1]);
+        if (/\bsrc\s*=/i.test(nextAttrs)) {
+          nextAttrs = nextAttrs.replace(/\bsrc\s*=\s*["'][^"']*["']/i, `src="${cleanLazy}"`);
+        } else {
+          nextAttrs = ` src="${cleanLazy}"${nextAttrs}`;
+        }
+      }
+    }
+    // Strip crossorigin attribute on <img> so opaque srcdoc iframes don't trigger strict CORS failures on CDN images/SVGs
+    nextAttrs = nextAttrs.replace(/\s+crossorigin(?:\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+))?/gi, '');
+    if (!/\breferrerpolicy\s*=/i.test(nextAttrs)) {
+      nextAttrs = ` referrerpolicy="no-referrer"${nextAttrs}`;
+    }
+    return `<img${nextAttrs}>`;
+  });
+
+  // Promote async <link rel="preload" as="style"> to real stylesheets & strip crossorigin/integrity
+  // so sandboxed srcdoc iframes (opaque null origin) never drop external site CSS
+  html = html.replace(/<link\b([^>]*)>/gi, (_full, attrs) => {
+    let nextAttrs = attrs;
+    if (/\brel\s*=\s*["']preload["']/i.test(nextAttrs) && /\bas\s*=\s*["']style["']/i.test(nextAttrs)) {
+      nextAttrs = nextAttrs
+        .replace(/\brel\s*=\s*["']preload["']/i, 'rel="stylesheet"')
+        .replace(/\s+as\s*=\s*["']style["']/i, '');
+    }
+    if (/\brel\s*=\s*["'][^"']*stylesheet[^"']*["']/i.test(nextAttrs)) {
+      nextAttrs = nextAttrs
+        .replace(/\s+crossorigin(?:\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+))?/gi, '')
+        .replace(/\s+integrity\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)/gi, '');
+    }
+    return `<link${nextAttrs}>`;
+  });
 
   // Strip inline event handlers (onclick=, onerror=, onload=, etc.) to block XSS/popunder injection
   html = html.replace(/\s+on[a-z]+\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)/gi, '');
@@ -559,14 +601,16 @@ export function sanitizeAndRewriteHtml(rawHtml, finalUrl, { adBlock = true, anti
   html = html.replace(/<base\b[^>]*>/gi, '');
 
   const originSafeBase = escapeHtmlAttr(finalUrl);
+  // Preserve each website's authentic light/dark CSS — never force dark color-scheme onto external sites
+  void darkTheme;
   const proxyHelperCss = `
     <style data-manifest-proxy-style>
       html, body { max-width: 100% !important; overflow-x: hidden !important; }
-      img, video, iframe, table { max-width: 100% !important; }
-      [id*="google_ads"], [class*="adsbygoogle"], [class*="ad-banner"], [class*="ad-slot"],
+      img, video, iframe, table { max-width: 100% !important; height: auto; }
+      [id*="google_ads"], [id*="div-gpt-ad"], [class*="adsbygoogle"], [class*="ad-banner"], [class*="ad-slot"],
+      [class*="advertisement"], [class*="billboard-ad"], [class*="top-banner-ad"], [class*="ads-wrapper"],
       [class*="popup-ad"], [class*="sponsored-ad"], [id*="taboola"], [id*="outbrain"],
       ins.adsbygoogle { display: none !important; }
-      ${darkTheme ? 'html { color-scheme: dark; }' : ''}
     </style>
   `;
 
@@ -681,9 +725,26 @@ function buildSecurityAudit(finalUrl, { blockedAds = 0, blockedTrackers = 0, con
 }
 
 /**
- * Fallback reader mirror (Jina AI Reader / Wayback Machine / AllOrigins) for anti-bot sites.
+ * Strips Wayback Archive injected toolbar & rewrites /web/<timestamp>/ URLs back to original hosts
+ * so stylesheets and images never 404 when loaded inside the proxy iframe.
  */
-async function fetchViaFallbackMirror(targetUrl, preferredNode = 'reader-antibot') {
+export function cleanWaybackHtml(rawHtml = '') {
+  let out = String(rawHtml || '');
+  if (!/web\.archive\.org|BEGIN WAYBACK TOOLBAR|\/web\/\d{8,14}/i.test(out)) {
+    return out;
+  }
+  out = out.replace(/<!--\s*BEGIN WAYBACK TOOLBAR INSERT\s*-->[\s\S]*?<!--\s*END WAYBACK TOOLBAR INSERT\s*-->/gi, '');
+  out = out.replace(/<script[^>]+archive\.org[^>]*>[\s\S]*?<\/script>/gi, '');
+  out = out.replace(/<link[^>]+archive\.org\/_static\/[^>]*>/gi, '');
+  out = out.replace(/(?:https?:\/\/web\.archive\.org)?\/web\/\d{8,14}(?:[a-z_]+)?\/(https?:\/\/[^"'\s)>]+)/gi, '$1');
+  out = out.replace(/(?:https?:\/\/web\.archive\.org)?\/web\/\d{8,14}(?:[a-z_]+)?\/(\/\/[^"'\s)>]+)/gi, 'https:$1');
+  return out;
+}
+
+/**
+ * Fallback reader mirror (Jina AI Reader / AllOrigins / Wayback Raw id_ Snapshot) for anti-bot sites.
+ */
+async function fetchViaFallbackMirror(targetUrl, preferredNode = 'reader-antibot', { allowWayback = true } = {}) {
   const attempts = [];
 
   // 1. Jina Reader (clean, free open-source anti-bot reader)
@@ -706,26 +767,42 @@ async function fetchViaFallbackMirror(targetUrl, preferredNode = 'reader-antibot
           const cleanBody = md
             .replace(/^Title:.*\n?/m, '')
             .replace(/^URL Source:.*\n?/m, '')
+            .replace(/^Published Time:.*\n?/m, '')
             .replace(/^Markdown Content:\s*\n?/m, '')
             .trim();
+          const MD_URL_PAT = 'https?:\\/\\/(?:[^()\\s]+|\\([^()\\s]*\\))+';
+          const mdImgRe = new RegExp(`!\\[([^\\]]*)\\]\\((${MD_URL_PAT})\\)`, 'g');
+          const mdLinkRe = new RegExp(`\\[([^\\]]+)\\]\\((${MD_URL_PAT})\\)`, 'g');
           const paragraphs = cleanBody
             .split(/\n{2,}/)
-            .slice(0, 80)
+            .slice(0, 90)
             .map((block) => {
-              const escaped = escapeHtmlAttr(block)
-                .replace(/\[([^\]]+)\]\((https?:\/\/[^)]+)\)/g, '<a href="$2">$1</a>')
+              const trimmed = block.trim();
+              if (!trimmed) return '';
+              const formatted = escapeHtmlAttr(trimmed)
+                .replace(mdImgRe, '<figure><img src="$2" alt="$1" loading="lazy" referrerpolicy="no-referrer"></figure>')
+                .replace(mdLinkRe, '<a href="$2">$1</a>')
+                .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
                 .replace(/\n/g, '<br>');
-              if (block.startsWith('# ')) return `<h1>${escaped.slice(2)}</h1>`;
-              if (block.startsWith('## ')) return `<h2>${escaped.slice(3)}</h2>`;
-              if (block.startsWith('### ')) return `<h3>${escaped.slice(4)}</h3>`;
-              return `<p>${escaped}</p>`;
+              if (trimmed.startsWith('# ')) return `<h1>${formatted.slice(2)}</h1>`;
+              if (trimmed.startsWith('## ')) return `<h2>${formatted.slice(3)}</h2>`;
+              if (trimmed.startsWith('### ')) return `<h3>${formatted.slice(4)}</h3>`;
+              return `<p>${formatted}</p>`;
             })
+            .filter(Boolean)
             .join('\n');
 
-          const readerHtml = `<!doctype html><html><head><title>${escapeHtmlAttr(titleLine)}</title><style>
-            body{font-family:system-ui,-apple-system,sans-serif;line-height:1.7;max-width:780px;margin:0 auto;padding:24px 18px;color:#0f172a;background:#ffffff;}
-            a{color:#2563eb;word-break:break-word;} h1,h2,h3{line-height:1.3;} pre,code{background:#f1f5f9;padding:2px 6px;border-radius:4px;}
-            @media(prefers-color-scheme:dark){body{background:#0b1120;color:#e2e8f0;}a{color:#60a5fa;}pre,code{background:#1e293b;}}
+          const readerHtml = `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${escapeHtmlAttr(titleLine)}</title><style>
+            :root{color-scheme:light;}
+            body{font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;line-height:1.72;max-width:780px;margin:0 auto;padding:22px 18px 40px;color:#0f172a;background:#ffffff;}
+            article{display:flex;flex-direction:column;gap:0.75rem;}
+            h1{font-size:1.55rem;line-height:1.25;margin:0 0 0.5rem;color:#020617;}
+            h2{font-size:1.22rem;line-height:1.3;margin:1rem 0 0.35rem;color:#0f172a;}
+            h3{font-size:1.05rem;line-height:1.35;margin:0.85rem 0 0.25rem;color:#1e293b;}
+            p{margin:0;color:#1e293b;word-break:break-word;}
+            a{color:#2563eb;text-decoration:none;font-weight:500;} a:hover{text-decoration:underline;}
+            figure{margin:0.6rem 0;} img{max-width:100%;height:auto;border-radius:10px;display:block;}
+            pre,code{background:#f1f5f9;padding:2px 6px;border-radius:4px;font-size:0.9em;}
           </style></head><body><article><h1>${escapeHtmlAttr(titleLine)}</h1>${paragraphs}</article></body></html>`;
 
           return {
@@ -767,33 +844,37 @@ async function fetchViaFallbackMirror(targetUrl, preferredNode = 'reader-antibot
     attempts.push({ relay: 'AllOrigins', status: 'timeout' });
   }
 
-  // 3. Wayback Archive Snapshot (if live host blocked)
-  try {
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 7000);
-    const availRes = await fetch(
-      `https://archive.org/wayback/available?url=${encodeURIComponent(targetUrl)}`,
-      { signal: controller.signal }
-    ).finally(() => clearTimeout(timer));
-    if (availRes.ok) {
-      const json = await availRes.json();
-      const snapUrl = json?.archived_snapshots?.closest?.url;
-      if (snapUrl) {
-        const snapRes = await fetch(snapUrl);
-        if (snapRes.ok) {
-          const html = await readTextCapped(snapRes, MAX_HTML_BYTES);
-          return {
-            ok: true,
-            relayUsed: 'Internet Archive (Wayback Mirror)',
-            html,
-            textSnippet: extractPlainTextSnippet(html),
-            title: '',
-          };
+  // 3. Wayback Archive Raw Snapshot (uses id_ flag + cleanWaybackHtml so CSS & images stay intact)
+  if (allowWayback) {
+    try {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 7000);
+      const availRes = await fetch(
+        `https://archive.org/wayback/available?url=${encodeURIComponent(targetUrl)}`,
+        { signal: controller.signal }
+      ).finally(() => clearTimeout(timer));
+      if (availRes.ok) {
+        const json = await availRes.json();
+        let snapUrl = json?.archived_snapshots?.closest?.url || '';
+        if (snapUrl) {
+          // Request unmodified original HTML using Wayback's `id_` modifier to prevent broken /web/... CSS links
+          snapUrl = snapUrl.replace(/^http:\/\//i, 'https://').replace(/(\/web\/\d{8,14})(\/)/, '$1id_$2');
+          const snapRes = await fetch(snapUrl);
+          if (snapRes.ok) {
+            const html = cleanWaybackHtml(await readTextCapped(snapRes, MAX_HTML_BYTES));
+            return {
+              ok: true,
+              relayUsed: 'Internet Archive (Wayback Clean)',
+              html,
+              textSnippet: extractPlainTextSnippet(html),
+              title: '',
+            };
+          }
         }
       }
+    } catch {
+      attempts.push({ relay: 'Wayback Archive', status: 'unavailable' });
     }
-  } catch {
-    attempts.push({ relay: 'Wayback Archive', status: 'unavailable' });
   }
 
   return { ok: false, attempts };
@@ -1061,9 +1142,10 @@ export async function handleWebProxyRequest(request) {
         : 'Cloudflare Edge Stealth Proxy';
     let usedFallback = false;
 
-    // If user explicitly chose Reader Anti-Bot mode, try Jina Reader first
+    // If user explicitly chose Reader Anti-Bot mode, try live Reader/AllOrigins first (without jumping
+    // straight to an old Wayback snapshot before trying a live direct Stealth Edge fetch!)
     if (node === 'reader-antibot') {
-      const mirror = await fetchViaFallbackMirror(validation.url, 'reader-antibot');
+      const mirror = await fetchViaFallbackMirror(validation.url, 'reader-antibot', { allowWayback: false });
       if (mirror.ok) {
         rawHtml = mirror.html;
         relayUsed = mirror.relayUsed;

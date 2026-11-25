@@ -24,6 +24,7 @@ import {
   pushTabHistoryEntry,
 } from './webproxy-logic.js';
 import {
+  cleanWaybackHtml,
   extractMediaFromHtml,
   sanitizeAndRewriteHtml,
   validatePublicProxyUrl,
@@ -173,6 +174,37 @@ test('v91 Web Proxy Backend: sanitizeAndRewriteHtml blocks ads/trackers, removes
   assert.equal(res.sanitizedHtml.includes('onclick="evil()"'), false);
   assert.equal(/href\s*=\s*["']javascript:/i.test(res.sanitizedHtml), false);
   assert.ok(res.sanitizedHtml.includes('MANIFEST_PROXY_NAV'));
+});
+
+test('v92 Web Proxy Backend: preserves async preload CSS, removes crossorigin blocks, restores Wayback URLs, promotes lazy images, and never forces dark color-scheme', () => {
+  const waybackDirty = `
+    <!-- BEGIN WAYBACK TOOLBAR INSERT --><div id="wm-ipp">Wayback Bar</div><!-- END WAYBACK TOOLBAR INSERT -->
+    <html><head>
+      <link rel="preload" as="style" href="/web/20260322101500cs_/https://cdn.liputan6.com/app.css" onload="this.rel='stylesheet'" crossorigin="anonymous" integrity="sha384-abc">
+      <link rel="stylesheet" href="https://web.archive.org/web/20260322cs_/https://cdn.liputan6.com/icons.css" crossorigin="anonymous">
+    </head><body>
+      <img src="data:image/gif;base64,R0lGODlhAQABAAAAACw=" data-src="/web/20260322im_/https://cdn.liputan6.com/photo.jpg" alt="News">
+    </body></html>
+  `;
+  const cleanedWb = cleanWaybackHtml(waybackDirty);
+  assert.equal(cleanedWb.includes('Wayback Bar'), false);
+  assert.ok(cleanedWb.includes('https://cdn.liputan6.com/app.css'));
+  assert.ok(cleanedWb.includes('https://cdn.liputan6.com/icons.css'));
+  assert.equal(cleanedWb.includes('/web/20260322'), false);
+
+  const sanitized = sanitizeAndRewriteHtml(waybackDirty, 'https://www.liputan6.com/', {
+    adBlock: true,
+    antiTrack: true,
+    darkTheme: true,
+  });
+  // Async preload stylesheet must become active rel="stylesheet" without crossorigin/integrity
+  assert.match(sanitized.sanitizedHtml, /rel="stylesheet"[^>]*https:\/\/cdn\.liputan6\.com\/app\.css/);
+  assert.equal(sanitized.sanitizedHtml.includes('crossorigin='), false);
+  assert.equal(sanitized.sanitizedHtml.includes('integrity='), false);
+  // Lazy data-src image must be promoted to real src
+  assert.match(sanitized.sanitizedHtml, /src="https:\/\/cdn\.liputan6\.com\/photo\.jpg"/);
+  // Must NOT force dark color-scheme onto external light-designed websites
+  assert.equal(sanitized.sanitizedHtml.includes('color-scheme: dark'), false);
 });
 
 test('v91 Web Proxy: security audit, multi-tab history, Incognito zero-history guarantee, and Multi-AI context', () => {
