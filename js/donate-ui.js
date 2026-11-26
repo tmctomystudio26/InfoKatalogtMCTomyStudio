@@ -24,7 +24,6 @@ import {
   getWibMonthKey,
   normalizeLeaderboardPayload,
 } from './donate-logic.js?v=104';
-import { refreshMotionEngine } from './motion-engine.js?v=106';
 
 export function createDonateController({ onToast = () => {} } = {}) {
   let mountEl = null;
@@ -389,8 +388,6 @@ export function createDonateController({ onToast = () => {} } = {}) {
       btn.classList.toggle('is-active', active);
       btn.setAttribute('aria-pressed', active ? 'true' : 'false');
     });
-
-    refreshMotionEngine(mountEl, { immediateCards: true });
   }
 
   function renderShell() {

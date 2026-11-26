@@ -39,12 +39,6 @@ import {
   resolveDisplayBrand,
   resolveSiteContext,
 } from './domain-router.js?v=83';
-import {
-  animateBannerHeadline,
-  initMotionEngine,
-  refreshMotionEngine,
-  scrollToTarget,
-} from './motion-engine.js?v=106';
 
 const THEME_STORAGE_KEY = 'manifestudio_theme_v1';
 const CART_STORAGE_KEY = 'manifestudio_cart_v1';
@@ -388,10 +382,6 @@ function renderCatalog() {
       if (id) openProductModal(id);
     });
   });
-
-  refreshMotionEngine(grid, {
-    immediateCards: state.category !== 'all' || Boolean(state.query.trim()) || state.inStockOnly,
-  });
 }
 
 let applyBannerSlideFn = null;
@@ -611,10 +601,6 @@ function initBannerCarousel() {
     if (counterEl) {
       counterEl.textContent = `${wrapped + 1} / ${totalSlides}`;
     }
-
-    if (slides[wrapped]) {
-      animateBannerHeadline(slides[wrapped]);
-    }
   }
 
   applyBannerSlideFn = applySlide;
@@ -655,7 +641,7 @@ function initBannerCarousel() {
     if (href.startsWith('#')) {
       const target = document.querySelector(href);
       if (target) {
-        scrollToTarget(target, { offset: -78 });
+        target.scrollIntoView({ behavior: 'smooth', block: 'start' });
       }
       return;
     }
@@ -1815,7 +1801,6 @@ function renderAllStorefrontViews() {
   if (state.isCartOpen) {
     renderCartDrawer();
   }
-  refreshMotionEngine(document);
 }
 
 async function bootstrap() {
@@ -1823,7 +1808,6 @@ async function bootstrap() {
   loadPersistedState();
   applyTheme();
   initBannerCarousel();
-  initMotionEngine({ page: 'store' });
   renderAllStorefrontViews();
   bindGlobalEvents();
   const initialDisplay = resolveDisplayBrand(getBrand(), getSiteContext());

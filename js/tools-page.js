@@ -33,13 +33,6 @@ import {
   parseStudioRoute,
 } from './studio-home.js?v=102';
 import { createFeatureCsController } from './feature-cs-ui.js?v=102';
-import {
-  animateBannerHeadline,
-  animateHeadingWords,
-  initMotionEngine,
-  refreshMotionEngine,
-  scrollToTarget,
-} from './motion-engine.js?v=106';
 
 const THEME_STORAGE_KEY = 'manifestudio_theme_v1';
 const VALID_TABS = new Set([
@@ -409,15 +402,12 @@ function enterHomeView({ pushState = true, scrollTarget = null } = {}) {
 
   syncHeaderNavState(scrollTarget || 'top');
 
-  const homeRoot = document.getElementById('studio-home-view');
-  refreshMotionEngine(homeRoot || document);
-
   if (scrollTarget && scrollTarget !== 'top') {
     requestAnimationFrame(() => {
-      scrollToTarget(`#${scrollTarget}`, { offset: -78 });
+      document.getElementById(scrollTarget)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
     });
   } else {
-    scrollToTarget(0, { immediate: true });
+    window.scrollTo({ top: 0, behavior: 'auto' });
   }
 }
 
@@ -445,10 +435,7 @@ function enterToolView(tabId, { pushState = true } = {}) {
     window.history.pushState({ view: 'tool', tab: safeTab }, '', nextUrl);
   }
 
-  scrollToTarget(0, { immediate: true });
-  if (toolView) {
-    refreshMotionEngine(toolView, { immediateCards: true });
-  }
+  window.scrollTo({ top: 0, behavior: 'auto' });
 }
 
 function activateUtilityAndScroll(tabId) {
@@ -681,10 +668,6 @@ function initStudioBannerCarousel() {
     if (counterEl) {
       counterEl.textContent = `${wrapped + 1} / ${totalSlides}`;
     }
-
-    if (slides[wrapped]) {
-      animateBannerHeadline(slides[wrapped]);
-    }
   }
 
   applyStudioBannerSlideFn = applySlide;
@@ -725,7 +708,7 @@ function initStudioBannerCarousel() {
     }
     const href = slideEl.getAttribute('data-banner-href') || '';
     if (href.startsWith('#')) {
-      scrollToTarget(href, { offset: -78 });
+      document.querySelector(href)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }
   }
 
@@ -947,10 +930,6 @@ function renderStudioFeatureDirectory() {
       `;
     })
     .join('');
-
-  refreshMotionEngine(grid, {
-    immediateCards: activeDirectoryCategory !== 'all' || Boolean(directoryQuery.trim()),
-  });
 }
 
 function renderStudioValuePillars() {
@@ -1305,10 +1284,7 @@ function syncActiveTabChrome(tab) {
 
   if (iconEl) iconEl.src = meta.icon;
   if (eyebrowEl) eyebrowEl.textContent = `${meta.categoryLabel} · Gratis Tanpa Login`;
-  if (titleEl) {
-    titleEl.textContent = meta.title;
-    animateHeadingWords(titleEl, { immediate: true, force: true });
-  }
+  if (titleEl) titleEl.textContent = meta.title;
   if (subEl) subEl.textContent = meta.subtitle;
   document.title = `${utilName} — ${meta.title}`;
 
@@ -1428,7 +1404,7 @@ function bindStudioSectionEvents() {
     if (currentViewMode === 'tool') {
       enterHomeView({ pushState: true, scrollTarget: 'top' });
     } else {
-      scrollToTarget(0);
+      window.scrollTo({ top: 0, behavior: 'smooth' });
       syncHeaderNavState('top');
     }
   };
@@ -1520,8 +1496,6 @@ async function bootstrap() {
   renderStudioValuePillars();
   renderStudioFaq();
   renderToolSwitcherOptions();
-
-  initMotionEngine({ page: 'tools' });
 
   // Route cleanly between Home Hub (/) and Dedicated Feature Page (?tab=<id>)
   const initialRoute = readCurrentRoute();
