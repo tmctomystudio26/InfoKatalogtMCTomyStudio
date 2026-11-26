@@ -88,8 +88,8 @@ Dilengkapi Jadwal Sholat, Prakiraan Cuaca, Jam Dunia, Speedtest, Social Media Do
     />
 
     <!-- Styles -->
-    <link rel="stylesheet" href="./css/tokens.css?v=104" />
-    <link rel="stylesheet" href="./css/styles.css?v=104" />
+    <link rel="stylesheet" href="./css/tokens.css?v=106" />
+    <link rel="stylesheet" href="./css/styles.css?v=106" />
     <script>
       (function () {
         try {
@@ -98,7 +98,7 @@ Dilengkapi Jadwal Sholat, Prakiraan Cuaca, Jam Dunia, Speedtest, Social Media Do
             document.documentElement.setAttribute('data-theme', savedTheme);
           }
         } catch (e) {}
-        var CURRENT_CACHE = 'manifestudio-cache-v104';
+        var CURRENT_CACHE = 'manifestudio-cache-v106';
         window.addEventListener('load', function () {
           if ('caches' in window) {
             caches.keys().then(function (keys) {
@@ -108,7 +108,7 @@ Dilengkapi Jadwal Sholat, Prakiraan Cuaca, Jam Dunia, Speedtest, Social Media Do
             });
           }
           if ('serviceWorker' in navigator) {
-            navigator.serviceWorker.register('./sw.js?v=104').then(function (reg) {
+            navigator.serviceWorker.register('./sw.js?v=106').then(function (reg) {
               reg.update();
             }).catch(function () {});
           }
@@ -402,6 +402,10 @@ Dilengkapi Jadwal Sholat, Prakiraan Cuaca, Jam Dunia, Speedtest, Social Media Do
     <div id="cart-drawer-root" class="drawer-root" hidden></div>
     <div id="toast-notification" class="toast-notification" role="status" aria-live="polite" hidden></div>
 
-    <script type="module" src="./js/app.js?v=83"></script>
+    <script defer src="./js/vendor/gsap.min.js?v=106"></script>
+    <script defer src="./js/vendor/ScrollTrigger.min.js?v=106"></script>
+    <script defer src="./js/vendor/lenis.min.js?v=106"></script>
+    <script defer src="./js/vendor/motion.min.js?v=106"></script>
+    <script type="module" src="./js/app.js?v=106"></script>
   </body>
 </html>

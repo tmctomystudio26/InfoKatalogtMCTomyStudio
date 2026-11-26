@@ -33,6 +33,13 @@ import {
   parseStudioRoute,
 } from './studio-home.js?v=102';
 import { createFeatureCsController } from './feature-cs-ui.js?v=102';
+import {
+  animateBannerHeadline,
+  animateHeadingWords,
+  initMotionEngine,
+  refreshMotionEngine,
+  scrollToTarget,
+} from './motion-engine.js?v=106';
 
 const THEME_STORAGE_KEY = 'manifestudio_theme_v1';
 const VALID_TABS = new Set([
@@ -402,12 +409,15 @@ function enterHomeView({ pushState = true, scrollTarget = null } = {}) {
 
   syncHeaderNavState(scrollTarget || 'top');
 
+  const homeRoot = document.getElementById('studio-home-view');
+  refreshMotionEngine(homeRoot || document);
+
   if (scrollTarget && scrollTarget !== 'top') {
     requestAnimationFrame(() => {
-      document.getElementById(scrollTarget)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      scrollToTarget(`#${scrollTarget}`, { offset: -78 });
     });
   } else {
-    window.scrollTo({ top: 0, behavior: 'auto' });
+    scrollToTarget(0, { immediate: true });
   }
 }
 
@@ -435,7 +445,10 @@ function enterToolView(tabId, { pushState = true } = {}) {
     window.history.pushState({ view: 'tool', tab: safeTab }, '', nextUrl);
   }
 
-  window.scrollTo({ top: 0, behavior: 'auto' });
+  scrollToTarget(0, { immediate: true });
+  if (toolView) {
+    refreshMotionEngine(toolView, { immediateCards: true });
+  }
 }
 
 function activateUtilityAndScroll(tabId) {
@@ -668,6 +681,10 @@ function initStudioBannerCarousel() {
     if (counterEl) {
       counterEl.textContent = `${wrapped + 1} / ${totalSlides}`;
     }
+
+    if (slides[wrapped]) {
+      animateBannerHeadline(slides[wrapped]);
+    }
   }
 
   applyStudioBannerSlideFn = applySlide;
@@ -708,7 +725,7 @@ function initStudioBannerCarousel() {
     }
     const href = slideEl.getAttribute('data-banner-href') || '';
     if (href.startsWith('#')) {
-      document.querySelector(href)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      scrollToTarget(href, { offset: -78 });
     }
   }
 
@@ -930,6 +947,10 @@ function renderStudioFeatureDirectory() {
       `;
     })
     .join('');
+
+  refreshMotionEngine(grid, {
+    immediateCards: activeDirectoryCategory !== 'all' || Boolean(directoryQuery.trim()),
+  });
 }
 
 function renderStudioValuePillars() {
@@ -1284,7 +1305,10 @@ function syncActiveTabChrome(tab) {
 
   if (iconEl) iconEl.src = meta.icon;
   if (eyebrowEl) eyebrowEl.textContent = `${meta.categoryLabel} · Gratis Tanpa Login`;
-  if (titleEl) titleEl.textContent = meta.title;
+  if (titleEl) {
+    titleEl.textContent = meta.title;
+    animateHeadingWords(titleEl, { immediate: true, force: true });
+  }
   if (subEl) subEl.textContent = meta.subtitle;
   document.title = `${utilName} — ${meta.title}`;
 
@@ -1404,7 +1428,7 @@ function bindStudioSectionEvents() {
     if (currentViewMode === 'tool') {
       enterHomeView({ pushState: true, scrollTarget: 'top' });
     } else {
-      window.scrollTo({ top: 0, behavior: 'smooth' });
+      scrollToTarget(0);
       syncHeaderNavState('top');
     }
   };
@@ -1496,6 +1520,8 @@ async function bootstrap() {
   renderStudioValuePillars();
   renderStudioFaq();
   renderToolSwitcherOptions();
+
+  initMotionEngine({ page: 'tools' });
 
   // Route cleanly between Home Hub (/) and Dedicated Feature Page (?tab=<id>)
   const initialRoute = readCurrentRoute();

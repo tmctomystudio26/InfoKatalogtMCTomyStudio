@@ -55,6 +55,7 @@ import {
   normalizeOriginUrl,
   normalizeStoreAccessConfig,
 } from './domain-router.js?v=85';
+import { initMotionEngine, refreshMotionEngine } from './motion-engine.js?v=106';
 
 const THEME_STORAGE_KEY = 'manifestudio_theme_v1';
 const ADMIN_VAULT_STORAGE_KEY = 'manifestudio_admin_vault_v1';
@@ -712,6 +713,7 @@ async function openUnlockedDashboard() {
   renderVoucherList();
   renderHistoryList();
   syncNewProductLogoUi();
+  refreshMotionEngine(document, { immediateCards: true });
   pullHistoryFromGitHub().catch(() => {});
   refreshStoreVaultStatus().catch(() => {});
 }
@@ -5500,6 +5502,7 @@ function bootstrapAdmin() {
   bindEvents();
   bindAdminDonationsEvents();
   renderGateScreen();
+  initMotionEngine({ page: 'admin' });
   if (
     typeof window !== 'undefined' &&
     (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
