@@ -355,8 +355,10 @@ async function verifySociaBuzzAuth(request, rawBody, payload, expectedSecret) {
   const url = new URL(request.url);
   const candidates = [];
 
-  // 1. Named token headers used across SociaBuzz Tribe / Shop / Xendit gateways
+  // 1. Named token headers used across SociaBuzz Tribe / Shop / Xendit gateways (including official sb-webhook-token)
   const namedHeaders = [
+    'sb-webhook-token',
+    'x-sb-webhook-token',
     'x-callback-token',
     'x-sociabuzz-webhook-token',
     'x-sociabuzz-token',
@@ -375,19 +377,27 @@ async function verifySociaBuzzAuth(request, rawBody, payload, expectedSecret) {
     }
   }
 
-  // 2. Any other custom x-* header carrying the exact webhook token
+  // 2. Any custom header carrying a token/secret or starting with sb-/x-
   for (const [k, v] of request.headers.entries()) {
-    if (k.toLowerCase().startsWith('x-') && v) {
+    const lower = k.toLowerCase();
+    if ((lower.startsWith('sb-') || lower.startsWith('x-') || lower.includes('token') || lower.includes('secret')) && v) {
       candidates.push(String(v).trim());
     }
   }
 
   // 3. Query params or JSON body token fields (if provided by SociaBuzz)
-  for (const qp of ['token', 'webhook_token']) {
+  for (const qp of ['token', 'webhook_token', 'sb_webhook_token']) {
     const val = (url.searchParams.get(qp) || '').trim();
     if (val) candidates.push(val);
   }
-  for (const field of [payload?.webhook_token, payload?.token, payload?.data?.webhook_token, payload?.data?.token]) {
+  for (const field of [
+    payload?.sb_webhook_token,
+    payload?.webhook_token,
+    payload?.token,
+    payload?.data?.sb_webhook_token,
+    payload?.data?.webhook_token,
+    payload?.data?.token,
+  ]) {
     if (typeof field === 'string' && field.trim()) {
       candidates.push(field.trim());
     }
@@ -401,7 +411,7 @@ async function verifySociaBuzzAuth(request, rawBody, payload, expectedSecret) {
   }
 
   // 4. Optional HMAC-SHA256 signature verification if SociaBuzz sends a signature header
-  const sigHeaders = ['x-sociabuzz-signature', 'x-webhook-signature', 'x-hub-signature-256'];
+  const sigHeaders = ['sb-webhook-token', 'x-sociabuzz-signature', 'x-webhook-signature', 'x-hub-signature-256'];
   const expectedDigest = (await hmacSha256Hex(secret, rawBody)).toLowerCase();
   for (const name of sigHeaders) {
     const rawSig = (request.headers.get(name) || '').trim().toLowerCase().replace(/^sha256=/, '');

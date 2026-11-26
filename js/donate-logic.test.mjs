@@ -229,11 +229,11 @@ test('v102: Cloudflare Worker verifies Saweria HMAC-SHA256 & SociaBuzz token, re
   );
   assert.equal(badSb.status, 401);
 
-  // 4. Valid SociaBuzz Tribe USD webhook via x-callback-token MUST convert to IDR & aggregate with same donor
+  // 4. Valid SociaBuzz Tribe USD webhook via official sb-webhook-token MUST convert to IDR & aggregate with same donor
   const okSb = await donateWorker.fetch(
     new Request('https://donate-api.manifestudio.my.id/webhook/sociabuzz', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'x-callback-token': env.SOCIABUZZ_WEBHOOK_TOKEN },
+      headers: { 'Content-Type': 'application/json', 'sb-webhook-token': env.SOCIABUZZ_WEBHOOK_TOKEN },
       body: JSON.stringify({
         id: 'sb-tx-002',
         supporter: 'Dina Putri',
