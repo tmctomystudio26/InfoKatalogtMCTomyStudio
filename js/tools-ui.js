@@ -52,7 +52,7 @@ const loadGlobeMod = () => (_globeMod ? Promise.resolve(_globeMod) : import('./g
 const loadSpeedtestMod = () => (_speedtestMod ? Promise.resolve(_speedtestMod) : import('./speedtest.js?v=79').then((m) => (_speedtestMod = m)));
 const loadDownloaderMod = () => (_downloaderMod ? Promise.resolve(_downloaderMod) : import('./downloader.js?v=79').then((m) => (_downloaderMod = m)));
 const loadCompressorMod = () => (_compressorMod ? Promise.resolve(_compressorMod) : import('./compressor.js?v=79').then((m) => (_compressorMod = m)));
-const loadConverterMod = () => (_converterMod ? Promise.resolve(_converterMod) : import('./converter.js?v=79').then((m) => (_converterMod = m)));
+const loadConverterMod = () => (_converterMod ? Promise.resolve(_converterMod) : import('./converter.js?v=100').then((m) => (_converterMod = m)));
 const loadSongFinderMod = () => (_songFinderMod ? Promise.resolve(_songFinderMod) : import('./song-finder.js?v=79').then((m) => (_songFinderMod = m)));
 const loadMusicMods = () =>
   _musicMods
@@ -64,7 +64,7 @@ const loadMusicMods = () =>
 const loadDracinMod = () => (_dracinMod ? Promise.resolve(_dracinMod) : import('./dracin-ui.js?v=86').then((m) => (_dracinMod = m)));
 const loadAudioEditorMod = () => (_audioEditorMod ? Promise.resolve(_audioEditorMod) : import('./audio-editor-ui.js?v=79').then((m) => (_audioEditorMod = m)));
 const loadManifestAiMod = () => (_manifestAiMod ? Promise.resolve(_manifestAiMod) : import('./manifest-ai-ui.js?v=87').then((m) => (_manifestAiMod = m)));
-const loadPlagiarismMod = () => (_plagiarismMod ? Promise.resolve(_plagiarismMod) : import('./plagiarism-ui.js?v=79').then((m) => (_plagiarismMod = m)));
+const loadPlagiarismMod = () => (_plagiarismMod ? Promise.resolve(_plagiarismMod) : import('./plagiarism-ui.js?v=100').then((m) => (_plagiarismMod = m)));
 const loadNovelMod = () => (_novelMod ? Promise.resolve(_novelMod) : import('./novel-ui.js?v=79').then((m) => (_novelMod = m)));
 const loadCallerIdMod = () => (_callerIdMod ? Promise.resolve(_callerIdMod) : import('./callerid-ui.js?v=79').then((m) => (_callerIdMod = m)));
 const loadShortlinkMod = () => (_shortlinkMod ? Promise.resolve(_shortlinkMod) : import('./shortlink-ui.js?v=90').then((m) => (_shortlinkMod = m)));
@@ -477,6 +477,8 @@ export function createToolsHubController({
     convFile: null,
     convSourceInfo: null,
     convTargetFormat: 'pdf',
+    convFormatDropdownOpen: false,
+    convFormatQuery: '',
     convLoading: false,
     convProgressPct: 0,
     convProgressLabel: '',
@@ -2092,6 +2094,82 @@ export function createToolsHubController({
     `;
   }
 
+  function buildConverterFormatOptionsHtml(availableTargets, selectedId, query = '') {
+    const q = String(query || '').trim().toLowerCase();
+    const fmtFn =
+      _converterMod && typeof _converterMod.formatTargetOptionDisplay === 'function'
+        ? _converterMod.formatTargetOptionDisplay
+        : (item) => ({
+            id: String(item.id || 'pdf').toLowerCase(),
+            extBadge: `.${String(item.id || 'pdf').toUpperCase()}`,
+            name: String(item.name || item.id || 'PDF').toUpperCase(),
+            desc: String(item.desc || item.label || ''),
+            group: item.group || 'Format Tujuan',
+            badge: item.badge || '',
+            searchText: `${item.id} ${item.name || ''} ${item.label || ''} ${item.group || ''}`.toLowerCase(),
+          });
+
+    const formatted = availableTargets.map((item) => fmtFn(item));
+    const filtered = q ? formatted.filter((f) => f.searchText.includes(q)) : formatted;
+
+    if (filtered.length === 0) {
+      return `
+        <div class="conv-fmt-empty">
+          Tidak ada format yang cocok dengan "<strong>${escapeHtml(query)}</strong>".
+        </div>
+      `;
+    }
+
+    const groupedMap = new Map();
+    for (const item of filtered) {
+      const grp = item.group || 'Format Tujuan';
+      if (!groupedMap.has(grp)) groupedMap.set(grp, []);
+      groupedMap.get(grp).push(item);
+    }
+
+    return Array.from(groupedMap.entries())
+      .map(
+        ([groupName, items]) => `
+        <div class="conv-fmt-group" role="group" aria-label="${escapeHtml(groupName)}">
+          <div class="conv-fmt-group-title">${escapeHtml(groupName)}</div>
+          <div class="conv-fmt-grid">
+            ${items
+              .map((item) => {
+                const isSelected = item.id === selectedId;
+                return `
+                  <button
+                    type="button"
+                    class="conv-fmt-option ${isSelected ? 'is-selected' : ''}"
+                    role="option"
+                    aria-selected="${isSelected ? 'true' : 'false'}"
+                    data-conv-format="${escapeHtml(item.id)}"
+                  >
+                    <span class="conv-fmt-ext mono-num">${escapeHtml(item.extBadge)}</span>
+                    <span class="conv-fmt-copy">
+                      <span class="conv-fmt-name-row">
+                        <strong class="conv-fmt-name">${escapeHtml(item.name)}</strong>
+                        ${item.badge ? `<span class="conv-fmt-tag">${escapeHtml(item.badge)}</span>` : ''}
+                      </span>
+                      ${item.desc ? `<span class="conv-fmt-desc">${escapeHtml(item.desc)}</span>` : ''}
+                    </span>
+                    <span class="conv-fmt-check" aria-hidden="true">
+                      ${
+                        isSelected
+                          ? `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>`
+                          : ''
+                      }
+                    </span>
+                  </button>
+                `;
+              })
+              .join('')}
+          </div>
+        </div>
+      `
+      )
+      .join('');
+  }
+
   function renderConverterPanel() {
     if (!_converterMod) {
       return `
@@ -2107,31 +2185,23 @@ export function createToolsHubController({
       : _converterMod.ALL_TARGET_FORMATS;
     const res = toolState.convResult;
 
-    // Group target formats by their group category for clean <optgroup> dropdown rendering
-    const groupedMap = new Map();
-    for (const item of availableTargets) {
-      const grp = item.group || 'Format Tujuan';
-      if (!groupedMap.has(grp)) groupedMap.set(grp, []);
-      groupedMap.get(grp).push(item);
-    }
+    const activeTargetObj =
+      availableTargets.find((t) => t.id === toolState.convTargetFormat) || availableTargets[0] || _converterMod.ALL_TARGET_FORMATS[0];
+    const activeTargetDisplay =
+      typeof _converterMod.formatTargetOptionDisplay === 'function'
+        ? _converterMod.formatTargetOptionDisplay(activeTargetObj)
+        : {
+            id: activeTargetObj.id,
+            extBadge: `.${String(activeTargetObj.id).toUpperCase()}`,
+            name: activeTargetObj.name || String(activeTargetObj.id).toUpperCase(),
+            desc: activeTargetObj.desc || activeTargetObj.label || '',
+            badge: activeTargetObj.badge || '',
+          };
 
-    const dropdownOptionsHtml = Array.from(groupedMap.entries())
-      .map(
-        ([groupName, items]) => `
-        <optgroup label="${escapeHtml(groupName)}">
-          ${items
-            .map(
-              (t) => `
-            <option value="${escapeHtml(t.id)}" ${toolState.convTargetFormat === t.id ? 'selected' : ''}>
-              → .${escapeHtml(t.id.toUpperCase())} — ${escapeHtml(t.label)}
-            </option>
-          `
-            )
-            .join('')}
-        </optgroup>
-      `
-      )
-      .join('');
+    const formatPickerOpen = Boolean(toolState.convFormatDropdownOpen);
+    const formatOptionsHtml = formatPickerOpen
+      ? buildConverterFormatOptionsHtml(availableTargets, toolState.convTargetFormat, toolState.convFormatQuery)
+      : '';
 
     const showConvProgress = Boolean(toolState.convLoading || res || toolState.convFile);
     const convPct = toolState.convLoading
@@ -2144,7 +2214,7 @@ export function createToolsHubController({
       : res
       ? `Konversi ke .${res.targetFormat} selesai & terverifikasi (${res.outputSizeLabel})`
       : toolState.convFile && sourceInfo
-      ? `Terdeteksi ${sourceInfo.label} — Pilih format tujuan di dropdown lalu klik "Konversi Sekarang"`
+      ? `Terdeteksi ${sourceInfo.label} — Pilih format tujuan lalu klik "Konversi ke .${toolState.convTargetFormat.toUpperCase()}"`
       : 'Masukkan file apa saja untuk mendeteksi format otomatis';
 
     const convMeta = getUtilityItemConfig('converter');
@@ -2157,7 +2227,7 @@ export function createToolsHubController({
               <span class="tool-kicker">${escapeHtml(convMeta.heroKicker || 'All-in-One File Converter · 85+ Konversi Multi-Format & OpenXML')}</span>
               <h3 class="tool-subhead">${escapeHtml(convMeta.heroTitle || 'Konversi Semua Format File (DOCX, Excel, PDF, Foto, Video, Audio & ZIP)')}</h3>
               <p class="tool-hint">
-                ${escapeHtml(convMeta.heroDescription || 'Masukkan file apa saja di bawah ini — sistem otomatis mendeteksi format berkas asal Anda dan menampilkan pilihan format konversi tujuan dalam daftar dropdown ringkas.')}
+                ${escapeHtml(convMeta.heroDescription || 'Masukkan file apa saja di bawah ini — sistem otomatis mendeteksi format berkas asal Anda dan mempertahankan tata letak, tabel, gambar serta gaya dokumen asli saat konversi.')}
               </p>
             </div>
           </div>
@@ -2182,7 +2252,7 @@ export function createToolsHubController({
                   <span>
                     ${
                       toolState.convFile && sourceInfo
-                        ? `${escapeHtml(sourceInfo.label)} · ${formatBytes(toolState.convFile.size)} → Siap diubah ke .${escapeHtml(toolState.convTargetFormat.toUpperCase())}`
+                        ? `${escapeHtml(sourceInfo.label)} · ${formatBytes(toolState.convFile.size)} · Siap diubah ke ${escapeHtml(activeTargetDisplay.extBadge)}`
                         : 'Mendukung DOCX, XLSX, CSV, TSV, PDF, RTF, MD, TXT, HTML, JSON, XML, YAML, JPG, JPEG, PNG, WebP, BMP, GIF, ICO, SVG, MP4, MOV, WebM, MP3, WAV, M4A, AAC, OGG, FLAC & ZIP'
                     }
                   </span>
@@ -2195,7 +2265,7 @@ export function createToolsHubController({
               </div>
             </div>
 
-            <!-- 2. Auto-Detected Format Box & Target Format Dropdown Selector -->
+            <!-- 2. Auto-Detected Format Box & Modern Searchable Target Format Picker -->
             <div class="conv-auto-dropdown-bar">
               <div class="conv-detected-box ${sourceInfo ? 'is-detected' : ''}" data-testid="conv-detected-box">
                 <span class="conv-detected-icon mono-num">
@@ -2203,7 +2273,7 @@ export function createToolsHubController({
                 </span>
                 <div class="conv-detected-copy">
                   <span class="conv-detected-kicker">
-                    ${sourceInfo ? '✓ Format File Terdeteksi Otomatis' : 'Deteksi Format Otomatis'}
+                    ${sourceInfo ? 'Format File Terdeteksi Otomatis' : 'Deteksi Format Otomatis'}
                   </span>
                   <strong class="conv-detected-title" data-testid="conv-detected-label">
                     ${
@@ -2215,7 +2285,7 @@ export function createToolsHubController({
                   <span class="conv-detected-sub">
                     ${
                       sourceInfo
-                        ? `${availableTargets.length} format konversi kompatibel tersedia di dropdown`
+                        ? `${availableTargets.length} format konversi kompatibel tersedia`
                         : 'Format asal akan terdeteksi otomatis begitu file dimasukkan'
                     }
                   </span>
@@ -2223,21 +2293,69 @@ export function createToolsHubController({
               </div>
 
               <div class="conv-select-controls">
-                <label for="conv-target-select" class="conv-select-label">
+                <span class="conv-select-label" id="conv-target-label">
                   2. Pilih Format Hasil Konversi (${availableTargets.length} Format Tersedia):
-                </label>
+                </span>
                 <div class="conv-select-row">
-                  <select
-                    id="conv-target-select"
-                    class="conv-target-select"
-                    data-testid="conv-target-select"
-                    aria-label="Pilih format hasil konversi"
-                  >
-                    ${dropdownOptionsHtml}
-                  </select>
+                  <div class="conv-fmt-picker ${formatPickerOpen ? 'is-open' : ''}" data-conv-dropdown="target">
+                    <button
+                      type="button"
+                      id="conv-target-trigger"
+                      class="conv-fmt-trigger"
+                      data-testid="conv-target-select"
+                      data-selected-format="${escapeHtml(activeTargetDisplay.id)}"
+                      aria-haspopup="listbox"
+                      aria-expanded="${formatPickerOpen ? 'true' : 'false'}"
+                      aria-labelledby="conv-target-label conv-target-trigger"
+                    >
+                      <span class="conv-fmt-ext mono-num">${escapeHtml(activeTargetDisplay.extBadge)}</span>
+                      <span class="conv-fmt-trigger-copy">
+                        <strong class="conv-fmt-trigger-name">${escapeHtml(activeTargetDisplay.name)}</strong>
+                        ${
+                          activeTargetDisplay.desc
+                            ? `<span class="conv-fmt-trigger-desc">${escapeHtml(activeTargetDisplay.desc)}</span>`
+                            : ''
+                        }
+                      </span>
+                      <span class="conv-fmt-chevron" aria-hidden="true">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+                      </span>
+                    </button>
+
+                    ${
+                      formatPickerOpen
+                        ? `
+                      <div class="conv-fmt-menu" id="conv-target-menu" role="listbox" aria-label="Daftar format hasil konversi">
+                        <div class="conv-fmt-menu-head">
+                          <div class="conv-fmt-search-wrap">
+                            <svg class="conv-fmt-search-ico" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+                            <input
+                              type="search"
+                              id="conv-format-search"
+                              class="conv-fmt-search-input"
+                              placeholder="Cari format (PDF, DOCX, JPG, MP3, ZIP)..."
+                              value="${escapeHtml(toolState.convFormatQuery)}"
+                              autocomplete="off"
+                              spellcheck="false"
+                              aria-label="Cari format hasil konversi"
+                            />
+                          </div>
+                          <button type="button" id="conv-format-close" class="conv-fmt-close-btn" aria-label="Tutup daftar format">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+                          </button>
+                        </div>
+                        <div class="conv-fmt-menu-body" id="conv-format-options-list">
+                          ${formatOptionsHtml}
+                        </div>
+                      </div>
+                    `
+                        : ''
+                    }
+                  </div>
+
                   <button
                     type="button"
-                    class="btn btn-primary btn-sm"
+                    class="btn btn-primary btn-sm conv-run-cta"
                     id="conv-run-btn"
                     data-testid="conv-run-btn"
                     ${!toolState.convFile || toolState.convLoading ? 'disabled' : ''}
@@ -2974,6 +3092,8 @@ export function createToolsHubController({
     const targets = convMod.getAvailableTargetFormats(info);
     toolState.convFile = file;
     toolState.convSourceInfo = info;
+    toolState.convFormatDropdownOpen = false;
+    toolState.convFormatQuery = '';
     if (forcedTargetFormat && targets.some((t) => t.id === forcedTargetFormat)) {
       toolState.convTargetFormat = forcedTargetFormat;
     } else if (!targets.some((t) => t.id === toolState.convTargetFormat)) {
@@ -2984,6 +3104,8 @@ export function createToolsHubController({
 
   async function runActiveConversion() {
     if (!toolState.convFile || toolState.convLoading) return;
+    toolState.convFormatDropdownOpen = false;
+    toolState.convFormatQuery = '';
     toolState.convLoading = true;
     toolState.convError = '';
     toolState.convProgressPct = 14;
@@ -5245,13 +5367,63 @@ export function createToolsHubController({
     }
 
     if (toolState.activeSubTab === 'converter') {
-      const targetSelect = rootEl.querySelector('#conv-target-select');
-      targetSelect?.addEventListener('change', (e) => {
-        const targetId = e.target.value;
-        if (!targetId) return;
-        toolState.convTargetFormat = targetId;
-        toolState.convResult = null;
+      const bindConverterOptionClicks = (containerEl) => {
+        if (!containerEl) return;
+        containerEl.querySelectorAll('[data-conv-format]').forEach((btn) => {
+          btn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const targetId = btn.getAttribute('data-conv-format');
+            if (!targetId) return;
+            toolState.convTargetFormat = targetId;
+            toolState.convFormatDropdownOpen = false;
+            toolState.convFormatQuery = '';
+            toolState.convResult = null;
+            render();
+          });
+        });
+      };
+
+      rootEl.querySelector('#conv-target-trigger')?.addEventListener('click', (e) => {
+        e.stopPropagation();
+        toolState.convFormatDropdownOpen = !toolState.convFormatDropdownOpen;
+        if (!toolState.convFormatDropdownOpen) {
+          toolState.convFormatQuery = '';
+        }
         render();
+        if (toolState.convFormatDropdownOpen) {
+          const searchEl = rootEl.querySelector('#conv-format-search');
+          if (searchEl && window.innerWidth >= 768) {
+            searchEl.focus();
+          }
+        }
+      });
+
+      rootEl.querySelector('#conv-format-close')?.addEventListener('click', (e) => {
+        e.stopPropagation();
+        toolState.convFormatDropdownOpen = false;
+        toolState.convFormatQuery = '';
+        render();
+      });
+
+      const formatListEl = rootEl.querySelector('#conv-format-options-list');
+      bindConverterOptionClicks(formatListEl);
+
+      const formatSearchEl = rootEl.querySelector('#conv-format-search');
+      formatSearchEl?.addEventListener('click', (e) => e.stopPropagation());
+      formatSearchEl?.addEventListener('input', (e) => {
+        toolState.convFormatQuery = e.target.value || '';
+        const listNode = rootEl.querySelector('#conv-format-options-list');
+        if (listNode && _converterMod) {
+          const targets = toolState.convSourceInfo
+            ? _converterMod.getAvailableTargetFormats(toolState.convSourceInfo)
+            : _converterMod.ALL_TARGET_FORMATS;
+          listNode.innerHTML = buildConverterFormatOptionsHtml(
+            targets,
+            toolState.convTargetFormat,
+            toolState.convFormatQuery
+          );
+          bindConverterOptionClicks(listNode);
+        }
       });
 
       const fileInput = rootEl.querySelector('#conv-file-input');
@@ -5282,6 +5454,8 @@ export function createToolsHubController({
       rootEl.querySelector('#conv-reset-btn')?.addEventListener('click', () => {
         toolState.convFile = null;
         toolState.convSourceInfo = null;
+        toolState.convFormatDropdownOpen = false;
+        toolState.convFormatQuery = '';
         toolState.convResult = null;
         toolState.convError = '';
         toolState.convProgressPct = 0;
@@ -5736,23 +5910,43 @@ export function createToolsHubController({
   }
 
   const handleCompressorGlobalClick = (e) => {
-    if (!mounted || toolState.activeSubTab !== 'compressor') return;
-    if (!toolState.compMethodDropdownOpen && !toolState.compPresetDropdownOpen) return;
-    if (e.target && typeof e.target.closest === 'function' && e.target.closest('[data-comp-dropdown]')) {
+    if (!mounted) return;
+    if (toolState.activeSubTab === 'compressor') {
+      if (!toolState.compMethodDropdownOpen && !toolState.compPresetDropdownOpen) return;
+      if (e.target && typeof e.target.closest === 'function' && e.target.closest('[data-comp-dropdown]')) {
+        return;
+      }
+      toolState.compMethodDropdownOpen = false;
+      toolState.compPresetDropdownOpen = false;
+      render();
       return;
     }
-    toolState.compMethodDropdownOpen = false;
-    toolState.compPresetDropdownOpen = false;
-    render();
+    if (toolState.activeSubTab === 'converter') {
+      if (!toolState.convFormatDropdownOpen) return;
+      if (e.target && typeof e.target.closest === 'function' && e.target.closest('[data-conv-dropdown]')) {
+        return;
+      }
+      toolState.convFormatDropdownOpen = false;
+      toolState.convFormatQuery = '';
+      render();
+    }
   };
 
   const handleCompressorGlobalKeydown = (e) => {
-    if (!mounted || toolState.activeSubTab !== 'compressor') return;
-    if (e.key !== 'Escape') return;
-    if (!toolState.compMethodDropdownOpen && !toolState.compPresetDropdownOpen) return;
-    toolState.compMethodDropdownOpen = false;
-    toolState.compPresetDropdownOpen = false;
-    render();
+    if (!mounted || e.key !== 'Escape') return;
+    if (toolState.activeSubTab === 'compressor') {
+      if (!toolState.compMethodDropdownOpen && !toolState.compPresetDropdownOpen) return;
+      toolState.compMethodDropdownOpen = false;
+      toolState.compPresetDropdownOpen = false;
+      render();
+      return;
+    }
+    if (toolState.activeSubTab === 'converter') {
+      if (!toolState.convFormatDropdownOpen) return;
+      toolState.convFormatDropdownOpen = false;
+      toolState.convFormatQuery = '';
+      render();
+    }
   };
 
   return {

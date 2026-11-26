@@ -18,10 +18,11 @@
  */
 
 import { escapePlagHtml, mapAnnotatedSentencesToPageHighlights } from './plagiarism-logic.js?v=69';
-import { loadPdfLib } from './media-engine.js?v=69';
+import { loadPdfLib } from './media-engine.js?v=100';
+import { normalizeTypographyForPdf } from './docx-fidelity.js?v=100';
 
 function sanitizePdfText(str = '') {
-  return String(str || '')
+  return normalizeTypographyForPdf(String(str || ''))
     .normalize('NFKD')
     .replace(/[\u0300-\u036f]/g, '')
     .replace(/[^\x20-\x7E]/g, ' ')
@@ -237,10 +238,13 @@ export async function generateTurnitinPdfBlobAsync(report) {
 
     // Source pages: 9 sources per page
     const sourcesPerPage = 9;
-    const sourcePagesCount = Math.max(1, Math.ceil(Math.max(1, sources.length) / sourcesPerPage));
-    const totalOutPages = 2 + sourcePagesCount + bodyPagesCount;
+    const pageSections = [];
+    const registerPage = (page, sectionLabel) => {
+      pageSections.push({ page, sectionLabel });
+      return page;
+    };
 
-    const drawChrome = (page, pageNum, sectionLabel) => {
+    const drawChrome = (page, pageNum, totalOutPages, sectionLabel) => {
       const W = 595;
       const H = 842;
       // Clean minimalist Turnitin header bar
@@ -266,8 +270,7 @@ export async function generateTurnitinPdfBlobAsync(report) {
     };
 
     // ==================== PAGE 1: MINIMALIST COVER PAGE ====================
-    const coverPage = outDoc.addPage([595, 842]);
-    drawChrome(coverPage, 1, 'Cover Page');
+    const coverPage = registerPage(outDoc.addPage([595, 842]), 'Cover Page');
 
     let cy = 742;
     coverPage.drawText('STANDARD SIMILARITY & ORIGINALITY REPORT', {
@@ -320,31 +323,33 @@ export async function generateTurnitinPdfBlobAsync(report) {
       dy -= 22;
     }
 
-    // Right column: Light-gray summary stats card (Pages / Words / Characters)
+    // Right column: Light-gray summary stats card (rendered after submission pages so page count is exact!)
     const cardX = 376;
     const cardY = cy - 160;
     const cardW = 175;
     const cardH = 166;
-    coverPage.drawRectangle({
-      x: cardX,
-      y: cardY,
-      width: cardW,
-      height: cardH,
-      color: colCardBg,
-      borderColor: colLine,
-      borderWidth: 0.8,
-    });
-    const statItems = [
-      { val: `${bodyPagesCount} Pages`, sub: 'Original document preserved' },
-      { val: `${Number(report.totalWords || 0).toLocaleString('en-US')} Words`, sub: `Eligible: ${Number(report.eligibleWords || 0).toLocaleString('en-US')}` },
-      { val: `${Number(report.totalChars || 0).toLocaleString('en-US')} Characters`, sub: `Similarity: ${simPct}% · Unique: ${report.uniquePct ?? (100 - simPct)}%` },
-    ];
-    let syCard = cardY + cardH - 34;
-    for (const st of statItems) {
-      coverPage.drawText(st.val, { x: cardX + 16, y: syCard, size: 13, font: fontBold, color: colInk });
-      coverPage.drawText(st.sub, { x: cardX + 16, y: syCard - 14, size: 7.8, font: fontReg, color: colMuted });
-      syCard -= 48;
-    }
+    const drawCoverStatsCard = (actualSubmissionPages) => {
+      coverPage.drawRectangle({
+        x: cardX,
+        y: cardY,
+        width: cardW,
+        height: cardH,
+        color: colCardBg,
+        borderColor: colLine,
+        borderWidth: 0.8,
+      });
+      const statItems = [
+        { val: `${actualSubmissionPages} Pages`, sub: 'Original document preserved' },
+        { val: `${Number(report.totalWords || 0).toLocaleString('en-US')} Words`, sub: `Eligible: ${Number(report.eligibleWords || 0).toLocaleString('en-US')}` },
+        { val: `${Number(report.totalChars || 0).toLocaleString('en-US')} Characters`, sub: `Similarity: ${simPct}% · Unique: ${report.uniquePct ?? (100 - simPct)}%` },
+      ];
+      let syCard = cardY + cardH - 34;
+      for (const st of statItems) {
+        coverPage.drawText(st.val, { x: cardX + 16, y: syCard, size: 13, font: fontBold, color: colInk });
+        coverPage.drawText(st.sub, { x: cardX + 16, y: syCard - 14, size: 7.8, font: fontReg, color: colMuted });
+        syCard -= 48;
+      }
+    };
 
     // Bottom No Repository Trust Notice on Cover Page
     coverPage.drawRectangle({
@@ -363,8 +368,7 @@ export async function generateTurnitinPdfBlobAsync(report) {
     );
 
     // ==================== PAGE 2: INTEGRITY OVERVIEW ====================
-    const ovPage = outDoc.addPage([595, 842]);
-    drawChrome(ovPage, 2, 'Integrity Overview');
+    const ovPage = registerPage(outDoc.addPage([595, 842]), 'Integrity Overview');
 
     const scoreRgb = simPct >= 45 ? [225, 29, 72] : simPct >= 25 ? [217, 119, 6] : [5, 150, 105];
     let oy = 736;
@@ -437,10 +441,9 @@ export async function generateTurnitinPdfBlobAsync(report) {
     }
 
     // ==================== PAGE 3..K: TOP SOURCES ====================
+    const sourcePagesCount = Math.max(1, Math.ceil(Math.max(1, sources.length) / sourcesPerPage));
     for (let sp = 0; sp < sourcePagesCount; sp += 1) {
-      const srcPage = outDoc.addPage([595, 842]);
-      const pNum = 3 + sp;
-      drawChrome(srcPage, pNum, 'Integrity Overview');
+      const srcPage = registerPage(outDoc.addPage([595, 842]), 'Integrity Overview');
 
       let ty = 748;
       srcPage.drawText('Top Sources  (PRIMARY SOURCES)', { x: 44, y: ty, size: 14, font: fontBold, color: colInk });
@@ -560,13 +563,13 @@ export async function generateTurnitinPdfBlobAsync(report) {
     const frameW = 512;
     const frameH = 736;
 
+    const submissionPagesBefore = pageSections.length;
+
     if (srcPdfDoc && origPdfPageCount > 0) {
-      // CASE A: 100% ORIGINAL UNTOUCHED PDF PAGES EMBEDDED VIA pdf-lib `embedPage`!
+      // CASE A: 100% ORIGINAL UNTOUCHED PDF / RENDERED DOCX PAGES EMBEDDED VIA pdf-lib `embedPage`!
       const origPages = srcPdfDoc.getPages();
       for (let i = 0; i < origPages.length; i += 1) {
-        const outPage = outDoc.addPage([595, 842]);
-        const outPageNum = 2 + sourcePagesCount + i + 1;
-        drawChrome(outPage, outPageNum, 'Integrity Submission');
+        const outPage = registerPage(outDoc.addPage([595, 842]), 'Integrity Submission');
 
         const embedded = await outDoc.embedPage(origPages[i]);
         const { width: ew, height: eh } = embedded.size();
@@ -592,9 +595,7 @@ export async function generateTurnitinPdfBlobAsync(report) {
       // CASE B: ORIGINAL IMAGE / RENDERED PAGE IMAGES EMBEDDED WITH HIGHLIGHTS & BADGES
       for (let i = 0; i < orig.pages.length; i += 1) {
         const pg = orig.pages[i];
-        const outPage = outDoc.addPage([595, 842]);
-        const outPageNum = 2 + sourcePagesCount + i + 1;
-        drawChrome(outPage, outPageNum, 'Integrity Submission');
+        const outPage = registerPage(outDoc.addPage([595, 842]), 'Integrity Submission');
 
         const rawBytes = dataUrlToUint8(pg.imageDataUrl);
         if (rawBytes) {
@@ -610,127 +611,250 @@ export async function generateTurnitinPdfBlobAsync(report) {
         }
       }
     } else {
-      // CASE C: STRUCTURED DOCX / A4 DOCUMENT SHEETS (Preserving headings, bold/italic, tables, & embedded images!)
+      // CASE C: STRUCTURED DOCX / A4 DOCUMENT SHEETS (Dynamic pagination, wrapped multi-line tables, inline highlights — zero dropped content!)
       const sheetPages =
         Array.isArray(orig?.pages) && orig.pages.length > 0
           ? orig.pages
           : [{ pageNumber: 1, blocks: (report.annotatedSentences || []).map((s) => ({ type: 'paragraph', plain: s.text })) }];
 
-      for (let i = 0; i < sheetPages.length; i += 1) {
-        const pg = sheetPages[i];
-        const outPage = outDoc.addPage([595, 842]);
-        const outPageNum = 2 + sourcePagesCount + i + 1;
-        drawChrome(outPage, outPageNum, 'Integrity Submission');
+      const allBlocks = sheetPages.flatMap((pg) => (Array.isArray(pg.blocks) ? pg.blocks : []));
+      const leftX = 56;
+      const maxW = 492;
+      const topY = 772;
+      const bottomY = 64;
 
-        let y = 772;
-        const leftX = 56;
-        const maxW = 492;
-        const drawnBadges = [];
+      let outPage = registerPage(outDoc.addPage([595, 842]), 'Integrity Submission');
+      let y = topY;
+      let drawnBadges = [];
 
-        const drawMarginBadgeIfNeeded = (yPos, seg) => {
-          if (!seg.matched || !seg.rank) return;
-          const dup = drawnBadges.find((b) => b.rank === seg.rank && Math.abs(b.y - yPos) < 22);
-          if (dup) return;
-          let safeY = yPos;
-          const prev = drawnBadges[drawnBadges.length - 1];
-          if (prev && Math.abs(prev.y - safeY) < 18) safeY = prev.y - 19;
-          if (safeY < 60) return;
-          drawnBadges.push({ rank: seg.rank, y: safeY });
-          outPage.drawCircle({ x: 26, y: safeY + 3, size: 8.5, color: c(seg.colorRgb || [225, 29, 72]) });
-          const rs = String(seg.rank);
-          const rw = fontBold.widthOfTextAtSize(rs, 8);
-          outPage.drawText(rs, { x: 26 - rw / 2, y: safeY + 0.2, size: 8, font: fontBold, color: colWhite });
-        };
+      const startNewSubmissionPage = () => {
+        outPage = registerPage(outDoc.addPage([595, 842]), 'Integrity Submission');
+        y = topY;
+        drawnBadges = [];
+      };
 
-        for (const block of pg.blocks || []) {
-          if (y < 76) break;
+      const drawMarginBadgeIfNeeded = (yPos, seg) => {
+        if (!seg?.matched || !seg.rank) return;
+        const dup = drawnBadges.find((b) => b.rank === seg.rank && Math.abs(b.y - yPos) < 22);
+        if (dup) return;
+        let safeY = yPos;
+        const prev = drawnBadges[drawnBadges.length - 1];
+        if (prev && Math.abs(prev.y - safeY) < 18) safeY = prev.y - 19;
+        if (safeY < 56) return;
+        drawnBadges.push({ rank: seg.rank, y: safeY });
+        outPage.drawCircle({ x: 26, y: safeY + 3, size: 8.5, color: c(seg.colorRgb || [225, 29, 72]) });
+        const rs = String(seg.rank);
+        const rw = fontBold.widthOfTextAtSize(rs, 8);
+        outPage.drawText(rs, { x: 26 - rw / 2, y: safeY + 0.2, size: 8, font: fontBold, color: colWhite });
+      };
 
-          // Render embedded DOCX images if present
-          if (Array.isArray(block.runs)) {
-            for (const run of block.runs) {
-              if (run.type === 'image' && run.src && y > 160) {
-                try {
-                  const imgBytes = dataUrlToUint8(run.src);
-                  if (imgBytes) {
-                    const isPng = run.src.startsWith('data:image/png');
-                    const img = isPng ? await outDoc.embedPng(imgBytes) : await outDoc.embedJpg(imgBytes);
-                    const sc = Math.min(maxW / img.width, 140 / img.height, 1);
-                    const iw = img.width * sc;
-                    const ih = img.height * sc;
-                    outPage.drawImage(img, { x: leftX, y: y - ih, width: iw, height: ih });
-                    y -= ih + 10;
-                  }
-                } catch {
-                  // Skip unsupported image encoding
-                }
-              }
-            }
+      const wrapTextByWidth = (text, font, size, widthPt) => {
+        const clean = sanitizePdfText(text);
+        if (!clean) return [''];
+        const words = clean.split(' ');
+        const lines = [];
+        let cur = '';
+        for (const w of words) {
+          const cand = cur ? `${cur} ${w}` : w;
+          if (font.widthOfTextAtSize(cand, size) <= widthPt) {
+            cur = cand;
+          } else {
+            if (cur) lines.push(cur);
+            cur = w;
           }
-
-          if (block.type === 'table' && Array.isArray(block.rows)) {
-            const cols = Math.max(1, ...block.rows.map((r) => r.length));
-            const colW = maxW / cols;
-            for (let ri = 0; ri < block.rows.length; ri += 1) {
-              if (y < 76) break;
-              const row = block.rows[ri];
-              const rowH = 18;
-              if (ri === 0) {
-                outPage.drawRectangle({ x: leftX, y: y - rowH + 4, width: maxW, height: rowH, color: colCardBg });
-              }
-              outPage.drawRectangle({ x: leftX, y: y - rowH + 4, width: maxW, height: rowH, borderColor: colLine, borderWidth: 0.5 });
-              for (let ci = 0; ci < row.length; ci += 1) {
-                const cellTxt = sanitizePdfText(row[ci] || '').slice(0, Math.max(12, Math.floor(colW / 5)));
-                outPage.drawText(cellTxt, {
-                  x: leftX + ci * colW + 4,
-                  y: y - 9,
-                  size: 8.2,
-                  font: ri === 0 ? fontBold : fontReg,
-                  color: colInk,
-                });
-              }
-              y -= rowH;
-            }
-            y -= 10;
-            continue;
-          }
-
-          const isHeading = block.type === 'heading';
-          const fontSize = isHeading ? (block.level === 1 ? 14 : 11.5) : 9.8;
-          const lineH = isHeading ? fontSize + 6 : 15;
-          const useFont = isHeading ? fontBold : block.runs?.every((r) => r.italic) ? fontItalic : fontReg;
-          const charsPerLine = isHeading ? 64 : 84;
-
-          const segments = annotateBlockTextSegments(block.plain || '', report.annotatedSentences || []);
-          for (const seg of segments) {
-            const wrapped = wrapPdfLines(seg.text, charsPerLine);
-            let badgeMarked = false;
-            for (const line of wrapped) {
-              if (y < 68) break;
-              const textW = useFont.widthOfTextAtSize(line, fontSize);
-              let drawX = leftX;
-              if (block.align === 'center') drawX = leftX + Math.max(0, (maxW - textW) / 2);
-              else if (block.align === 'right') drawX = leftX + Math.max(0, maxW - textW);
-              if (seg.matched) {
-                outPage.drawRectangle({
-                  x: drawX - 2,
-                  y: y - 3,
-                  width: Math.min(maxW + 4, textW + 4),
-                  height: lineH - 1,
-                  color: c(seg.colorRgb || [225, 29, 72]),
-                  opacity: 0.24,
-                });
-                if (!badgeMarked) {
-                  drawMarginBadgeIfNeeded(y, seg);
-                  badgeMarked = true;
-                }
-              }
-              outPage.drawText(line, { x: drawX, y, size: fontSize, font: useFont, color: isHeading ? colInk : colBody });
-              y -= lineH;
-            }
-          }
-          y -= isHeading ? 6 : 5;
         }
+        if (cur) lines.push(cur);
+        return lines.length > 0 ? lines : [''];
+      };
+
+      for (const block of allBlocks) {
+        // 1. Render embedded DOCX images if present
+        if (Array.isArray(block.runs)) {
+          for (const run of block.runs) {
+            if (run.type === 'image' && run.src) {
+              try {
+                const imgBytes = dataUrlToUint8(run.src);
+                if (imgBytes) {
+                  const isPng = run.src.startsWith('data:image/png');
+                  const img = isPng ? await outDoc.embedPng(imgBytes) : await outDoc.embedJpg(imgBytes);
+                  const sc = Math.min(maxW / Math.max(1, img.width), 160 / Math.max(1, img.height), 1);
+                  const iw = img.width * sc;
+                  const ih = img.height * sc;
+                  if (y - ih < bottomY) startNewSubmissionPage();
+                  outPage.drawImage(img, { x: leftX, y: y - ih, width: iw, height: ih });
+                  y -= ih + 10;
+                }
+              } catch {
+                // Skip unsupported image encoding
+              }
+            }
+          }
+        }
+
+        // 2. Render tables with FULL multi-line cell wrapping & automatic page pagination (NEVER truncated!)
+        if (block.type === 'table' && Array.isArray(block.rows)) {
+          const cols = Math.max(1, ...block.rows.map((r) => (Array.isArray(r) ? r.length : 1)));
+          const colW = maxW / cols;
+          const cellFontSize = 8.4;
+          const cellLineH = 12;
+          const padX = 5;
+          const padY = 5;
+
+          for (let ri = 0; ri < block.rows.length; ri += 1) {
+            const row = Array.isArray(block.rows[ri]) ? block.rows[ri] : [block.rows[ri]];
+            const rowFont = ri === 0 && block.rows.length > 1 ? fontBold : fontReg;
+            const wrappedCols = [];
+            let maxLines = 1;
+            for (let ci = 0; ci < cols; ci += 1) {
+              const rawCell = String(row[ci] ?? '');
+              const paras = rawCell.split(/\r?\n/);
+              const cellLines = [];
+              for (const pStr of paras) {
+                const lns = wrapTextByWidth(pStr, rowFont, cellFontSize, Math.max(24, colW - padX * 2));
+                cellLines.push(...lns);
+              }
+              wrappedCols.push(cellLines.length > 0 ? cellLines : ['']);
+              maxLines = Math.max(maxLines, cellLines.length || 1);
+            }
+
+            let lineOffset = 0;
+            while (lineOffset < maxLines) {
+              const availH = y - bottomY;
+              const maxFitLines = Math.floor((availH - padY * 2) / cellLineH);
+              if (maxFitLines < 1) {
+                startNewSubmissionPage();
+                continue;
+              }
+              const take = Math.min(maxLines - lineOffset, maxFitLines);
+              const segH = take * cellLineH + padY * 2;
+              const boxBottom = y - segH;
+
+              if (ri === 0 && lineOffset === 0 && block.rows.length > 1) {
+                outPage.drawRectangle({ x: leftX, y: boxBottom, width: maxW, height: segH, color: colCardBg });
+              }
+              outPage.drawRectangle({ x: leftX, y: boxBottom, width: maxW, height: segH, borderColor: colLine, borderWidth: 0.6 });
+
+              for (let ci = 0; ci < cols; ci += 1) {
+                const cx = leftX + ci * colW;
+                if (ci > 0) {
+                  outPage.drawLine({ start: { x: cx, y: boxBottom }, end: { x: cx, y }, thickness: 0.5, color: colLine });
+                }
+                const segLines = wrappedCols[ci].slice(lineOffset, lineOffset + take);
+                for (let li = 0; li < segLines.length; li += 1) {
+                  outPage.drawText(segLines[li], {
+                    x: cx + padX,
+                    y: y - padY - 8.5 - li * cellLineH,
+                    size: cellFontSize,
+                    font: rowFont,
+                    color: colInk,
+                  });
+                }
+              }
+
+              y -= segH;
+              lineOffset += take;
+              if (lineOffset < maxLines) startNewSubmissionPage();
+            }
+          }
+          y -= 10;
+          continue;
+        }
+
+        // 3. Paragraphs / headings / list items with INLINE word-level highlight flow (zero broken mid-word newlines!)
+        const isHeading = block.type === 'heading';
+        const fontSize = isHeading ? (block.level === 1 ? 13.5 : 11.2) : 9.8;
+        const lineH = isHeading ? fontSize + 5.5 : 14.8;
+        const useFont = isHeading ? fontBold : block.runs?.every((r) => r.italic) ? fontItalic : fontReg;
+
+        const segments = annotateBlockTextSegments(block.plain || '', report.annotatedSentences || []);
+        const tokens = [];
+        for (const seg of segments) {
+          const cleanSeg = sanitizePdfText(seg.text || '');
+          if (!cleanSeg) continue;
+          const words = cleanSeg.split(' ').filter(Boolean);
+          for (const w of words) {
+            tokens.push({ word: w, seg });
+          }
+        }
+        if (tokens.length === 0) continue;
+
+        const spaceW = useFont.widthOfTextAtSize(' ', fontSize);
+        const lines = [];
+        let curLine = [];
+        let curWidth = 0;
+
+        for (const tok of tokens) {
+          const wWidth = useFont.widthOfTextAtSize(tok.word, fontSize);
+          const needed = curLine.length > 0 ? spaceW + wWidth : wWidth;
+          if (curLine.length > 0 && curWidth + needed > maxW) {
+            lines.push({ tokens: curLine, width: curWidth });
+            curLine = [{ ...tok, width: wWidth }];
+            curWidth = wWidth;
+          } else {
+            curLine.push({ ...tok, width: wWidth });
+            curWidth += needed;
+          }
+        }
+        if (curLine.length > 0) lines.push({ tokens: curLine, width: curWidth });
+
+        const markedSegRanks = new Set();
+        for (const ln of lines) {
+          if (y < bottomY + lineH) startNewSubmissionPage();
+
+          let drawX = leftX;
+          if (block.align === 'center') drawX = leftX + Math.max(0, (maxW - ln.width) / 2);
+          else if (block.align === 'right') drawX = leftX + Math.max(0, maxW - ln.width);
+
+          // Group contiguous tokens with identical highlight state to draw seamless highlight bands
+          let cursorX = drawX;
+          for (let ti = 0; ti < ln.tokens.length; ti += 1) {
+            const tk = ln.tokens[ti];
+            const isLast = ti === ln.tokens.length - 1;
+            const nextMatchedSame =
+              !isLast &&
+              tk.seg.matched &&
+              ln.tokens[ti + 1].seg.matched &&
+              ln.tokens[ti + 1].seg.rank === tk.seg.rank;
+
+            if (tk.seg.matched) {
+              const rectW = tk.width + (nextMatchedSame ? spaceW + 1 : 2);
+              outPage.drawRectangle({
+                x: cursorX - 1,
+                y: y - 3,
+                width: rectW,
+                height: lineH - 1.5,
+                color: c(tk.seg.colorRgb || [225, 29, 72]),
+                opacity: 0.24,
+              });
+              const rankKey = `${tk.seg.rank}-${pageSections.length}`;
+              if (!markedSegRanks.has(rankKey)) {
+                drawMarginBadgeIfNeeded(y, tk.seg);
+                markedSegRanks.add(rankKey);
+              }
+            }
+
+            outPage.drawText(tk.word, {
+              x: cursorX,
+              y,
+              size: fontSize,
+              font: useFont,
+              color: isHeading ? colInk : colBody,
+            });
+            cursorX += tk.width + spaceW;
+          }
+          y -= lineH;
+        }
+        y -= isHeading ? 6 : 5;
       }
+    }
+
+    const actualSubmissionPages = Math.max(1, pageSections.length - submissionPagesBefore);
+    drawCoverStatsCard(actualSubmissionPages);
+
+    const totalActualPages = pageSections.length;
+    for (let pi = 0; pi < totalActualPages; pi += 1) {
+      const { page, sectionLabel } = pageSections[pi];
+      drawChrome(page, pi + 1, totalActualPages, sectionLabel);
     }
 
     const pdfBytes = await outDoc.save();

@@ -14,12 +14,18 @@ import {
   parseDocxBuffer,
   parseExcelBuffer,
   extractTextFromPdfBuffer,
-} from './converter.js?v=60';
+} from './converter.js?v=100';
 import {
   extractPdfDetailedWithPdfJs,
+  loadPdfLib,
   renderPdfPagesToBlobs,
   renderPdfPagesToPreviewImages,
-} from './media-engine.js?v=69';
+} from './media-engine.js?v=100';
+import {
+  buildFaithfulPdfFromRenderedPages,
+  parseDocxRichModel,
+  renderDocxToFaithfulPages,
+} from './docx-fidelity.js?v=100';
 import {
   executeModelTarget,
   getCachedModelRegistry,
@@ -291,131 +297,42 @@ export function buildDocumentSheetsOriginalSource(text = '') {
 }
 
 /**
- * Parses a DOCX archive directly (word/document.xml + rels + word/media/*) into structured
- * A4 pages preserving original headings, bold/italic/underline, alignment, tables, and images!
+ * Parses a DOCX archive directly (word/document.xml + styles + numbering + headers/footers + rels + media)
+ * into structured A4 pages preserving original headings, bold/italic/underline, alignment, <w:sdt> citations,
+ * automatic numbering, full multi-paragraph tables, and embedded images (works in both browser and Node!).
  */
-async function buildRichDocxOriginalSource(rawBuffer, fallbackText = '') {
-  if (typeof DOMParser === 'undefined') {
-    return buildDocumentSheetsOriginalSource(fallbackText);
-  }
+async function buildRichDocxOriginalSource(rawBuffer, fallbackText = '', preParsedModel = null) {
   try {
-    const entriesRaw = await extractZipEntries(rawBuffer);
-    const entriesMap =
-      entriesRaw instanceof Map
-        ? entriesRaw
-        : new Map((Array.isArray(entriesRaw) ? entriesRaw : []).map((e) => [e.name, e.data]));
-
-    const docBytes = entriesMap.get('word/document.xml');
-    if (!docBytes) return buildDocumentSheetsOriginalSource(fallbackText);
-
-    const decoder = new TextDecoder('utf-8', { fatal: false });
-    const parser = new DOMParser();
-    const docXml = parser.parseFromString(decoder.decode(docBytes), 'application/xml');
-
-    // Resolve embedded images via word/_rels/document.xml.rels
-    const relMediaMap = new Map();
-    const relsBytes = entriesMap.get('word/_rels/document.xml.rels');
-    if (relsBytes) {
-      const relsXml = parser.parseFromString(decoder.decode(relsBytes), 'application/xml');
-      const relEls = relsXml.getElementsByTagName('Relationship');
-      for (const rel of relEls) {
-        const id = rel.getAttribute('Id') || '';
-        const target = String(rel.getAttribute('Target') || '').replace(/^\/+/, '');
-        const fullKey = target.startsWith('word/') ? target : `word/${target.replace(/^\.\.\//, '')}`;
-        const mediaBytes = entriesMap.get(fullKey);
-        if (id && mediaBytes && mediaBytes.length > 0 && mediaBytes.length <= 2_500_000) {
-          const ext = fullKey.split('.').pop()?.toLowerCase() || 'png';
-          const mime = ext === 'jpg' || ext === 'jpeg' ? 'image/jpeg' : ext === 'webp' ? 'image/webp' : ext === 'gif' ? 'image/gif' : 'image/png';
-          relMediaMap.set(id, `data:${mime};base64,${uint8ToBase64(mediaBytes)}`);
-        }
-      }
+    const model = preParsedModel || (await parseDocxRichModel(rawBuffer, extractZipEntries));
+    if (!model || !Array.isArray(model.blocks) || model.blocks.length === 0) {
+      return buildDocumentSheetsOriginalSource(fallbackText);
     }
 
-    const body = docXml.getElementsByTagNameNS('*', 'body')[0] || docXml.getElementsByTagName('w:body')[0];
-    if (!body) return buildDocumentSheetsOriginalSource(fallbackText);
-
-    const parseRuns = (pEl) => {
-      const runs = [];
-      let plainParts = [];
-      const childNodes = Array.from(pEl.childNodes || []);
-      for (const node of childNodes) {
-        const local = node.localName || node.nodeName?.replace(/^.*:/, '');
-        if (local === 'r' || local === 'hyperlink') {
-          const rNodes = local === 'hyperlink' ? Array.from(node.getElementsByTagNameNS('*', 'r')) : [node];
-          for (const r of rNodes) {
-            const rPr = r.getElementsByTagNameNS('*', 'rPr')[0];
-            const bold = Boolean(rPr?.getElementsByTagNameNS('*', 'b')[0]);
-            const italic = Boolean(rPr?.getElementsByTagNameNS('*', 'i')[0]);
-            const underline = Boolean(rPr?.getElementsByTagNameNS('*', 'u')[0]);
-            const blip = r.getElementsByTagNameNS('*', 'blip')[0];
-            if (blip) {
-              const embedId = blip.getAttribute('r:embed') || blip.getAttributeNS('http://schemas.openxmlformats.org/officeDocument/2006/relationships', 'embed');
-              if (embedId && relMediaMap.has(embedId)) {
-                runs.push({ type: 'image', src: relMediaMap.get(embedId) });
-              }
-            }
-            const tNodes = Array.from(r.getElementsByTagNameNS('*', 't'));
-            const txt = tNodes.map((t) => t.textContent || '').join('');
-            if (txt) {
-              runs.push({ type: 'text', text: txt, bold, italic, underline });
-              plainParts.push(txt);
-            }
-          }
-        }
-      }
-      return { runs, plain: normalizePlainText(plainParts.join('')) };
-    };
-
     const blocks = [];
-    for (const child of Array.from(body.childNodes || [])) {
-      const local = child.localName || child.nodeName?.replace(/^.*:/, '');
-      if (local === 'p') {
-        const pPr = child.getElementsByTagNameNS('*', 'pPr')[0];
-        const pStyle = pPr?.getElementsByTagNameNS('*', 'pStyle')[0]?.getAttribute('w:val') || pPr?.getElementsByTagNameNS('*', 'pStyle')[0]?.getAttribute('val') || '';
-        const jc = pPr?.getElementsByTagNameNS('*', 'jc')[0]?.getAttribute('w:val') || pPr?.getElementsByTagNameNS('*', 'jc')[0]?.getAttribute('val') || '';
-        const isList = Boolean(pPr?.getElementsByTagNameNS('*', 'numPr')[0]);
-        const { runs, plain } = parseRuns(child);
-        const hasImage = runs.some((r) => r.type === 'image');
-        if (!plain && !hasImage) continue;
-
-        let level = 0;
-        if (/heading\s*1|title/i.test(pStyle)) level = 1;
-        else if (/heading\s*2|subtitle/i.test(pStyle)) level = 2;
-        else if (/heading\s*[3-6]/i.test(pStyle)) level = 3;
-
+    for (const blk of model.blocks) {
+      if (blk.type === 'table' && Array.isArray(blk.rows) && blk.rows.length > 0) {
+        const plainRows = Array.isArray(blk.plainRows)
+          ? blk.plainRows
+          : blk.rows.map((r) => (Array.isArray(r) ? r.map((c) => (typeof c === 'string' ? c : c?.text || '')) : []));
+        const tblPlain = plainRows.map((r) => r.join(' · ')).join('\n');
         blocks.push({
-          type: level > 0 ? 'heading' : isList ? 'list-item' : 'paragraph',
-          level,
-          align: jc === 'center' ? 'center' : jc === 'right' ? 'right' : jc === 'both' ? 'justify' : 'left',
-          runs,
+          type: 'table',
+          rows: plainRows,
+          plain: tblPlain,
+          wordCount: Math.max(25, countWords(tblPlain)),
+        });
+      } else {
+        const hasImage = Array.isArray(blk.runs) && blk.runs.some((r) => r.type === 'image');
+        const plain = normalizePlainText(blk.plain || '');
+        if (!plain && !hasImage) continue;
+        blocks.push({
+          type: blk.type === 'heading' ? 'heading' : blk.type === 'list-item' ? 'list-item' : 'paragraph',
+          level: blk.level || 0,
+          align: blk.align || 'left',
+          runs: Array.isArray(blk.runs) ? blk.runs : [{ type: 'text', text: plain }],
           plain,
           wordCount: Math.max(hasImage ? 25 : 1, countWords(plain)),
         });
-      } else if (local === 'tbl') {
-        const rows = [];
-        let tblWords = 0;
-        const trNodes = Array.from(child.getElementsByTagNameNS('*', 'tr'));
-        for (const tr of trNodes) {
-          const cells = [];
-          const tcNodes = Array.from(tr.getElementsByTagNameNS('*', 'tc'));
-          for (const tc of tcNodes) {
-            const cellParas = Array.from(tc.getElementsByTagNameNS('*', 'p'))
-              .map((p) => parseRuns(p).plain)
-              .filter(Boolean);
-            const cellText = cellParas.join(' ');
-            tblWords += countWords(cellText);
-            cells.push(cellText);
-          }
-          if (cells.length > 0) rows.push(cells);
-        }
-        if (rows.length > 0) {
-          blocks.push({
-            type: 'table',
-            rows,
-            plain: rows.map((r) => r.join(' · ')).join('\n'),
-            wordCount: Math.max(20, tblWords),
-          });
-        }
       }
     }
 
@@ -753,24 +670,85 @@ export async function extractTextFromAnyFile(file, onProgress = () => {}, signal
     );
   }
 
-  // 3. DOCX (rich OOXML structure: headings, bold/italic, alignment, tables, embedded images preserved!)
+  // 3. DOCX -> Render authentic original Word pages (logo, header/footer, tables, fonts, citations) in browser,
+  // preserving exact layout & normalized word coordinates for Turnitin highlights + original-page PDF report!
   if (ext === 'docx' || mime.includes('wordprocessingml')) {
-    onProgress({ percent: 45, label: 'Membaca tata letak asli dokumen Word (.docx)...' });
+    onProgress({ percent: 24, label: 'Membaca struktur lengkap & sitasi dokumen Word (.docx)...' });
     const parsed = await parseDocxBuffer(rawBuffer);
-    const paras = (parsed?.paragraphs || []).map((p) => (typeof p === 'string' ? p : p.text || '')).filter(Boolean);
-    const tableLines = (parsed?.tables || [])
-      .flatMap((tbl) => (Array.isArray(tbl) ? tbl.map((row) => (Array.isArray(row) ? row.filter(Boolean).join(' · ') : '')) : []))
-      .filter(Boolean);
-    const text = normalizePlainText([...paras, ...tableLines].join('\n\n'));
+    const orderedText =
+      parsed?.plainText ||
+      (Array.isArray(parsed?.blocks) && parsed.blocks.length > 0
+        ? parsed.blocks.map((b) => b.plain || '').filter(Boolean).join('\n\n')
+        : [
+            ...(parsed?.paragraphs || []).map((p) => (typeof p === 'string' ? p : p.text || '')),
+            ...(parsed?.tables || []).flatMap((tbl) =>
+              Array.isArray(tbl) ? tbl.map((row) => (Array.isArray(row) ? row.filter(Boolean).join(' · ') : '')) : []
+            ),
+          ]
+            .filter(Boolean)
+            .join('\n\n'));
+    const text = normalizePlainText(orderedText);
+    if (signal?.aborted) throw new Error('ABORTED');
+
     if (text && assessExtractedTextQuality(text).isReadable && countWords(text) >= 2) {
-      const originalSource = await buildRichDocxOriginalSource(rawBuffer, text);
+      let originalSource = null;
+
+      if (typeof window !== 'undefined' && typeof document !== 'undefined') {
+        try {
+          onProgress({
+            percent: 36,
+            label: 'Merender halaman asli Word (.docx) agar logo, tabel & tata letak dipertahankan 100%...',
+          });
+          const rendered = await renderDocxToFaithfulPages(rawBuffer, {
+            scale: 1.85,
+            maxPages: 30,
+            onProgress: (p) => {
+              if (signal?.aborted) return;
+              if (p && typeof p.percent === 'number') {
+                onProgress({
+                  percent: 36 + Math.round((Math.min(100, p.percent) / 100) * 44),
+                  label: p.label || 'Menyiapkan tampilan halaman asli Word (.docx)...',
+                });
+              }
+            },
+          });
+          if (signal?.aborted) throw new Error('ABORTED');
+
+          if (rendered && Array.isArray(rendered.pages) && rendered.pages.length > 0) {
+            let pdfBytes = null;
+            try {
+              const pdfLib = await loadPdfLib();
+              pdfBytes = await buildFaithfulPdfFromRenderedPages(rendered.pages, pdfLib);
+            } catch {
+              pdfBytes = null;
+            }
+            originalSource = {
+              kind: 'docx-rendered',
+              pdfBytes: pdfBytes && pdfBytes.byteLength > 200 ? pdfBytes : undefined,
+              pageCount: rendered.pageCount || rendered.pages.length,
+              pages: rendered.pages,
+            };
+          }
+        } catch (err) {
+          if (err?.message === 'ABORTED') throw err;
+          originalSource = null;
+        }
+      }
+
+      if (!originalSource) {
+        originalSource = await buildRichDocxOriginalSource(rawBuffer, text, parsed?.model || null);
+      }
+
       return {
         text,
         fileName: file.name,
         fileFormat: 'DOCX',
         fileSize: file.size || bytes.length,
         pageCount: originalSource.pageCount || 1,
-        note: 'Tata letak, tabel & gambar asli Word (.docx) dipertahankan.',
+        note:
+          originalSource.kind === 'docx-rendered'
+            ? `Halaman asli Word (.docx · ${originalSource.pageCount} hal) dipertahankan 100% lokal (No Repository).`
+            : 'Tata letak, sitasi, tabel & gambar asli Word (.docx) dipertahankan.',
         originalSource,
       };
     }
