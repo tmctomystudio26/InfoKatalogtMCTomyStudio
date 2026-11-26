@@ -9,6 +9,8 @@ import {
   filterLeaderboardEntries,
   formatOriginalCurrency,
   formatRupiahDonate,
+  formatWibMonthLabel,
+  getWibMonthKey,
   normalizeLeaderboardPayload,
   sanitizeDonorMessage,
   sanitizeDonorName,
@@ -19,6 +21,23 @@ test('v102: DONATE_CONFIG points to live donate-api.manifestudio.my.id, Saweria,
   assert.equal(DONATE_CONFIG.apiBaseUrl, 'https://donate-api.manifestudio.my.id');
   assert.equal(DONATE_CONFIG.saweriaUrl, 'https://saweria.co/manifestudio');
   assert.equal(DONATE_CONFIG.sociabuzzUrl, 'https://sociabuzz.com/manifestudio/tribe');
+});
+
+test('v105: getWibMonthKey & formatWibMonthLabel automatically roll over at 00:00 WIB (UTC+7) every new month & year', () => {
+  // 23:59:59 WIB on 30 Nov 2026 = 16:59:59 UTC on 30 Nov 2026
+  const endOfNovWib = getWibMonthKey('2026-11-30T16:59:59.000Z');
+  assert.equal(endOfNovWib, '2026-11');
+  assert.equal(formatWibMonthLabel(endOfNovWib), 'November 2026');
+
+  // 00:00:00 WIB on 1 Dec 2026 = 17:00:00 UTC on 30 Nov 2026
+  const startOfDecWib = getWibMonthKey('2026-11-30T17:00:00.000Z');
+  assert.equal(startOfDecWib, '2026-12');
+  assert.equal(formatWibMonthLabel(startOfDecWib), 'Desember 2026');
+
+  // 00:00:00 WIB on 1 Jan 2027 = 17:00:00 UTC on 31 Dec 2026
+  const startOfJan2027Wib = getWibMonthKey('2026-12-31T17:00:00.000Z');
+  assert.equal(startOfJan2027Wib, '2027-01');
+  assert.equal(formatWibMonthLabel(startOfJan2027Wib), 'Januari 2027');
 });
 
 test('v102: sanitizeDonorName & sanitizeDonorMessage strip XSS tags, redact spam URLs, and mask profanity', () => {
@@ -248,6 +267,8 @@ test('v102: Cloudflare Worker verifies Saweria HMAC-SHA256 & SociaBuzz token, re
   assert.equal(okSb.status, 200);
   const okSbJson = await okSb.json();
   assert.ok(okSbJson.amountIdr >= 50000);
+  assert.equal(okSbJson.originalCurrency, 'USD');
+  assert.ok(okSbJson.rateUsed > 10000);
 
   // 4b. Valid SociaBuzz webhook via JSON body webhook_token MUST also succeed
   const okSbBodyToken = await donateWorker.fetch(
@@ -266,6 +287,19 @@ test('v102: Cloudflare Worker verifies Saweria HMAC-SHA256 & SociaBuzz token, re
     env
   );
   assert.equal(okSbBodyToken.status, 200);
+
+  // 4c. GET /fx endpoint returns live exchange rates for major currencies to IDR
+  const fxRes = await donateWorker.fetch(
+    new Request('https://donate-api.manifestudio.my.id/fx', { method: 'GET' }),
+    env
+  );
+  assert.equal(fxRes.status, 200);
+  const fxJson = await fxRes.json();
+  assert.equal(fxJson.ok, true);
+  assert.equal(fxJson.base, 'IDR');
+  assert.ok(fxJson.ratesToIdr.USD > 10000);
+  assert.ok(fxJson.ratesToIdr.MYR > 2500);
+  assert.ok(fxJson.ratesToIdr.SGD > 8000);
 
   // 5. GET /leaderboard returns aggregated donor, sanitized message, and NO email leak!
   const lbRes = await donateWorker.fetch(

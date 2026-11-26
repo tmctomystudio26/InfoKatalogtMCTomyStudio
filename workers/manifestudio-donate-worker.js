@@ -25,26 +25,84 @@ const ALLOWED_ORIGINS = new Set([
   'http://127.0.0.1:3000',
 ]);
 
-// Fallback IDR conversion rates per 1 unit of foreign currency (used only if live FX fetch fails)
+// Fallback IDR conversion rates per 1 unit of foreign currency (used ONLY if all 3 live FX APIs are simultaneously unreachable)
 const FALLBACK_TO_IDR = Object.freeze({
   IDR: 1,
-  USD: 16200,
-  SGD: 12100,
-  MYR: 3650,
-  EUR: 17500,
-  GBP: 20500,
-  AUD: 10500,
-  JPY: 108,
-  KRW: 11.8,
-  PHP: 280,
-  THB: 470,
-  BND: 12100,
-  HKD: 2080,
-  TWD: 500,
-  CAD: 11600,
-  NZD: 9600,
-  SAR: 4320,
-  AED: 4410,
+  USD: 16500,
+  SGD: 12300,
+  MYR: 3750,
+  EUR: 17800,
+  GBP: 20800,
+  AUD: 10700,
+  JPY: 110,
+  KRW: 12,
+  PHP: 285,
+  THB: 480,
+  BND: 12300,
+  HKD: 2120,
+  TWD: 510,
+  CAD: 11800,
+  NZD: 9700,
+  SAR: 4400,
+  AED: 4490,
+  CNY: 2280,
+  INR: 195,
+  VND: 0.65,
+  CHF: 18600,
+});
+
+const CURRENCY_ALIASES = Object.freeze({
+  RP: 'IDR',
+  IDR: 'IDR',
+  RUPIAH: 'IDR',
+  RM: 'MYR',
+  MYR: 'MYR',
+  RINGGIT: 'MYR',
+  SGD: 'SGD',
+  'S$': 'SGD',
+  USD: 'USD',
+  US$: 'USD',
+  $: 'USD',
+  EUR: 'EUR',
+  '€': 'EUR',
+  GBP: 'GBP',
+  '£': 'GBP',
+  AUD: 'AUD',
+  A$: 'AUD',
+  AU$: 'AUD',
+  JPY: 'JPY',
+  '¥': 'JPY',
+  YEN: 'JPY',
+  KRW: 'KRW',
+  '₩': 'KRW',
+  WON: 'KRW',
+  PHP: 'PHP',
+  '₱': 'PHP',
+  THB: 'THB',
+  '฿': 'THB',
+  BND: 'BND',
+  B$: 'BND',
+  HKD: 'HKD',
+  HK$: 'HKD',
+  TWD: 'TWD',
+  NT$: 'TWD',
+  NTD: 'TWD',
+  CAD: 'CAD',
+  C$: 'CAD',
+  CA$: 'CAD',
+  NZD: 'NZD',
+  NZ$: 'NZD',
+  SAR: 'SAR',
+  SR: 'SAR',
+  AED: 'AED',
+  DHS: 'AED',
+  CNY: 'CNY',
+  RMB: 'CNY',
+  INR: 'INR',
+  '₹': 'INR',
+  VND: 'VND',
+  '₫': 'VND',
+  CHF: 'CHF',
 });
 
 const PROFANITY_REGEX =
@@ -53,8 +111,14 @@ const PROFANITY_REGEX =
 const URL_SPAM_REGEX =
   /(?:https?:\/\/[^\s]+|www\.[^\s]+|\b(?:bit\.ly|tinyurl\.com|s\.id|t\.me|wa\.me|linktr\.ee|shorturl\.at)\/[^\s]*|\b[a-z0-9-]{2,}\.(?:com|net|org|id|co\.id|my\.id|xyz|site|online|vip|top|shop|info|biz|io|gg|me|tv|cc)(?:\/[^\s]*)?)/gi;
 
+const FX_TTL_MS = 15 * 60 * 1000; // Refresh live FX rates every 15 minutes
 let schemaReadyPromise = null;
-let fxCache = { ratesToIdr: { ...FALLBACK_TO_IDR }, fetchedAt: 0 };
+let fxCache = {
+  ratesToIdr: { ...FALLBACK_TO_IDR },
+  fetchedAt: 0,
+  source: 'fallback',
+  updatedAt: '',
+};
 
 function getCorsHeaders(request, { allowPublicFallback = true } = {}) {
   const origin = request.headers.get('Origin') || '';
@@ -145,6 +209,24 @@ function sanitizeDonorMessage(rawMsg = '') {
   return clean.slice(0, 240);
 }
 
+function normalizeCurrencyCode(rawCurrency = '', rawAmountValue = '') {
+  const raw = String(rawCurrency ?? '').trim().toUpperCase();
+  if (raw && CURRENCY_ALIASES[raw]) return CURRENCY_ALIASES[raw];
+  if (/^[A-Z]{3}$/.test(raw)) return raw;
+
+  // Also inspect prefix/suffix in raw amount string if currency field was omitted (e.g. "MYR 10", "RM15", "SGD 20", "$5")
+  const amountStr = String(rawAmountValue ?? '').trim().toUpperCase();
+  if (amountStr) {
+    const prefixMatch = amountStr.match(/^([A-Z]{2,3}|RM|RP|S\$|US\$|AU\$|A\$|HK\$|NT\$|NZ\$|C\$|\$|€|£|¥|₩|₱|฿)\b/);
+    if (prefixMatch) {
+      const token = prefixMatch[1];
+      if (CURRENCY_ALIASES[token]) return CURRENCY_ALIASES[token];
+      if (/^[A-Z]{3}$/.test(token)) return token;
+    }
+  }
+  return 'IDR';
+}
+
 function parseNumericAmount(val) {
   if (typeof val === 'number' && Number.isFinite(val)) return val;
   const cleaned = String(val ?? '')
@@ -161,49 +243,106 @@ function parseNumericAmount(val) {
   return Number(cleaned.replace(/,/g, '.')) || 0;
 }
 
-async function getLiveRatesToIdr() {
+function buildRatesToIdrFromUsdMap(usdRatesMap) {
+  const usdToIdr = Number(usdRatesMap?.IDR ?? usdRatesMap?.idr);
+  if (!Number.isFinite(usdToIdr) || usdToIdr < 5000 || usdToIdr > 50000) {
+    return null;
+  }
+  const nextRates = { ...FALLBACK_TO_IDR, IDR: 1, USD: usdToIdr };
+  for (const [rawCode, ratePerUsd] of Object.entries(usdRatesMap || {})) {
+    const code = String(rawCode || '').toUpperCase();
+    const r = Number(ratePerUsd);
+    if (Number.isFinite(r) && r > 0 && code !== 'IDR') {
+      nextRates[code] = usdToIdr / r;
+    }
+  }
+  return nextRates;
+}
+
+async function fetchJsonWithTimeout(url, timeoutMs = 4500) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const res = await fetch(url, {
+      signal: controller.signal,
+      cf: { cacheTtl: 900, cacheEverything: true },
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    return await res.json();
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function getLiveRatesToIdr({ forceRefresh = false } = {}) {
   const now = Date.now();
-  // Refresh FX rates every 6 hours
-  if (fxCache.fetchedAt && now - fxCache.fetchedAt < 6 * 60 * 60 * 1000) {
+  if (!forceRefresh && fxCache.fetchedAt && now - fxCache.fetchedAt < FX_TTL_MS) {
     return fxCache.ratesToIdr;
   }
-  try {
-    const res = await fetch('https://open.er-api.com/v6/latest/USD', {
-      cf: { cacheTtl: 21600, cacheEverything: true },
-    });
-    if (res.ok) {
-      const json = await res.json();
-      const usdToIdr = Number(json?.rates?.IDR);
-      if (Number.isFinite(usdToIdr) && usdToIdr > 5000 && usdToIdr < 50000) {
-        const nextRates = { ...FALLBACK_TO_IDR, IDR: 1, USD: usdToIdr };
-        for (const [code, ratePerUsd] of Object.entries(json.rates || {})) {
-          const r = Number(ratePerUsd);
-          if (Number.isFinite(r) && r > 0 && code !== 'IDR') {
-            nextRates[code.toUpperCase()] = usdToIdr / r;
-          }
-        }
-        fxCache = { ratesToIdr: nextRates, fetchedAt: now };
+
+  // Multi-source real-time FX providers (160+ world currencies + ECB institutional rates)
+  const providers = [
+    {
+      name: 'er-api-realtime',
+      url: 'https://open.er-api.com/v6/latest/USD',
+      extract: (json) => buildRatesToIdrFromUsdMap(json?.rates),
+    },
+    {
+      name: 'jsdelivr-currency-api-realtime',
+      url: 'https://cdn.jsdelivr.net/npm/@fawazahmed0/currency-api@latest/v1/currencies/usd.min.json',
+      extract: (json) => buildRatesToIdrFromUsdMap(json?.usd),
+    },
+    {
+      name: 'cloudflare-pages-currency-api',
+      url: 'https://latest.currency-api.pages.dev/v1/currencies/usd.min.json',
+      extract: (json) => buildRatesToIdrFromUsdMap(json?.usd),
+    },
+    {
+      name: 'frankfurter-ecb-realtime',
+      url: 'https://api.frankfurter.dev/v1/latest?base=USD',
+      extract: (json) => buildRatesToIdrFromUsdMap(json?.rates),
+    },
+  ];
+
+  for (const provider of providers) {
+    try {
+      const json = await fetchJsonWithTimeout(provider.url, 4000);
+      const parsedRates = provider.extract(json);
+      if (parsedRates) {
+        fxCache = {
+          ratesToIdr: parsedRates,
+          fetchedAt: now,
+          source: provider.name,
+          updatedAt: new Date(now).toISOString(),
+        };
         return fxCache.ratesToIdr;
       }
+    } catch {
+      // Failover immediately to next real-time FX provider
     }
-  } catch {
-    // Use reliable fallback rates if FX API is unreachable
   }
+
   return fxCache.ratesToIdr;
 }
 
-async function convertCurrencyToIdr(amount, currency = 'IDR') {
+async function convertCurrencyToIdr(amount, currency = 'IDR', rawAmountStr = '') {
   const safeAmount = Math.max(0, Number(amount) || 0);
-  const code = String(currency || 'IDR').trim().toUpperCase() || 'IDR';
-  if (code === 'IDR' || code === 'RP') {
-    return { amountIdr: Math.round(safeAmount), currency: 'IDR', rateUsed: 1 };
+  const code = normalizeCurrencyCode(currency, rawAmountStr);
+  if (code === 'IDR') {
+    return {
+      amountIdr: Math.round(safeAmount),
+      currency: 'IDR',
+      rateUsed: 1,
+      fxSource: 'native-idr',
+    };
   }
   const rates = await getLiveRatesToIdr();
-  const rate = Number(rates[code] || FALLBACK_TO_IDR[code] || FALLBACK_TO_IDR.USD);
+  const rate = Number(rates[code] || FALLBACK_TO_IDR[code] || rates.USD || FALLBACK_TO_IDR.USD);
   return {
     amountIdr: Math.max(1, Math.round(safeAmount * rate)),
     currency: code,
     rateUsed: Math.round(rate * 100) / 100,
+    fxSource: fxCache.source || 'realtime',
   };
 }
 
@@ -309,24 +448,25 @@ async function handleSaweriaWebhook(request, env) {
     return jsonResponse({ ok: false, error: 'Tanda tangan Saweria-Callback-Signature tidak valid.' }, 401, request);
   }
 
-  const amountNum = parseNumericAmount(payload.amount_raw ?? payload.amount ?? 0);
+  const rawAmountField = payload.amount_raw ?? payload.amount ?? 0;
+  const amountNum = parseNumericAmount(rawAmountField);
   if (amountNum <= 0) {
     return jsonResponse({ ok: false, error: 'Nominal donasi harus lebih dari 0.' }, 400, request);
   }
 
   const extId = String(payload.id || '').trim();
   const isTest = extId === '00000000-0000-0000-0000-000000000000' || Boolean(payload.is_test);
-  const createdAt = payload.created_at && !Number.isNaN(Date.parse(payload.created_at))
+  const createdAt = !isTest && payload.created_at && !Number.isNaN(Date.parse(payload.created_at))
     ? new Date(payload.created_at).toISOString()
     : new Date().toISOString();
   const txId = isTest
-    ? `saweria:test:${Date.now()}`
+    ? `saweria:test:${Date.now()}-${Math.random().toString(36).slice(2, 6)}`
     : `saweria:${extId || `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`}`;
 
   const donorName = sanitizeDonorName(payload.donator_name || payload.name || 'Supporter Saweria');
   const donorKey = normalizeDonorKey(donorName);
   const message = sanitizeDonorMessage(payload.message || '');
-  const conv = await convertCurrencyToIdr(amountNum, payload.currency || 'IDR');
+  const conv = await convertCurrencyToIdr(amountNum, payload.currency || 'IDR', rawAmountField);
   const monthWib = getWibMonthKey(createdAt);
 
   await ensureSchema(env.DB);
@@ -344,6 +484,11 @@ async function handleSaweriaWebhook(request, env) {
     txId,
     donorName,
     amountIdr: conv.amountIdr,
+    originalAmount: amountNum,
+    originalCurrency: conv.currency,
+    rateUsed: conv.rateUsed,
+    fxSource: conv.fxSource,
+    monthWib,
     isTest,
   }, 200, request);
 }
@@ -466,9 +611,9 @@ async function handleSociaBuzzWebhook(request, env) {
 
   const body = payload?.data && typeof payload.data === 'object' ? { ...payload, ...payload.data } : payload;
 
-  const amountNum = parseNumericAmount(
-    body.amount_raw ?? body.amount_settled ?? body.amount ?? body.price ?? body.gross_amount ?? body.nominal ?? 0
-  );
+  const rawAmountField =
+    body.amount_raw ?? body.amount ?? body.price ?? body.gross_amount ?? body.nominal ?? body.amount_settled ?? 0;
+  const amountNum = parseNumericAmount(rawAmountField);
   if (amountNum <= 0) {
     return jsonResponse({ ok: false, error: 'Nominal dukungan harus lebih dari 0.' }, 400, request);
   }
@@ -483,11 +628,13 @@ async function handleSociaBuzzWebhook(request, env) {
     /ini hanya test notifikasi/i.test(message);
   const tsRaw = body.created_at || body.timestamp;
   let createdAt = new Date().toISOString();
-  if (typeof tsRaw === 'number' && Number.isFinite(tsRaw)) {
-    const ms = tsRaw < 1e12 ? tsRaw * 1000 : tsRaw;
-    createdAt = new Date(ms).toISOString();
-  } else if (typeof tsRaw === 'string' && !Number.isNaN(Date.parse(tsRaw))) {
-    createdAt = new Date(tsRaw).toISOString();
+  if (!isTest) {
+    if (typeof tsRaw === 'number' && Number.isFinite(tsRaw)) {
+      const ms = tsRaw < 1e12 ? tsRaw * 1000 : tsRaw;
+      createdAt = new Date(ms).toISOString();
+    } else if (typeof tsRaw === 'string' && !Number.isNaN(Date.parse(tsRaw))) {
+      createdAt = new Date(tsRaw).toISOString();
+    }
   }
 
   const txId = isTest
@@ -500,8 +647,8 @@ async function handleSociaBuzzWebhook(request, env) {
     body.supporter || body.supporter_name || body.donator_name || body.donatorName || body.name || 'Supporter SociaBuzz'
   );
   const donorKey = normalizeDonorKey(donorName);
-  const currencyCode = String(body.currency || 'IDR').trim().toUpperCase();
-  const conv = await convertCurrencyToIdr(amountNum, currencyCode);
+  const rawCurrencyField = body.currency || body.currency_code || 'IDR';
+  const conv = await convertCurrencyToIdr(amountNum, rawCurrencyField, rawAmountField);
   const monthWib = getWibMonthKey(createdAt);
 
   await ensureSchema(env.DB);
@@ -522,6 +669,9 @@ async function handleSociaBuzzWebhook(request, env) {
     originalAmount: amountNum,
     originalCurrency: conv.currency,
     rateUsed: conv.rateUsed,
+    fxSource: conv.fxSource,
+    monthWib,
+    isTest,
   }, 200, request);
 }
 
@@ -697,6 +847,7 @@ export default {
     try {
       if (request.method === 'GET' && (pathname === '/' || pathname === '/health')) {
         await ensureSchema(env.DB);
+        const currentMonthWib = getWibMonthKey(new Date());
         return jsonResponse(
           {
             ok: true,
@@ -704,7 +855,34 @@ export default {
             dbReady: true,
             saweriaConfigured: Boolean(env.SAWERIA_STREAM_KEY),
             sociabuzzConfigured: Boolean(env.SOCIABUZZ_WEBHOOK_TOKEN),
+            currentMonthWib,
+            currentMonthLabel: formatWibMonthLabel(currentMonthWib),
+            fxSource: fxCache.source,
             timestamp: new Date().toISOString(),
+          },
+          200,
+          request
+        );
+      }
+
+      if (request.method === 'GET' && pathname === '/fx') {
+        const forceRefresh = url.searchParams.get('refresh') === '1';
+        const rates = await getLiveRatesToIdr({ forceRefresh });
+        const majorCurrencies = ['USD', 'MYR', 'SGD', 'EUR', 'GBP', 'AUD', 'JPY', 'SAR', 'AED', 'THB', 'PHP', 'HKD', 'TWD', 'KRW', 'CAD', 'BND', 'CNY'];
+        const majorRatesToIdr = {};
+        for (const code of majorCurrencies) {
+          if (rates[code]) {
+            majorRatesToIdr[code] = Math.round(Number(rates[code]) * 100) / 100;
+          }
+        }
+        return jsonResponse(
+          {
+            ok: true,
+            base: 'IDR',
+            source: fxCache.source,
+            updatedAt: fxCache.updatedAt || new Date().toISOString(),
+            ttlSeconds: FX_TTL_MS / 1000,
+            ratesToIdr: majorRatesToIdr,
           },
           200,
           request
