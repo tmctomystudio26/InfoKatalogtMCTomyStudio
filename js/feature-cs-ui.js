@@ -17,7 +17,7 @@ import {
   buildFeatureCsSystemPrompt,
   classifyFeatureCsIntent,
   sanitizeFeatureCsReply,
-} from './feature-cs-logic.js?v=95';
+} from './feature-cs-logic.js?v=102';
 import { renderMarkdownSafe } from './manifest-ai-logic.js?v=91';
 
 const FCS_FAB_HIDDEN_KEY = 'manifestudio_fcs_fab_hidden_v1';

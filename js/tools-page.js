@@ -1,11 +1,11 @@
-import { createToolsHubController } from './tools-ui.js?v=101';
+import { createToolsHubController } from './tools-ui.js?v=102';
 import { getDefaultCatalogSnapshot, loadCatalogData } from './data.js?v=85';
 import {
   inferBannerUtilityId,
   normalizeBanners,
   normalizeBrandConfig,
   normalizeUtilityConfig,
-} from './store.js?v=99';
+} from './store.js?v=102';
 import {
   computeBannerHydrationWindow,
   initPerformanceClass,
@@ -31,8 +31,8 @@ import {
   filterStudioFeatures,
   groupStudioFeaturesByCategory,
   parseStudioRoute,
-} from './studio-home.js?v=99';
-import { createFeatureCsController } from './feature-cs-ui.js?v=99';
+} from './studio-home.js?v=102';
+import { createFeatureCsController } from './feature-cs-ui.js?v=102';
 
 const THEME_STORAGE_KEY = 'manifestudio_theme_v1';
 const VALID_TABS = new Set([
@@ -42,6 +42,7 @@ const VALID_TABS = new Set([
   'speedtest',
   'downloader',
   'shortlink',
+  'donate',
   'compressor',
   'converter',
   'songfinder',
@@ -389,7 +390,7 @@ function enterHomeView({ pushState = true, scrollTarget = null } = {}) {
   }
 
   const utilName = getStoreAccessCfg().utilitiesBrandName || DOMAIN_CONFIG.utilitiesBrandName;
-  const enabledCount = getEnabledUtilityItems().length || 16;
+  const enabledCount = getEnabledUtilityItems().length || 17;
   document.title = `${utilName} — Platform ${enabledCount} Utilitas Digital, AI & Hiburan Gratis`;
 
   if (pushState) {

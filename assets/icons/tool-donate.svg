@@ -1,0 +1,47 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64" fill="none">
+  <defs>
+    <linearGradient id="donateBg" x1="6" y1="6" x2="58" y2="58" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#f59e0b" />
+      <stop offset="52%" stop-color="#ea580c" />
+      <stop offset="100%" stop-color="#be123c" />
+    </linearGradient>
+    <linearGradient id="donateGloss" x1="10" y1="6" x2="52" y2="44" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#ffffff" stop-opacity="0.32" />
+      <stop offset="100%" stop-color="#ffffff" stop-opacity="0" />
+    </linearGradient>
+  </defs>
+  <rect x="4" y="4" width="56" height="56" rx="16" fill="url(#donateBg)" />
+  <rect x="6" y="6" width="52" height="52" rx="14" fill="url(#donateGloss)" />
+  <!-- Trophy cup silhouette -->
+  <path
+    d="M22 17H42V27C42 33.075 37.523 38 32 38C26.477 38 22 33.075 22 27V17Z"
+    fill="#ffffff"
+    fill-opacity="0.18"
+    stroke="#ffffff"
+    stroke-width="2.5"
+    stroke-linejoin="round"
+  />
+  <!-- Trophy handles -->
+  <path
+    d="M22 20H16.5C16.5 25.2 18.8 28.8 22 29.5"
+    stroke="#fde68a"
+    stroke-width="2.4"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+  />
+  <path
+    d="M42 20H47.5C47.5 25.2 45.2 28.8 42 29.5"
+    stroke="#fde68a"
+    stroke-width="2.4"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+  />
+  <!-- Trophy stem & base -->
+  <path d="M32 38V44" stroke="#ffffff" stroke-width="2.6" stroke-linecap="round" />
+  <path d="M24 46.5H40" stroke="#ffffff" stroke-width="3" stroke-linecap="round" />
+  <!-- Heart emblem inside cup -->
+  <path
+    d="M32 31.8C32 31.8 26.8 28.4 26.8 24.9C26.8 23.2 28.1 22 29.7 22C30.7 22 31.6 22.5 32 23.3C32.4 22.5 33.3 22 34.3 22C35.9 22 37.2 23.2 37.2 24.9C37.2 28.4 32 31.8 32 31.8Z"
+    fill="#fef08a"
+  />
+</svg>

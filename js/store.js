@@ -528,7 +528,7 @@ export function inferBannerUtilityId(banner = {}) {
   const href = String(banner?.href || '').trim();
   const match = href.match(/[?&](?:tab|tool)=([a-z0-9_-]+)/i);
   if (match && match[1]) return match[1].toLowerCase();
-  const idMatch = String(banner?.id || '').match(/^banner-(prayer|weather|worldclock|speedtest|downloader|shortlink|compressor|converter|songfinder|music|dracin|audioeditor|manifestai|plagiarism|novel|callerid)$/i);
+  const idMatch = String(banner?.id || '').match(/^banner-(prayer|weather|worldclock|speedtest|downloader|shortlink|donate|compressor|converter|songfinder|music|dracin|audioeditor|manifestai|plagiarism|novel|callerid)$/i);
   return idMatch ? idMatch[1].toLowerCase() : '';
 }
 
@@ -737,6 +737,18 @@ export const DEFAULT_BANNERS = [
     scrim: 'downloader',
     enabled: true,
   },
+  {
+    id: 'banner-donate',
+    utilityId: 'donate',
+    kicker: 'Menu Utilitas · Saweria & SociaBuzz Tribe',
+    heading: 'Please Donate — Dukung Manifestudio & Masuk Top Donatur',
+    sub: 'Kirim dukungan via Saweria atau SociaBuzz Tribe. Nama, pesan dukungan, dan peringkat Leaderboard terupdate otomatis real-time.',
+    ctaLabel: 'Buka Please Donate →',
+    href: './tools.html?tab=donate',
+    image: './assets/banners/banner-donate.jpg',
+    scrim: 'amber',
+    enabled: true,
+  },
 ];
 
 export function normalizeOpenGraphConfig(brand = {}) {
@@ -804,7 +816,7 @@ export const DEFAULT_UTILITY_CONFIG = {
   callout: {
     icon: './assets/icons/menu-utilitas.svg',
     title: 'Menu Utilitas',
-    badge: '16 Fitur Gratis',
+    badge: '17 Fitur Gratis',
     description: '',
     autoCountBadge: true,
   },
@@ -1006,6 +1018,18 @@ export const DEFAULT_UTILITY_CONFIG = {
       heroTitle: 'Shortlink Bypass & Audit Keamanan Tautan Langsung',
       heroDescription:
         'Gabungkan Dekoder Instan Lokal, Pelacak Redirect & Inspektor Safelink, Bypass.VIP, Bypass.PM, Unshorten.me, Unshorten.it, serta Konsensus Multi-AI (Gemini, ChatGPT, Claude, Grok, DeepSeek) untuk menuju link tujuan aman tanpa iklan berulang.',
+    },
+    {
+      id: 'donate',
+      label: 'Please Donate',
+      icon: './assets/icons/tool-donate.svg',
+      pageTitle: 'Please Donate — Dukung Manifestudio & Top Donatur Leaderboard',
+      pageSubtitle:
+        'Dukung pengembangan Manifestudio via Saweria & SociaBuzz Tribe. Nama, pesan, dan peringkat Top Donatur tercatat otomatis secara real-time.',
+      heroKicker: 'Saweria · SociaBuzz Tribe · Live Top Donatur Leaderboard',
+      heroTitle: 'Please Donate & Papan Peringkat Top Donatur',
+      heroDescription:
+        'Setiap dukungan melalui Saweria atau SociaBuzz Tribe otomatis masuk ke Leaderboard Top Donatur Sepanjang Waktu & Bulanan lengkap dengan akumulasi nama donatur dan konversi mata uang otomatis ke Rupiah (IDR).',
     },
   ],
 };

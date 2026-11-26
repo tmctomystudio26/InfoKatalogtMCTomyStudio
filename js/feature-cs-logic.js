@@ -335,6 +335,31 @@ export const FEATURE_CS_KNOWLEDGE_BASE = Object.freeze([
       'Masukkan angka nomor dengan benar tanpa huruf. Jika nomor baru dan belum tercatat laporan publik, tetap waspada dan jangan pernah membagikan kode OTP kepada siapa pun.',
     ],
   },
+  {
+    id: 'donate',
+    name: 'Please Donate',
+    category: 'Harian & Keamanan',
+    keywords: [
+      'please donate', 'donate', 'donasi', 'dukung', 'dukungan', 'saweria', 'sociabuzz',
+      'tribe', 'leaderboard', 'top donatur', 'donatur', 'supporter', 'papan peringkat', 'trakteer',
+    ],
+    summary: 'Halaman dukungan sukarela melalui Saweria & SociaBuzz Tribe lengkap dengan Papan Peringkat Top Donatur otomatis real-time.',
+    details: [
+      'Menyediakan tombol dukungan langsung ke Saweria dan SociaBuzz Tribe yang mendukung QRIS, GoPay, OVO, DANA, ShopeePay, Transfer Bank, hingga pembayaran internasional.',
+      'Setiap dukungan yang masuk langsung tercatat otomatis ke Leaderboard Top Donatur dalam hitungan detik, dengan tab Sepanjang Waktu, Bulan Ini (WIB), dan Donasi Terbaru.',
+      'Donasi berulang dengan nama donatur yang sama otomatis dijumlahkan, dukungan mata uang asing di SociaBuzz otomatis dikonversi ke Rupiah (IDR), dan pesan dukungan disaring otomatis dari kata kasar atau tautan spam.',
+    ],
+    steps: [
+      'Buka fitur Please Donate dari beranda Manifestudio.',
+      'Pilih tombol Donasi via Saweria atau Donasi via SociaBuzz Tribe, lalu selesaikan dukungan beserta nama dan pesan singkat Anda.',
+      'Kembali ke halaman Please Donate untuk melihat nama Anda tampil di Podium atau Papan Peringkat Top Donatur secara otomatis (atau tekan Segarkan).',
+    ],
+    troubleshooting: [
+      'Jika donasi baru belum langsung terlihat, tunggu beberapa detik lalu tekan tombol Segarkan karena sistem sinkronisasi berjalan otomatis setiap 20 detik.',
+      'Gunakan nama donatur yang sama saat berdonasi lagi agar total dukungan Anda otomatis terakumulasi di satu peringkat.',
+      'Pesan yang mengandung kata kasar atau tautan promosi akan disensor otomatis demi menjaga kenyamanan bersama.',
+    ],
+  },
 ]);
 
 export const PLATFORM_GENERAL_KB = Object.freeze({
@@ -343,7 +368,7 @@ export const PLATFORM_GENERAL_KB = Object.freeze({
   theme:
     'Anda bisa mengganti tampilan **Mode Terang / Mode Gelap** kapan saja melalui tombol ikon matahari/bulan di pojok kanan atas halaman.',
   privacy:
-    'Seluruh 16 fitur Manifestudio gratis tanpa perlu login. Fitur pemrosesan berkas (Kompresor HD, Konversi File, Audio Editor, Cek Plagiarisme) berjalan lokal di perangkat Anda tanpa mengunggah data pribadi ke server.',
+    'Seluruh 17 fitur Manifestudio gratis tanpa perlu login. Fitur pemrosesan berkas (Kompresor HD, Konversi File, Audio Editor, Cek Plagiarisme) berjalan lokal di perangkat Anda tanpa mengunggah data pribadi ke server.',
   navigation:
     'Dari beranda, ketuk salah satu ikon fitur untuk membuka halaman penuhnya. Di dalam halaman fitur, gunakan tombol **Semua Fitur** untuk kembali ke beranda atau ketuk tombol **Pindah Fitur** di kanan atas untuk berpindah cepat ke fitur lain.',
 });
@@ -367,7 +392,7 @@ const CS_CLEAR_OFF_TOPIC_RE =
   /\b(resep|masak(?:an)?|memasak|nasi\s*goreng|presiden|sejarah|perang\s*dunia|puisi|pantun|cerpen|lirik\s*lengkap|coding|koding|python|javascript|java\b|c\+\+|php\b|html\b|css\b|react\b|sql\b|quicksort|algoritma|matematika|kalkulus|integral|turunan|fisika|kimia|biologi|rumus\s*(?:luas|volume|fisika|kimia|excel)|terjemahkan|translate|curhat|galau|ramalan|zodiak|shio|saham|kripto|crypto|bitcoin|buatkan\s*(?:makalah|esai|essay|artikel|surat|cv|caption|kode|program|script|skrip|cerita|soal)|siapa\s+(?:penemu|presiden|raja|pahlawan|pemain|artis)|ibukota|ibu\s*kota|hitung(?:kan)?\s+\d+)\b/i;
 
 const CS_MANIFESTUDIO_CONTEXT_RE =
-  /\b(manifestudio|tanya\s*fitur|fitur|menu|utilitas|manifest\s*ai|drama|dracin|episode|yt\s*music|musik|download(?:er)?|shortlink|bypass|safelink|peramban|proxy|vpn|incognito|vidmate|kompres(?:or)?|konversi|audio\s*editor|cari\s*judul\s*lagu|plagiarisme|plagiat|novel|sholat|cuaca|jam\s*dunia|globe|speedtest|cek\s*nomor|pwa|install|tema|dark\s*mode|light\s*mode)\b/i;
+  /\b(manifestudio|tanya\s*fitur|fitur|menu|utilitas|manifest\s*ai|drama|dracin|episode|yt\s*music|musik|download(?:er)?|shortlink|bypass|safelink|please\s*donate|donate|donasi|saweria|sociabuzz|leaderboard|donatur|peramban|proxy|vpn|incognito|vidmate|kompres(?:or)?|konversi|audio\s*editor|cari\s*judul\s*lagu|plagiarisme|plagiat|novel|sholat|cuaca|jam\s*dunia|globe|speedtest|cek\s*nomor|pwa|install|tema|dark\s*mode|light\s*mode)\b/i;
 
 const CS_CONTACT_CHANNEL_RE =
   /\b(wa|whatsapp|instagram|\big\b|tiktok|sosmed|media\s*sosial|email|gmail|nomor\s*(?:hp|telp|wa)|kontak)\b/i;
@@ -430,7 +455,7 @@ export function buildFeatureCsGreetingReply() {
   return [
     'Halo! Selamat datang di **Tanya Fitur — Layanan Bantuan Manifestudio**.',
     '',
-    'Saya siap membantu menjelaskan cara pakai, keunggulan, format yang didukung, hingga solusi jika ada kendala pada **16 fitur Manifestudio** (seperti Manifest AI, Drama Pendek, YT Music, Downloader, Shortlink Bypass, Kompresor HD, Konversi File, Audio Editor, Cek Plagiarisme, Novel, Jadwal Sholat, Cuaca, Speedtest, Cek Nomor, dan lainnya).',
+    'Saya siap membantu menjelaskan cara pakai, keunggulan, format yang didukung, hingga solusi jika ada kendala pada **17 fitur Manifestudio** (seperti Manifest AI, Drama Pendek, YT Music, Downloader, Shortlink Bypass, Please Donate, Kompresor HD, Konversi File, Audio Editor, Cek Plagiarisme, Novel, Jadwal Sholat, Cuaca, Speedtest, Cek Nomor, dan lainnya).',
     '',
     'Ada fitur atau kendala apa yang bisa saya bantu hari ini?',
   ].join('\n');
@@ -439,7 +464,7 @@ export function buildFeatureCsGreetingReply() {
 export function buildFeatureCsCourtesyReply(prompt = '') {
   const lower = String(prompt || '').toLowerCase();
   if (/\b(terima\s*kasih|terimakasih|makasih|makasi|mksh|thanks?|thank\s*you|tq|thx|ty|tengkyu|syukron|hatur\s*nuhun)\b/i.test(lower)) {
-    return 'Sama-sama! Senang sekali bisa membantu. Jika nanti ada pertanyaan lain atau mengalami kendala pada salah satu dari **16 fitur Manifestudio**, silakan chat di **Tanya Fitur** kapan saja ya!';
+    return 'Sama-sama! Senang sekali bisa membantu. Jika nanti ada pertanyaan lain atau mengalami kendala pada salah satu dari **17 fitur Manifestudio**, silakan chat di **Tanya Fitur** kapan saja ya!';
   }
   if (/\b(berhasil|sudah\s*bisa|udah\s*bisa|work|mantap|keren|bagus|hebat)\b/i.test(lower)) {
     return 'Senang mendengarnya! Semoga fitur Manifestudio terus membantu aktivitas Anda. Kalau butuh panduan fitur lainnya, tinggal tanya saja di sini.';
@@ -449,7 +474,7 @@ export function buildFeatureCsCourtesyReply(prompt = '') {
 
 export function buildFeatureCsRestrictedReply() {
   return [
-    'Mohon maaf, **Tanya Fitur** hanya melayani pertanyaan seputar penggunaan dan pemecahan kendala pada **16 fitur gratis di Manifestudio**.',
+    'Mohon maaf, **Tanya Fitur** hanya melayani pertanyaan seputar penggunaan dan pemecahan kendala pada **17 fitur gratis di Manifestudio**.',
     '',
     'Saya tidak memiliki akses maupun informasi mengenai layanan eksternal, kontak pribadi, akun media sosial, ataupun pengaturan internal. Ada fitur Manifestudio yang ingin saya bantu jelaskan?',
   ].join('\n');
@@ -457,14 +482,14 @@ export function buildFeatureCsRestrictedReply() {
 
 export function buildFeatureCsOffTopicReply() {
   return [
-    'Mohon maaf, menu **Tanya Fitur** dirancang khusus sebagai Customer Service untuk membantu pertanyaan seputar **16 fitur Manifestudio** dan pemecahan kendala pengguna.',
+    'Mohon maaf, menu **Tanya Fitur** dirancang khusus sebagai Customer Service untuk membantu pertanyaan seputar **17 fitur Manifestudio** dan pemecahan kendala pengguna.',
     '',
     'Untuk pertanyaan umum di luar fitur Manifestudio (seperti coding, tugas, tulisan, riset, matematika, atau obrolan bebas), silakan buka menu **Manifest AI** — asisten AI universal kami siap membantu topik apa saja!',
   ].join('\n');
 }
 
 /**
- * Builds the strict Customer Service system prompt grounded in all 16 verified features.
+ * Builds the strict Customer Service system prompt grounded in all 17 verified features.
  */
 export function buildFeatureCsSystemPrompt(activeTabId = '') {
   const activeFeat = FEATURE_CS_KNOWLEDGE_BASE.find((f) => f.id === activeTabId);
@@ -481,14 +506,14 @@ export function buildFeatureCsSystemPrompt(activeTabId = '') {
       : 'Konteks halaman saat ini: Pengunjung sedang berada di Beranda Manifestudio.',
     'ATURAN KETAT (WAJIB DIPATUHI 100%):',
     '1. PAHAMI KELUHAN NATURAL PENGGUNA: Tangani keluhan sehari-hari pengunjung dengan cerdas dan empatik (misalnya "ngelag ketika menonton drama", "drama tidak lengkap", "link penuh iklan", "video tidak ada suara", "file gagal diubah") berdasarkan fakta fitur di bawah ini. JANGAN PERNAH menolak keluhan atau pertanyaan fitur hanya karena gaya bahasanya santai atau singkat.',
-    '2. RUANG LINGKUP TERBATAS (KHUSUS CS MANIFESTUDIO): HANYA jawab pertanyaan mengenai 16 fitur Manifestudio, cara penggunaan, format/batasan nyata, privasi, install aplikasi (PWA), tema terang/gelap, dan pemecahan masalah/kendala pengunjung.',
+    '2. RUANG LINGKUP TERBATAS (KHUSUS CS MANIFESTUDIO): HANYA jawab pertanyaan mengenai 17 fitur Manifestudio, cara penggunaan, format/batasan nyata, privasi, install aplikasi (PWA), tema terang/gelap, dan pemecahan masalah/kendala pengunjung.',
     '3. TOLAK HANYA TOPIK JELAS DI LUAR FITUR: Jika pengguna menanyakan topik umum yang sama sekali tidak terkait Manifestudio (tugas sekolah, coding, resep, puisi, sejarah, matematika, politik, berita, curhat), tolak dengan ramah dan arahkan ke menu "Manifest AI" yang bersifat universal.',
     '4. FAKTA & DATA 100% AKURAT: Gunakan HANYA fakta dari basis pengetahuan di bawah ini. Jangan pernah mengarang tombol, fitur, atau batasan yang tidak ada.',
     '5. KERAHASIAAN MUTLAK: DILARANG KERAS menyebut, mengonfirmasi, atau membocorkan nama toko/store eksternal, katalog akun berbayar, harga produk, WhatsApp, Instagram, TikTok, email, ataupun istilah teknis sistem/admin.',
     '6. FORMAT RAPI UNTUK HP: Jawab dengan daftar bernomor atau bullet singkat yang enak dibaca di layar HP. DILARANG memakai tag HTML mentah seperti `<br>` dan hindari tabel Markdown lebar.',
     '7. RESPON HUMANIS: Jika pengunjung mengucapkan terima kasih, oke, paham, atau puas, balas dengan hangat layaknya CS manusia sungguhan.',
     '',
-    '=== BASIS PENGETAHUAN RESMI MANIFESTUDIO (16 FITUR) ===',
+    '=== BASIS PENGETAHUAN RESMI MANIFESTUDIO (17 FITUR) ===',
     kbText,
     '',
     '=== INFORMASI PLATFORM UMUM ===',
@@ -518,7 +543,7 @@ export function buildFeatureCsLocalFallback(prompt = '', activeTabId = '', { has
   }
   if (/\b(daftar\s*fitur|semua\s*fitur|ada\s*fitur\s*apa|fitur\s*apa\s*saja)\b/i.test(lower)) {
     const list = FEATURE_CS_KNOWLEDGE_BASE.map((f, i) => `${i + 1}. **${f.name}** — ${f.summary}`).join('\n');
-    return `Manifestudio menyediakan **16 fitur gratis tanpa login**:\n\n${list}\n\nKetuk salah satu ikon fitur di beranda untuk langsung menggunakannya!`;
+    return `Manifestudio menyediakan **17 fitur gratis tanpa login**:\n\n${list}\n\nKetuk salah satu ikon fitur di beranda untuk langsung menggunakannya!`;
   }
 
   // Targeted smart troubleshooting for common Drama Pendek complaints
@@ -585,7 +610,7 @@ export function buildFeatureCsLocalFallback(prompt = '', activeTabId = '', { has
   }
 
   return [
-    'Saya siap membantu seputar **16 fitur Manifestudio** (Manifest AI, Drama Pendek, YT Music, Downloader, Shortlink Bypass, Kompresor HD, Konversi File, Audio Editor, Cari Judul Lagu, Cek Plagiarisme, Novel Terpadu, Jadwal Sholat, Prakiraan Cuaca, Jam Dunia & Globe, Speedtest, dan Cek Nomor).',
+    'Saya siap membantu seputar **17 fitur Manifestudio** (Manifest AI, Drama Pendek, YT Music, Downloader, Shortlink Bypass, Please Donate, Kompresor HD, Konversi File, Audio Editor, Cari Judul Lagu, Cek Plagiarisme, Novel Terpadu, Jadwal Sholat, Prakiraan Cuaca, Jam Dunia & Globe, Speedtest, dan Cek Nomor).',
     '',
     'Boleh ceritakan fitur mana yang sedang Anda gunakan dan kendala apa yang muncul agar saya bisa berikan solusi yang paling tepat?',
   ].join('\n');

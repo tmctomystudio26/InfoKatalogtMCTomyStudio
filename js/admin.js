@@ -42,7 +42,7 @@ import {
   upsertProductInCatalog,
   upsertSocialInCatalog,
   upsertUtilityItemInCatalog,
-} from './store.js?v=91';
+} from './store.js?v=102';
 import {
   decryptVault,
   encryptVault,
@@ -101,6 +101,7 @@ const BANNER_IMAGE_PRESETS = [
   { value: './assets/banners/banner-novel.jpg', label: 'Maskot Novel Terpadu' },
   { value: './assets/banners/banner-callerid.jpg', label: 'Maskot Cek Nomor & Anti-Spam' },
   { value: './assets/banners/banner-shortlink.jpg', label: 'Maskot Shortlink Bypass (Anti-Malware)' },
+  { value: './assets/banners/banner-donate.jpg', label: 'Maskot Please Donate (Saweria & SociaBuzz)' },
   { value: '', label: 'Tanpa Gambar (Hanya Gradien Warna)' },
 ];
 
@@ -134,6 +135,7 @@ const UTILITY_ICON_PRESETS = [
   { value: './assets/icons/tool-novel.svg', label: 'Ikon Novel Terpadu' },
   { value: './assets/icons/tool-callerid.svg', label: 'Ikon Cek Nomor & Anti-Spam' },
   { value: './assets/icons/tool-shortlink.svg', label: 'Ikon Shortlink Bypass' },
+  { value: './assets/icons/tool-donate.svg', label: 'Ikon Please Donate' },
 ];
 
 const adminState = {

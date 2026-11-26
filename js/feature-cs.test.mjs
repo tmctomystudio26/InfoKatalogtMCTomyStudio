@@ -24,8 +24,8 @@ import {
   decideDracinVerticalSwipeOutcome,
 } from './dracin-logic.js';
 
-test('FEATURE_CS_KNOWLEDGE_BASE covers all 16 Manifestudio utilities including Shortlink Bypass', () => {
-  assert.equal(FEATURE_CS_KNOWLEDGE_BASE.length, 16);
+test('FEATURE_CS_KNOWLEDGE_BASE covers all 17 Manifestudio utilities including Shortlink Bypass & Please Donate', () => {
+  assert.equal(FEATURE_CS_KNOWLEDGE_BASE.length, 17);
   const ids = new Set(FEATURE_CS_KNOWLEDGE_BASE.map((f) => f.id));
   for (const expected of [
     'manifestai',
@@ -37,6 +37,7 @@ test('FEATURE_CS_KNOWLEDGE_BASE covers all 16 Manifestudio utilities including S
     'songfinder',
     'downloader',
     'shortlink',
+    'donate',
     'compressor',
     'converter',
     'prayer',
@@ -100,6 +101,11 @@ test('classifyFeatureCsIntent handles courtesy, follow-ups, greeting, restricted
 
   const slbReply = buildFeatureCsLocalFallback('Cara pakai Shortlink Bypass');
   assert.match(slbReply, /Shortlink Bypass/i);
+
+  assert.equal(classifyFeatureCsIntent('Cara donasi lewat Saweria atau SociaBuzz di Please Donate'), 'feature_support');
+  const donateReply = buildFeatureCsLocalFallback('Cara donasi lewat Saweria di Please Donate');
+  assert.match(donateReply, /Please Donate/i);
+  assert.match(donateReply, /Saweria/i);
 });
 
 test('Tanya Fitur courtesy reply is warm & human and sanitization cleans raw <br> tags for Markdown tables', () => {

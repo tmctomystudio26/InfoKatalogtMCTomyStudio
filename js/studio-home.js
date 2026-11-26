@@ -128,6 +128,13 @@ export const STUDIO_FEATURE_META = Object.freeze({
     highlights: '5 Engine Open-Source · Anti-Spam · Direktori Resmi',
     keywords: 'cek nomor telepon hp spam penipuan caller id getcontact operator',
   },
+  donate: {
+    category: 'daily-security',
+    categoryLabel: 'Harian & Keamanan',
+    summary: 'Dukung pengembangan Manifestudio melalui Saweria & SociaBuzz Tribe lengkap dengan Papan Peringkat Top Donatur otomatis real-time.',
+    highlights: 'Saweria & SociaBuzz Tribe · Live Leaderboard · Multi-Mata Uang',
+    keywords: 'please donate donasi dukungan saweria sociabuzz tribe leaderboard top donatur supporter trakteer',
+  },
 });
 
 export const STUDIO_VALUE_PILLARS = Object.freeze([
@@ -135,7 +142,7 @@ export const STUDIO_VALUE_PILLARS = Object.freeze([
     index: '01',
     title: 'Gratis Penuh Tanpa Login',
     description:
-      'Semua 16 alat digital, hiburan, dan AI dapat dipakai langsung tanpa registrasi akun, tanpa paywall, dan tanpa iklan mengganggu.',
+      'Semua 17 alat digital, hiburan, dan AI dapat dipakai langsung tanpa registrasi akun, tanpa paywall, dan tanpa iklan mengganggu.',
   },
   {
     index: '02',
@@ -159,9 +166,9 @@ export const STUDIO_VALUE_PILLARS = Object.freeze([
 
 export const STUDIO_FAQ_ITEMS = Object.freeze([
   {
-    question: 'Apakah seluruh 16 fitur di Manifestudio benar-benar gratis dan tanpa login?',
+    question: 'Apakah seluruh 17 fitur di Manifestudio benar-benar gratis dan tanpa login?',
     answer:
-      'Ya. Seluruh 16 fitur utilitas, hiburan, dan AI di Manifestudio dapat langsung Anda gunakan secara gratis tanpa perlu membuat akun atau masuk terlebih dahulu.',
+      'Ya. Seluruh 17 fitur utilitas, hiburan, dan AI di Manifestudio dapat langsung Anda gunakan secara gratis tanpa perlu membuat akun atau masuk terlebih dahulu.',
   },
   {
     question: 'Apakah file saya aman saat menggunakan Kompresor HD, Konversi File, Audio Editor, atau Cek Plagiarisme?',
@@ -176,7 +183,7 @@ export const STUDIO_FAQ_ITEMS = Object.freeze([
   {
     question: 'Bagaimana cara mencari panduan atau mengatasi kendala pada salah satu fitur?',
     answer:
-      'Gunakan tombol Tanya Fitur di pojok kanan bawah layar kapan saja. Asisten fitur kami siap menjelaskan fungsi, langkah penggunaan, hingga solusi teknis untuk seluruh 16 fitur Manifestudio.',
+      'Gunakan tombol Tanya Fitur di pojok kanan bawah layar kapan saja. Asisten fitur kami siap menjelaskan fungsi, langkah penggunaan, hingga solusi teknis untuk seluruh 17 fitur Manifestudio.',
   },
   {
     question: 'Apakah fitur-fitur di Manifestudio bisa dibuka dengan cepat di HP maupun laptop?',
@@ -205,7 +212,7 @@ export function buildStudioHeroBanners(
   const brandName = String(opts.brandName || 'Manifestudio').trim() || 'Manifestudio';
   const enabledItems = (utilitiesConfig?.items || []).filter((it) => it && it.enabled !== false);
   const enabledMap = new Map(enabledItems.map((it) => [it.id, it]));
-  const enabledCount = enabledItems.length || 16;
+  const enabledCount = enabledItems.length || 17;
 
   const flagshipSlide = {
     id: 'studio-hero-flagship',

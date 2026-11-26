@@ -47,6 +47,7 @@ let _plagiarismMod = null;
 let _novelMod = null;
 let _callerIdMod = null;
 let _shortlinkMod = null;
+let _donateMod = null;
 
 const loadGlobeMod = () => (_globeMod ? Promise.resolve(_globeMod) : import('./globe.js?v=79').then((m) => (_globeMod = m)));
 const loadSpeedtestMod = () => (_speedtestMod ? Promise.resolve(_speedtestMod) : import('./speedtest.js?v=79').then((m) => (_speedtestMod = m)));
@@ -68,6 +69,7 @@ const loadPlagiarismMod = () => (_plagiarismMod ? Promise.resolve(_plagiarismMod
 const loadNovelMod = () => (_novelMod ? Promise.resolve(_novelMod) : import('./novel-ui.js?v=79').then((m) => (_novelMod = m)));
 const loadCallerIdMod = () => (_callerIdMod ? Promise.resolve(_callerIdMod) : import('./callerid-ui.js?v=79').then((m) => (_callerIdMod = m)));
 const loadShortlinkMod = () => (_shortlinkMod ? Promise.resolve(_shortlinkMod) : import('./shortlink-ui.js?v=90').then((m) => (_shortlinkMod = m)));
+const loadDonateMod = () => (_donateMod ? Promise.resolve(_donateMod) : import('./donate-ui.js?v=102').then((m) => (_donateMod = m)));
 
 function renderLazyLoadingCard(label = 'Utilitas') {
   return `
@@ -516,6 +518,7 @@ export function createToolsHubController({
   let novelCtrl = null;
   let callerIdCtrl = null;
   let shortlinkCtrl = null;
+  let donateCtrl = null;
   let isHubSeeking = false;
   let tabMountToken = 0;
   let lastUtilitiesSignature = '';
@@ -4748,6 +4751,15 @@ export function createToolsHubController({
     `;
   }
 
+  function renderDonatePanel() {
+    return `
+      <section class="tool-panel donate-panel" aria-label="Please Donate — Saweria &amp; SociaBuzz Tribe Leaderboard">
+        ${renderSubPanelIntro('donate')}
+        <div id="donate-hub-mount"></div>
+      </section>
+    `;
+  }
+
   function bindToolEvents() {
     rootEl.querySelectorAll('[data-tool-subtab]').forEach((btn) => {
       btn.addEventListener('click', () => {
@@ -5799,6 +5811,28 @@ export function createToolsHubController({
     } else if (shortlinkCtrl) {
       shortlinkCtrl.unmount();
     }
+
+    if (toolState.activeSubTab === 'donate') {
+      const donateMount = rootEl.querySelector('#donate-hub-mount');
+      if (donateMount) {
+        if (donateCtrl) {
+          donateCtrl.mount(donateMount);
+        } else {
+          donateMount.innerHTML = renderLazyLoadingCard('Please Donate');
+          loadDonateMod()
+            .then(({ createDonateController }) => {
+              if (!mounted || tabMountToken !== currentMountToken || toolState.activeSubTab !== 'donate') return;
+              const liveMount = rootEl.querySelector('#donate-hub-mount');
+              if (!liveMount) return;
+              if (!donateCtrl) donateCtrl = createDonateController({ onToast });
+              donateCtrl.mount(liveMount);
+            })
+            .catch(() => {});
+        }
+      }
+    } else if (donateCtrl) {
+      donateCtrl.unmount();
+    }
   }
 
   function renderPrayerSearchResultsHtml(subDistrictResults = [], filteredCities = []) {
@@ -5864,6 +5898,8 @@ export function createToolsHubController({
         ? renderCallerIdPanel()
         : toolState.activeSubTab === 'shortlink'
         ? renderShortlinkPanel()
+        : toolState.activeSubTab === 'donate'
+        ? renderDonatePanel()
         : renderDownloaderPanel();
 
     const visibleUtilityItems = (toolState.utilities?.items || []).filter((it) => it.enabled !== false);
@@ -5970,7 +6006,8 @@ export function createToolsHubController({
         subTab === 'plagiarism' ||
         subTab === 'novel' ||
         subTab === 'callerid' ||
-        subTab === 'shortlink'
+        subTab === 'shortlink' ||
+        subTab === 'donate'
       ) {
         toolState.activeSubTab = subTab;
       }
@@ -6038,6 +6075,9 @@ export function createToolsHubController({
       if (shortlinkCtrl) {
         shortlinkCtrl.unmount();
       }
+      if (donateCtrl) {
+        donateCtrl.unmount();
+      }
       stopLiveTimers();
       if (rootEl) rootEl.innerHTML = '';
     },
@@ -6050,6 +6090,7 @@ export function createToolsHubController({
       novelCtrl?.redrawTheme?.();
       callerIdCtrl?.redrawTheme?.();
       shortlinkCtrl?.redrawTheme?.();
+      donateCtrl?.redrawTheme?.();
     },
   };
 }
