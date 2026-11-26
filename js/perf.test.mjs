@@ -149,7 +149,6 @@ test('tools-ui.js uses dynamic lazy imports instead of eager static imports for 
     './novel-ui.js',
     './callerid-ui.js',
     './shortlink-ui.js',
-    './sshvpn-ui.js',
     './converter.js',
     './compressor.js',
     './song-finder.js',

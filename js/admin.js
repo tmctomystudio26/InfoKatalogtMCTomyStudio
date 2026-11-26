@@ -4528,7 +4528,7 @@ function renderUtilitiesSettings() {
             <div>
               <strong class="admin-social-title">Asisten Mengambang "Tanya Fitur" (Customer Service AI)</strong>
               <div class="admin-prod-meta">
-                Tampil di pojok kanan bawah Manifestudio — khusus menjawab pertanyaan &amp; pemecahan masalah 17 fitur secara faktual.
+                Tampil di pojok kanan bawah Manifestudio — khusus menjawab pertanyaan &amp; pemecahan masalah 16 fitur secara faktual.
               </div>
             </div>
           </div>

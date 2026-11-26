@@ -1,11 +1,11 @@
-import { createToolsHubController } from './tools-ui.js?v=98';
+import { createToolsHubController } from './tools-ui.js?v=99';
 import { getDefaultCatalogSnapshot, loadCatalogData } from './data.js?v=85';
 import {
   inferBannerUtilityId,
   normalizeBanners,
   normalizeBrandConfig,
   normalizeUtilityConfig,
-} from './store.js?v=98';
+} from './store.js?v=99';
 import {
   computeBannerHydrationWindow,
   initPerformanceClass,
@@ -19,7 +19,7 @@ import {
   normalizeStoreAccessConfig,
   resolveDisplayBrand,
   resolveSiteContext,
-} from './domain-router.js?v=87';
+} from './domain-router.js?v=99';
 import {
   STUDIO_CATEGORIES,
   STUDIO_FAQ_ITEMS,
@@ -31,8 +31,8 @@ import {
   filterStudioFeatures,
   groupStudioFeaturesByCategory,
   parseStudioRoute,
-} from './studio-home.js?v=98';
-import { createFeatureCsController } from './feature-cs-ui.js?v=98';
+} from './studio-home.js?v=99';
+import { createFeatureCsController } from './feature-cs-ui.js?v=99';
 
 const THEME_STORAGE_KEY = 'manifestudio_theme_v1';
 const VALID_TABS = new Set([
@@ -42,7 +42,6 @@ const VALID_TABS = new Set([
   'speedtest',
   'downloader',
   'shortlink',
-  'sshvpn',
   'compressor',
   'converter',
   'songfinder',
@@ -390,7 +389,7 @@ function enterHomeView({ pushState = true, scrollTarget = null } = {}) {
   }
 
   const utilName = getStoreAccessCfg().utilitiesBrandName || DOMAIN_CONFIG.utilitiesBrandName;
-  const enabledCount = getEnabledUtilityItems().length || 17;
+  const enabledCount = getEnabledUtilityItems().length || 16;
   document.title = `${utilName} — Platform ${enabledCount} Utilitas Digital, AI & Hiburan Gratis`;
 
   if (pushState) {
@@ -1486,7 +1485,7 @@ async function bootstrap() {
 
   initPwaManager({
     appName: getStoreAccessCfg().utilitiesBrandName || 'Manifestudio',
-    appDesc: 'Akses 17 fitur utilitas gratis lebih cepat dari layar utama & tetap nyaman dibuka offline.',
+    appDesc: 'Akses 16 fitur utilitas gratis lebih cepat dari layar utama & tetap nyaman dibuka offline.',
   });
 
   bindStudioSectionEvents();

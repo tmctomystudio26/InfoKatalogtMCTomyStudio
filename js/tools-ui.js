@@ -47,7 +47,6 @@ let _plagiarismMod = null;
 let _novelMod = null;
 let _callerIdMod = null;
 let _shortlinkMod = null;
-let _sshvpnMod = null;
 
 const loadGlobeMod = () => (_globeMod ? Promise.resolve(_globeMod) : import('./globe.js?v=79').then((m) => (_globeMod = m)));
 const loadSpeedtestMod = () => (_speedtestMod ? Promise.resolve(_speedtestMod) : import('./speedtest.js?v=79').then((m) => (_speedtestMod = m)));
@@ -69,7 +68,6 @@ const loadPlagiarismMod = () => (_plagiarismMod ? Promise.resolve(_plagiarismMod
 const loadNovelMod = () => (_novelMod ? Promise.resolve(_novelMod) : import('./novel-ui.js?v=79').then((m) => (_novelMod = m)));
 const loadCallerIdMod = () => (_callerIdMod ? Promise.resolve(_callerIdMod) : import('./callerid-ui.js?v=79').then((m) => (_callerIdMod = m)));
 const loadShortlinkMod = () => (_shortlinkMod ? Promise.resolve(_shortlinkMod) : import('./shortlink-ui.js?v=90').then((m) => (_shortlinkMod = m)));
-const loadSshVpnMod = () => (_sshvpnMod ? Promise.resolve(_sshvpnMod) : import('./sshvpn-ui.js?v=98').then((m) => (_sshvpnMod = m)));
 
 function renderLazyLoadingCard(label = 'Utilitas') {
   return `
@@ -516,7 +514,6 @@ export function createToolsHubController({
   let novelCtrl = null;
   let callerIdCtrl = null;
   let shortlinkCtrl = null;
-  let sshvpnCtrl = null;
   let isHubSeeking = false;
   let tabMountToken = 0;
   let lastUtilitiesSignature = '';
@@ -4629,15 +4626,6 @@ export function createToolsHubController({
     `;
   }
 
-  function renderSshVpnPanel() {
-    return `
-      <section class="tool-panel sshvpn-panel" aria-label="SSH dan VPN Studio Pembuat Akun Jaringan VIP Gratis">
-        ${renderSubPanelIntro('sshvpn')}
-        <div id="sshvpn-hub-mount"></div>
-      </section>
-    `;
-  }
-
   function bindToolEvents() {
     rootEl.querySelectorAll('[data-tool-subtab]').forEach((btn) => {
       btn.addEventListener('click', () => {
@@ -5637,29 +5625,6 @@ export function createToolsHubController({
     } else if (shortlinkCtrl) {
       shortlinkCtrl.unmount();
     }
-
-    if (toolState.activeSubTab === 'sshvpn') {
-      const sshvpnMount = rootEl.querySelector('#sshvpn-hub-mount');
-      if (sshvpnMount) {
-        if (sshvpnCtrl) {
-          sshvpnCtrl.mount();
-        } else {
-          sshvpnMount.innerHTML = renderLazyLoadingCard('SSH & VPN Studio');
-          loadSshVpnMod()
-            .then(({ createSshVpnController }) => {
-              if (!mounted || tabMountToken !== currentMountToken || toolState.activeSubTab !== 'sshvpn') return;
-              const liveMount = rootEl.querySelector('#sshvpn-hub-mount');
-              if (!liveMount) return;
-              sshvpnCtrl = createSshVpnController({ rootEl: liveMount, onToast });
-              sshvpnCtrl.mount();
-            })
-            .catch(() => {});
-        }
-      }
-    } else if (sshvpnCtrl) {
-      sshvpnCtrl.unmount();
-      sshvpnCtrl = null;
-    }
   }
 
   function renderPrayerSearchResultsHtml(subDistrictResults = [], filteredCities = []) {
@@ -5725,8 +5690,6 @@ export function createToolsHubController({
         ? renderCallerIdPanel()
         : toolState.activeSubTab === 'shortlink'
         ? renderShortlinkPanel()
-        : toolState.activeSubTab === 'sshvpn'
-        ? renderSshVpnPanel()
         : renderDownloaderPanel();
 
     const visibleUtilityItems = (toolState.utilities?.items || []).filter((it) => it.enabled !== false);
@@ -5813,8 +5776,7 @@ export function createToolsHubController({
         subTab === 'plagiarism' ||
         subTab === 'novel' ||
         subTab === 'callerid' ||
-        subTab === 'shortlink' ||
-        subTab === 'sshvpn'
+        subTab === 'shortlink'
       ) {
         toolState.activeSubTab = subTab;
       }
@@ -5882,10 +5844,6 @@ export function createToolsHubController({
       if (shortlinkCtrl) {
         shortlinkCtrl.unmount();
       }
-      if (sshvpnCtrl) {
-        sshvpnCtrl.unmount();
-        sshvpnCtrl = null;
-      }
       stopLiveTimers();
       if (rootEl) rootEl.innerHTML = '';
     },
@@ -5898,7 +5856,6 @@ export function createToolsHubController({
       novelCtrl?.redrawTheme?.();
       callerIdCtrl?.redrawTheme?.();
       shortlinkCtrl?.redrawTheme?.();
-      sshvpnCtrl?.redrawTheme?.();
     },
   };
 }

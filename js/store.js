@@ -528,7 +528,7 @@ export function inferBannerUtilityId(banner = {}) {
   const href = String(banner?.href || '').trim();
   const match = href.match(/[?&](?:tab|tool)=([a-z0-9_-]+)/i);
   if (match && match[1]) return match[1].toLowerCase();
-  const idMatch = String(banner?.id || '').match(/^banner-(prayer|weather|worldclock|speedtest|downloader|shortlink|sshvpn|compressor|converter|songfinder|music|dracin|audioeditor|manifestai|plagiarism|novel|callerid)$/i);
+  const idMatch = String(banner?.id || '').match(/^banner-(prayer|weather|worldclock|speedtest|downloader|shortlink|compressor|converter|songfinder|music|dracin|audioeditor|manifestai|plagiarism|novel|callerid)$/i);
   return idMatch ? idMatch[1].toLowerCase() : '';
 }
 
@@ -737,18 +737,6 @@ export const DEFAULT_BANNERS = [
     scrim: 'downloader',
     enabled: true,
   },
-  {
-    id: 'banner-sshvpn',
-    utilityId: 'sshvpn',
-    kicker: 'Menu Utilitas · Multi-API Jaringan VIP',
-    heading: 'SSH & VPN Studio — Buat Akun SSH, VMess, VLess, Trojan & WireGuard Gratis',
-    sub: 'Server real-time multi-negara dari banyak API gratis lengkap dengan sisa slot, spesifikasi server, pilihan durasi, & riwayat akun.',
-    ctaLabel: 'Buat Akun Gratis →',
-    href: './tools.html?tab=sshvpn',
-    image: './assets/banners/banner-sshvpn.jpg',
-    scrim: 'emerald',
-    enabled: true,
-  },
 ];
 
 export function normalizeOpenGraphConfig(brand = {}) {
@@ -816,7 +804,7 @@ export const DEFAULT_UTILITY_CONFIG = {
   callout: {
     icon: './assets/icons/menu-utilitas.svg',
     title: 'Menu Utilitas',
-    badge: '17 Fitur Gratis',
+    badge: '16 Fitur Gratis',
     description: '',
     autoCountBadge: true,
   },
@@ -1018,18 +1006,6 @@ export const DEFAULT_UTILITY_CONFIG = {
       heroTitle: 'Shortlink Bypass & Audit Keamanan Tautan Langsung',
       heroDescription:
         'Gabungkan Dekoder Instan Lokal, Pelacak Redirect & Inspektor Safelink, Bypass.VIP, Bypass.PM, Unshorten.me, Unshorten.it, serta Konsensus Multi-AI (Gemini, ChatGPT, Claude, Grok, DeepSeek) untuk menuju link tujuan aman tanpa iklan berulang.',
-    },
-    {
-      id: 'sshvpn',
-      label: 'SSH & VPN',
-      icon: './assets/icons/tool-sshvpn.svg',
-      pageTitle: 'SSH & VPN Studio — Pembuat Akun SSH, WireGuard VIP, VMess, VLess, Trojan, Shadowsocks, Hysteria2 & OpenVPN',
-      pageSubtitle:
-        'Buat akun WireGuard VIP (Cloudflare WARP), VMess, VLess, Trojan, Shadowsocks, Hysteria2 QUIC, & OpenVPN/L2TP langsung aktif 1-klik, lengkap dengan daftar server SSH WebSocket/SSL/UDP/SlowDNS real-time & pembuat payload HTTP Custom.',
-      heroKicker: '18+ API Real-Time · 7 Protokol Instan 1-Klik + SSH Tunnel Live',
-      heroTitle: 'SSH & VPN Studio — Pembuat Akun SSH & VPN Gratis Multi-API',
-      heroDescription:
-        'Gabungkan 18+ API penyedia jaringan real-time (Cloudflare WARP WireGuard VIP, VPNGate OpenVPN/L2TP, Multi-API Xray VMess/VLess/Trojan/Shadowsocks/Hysteria2 yang langsung aktif 1-klik di sini, plus daftar server SSH WebSocket/SSL/UDP/SlowDNS live dengan payload siap pakai).',
     },
   ],
 };

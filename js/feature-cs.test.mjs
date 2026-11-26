@@ -24,8 +24,8 @@ import {
   decideDracinVerticalSwipeOutcome,
 } from './dracin-logic.js';
 
-test('FEATURE_CS_KNOWLEDGE_BASE covers all 17 Manifestudio utilities including Shortlink Bypass & SSH & VPN', () => {
-  assert.equal(FEATURE_CS_KNOWLEDGE_BASE.length, 17);
+test('FEATURE_CS_KNOWLEDGE_BASE covers all 16 Manifestudio utilities including Shortlink Bypass', () => {
+  assert.equal(FEATURE_CS_KNOWLEDGE_BASE.length, 16);
   const ids = new Set(FEATURE_CS_KNOWLEDGE_BASE.map((f) => f.id));
   for (const expected of [
     'manifestai',
@@ -37,7 +37,6 @@ test('FEATURE_CS_KNOWLEDGE_BASE covers all 17 Manifestudio utilities including S
     'songfinder',
     'downloader',
     'shortlink',
-    'sshvpn',
     'compressor',
     'converter',
     'prayer',
@@ -71,7 +70,6 @@ test('classifyFeatureCsIntent handles courtesy, follow-ups, greeting, restricted
   assert.equal(classifyFeatureCsIntent('Ngelag ketika menonton drama'), 'feature_support');
   assert.equal(classifyFeatureCsIntent('Drama tidak lengkap'), 'feature_support');
   assert.equal(classifyFeatureCsIntent('Cara pakai Shortlink Bypass biar aman dari malware'), 'feature_support');
-  assert.equal(classifyFeatureCsIntent('Cara buat akun SSH VMess VLess WireGuard gratis'), 'feature_support');
 
   // Context-aware follow-up questions remain inside feature_support
   assert.equal(classifyFeatureCsIntent('Terus caranya gimana?', { hasContext: true }), 'feature_support');
@@ -102,9 +100,6 @@ test('classifyFeatureCsIntent handles courtesy, follow-ups, greeting, restricted
 
   const slbReply = buildFeatureCsLocalFallback('Cara pakai Shortlink Bypass');
   assert.match(slbReply, /Shortlink Bypass/i);
-
-  const sshReply = buildFeatureCsLocalFallback('Cara buat akun SSH VMess VLess gratis');
-  assert.match(sshReply, /SSH & VPN/i);
 });
 
 test('Tanya Fitur courtesy reply is warm & human and sanitization cleans raw <br> tags for Markdown tables', () => {

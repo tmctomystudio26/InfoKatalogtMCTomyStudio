@@ -475,9 +475,9 @@ export function resolveDisplayBrand(brand = {}, ctx = {}) {
     storeTitle: `${displayName} ${tagline} — Akun Premium & Layanan Digital Bergaransi`,
     storeDescription:
       'Katalog akun premium & layanan digital bergaransi dengan proses cepat 3–10 menit via WhatsApp, potongan otomatis, kode voucher, dan opsi Bayar Nanti.',
-    utilitiesTitle: `${accessCfg.utilitiesBrandName} — 17 Utilitas Gratis Terpadu`,
+    utilitiesTitle: `${accessCfg.utilitiesBrandName} — 16 Utilitas Gratis Terpadu`,
     utilitiesDescription:
-      '17 fitur utilitas gratis tanpa login: Jadwal Sholat Kemenag RI, Prakiraan Cuaca, Jam Dunia, Speedtest, Downloader, Shortlink Bypass, SSH & VPN, Kompresor HD, Konversi File, YT Music, Drama Pendek, Audio Editor, Manifest AI, Plagiarisme, Novel & Cek Nomor.',
+      '16 fitur utilitas gratis tanpa login: Jadwal Sholat Kemenag RI, Prakiraan Cuaca, Jam Dunia, Speedtest, Downloader, Shortlink Bypass, Kompresor HD, Konversi File, YT Music, Drama Pendek, Audio Editor, Manifest AI, Plagiarisme, Novel & Cek Nomor.',
   };
 }
 
