@@ -128,12 +128,12 @@ export const STUDIO_FEATURE_META = Object.freeze({
     highlights: '5 Engine Open-Source · Anti-Spam · Direktori Resmi',
     keywords: 'cek nomor telepon hp spam penipuan caller id getcontact operator',
   },
-  webproxy: {
+  sshvpn: {
     category: 'daily-security',
     categoryLabel: 'Harian & Keamanan',
-    summary: 'Jelajah web 100% privat dengan Mode Proxy & VPN Relay gratis, pemblokir iklan & malware, layar penuh, 108+ tema, Multi-AI, & unduh media otomatis.',
-    highlights: 'Proxy & VPN Gratis · 108+ Tema · Unduh Media Otomatis',
-    keywords: 'proxy web proxy vpn peramban browser privat incognito anti iklan vidmate unduh video tema multi ai',
+    summary: 'Buat akun SSH WebSocket/SSL/UDP/SlowDNS, WireGuard VIP, VMess, VLess, Trojan, Shadowsocks, Hysteria2, & OpenVPN gratis dari banyak API real-time lengkap dengan sisa slot & riwayat.',
+    highlights: 'Multi-API Real-Time · Semua Protokol · Riwayat Akun',
+    keywords: 'ssh vpn vmess vless trojan shadowsocks wireguard openvpn hysteria2 warp tunneling akun gratis server slot',
   },
 });
 
@@ -219,7 +219,7 @@ export function buildStudioHeroBanners(
     utilityId: null,
     kicker: `${brandName} · ${enabledCount} Fitur Digital Gratis`,
     heading: 'Satu Platform Ringan untuk AI, Hiburan & Alat Harian Tanpa Login',
-    sub: 'Akses Manifest AI, Peramban Proxy, Drama Pendek, YT Music, Downloader, Shortlink Bypass, Kompresor HD, Cek Plagiarisme, hingga Cek Nomor dalam satu tempat yang cepat dan rapi.',
+    sub: 'Akses Manifest AI, SSH & VPN, Drama Pendek, YT Music, Downloader, Shortlink Bypass, Kompresor HD, Cek Plagiarisme, hingga Cek Nomor dalam satu tempat yang cepat dan rapi.',
     ctaLabel: `Jelajahi ${enabledCount} Fitur →`,
     href: '#fitur',
     image: './assets/banners/banner-manifestai.jpg',

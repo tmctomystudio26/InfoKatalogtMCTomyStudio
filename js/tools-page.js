@@ -1,17 +1,17 @@
-import { createToolsHubController } from './tools-ui.js?v=94';
+import { createToolsHubController } from './tools-ui.js?v=95';
 import { getDefaultCatalogSnapshot, loadCatalogData } from './data.js?v=85';
 import {
   inferBannerUtilityId,
   normalizeBanners,
   normalizeBrandConfig,
   normalizeUtilityConfig,
-} from './store.js?v=91';
+} from './store.js?v=95';
 import {
   computeBannerHydrationWindow,
   initPerformanceClass,
   resolveBannerTransition,
 } from './perf-guard.js?v=85';
-import { initPwaManager } from './pwa.js?v=91';
+import { initPwaManager } from './pwa.js?v=95';
 import {
   DOMAIN_CONFIG,
   STORE_VAULT_API,
@@ -31,8 +31,8 @@ import {
   filterStudioFeatures,
   groupStudioFeaturesByCategory,
   parseStudioRoute,
-} from './studio-home.js?v=91';
-import { createFeatureCsController } from './feature-cs-ui.js?v=91';
+} from './studio-home.js?v=95';
+import { createFeatureCsController } from './feature-cs-ui.js?v=95';
 
 const THEME_STORAGE_KEY = 'manifestudio_theme_v1';
 const VALID_TABS = new Set([
@@ -42,7 +42,7 @@ const VALID_TABS = new Set([
   'speedtest',
   'downloader',
   'shortlink',
-  'webproxy',
+  'sshvpn',
   'compressor',
   'converter',
   'songfinder',

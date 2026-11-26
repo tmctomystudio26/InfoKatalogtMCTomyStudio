@@ -17,7 +17,7 @@ import {
   buildFeatureCsSystemPrompt,
   classifyFeatureCsIntent,
   sanitizeFeatureCsReply,
-} from './feature-cs-logic.js?v=91';
+} from './feature-cs-logic.js?v=95';
 import { renderMarkdownSafe } from './manifest-ai-logic.js?v=91';
 
 const FCS_FAB_HIDDEN_KEY = 'manifestudio_fcs_fab_hidden_v1';
@@ -53,7 +53,7 @@ function writeFabDismissed(hidden) {
 
 const QUICK_PROMPTS = [
   'Ada fitur apa saja di sini?',
-  'Cara pakai Peramban Proxy & mode VPN',
+  'Cara buat akun SSH, VMess, VLess & WireGuard gratis',
   'Cara pakai Shortlink Bypass',
   'Cara download video tanpa watermark',
 ];

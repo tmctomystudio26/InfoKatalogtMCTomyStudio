@@ -6,7 +6,7 @@
     <title>Manifestudio — Platform 17 Utilitas Digital, AI &amp; Hiburan Gratis</title>
     <meta
       name="description"
-      content="Manifestudio by Tomy: 17 fitur utilitas digital, AI, dan hiburan gratis tanpa login — Manifest AI, Peramban Proxy, Drama Pendek, YT Music, Downloader, Shortlink Bypass, Kompresor HD, Konversi File, Audio Editor, Cek Plagiarisme, Novel, Jadwal Sholat, Cuaca, Jam Dunia, Speedtest &amp; Cek Nomor."
+      content="Manifestudio by Tomy: 17 fitur utilitas digital, AI, dan hiburan gratis tanpa login — Manifest AI, SSH &amp; VPN Studio, Drama Pendek, YT Music, Downloader, Shortlink Bypass, Kompresor HD, Konversi File, Audio Editor, Cek Plagiarisme, Novel, Jadwal Sholat, Cuaca, Jam Dunia, Speedtest &amp; Cek Nomor."
     />
 
     <link rel="canonical" href="https://manifestudio.my.id/" />
@@ -16,7 +16,7 @@
     <meta property="og:title" content="Manifestudio — Platform 17 Utilitas Digital, AI &amp; Hiburan Gratis" />
     <meta
       property="og:description"
-      content="17 alat digital &amp; hiburan gratis tanpa login: Manifest AI, Peramban Proxy, Drama Pendek, YT Music, Downloader Tanpa Watermark, Shortlink Bypass, Kompresor HD, Cek Plagiarisme, Novel &amp; Cek Nomor."
+      content="17 alat digital &amp; hiburan gratis tanpa login: Manifest AI, SSH &amp; VPN Studio, Drama Pendek, YT Music, Downloader Tanpa Watermark, Shortlink Bypass, Kompresor HD, Cek Plagiarisme, Novel &amp; Cek Nomor."
     />
     <meta
       property="og:image"
@@ -59,8 +59,8 @@
       rel="stylesheet"
     />
 
-    <link rel="stylesheet" href="./css/tokens.css?v=94" />
-    <link rel="stylesheet" href="./css/styles.css?v=94" />
+    <link rel="stylesheet" href="./css/tokens.css?v=95" />
+    <link rel="stylesheet" href="./css/styles.css?v=95" />
     <script>
       (function () {
         try {
@@ -72,7 +72,7 @@
           var hasTab = Boolean((qs.get('tab') || qs.get('tool') || '').trim());
           document.documentElement.setAttribute('data-studio-view', hasTab ? 'tool' : 'home');
         } catch (e) {}
-        var CURRENT_CACHE = 'manifestudio-cache-v94';
+        var CURRENT_CACHE = 'manifestudio-cache-v95';
         if ('caches' in window) {
           caches.keys().then(function (keys) {
             keys.forEach(function (k) {
@@ -82,7 +82,7 @@
         }
         if ('serviceWorker' in navigator) {
           window.addEventListener('load', function () {
-            navigator.serviceWorker.register('./sw.js?v=94').then(function (reg) {
+            navigator.serviceWorker.register('./sw.js?v=95').then(function (reg) {
               reg.update();
             }).catch(function () {});
           });
@@ -351,7 +351,7 @@
             <button type="button" class="studio-footer-text-btn" data-studio-open-tool="music">YT Music</button>
             <button type="button" class="studio-footer-text-btn" data-studio-open-tool="downloader">Downloader</button>
             <button type="button" class="studio-footer-text-btn" data-studio-open-tool="shortlink">Shortlink Bypass</button>
-            <button type="button" class="studio-footer-text-btn" data-studio-open-tool="webproxy">Peramban Proxy</button>
+            <button type="button" class="studio-footer-text-btn" data-studio-open-tool="sshvpn">SSH &amp; VPN</button>
             <button type="button" class="studio-footer-text-btn" data-studio-open-tool="plagiarism">Cek Plagiarisme</button>
             <button type="button" class="studio-footer-text-btn" data-studio-open-tool="callerid">Cek Nomor</button>
           </div>
@@ -395,6 +395,6 @@
     <div id="feature-cs-root" class="fcs-root"></div>
     <div id="store-access-modal-root" class="modal-overlay" hidden></div>
     <div id="toast-notification" class="toast-notification" role="status" aria-live="polite" hidden></div>
-    <script type="module" src="./js/tools-page.js?v=94"></script>
+    <script type="module" src="./js/tools-page.js?v=95"></script>
   </body>
 </html>

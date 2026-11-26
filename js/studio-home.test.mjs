@@ -41,7 +41,7 @@ test('buildStudioHeroBanners produces Flagship slide + all enabled utility masco
   assert.ok(utilSlides.some((s) => s.utilityId === 'dracin'));
   assert.ok(utilSlides.some((s) => s.utilityId === 'manifestai'));
   assert.ok(utilSlides.some((s) => s.utilityId === 'shortlink'));
-  assert.ok(utilSlides.some((s) => s.utilityId === 'webproxy'));
+  assert.ok(utilSlides.some((s) => s.utilityId === 'sshvpn'));
 
   // Respects disabled utility toggle from Admin
   const withDisabled = normalizeUtilityConfig({
@@ -59,7 +59,7 @@ test('buildStudioFeatureDirectory & filterStudioFeatures support category tabs a
   const utilities = normalizeUtilityConfig(DEFAULT_UTILITY_CONFIG);
   const dir = buildStudioFeatureDirectory(utilities);
   assert.equal(dir.length, 17);
-  assert.ok(dir.some((f) => f.id === 'webproxy'));
+  assert.ok(dir.some((f) => f.id === 'sshvpn'));
   assert.ok(dir.every((f) => f.id && f.label && f.summary && f.icon && f.category));
 
   // Category filter

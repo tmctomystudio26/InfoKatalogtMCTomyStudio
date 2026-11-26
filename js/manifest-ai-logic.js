@@ -33,7 +33,7 @@ export const DEFAULT_MANIFESTUDIO_PROFILE = Object.freeze({
     'Cari Judul Lagu & Sumber Video (identifikasi lagu dari rekaman/audio dan pencarian sumber video)',
     'Downloader Sosmed All-in-One (TikTok, IG, YouTube, FB: video HD tanpa watermark, MP3, foto carousel, story)',
     'Shortlink Bypass (lewati shortlink & safelink beriklan/pop-up dengan Multi-API open-source + Audit Keamanan Multi-AI anti-malware)',
-    'Peramban Proxy (jelajah web privat dengan Mode Proxy & VPN Relay gratis, pemblokir iklan & malware, layar penuh, 108+ tema, Multi-AI, mode tanpa riwayat, & deteksi unduh video otomatis ala VidMate)',
+    'SSH & VPN Studio (pembuat akun SSH WebSocket/SSL/UDP Custom, WireGuard VIP, VMess, VLess, Trojan, Shadowsocks, Hysteria2, dan OpenVPN/L2TP gratis 100% dari Multi-API real-time lengkap dengan detail server, sisa slot, & riwayat akun)',
     'Kompresor Foto & Video HD (anti-pecah sosmed, preset TikTok/IG/WA HD, proses lokal di browser)',
     'Konversi Semua File (85+ kombinasi format: DOCX, Excel, PDF, foto, video, audio, ZIP lokal di browser)',
     'Jadwal Sholat & Imsakiyah (resmi Kemenag RI se-Indonesia + GPS otomatis + hitung mundur adzan)',
@@ -86,7 +86,7 @@ export const MANIFEST_AI_SYSTEM_PROMPT = [
 export const MANIFEST_AI_UTILITIES_SYSTEM_PROMPT = [
   'Kamu adalah Manifest AI, asisten AI universal resmi di platform Manifestudio (https://manifestudio.my.id/) yang dibuat dan dikelola oleh Tomy (update 2026).',
   'Peranmu di menu Manifest AI adalah ASISTEN AI UNIVERSAL — kamu bebas membantu segala topik (belajar, coding, matematika, tulisan, ide kreatif, teknologi, berita, sains, tips harian, hingga menjelaskan 17 fitur gratis di Manifestudio).',
-  'Identitas resmi Manifestudio (17 Fitur Gratis Tanpa Login): Manifest AI, Cek Plagiarisme, Novel Terpadu, Drama Pendek, YT Music Player, Audio Editor Studio AI, Cari Judul Lagu & Sumber Video, Downloader Sosmed, Shortlink Bypass, Peramban Proxy, Kompresor Foto & Video HD, Konversi Semua File, Jadwal Sholat & Imsakiyah, Prakiraan Cuaca Real-Time, Jam Dunia UTC & Globe 3D, Speedtest Internet, dan Cek Nomor Telepon.',
+  'Identitas resmi Manifestudio (17 Fitur Gratis Tanpa Login): Manifest AI, Cek Plagiarisme, Novel Terpadu, Drama Pendek, YT Music Player, Audio Editor Studio AI, Cari Judul Lagu & Sumber Video, Downloader Sosmed, Shortlink Bypass, SSH & VPN, Kompresor Foto & Video HD, Konversi Semua File, Jadwal Sholat & Imsakiyah, Prakiraan Cuaca Real-Time, Jam Dunia UTC & Globe 3D, Speedtest Internet, dan Cek Nomor Telepon.',
   'ATURAN ISOLASI & PRIVASI MUTLAK DI MANIFESTUDIO (WAJIB DIPATUHI 100%):',
   '1. DILARANG KERAS menyebut, mengonfirmasi, mempromosikan, atau membocorkan keberadaan Manifestore, toko/store, katalog produk, akun premium (harga/daftar produk seperti CapCut/Netflix/Canva/Turnitin berbayar), metode pembayaran, voucher, cara order, maupun tautan domain lain.',
   '2. DILARANG KERAS menampilkan atau menebak nomor WhatsApp/telepon, username TikTok/Instagram, email pribadi, kode akses, nama file/sistem internal, maupun detail konfigurasi admin.',
@@ -95,7 +95,7 @@ export const MANIFEST_AI_UTILITIES_SYSTEM_PROMPT = [
 ].join('\n');
 
 const MANIFESTUDIO_QUERY_RE =
-  /\b(man[ie]f[eu]s?t?studio|manifest\s*studio|manifest\s*ai|tomy|tmctomystudio|tuan|pemilik|pembuat|pencipta|siapa\s+(kamu|anda|pembuat|pemilik|tuan)|kamu\s+siapa|anda\s+siapa|katalog|akun\s+premium|menu\s+utilitas|fitur\s+di\s+sini|kontak\s+admin|whatsapp\s+admin|wa\s+admin|whatsapp\s+owner|wa\s+owner|sosmed|media\s+sosial|instagram|tiktok|cara\s+order|cara\s+pesan|bayar\s+nanti|bayar\s+belakangan|dracin|drama\s+china|drama\s+pendek|audio\s+editor|cek\s+plagiarisme|cek\s+nomor|shortlink\s*bypass|safelink|peramban\s*proxy|web\s*proxy|vpn\s*relay|novel\s+terpadu|jadwal\s+sholat|kompresor\s+hd|konversi\s+file|speedtest|yt\s*music)\b/i;
+  /\b(man[ie]f[eu]s?t?studio|manifest\s*studio|manifest\s*ai|tomy|tmctomystudio|tuan|pemilik|pembuat|pencipta|siapa\s+(kamu|anda|pembuat|pemilik|tuan)|kamu\s+siapa|anda\s+siapa|katalog|akun\s+premium|menu\s+utilitas|fitur\s+di\s+sini|kontak\s+admin|whatsapp\s+admin|wa\s+admin|whatsapp\s+owner|wa\s+owner|sosmed|media\s+sosial|instagram|tiktok|cara\s+order|cara\s+pesan|bayar\s+nanti|bayar\s+belakangan|dracin|drama\s+china|drama\s+pendek|audio\s+editor|cek\s+plagiarisme|cek\s+nomor|shortlink\s*bypass|safelink|ssh\s*(?:&|dan)?\s*vpn|wireguard|vmess|vless|trojan|shadowsocks|openvpn|udp\s*custom|slowdns|novel\s+terpadu|jadwal\s+sholat|kompresor\s+hd|konversi\s+file|speedtest|yt\s*music)\b/i;
 
 export function isManifestudioQuery(text = '') {
   return MANIFESTUDIO_QUERY_RE.test(String(text || ''));

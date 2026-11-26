@@ -47,7 +47,7 @@ let _plagiarismMod = null;
 let _novelMod = null;
 let _callerIdMod = null;
 let _shortlinkMod = null;
-let _webproxyMod = null;
+let _sshvpnMod = null;
 
 const loadGlobeMod = () => (_globeMod ? Promise.resolve(_globeMod) : import('./globe.js?v=79').then((m) => (_globeMod = m)));
 const loadSpeedtestMod = () => (_speedtestMod ? Promise.resolve(_speedtestMod) : import('./speedtest.js?v=79').then((m) => (_speedtestMod = m)));
@@ -69,7 +69,7 @@ const loadPlagiarismMod = () => (_plagiarismMod ? Promise.resolve(_plagiarismMod
 const loadNovelMod = () => (_novelMod ? Promise.resolve(_novelMod) : import('./novel-ui.js?v=79').then((m) => (_novelMod = m)));
 const loadCallerIdMod = () => (_callerIdMod ? Promise.resolve(_callerIdMod) : import('./callerid-ui.js?v=79').then((m) => (_callerIdMod = m)));
 const loadShortlinkMod = () => (_shortlinkMod ? Promise.resolve(_shortlinkMod) : import('./shortlink-ui.js?v=90').then((m) => (_shortlinkMod = m)));
-const loadWebproxyMod = () => (_webproxyMod ? Promise.resolve(_webproxyMod) : import('./webproxy-ui.js?v=93').then((m) => (_webproxyMod = m)));
+const loadSshVpnMod = () => (_sshvpnMod ? Promise.resolve(_sshvpnMod) : import('./sshvpn-ui.js?v=95').then((m) => (_sshvpnMod = m)));
 
 function renderLazyLoadingCard(label = 'Utilitas') {
   return `
@@ -516,7 +516,7 @@ export function createToolsHubController({
   let novelCtrl = null;
   let callerIdCtrl = null;
   let shortlinkCtrl = null;
-  let webproxyCtrl = null;
+  let sshvpnCtrl = null;
   let isHubSeeking = false;
   let tabMountToken = 0;
   let lastUtilitiesSignature = '';
@@ -4629,11 +4629,11 @@ export function createToolsHubController({
     `;
   }
 
-  function renderWebproxyPanel() {
+  function renderSshVpnPanel() {
     return `
-      <section class="tool-panel webproxy-panel" aria-label="Peramban Proxy dan VPN Privat">
-        ${renderSubPanelIntro('webproxy')}
-        <div id="webproxy-hub-mount"></div>
+      <section class="tool-panel sshvpn-panel" aria-label="SSH dan VPN Studio Pembuat Akun Jaringan VIP Gratis">
+        ${renderSubPanelIntro('sshvpn')}
+        <div id="sshvpn-hub-mount"></div>
       </section>
     `;
   }
@@ -5638,27 +5638,27 @@ export function createToolsHubController({
       shortlinkCtrl.unmount();
     }
 
-    if (toolState.activeSubTab === 'webproxy') {
-      const wpbMount = rootEl.querySelector('#webproxy-hub-mount');
-      if (wpbMount) {
-        if (webproxyCtrl) {
-          webproxyCtrl.mount();
+    if (toolState.activeSubTab === 'sshvpn') {
+      const sshvpnMount = rootEl.querySelector('#sshvpn-hub-mount');
+      if (sshvpnMount) {
+        if (sshvpnCtrl) {
+          sshvpnCtrl.mount();
         } else {
-          wpbMount.innerHTML = renderLazyLoadingCard('Peramban Proxy');
-          loadWebproxyMod()
-            .then(({ createWebProxyController }) => {
-              if (!mounted || tabMountToken !== currentMountToken || toolState.activeSubTab !== 'webproxy') return;
-              const liveMount = rootEl.querySelector('#webproxy-hub-mount');
+          sshvpnMount.innerHTML = renderLazyLoadingCard('SSH & VPN Studio');
+          loadSshVpnMod()
+            .then(({ createSshVpnController }) => {
+              if (!mounted || tabMountToken !== currentMountToken || toolState.activeSubTab !== 'sshvpn') return;
+              const liveMount = rootEl.querySelector('#sshvpn-hub-mount');
               if (!liveMount) return;
-              webproxyCtrl = createWebProxyController({ rootEl: liveMount, onToast });
-              webproxyCtrl.mount();
+              sshvpnCtrl = createSshVpnController({ rootEl: liveMount, onToast });
+              sshvpnCtrl.mount();
             })
             .catch(() => {});
         }
       }
-    } else if (webproxyCtrl) {
-      webproxyCtrl.unmount();
-      webproxyCtrl = null;
+    } else if (sshvpnCtrl) {
+      sshvpnCtrl.unmount();
+      sshvpnCtrl = null;
     }
   }
 
@@ -5725,8 +5725,8 @@ export function createToolsHubController({
         ? renderCallerIdPanel()
         : toolState.activeSubTab === 'shortlink'
         ? renderShortlinkPanel()
-        : toolState.activeSubTab === 'webproxy'
-        ? renderWebproxyPanel()
+        : toolState.activeSubTab === 'sshvpn'
+        ? renderSshVpnPanel()
         : renderDownloaderPanel();
 
     const visibleUtilityItems = (toolState.utilities?.items || []).filter((it) => it.enabled !== false);
@@ -5814,7 +5814,7 @@ export function createToolsHubController({
         subTab === 'novel' ||
         subTab === 'callerid' ||
         subTab === 'shortlink' ||
-        subTab === 'webproxy'
+        subTab === 'sshvpn'
       ) {
         toolState.activeSubTab = subTab;
       }
@@ -5882,9 +5882,9 @@ export function createToolsHubController({
       if (shortlinkCtrl) {
         shortlinkCtrl.unmount();
       }
-      if (webproxyCtrl) {
-        webproxyCtrl.unmount();
-        webproxyCtrl = null;
+      if (sshvpnCtrl) {
+        sshvpnCtrl.unmount();
+        sshvpnCtrl = null;
       }
       stopLiveTimers();
       if (rootEl) rootEl.innerHTML = '';
@@ -5898,7 +5898,7 @@ export function createToolsHubController({
       novelCtrl?.redrawTheme?.();
       callerIdCtrl?.redrawTheme?.();
       shortlinkCtrl?.redrawTheme?.();
-      webproxyCtrl?.redrawTheme?.();
+      sshvpnCtrl?.redrawTheme?.();
     },
   };
 }

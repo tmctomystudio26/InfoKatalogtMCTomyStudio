@@ -130,30 +130,30 @@ export const FEATURE_CS_KNOWLEDGE_BASE = Object.freeze([
     ],
   },
   {
-    id: 'webproxy',
-    name: 'Peramban Proxy',
+    id: 'sshvpn',
+    name: 'SSH & VPN',
     category: 'Harian & Keamanan',
     keywords: [
-      'peramban proxy', 'web proxy', 'proxy', 'vpn', 'vpn relay', 'browser', 'peramban',
-      'incognito', 'tanpa riwayat', 'riwayat penelusuran', 'anti iklan', 'adblock',
-      'vidmate', 'deteksi media', 'unduh video otomatis', 'tema peramban', 'layar penuh',
-      'jelajah privat', 'browsing privat', 'buka situs', 'anti malware', 'anti bobol',
+      'ssh', 'vpn', 'vmess', 'vless', 'trojan', 'shadowsocks', 'wireguard', 'openvpn',
+      'l2tp', 'sstp', 'hysteria', 'hysteria2', 'warp', 'slowdns', 'ssh websocket',
+      'ssh ssl', 'ssh udp', 'buat akun ssh', 'akun vpn gratis', 'slot server', 'tunnel',
+      'http custom', 'v2ray', 'xray', 'singbox', 'clash', 'riwayat akun',
     ],
-    summary: 'Peramban web privat dengan Mode Proxy & VPN Relay gratis, pemblokir iklan/pelacak/malware, 108+ tema, mode layar penuh, Multi-AI, & deteksi unduh media otomatis ala VidMate.',
+    summary: 'Pembuat akun SSH WebSocket/SSL/UDP/SlowDNS, WireGuard VIP, VMess, VLess, Trojan, Shadowsocks, Hysteria2, & OpenVPN/L2TP gratis dari banyak API real-time lengkap dengan sisa slot & riwayat.',
     details: [
-      'Menyediakan 4 jalur koneksi gratis tanpa biaya: Mode Proxy (Edge Stealth), Mode VPN Relay (Multi-API Tunnel), Mode Reader Anti-Bot, dan Auto Multi-Engine.',
-      'Secara default mengaktifkan Mode Tanpa Riwayat (Incognito 100% Privat) tanpa catatan server; pengguna tetap dapat mengaktifkan riwayat lokal khusus di perangkat sendiri dan menghapusnya kapan saja.',
-      'Dilengkapi pemblokir iklan/pop-up/pelacak otomatis, proteksi anti-malware & sandbox anti-bobol, mode layar penuh dengan bilah pintasan cepat, 108+ tema peramban, asisten Multi-AI (Gemini, ChatGPT, DeepSeek, Grok, Meta), serta deteksi media video/audio otomatis (cara kerja VidMate).',
+      'Menggabungkan banyak API penyedia server jaringan secara real-time (Cloudflare WARP WireGuard, VPNGate OpenVPN/L2TP/SSTP, Multi-API Xray VMess/VLess/Trojan/Shadowsocks/Hysteria2 dengan Auto-Discovery, serta sinkronisasi slot live SSHOcean, SSHMax, FreeVPN, & JagoVPN).',
+      'Menampilkan spesifikasi lengkap setiap server (Host/IP, Negara, Ping, Kecepatan, Port, ISP/Operator, Durasi Aktif, dan Sisa Slot Real-Time) sebelum akun dibuat.',
+      'Pengguna dapat memasukkan username, password (untuk SSH), Bug Host/SNI opsional, memilih negara & durasi aktif (3–30 hari), menyalin/mengunduh konfigurasi (.conf, .ovpn, URI, Clash YAML, Sing-Box JSON), serta melihat seluruh riwayat akun yang pernah dibuat.',
     ],
     steps: [
-      'Buka fitur Peramban Proxy dari beranda Manifestudio.',
-      'Ketik alamat website atau kata kunci pencarian privat di kolom omnibox, atau klik salah satu pintasan Speed Dial.',
-      'Gunakan tombol di bilah atas untuk mengganti Mode Proxy/VPN Relay, membuka panel Media (VidMate) saat video terdeteksi, bertanya ke Multi-AI, mengganti 108+ Tema, mengatur Privasi/Riwayat, atau masuk Mode Layar Penuh.',
+      'Buka fitur SSH & VPN dari beranda Manifestudio.',
+      'Pilih protokol yang diinginkan (WireGuard, VMess, VLess, Trojan, Shadowsocks, OpenVPN, Hysteria2, atau SSH WS/SSL/UDP/SlowDNS), lalu pilih server & negara dengan slot tersedia.',
+      'Masukkan username (dan password untuk SSH), pilih durasi aktif, lalu klik Buat Akun Gratis untuk langsung menyalin atau mengunduh konfigurasi yang otomatis tersimpan di Riwayat Akun.',
     ],
     troubleshooting: [
-      'Jika suatu situs menolak akses karena proteksi anti-bot ketat, klik tombol "Coba Mode Reader Anti-Bot" atau alihkan jalur koneksi ke Mode VPN Relay / Auto Multi-Engine.',
-      'Jika video di sebuah situs belum muncul di panel Media, buka panel Media lalu tempelkan tautan halaman video dan tekan Pindai.',
-      'Jika ingin menghapus seluruh riwayat lokal setelah mengaktifkan opsi riwayat, buka ikon perisai Privasi lalu klik "Hapus Semua" atau aktifkan kembali Mode Tanpa Riwayat.',
+      'Jika daftar server atau sisa slot ingin diperbarui sesuai kondisi penyedia terbaru, klik tombol "Segarkan Real-Time" di pojok kanan atas.',
+      'Untuk aktivasi instan 1 klik tanpa captcha, aktifkan filter "Hanya Instan 1-Klik" (WireGuard WARP, VMess, VLess, Trojan, Shadowsocks, Hysteria2, dan OpenVPN/L2TP).',
+      'Untuk server VPS SSH publik yang meminta verifikasi portal manusia, klik tombol "Aktifkan di Portal Resmi" setelah menyalin username & password agar akun aktif di server tujuan.',
     ],
   },
   {
@@ -370,7 +370,7 @@ export const PLATFORM_GENERAL_KB = Object.freeze({
   theme:
     'Anda bisa mengganti tampilan **Mode Terang / Mode Gelap** kapan saja melalui tombol ikon matahari/bulan di pojok kanan atas halaman.',
   privacy:
-    'Seluruh 17 fitur Manifestudio gratis tanpa perlu login. Fitur pemrosesan berkas (Kompresor HD, Konversi File, Audio Editor, Cek Plagiarisme) berjalan lokal di perangkat Anda, dan Peramban Proxy aktif dalam mode Incognito 0 riwayat tanpa pelacak.',
+    'Seluruh 17 fitur Manifestudio gratis tanpa perlu login. Fitur pemrosesan berkas (Kompresor HD, Konversi File, Audio Editor, Cek Plagiarisme) berjalan lokal di perangkat Anda, dan riwayat akun SSH & VPN tersimpan aman hanya di penyimpanan lokal browser Anda.',
   navigation:
     'Dari beranda, ketuk salah satu ikon fitur untuk membuka halaman penuhnya. Di dalam halaman fitur, gunakan tombol **Semua Fitur** untuk kembali ke beranda atau ketuk tombol **Pindah Fitur** di kanan atas untuk berpindah cepat ke fitur lain.',
 });
@@ -457,7 +457,7 @@ export function buildFeatureCsGreetingReply() {
   return [
     'Halo! Selamat datang di **Tanya Fitur — Layanan Bantuan Manifestudio**.',
     '',
-    'Saya siap membantu menjelaskan cara pakai, keunggulan, format yang didukung, hingga solusi jika ada kendala pada **17 fitur Manifestudio** (seperti Manifest AI, Peramban Proxy, Drama Pendek, YT Music, Downloader, Shortlink Bypass, Kompresor HD, Konversi File, Audio Editor, Cek Plagiarisme, Novel, Jadwal Sholat, Cuaca, Speedtest, Cek Nomor, dan lainnya).',
+    'Saya siap membantu menjelaskan cara pakai, keunggulan, format yang didukung, hingga solusi jika ada kendala pada **17 fitur Manifestudio** (seperti Manifest AI, SSH & VPN, Drama Pendek, YT Music, Downloader, Shortlink Bypass, Kompresor HD, Konversi File, Audio Editor, Cek Plagiarisme, Novel, Jadwal Sholat, Cuaca, Speedtest, Cek Nomor, dan lainnya).',
     '',
     'Ada fitur atau kendala apa yang bisa saya bantu hari ini?',
   ].join('\n');
@@ -612,7 +612,7 @@ export function buildFeatureCsLocalFallback(prompt = '', activeTabId = '', { has
   }
 
   return [
-    'Saya siap membantu seputar **17 fitur Manifestudio** (Manifest AI, Peramban Proxy, Drama Pendek, YT Music, Downloader, Shortlink Bypass, Kompresor HD, Konversi File, Audio Editor, Cari Judul Lagu, Cek Plagiarisme, Novel Terpadu, Jadwal Sholat, Prakiraan Cuaca, Jam Dunia & Globe, Speedtest, dan Cek Nomor).',
+    'Saya siap membantu seputar **17 fitur Manifestudio** (Manifest AI, SSH & VPN, Drama Pendek, YT Music, Downloader, Shortlink Bypass, Kompresor HD, Konversi File, Audio Editor, Cari Judul Lagu, Cek Plagiarisme, Novel Terpadu, Jadwal Sholat, Prakiraan Cuaca, Jam Dunia & Globe, Speedtest, dan Cek Nomor).',
     '',
     'Boleh ceritakan fitur mana yang sedang Anda gunakan dan kendala apa yang muncul agar saya bisa berikan solusi yang paling tepat?',
   ].join('\n');

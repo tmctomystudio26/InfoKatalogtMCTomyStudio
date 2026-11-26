@@ -1828,7 +1828,7 @@ test('normalizeUtilityConfig, upsertUtilityItemInCatalog, and describeCatalogCha
   assert.equal(util.items.length, 17);
   assert.equal(util.items.some((i) => i.id === 'downloader' && i.label === 'Downloader'), true);
   assert.equal(util.items.some((i) => i.id === 'shortlink' && i.label === 'Shortlink Bypass'), true);
-  assert.equal(util.items.some((i) => i.id === 'webproxy' && i.label === 'Peramban Proxy'), true);
+  assert.equal(util.items.some((i) => i.id === 'sshvpn' && i.label === 'SSH & VPN'), true);
   assert.equal(util.items.some((i) => i.id === 'converter' && i.label === 'Konversi File'), true);
   assert.equal(util.items.some((i) => i.id === 'songfinder' && i.label === 'Cari Judul Lagu'), true);
   assert.equal(util.items.some((i) => i.id === 'dracin' && i.label === 'Drama Pendek'), true);
@@ -4421,7 +4421,7 @@ test('v91: normalizeUtilityConfig auto-counts 17 enabled utilities, strips legac
   assert.equal(legacyUtil.items[0].id, 'novel');
   assert.equal(legacyUtil.items[1].id, 'callerid');
   assert.equal(legacyUtil.items.find((it) => it.id === 'speedtest')?.enabled, false);
-  assert.equal(legacyUtil.items.some((it) => it.id === 'webproxy'), true);
+  assert.equal(legacyUtil.items.some((it) => it.id === 'sshvpn'), true);
   assert.equal(legacyUtil.callout.badge, '16 Fitur Gratis');
   assert.equal(legacyUtil.callout.description, '');
 
@@ -4437,7 +4437,7 @@ test('v91: syncAllMenusAndBanners & computeAdminSyncStatus track synced, attenti
   assert.equal(inferBannerUtilityId({ href: './tools.html?tab=plagiarism' }), 'plagiarism');
   assert.equal(inferBannerUtilityId({ href: './tools.html?tab=callerid' }), 'callerid');
   assert.equal(inferBannerUtilityId({ href: './tools.html?tab=shortlink' }), 'shortlink');
-  assert.equal(inferBannerUtilityId({ href: './tools.html?tab=webproxy' }), 'webproxy');
+  assert.equal(inferBannerUtilityId({ href: './tools.html?tab=sshvpn' }), 'sshvpn');
 
   const live = getDefaultCatalogSnapshot();
   const initialStatus = computeAdminSyncStatus(live, live, { source: 'remote', dirty: false, checkedAt: '10:00' });
