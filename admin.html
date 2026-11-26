@@ -1,0 +1,1443 @@
+<!doctype html>
+<html lang="id" data-theme="dark">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Brankas Admin — Manifestudio</title>
+    <meta
+      name="description"
+      content="Halaman admin terenkripsi Manifestudio."
+    />
+    <meta name="robots" content="noindex, nofollow" />
+    <meta name="theme-color" content="#090D16" />
+    <link rel="icon" type="image/svg+xml" href="./assets/icons/brand-icon.svg" />
+
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@500;700&family=Outfit:wght@600;700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+
+    <link rel="stylesheet" href="./css/tokens.css?v=91" />
+    <link rel="stylesheet" href="./css/styles.css?v=91" />
+    <script>
+      (function () {
+        var CURRENT_CACHE = 'manifestudio-cache-v91';
+        window.addEventListener('load', function () {
+          if ('caches' in window) {
+            caches.keys().then(function (keys) {
+              keys.forEach(function (k) {
+                if (k !== CURRENT_CACHE && k !== 'manifestudio-ffmpeg-core-v1') caches.delete(k);
+              });
+            });
+          }
+          if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.register('./sw.js?v=91').then(function (reg) {
+              reg.update();
+            }).catch(function () {});
+          }
+        });
+      })();
+    </script>
+  </head>
+  <body>
+    <header class="site-header">
+      <div class="container header-inner">
+        <a href="./index.html" class="brand-link" aria-label="Kembali ke toko Manifestudio">
+          <img
+            src="./assets/icons/brand-icon.svg"
+            alt="Logo Manifestudio"
+            width="38"
+            height="38"
+            class="brand-mark"
+          />
+          <div class="brand-text">
+            <span class="brand-name">Admin Panel</span>
+            <span class="brand-tagline">Panel Terenkripsi</span>
+          </div>
+        </a>
+
+        <div class="header-actions">
+          <button
+            type="button"
+            id="lock-vault-btn"
+            class="header-btn"
+            aria-label="Kunci sesi admin"
+            hidden
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <rect width="18" height="11" x="3" y="11" rx="2" ry="2" />
+              <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+            </svg>
+            <span class="hide-xs">Kunci</span>
+          </button>
+          <button
+            type="button"
+            id="theme-toggle-btn"
+            class="header-btn"
+            aria-label="Ubah tema tampilan"
+          ></button>
+          <a href="./index.html" class="header-btn header-cart-btn">
+            Toko
+          </a>
+        </div>
+      </div>
+    </header>
+
+    <main class="container admin-shell">
+      <!-- Gate Terenkripsi: Tampil pertama kali / saat terkunci -->
+      <section id="admin-lock-screen" class="admin-card admin-lock-card" aria-labelledby="lock-heading">
+        <div class="admin-card-head">
+          <div>
+            <h1 id="lock-heading" class="admin-title">Akses Admin Terkunci</h1>
+            <p id="lock-subtitle" class="admin-subtitle">
+              Panel ini dilindungi enkripsi <strong>AES-256-GCM</strong> (PBKDF2) dan verifikasi izin tulis GitHub agar tidak dapat diakses pihak tidak berwenang.
+            </p>
+          </div>
+          <span class="admin-badge is-ok">AES-256-GCM</span>
+        </div>
+
+        <!-- Form Buka Brankas (jika perangkat ini sudah pernah aktivasi) -->
+        <form id="unlock-vault-form" class="admin-add-form" hidden>
+          <div class="form-field">
+            <label for="unlock-password">Password Brankas Admin <span class="req">*</span></label>
+            <div class="token-input-row">
+              <input
+                type="password"
+                id="unlock-password"
+                placeholder="Masukkan password brankas Anda"
+                autocomplete="current-password"
+                required
+              />
+              <button type="button" class="btn btn-secondary btn-sm" data-toggle-secret="unlock-password">
+                Lihat
+              </button>
+            </div>
+          </div>
+
+          <div class="admin-action-bar">
+            <button type="submit" id="unlock-submit-btn" class="btn btn-primary btn-sm">
+              Buka Brankas Admin
+            </button>
+            <button type="button" id="reset-vault-btn" class="btn btn-ghost btn-sm">
+              Ganti Token / Reset Brankas
+            </button>
+          </div>
+        </form>
+
+        <!-- Form Aktivasi Brankas (perangkat baru / setelah reset) -->
+        <form id="setup-vault-form" class="admin-add-form" hidden>
+          <div class="admin-form-grid">
+            <div class="form-field">
+              <label for="setup-owner">Username Pemilik GitHub <span class="req">*</span></label>
+              <input
+                type="text"
+                id="setup-owner"
+                placeholder="Contoh: username-github"
+                autocomplete="off"
+                required
+              />
+            </div>
+            <div class="form-field">
+              <label for="setup-repo">Nama Repositori <span class="req">*</span></label>
+              <input
+                type="text"
+                id="setup-repo"
+                placeholder="Contoh: nama-repo"
+                autocomplete="off"
+                required
+              />
+            </div>
+            <div class="form-field">
+              <label for="setup-branch">Branch <span class="req">*</span></label>
+              <input
+                type="text"
+                id="setup-branch"
+                value="main"
+                autocomplete="off"
+                required
+              />
+            </div>
+            <div class="form-field">
+              <label for="setup-password">Buat Password Brankas (min. 6 karakter) <span class="req">*</span></label>
+              <div class="token-input-row">
+                <input
+                  type="password"
+                  id="setup-password"
+                  placeholder="Password rahasia perangkat ini"
+                  autocomplete="new-password"
+                  minlength="6"
+                  required
+                />
+                <button type="button" class="btn btn-secondary btn-sm" data-toggle-secret="setup-password">
+                  Lihat
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <div class="form-field">
+            <label for="setup-token">Token GitHub (PAT · Izin Contents: Read &amp; Write) <span class="req">*</span></label>
+            <div class="token-input-row">
+              <input
+                type="password"
+                id="setup-token"
+                placeholder="github_pat_... atau ghp_..."
+                autocomplete="off"
+                required
+              />
+              <button type="button" class="btn btn-secondary btn-sm" data-toggle-secret="setup-token">
+                Lihat
+              </button>
+            </div>
+          </div>
+
+          <div class="admin-action-bar">
+            <button type="submit" id="setup-submit-btn" class="btn btn-primary btn-sm">
+              Verifikasi Token &amp; Kunci ke Brankas
+            </button>
+          </div>
+        </form>
+
+        <div id="lock-status-box" class="admin-status-box" role="status" hidden></div>
+      </section>
+
+      <!-- Dashboard Admin: Tersembunyi & kosong sampai berhasil verifikasi/unlock -->
+      <div id="admin-dashboard" class="admin-dashboard" hidden>
+        <section class="admin-card admin-control-card" aria-labelledby="sync-heading">
+          <div class="admin-card-head">
+            <div>
+              <h1 id="sync-heading" class="admin-title">Pusat Kontrol &amp; Status Sinkronisasi</h1>
+              <p class="admin-subtitle">
+                Terhubung terenkripsi ke <code id="connected-repo-label">-</code> · Sinkron otomatis antara Menu Utama, 14 Menu Utilitas, Banner Carousel, dan <code>data/catalog.json</code>.
+              </p>
+            </div>
+            <span id="admin-source-badge" class="admin-badge is-ok">Tersinkron Penuh</span>
+          </div>
+
+          <!-- Live Status Sinkronisasi Panel -->
+          <div id="admin-sync-status-panel" class="admin-sync-panel" aria-live="polite">
+            <div class="admin-sync-head">
+              <div class="admin-sync-summary">
+                <span class="admin-sync-dot is-ok" id="admin-sync-dot" aria-hidden="true"></span>
+                <strong id="admin-sync-summary-title">Memeriksa status sinkronisasi...</strong>
+                <span id="admin-sync-timestamp" class="admin-sync-time mono-num"></span>
+              </div>
+              <div class="admin-sync-actions">
+                <button type="button" id="sync-all-menus-banners-btn" class="btn btn-secondary btn-sm">
+                  Sinkronkan Semua Menu &amp; Banner
+                </button>
+                <button type="button" id="check-sync-btn" class="btn btn-ghost btn-sm">
+                  Cek Sinkronisasi
+                </button>
+              </div>
+            </div>
+            <div id="admin-sync-grid" class="admin-sync-grid"></div>
+          </div>
+
+          <div class="admin-action-bar">
+            <button type="button" id="publish-github-btn" class="btn btn-primary btn-sm">
+              Simpan &amp; Publikasikan ke GitHub
+            </button>
+            <button type="button" id="pull-github-btn" class="btn btn-secondary btn-sm">
+              Muat Ulang GitHub
+            </button>
+            <button type="button" id="save-preview-btn" class="btn btn-secondary btn-sm">
+              Pratinjau Lokal
+            </button>
+            <button type="button" id="clear-preview-btn" class="btn btn-ghost btn-sm">
+              Hapus Pratinjau
+            </button>
+            <button type="button" id="download-json-btn" class="btn btn-ghost btn-sm">
+              Unduh JSON
+            </button>
+          </div>
+
+          <div id="admin-publish-progress" class="admin-progress-box" hidden>
+            <div class="admin-progress-head">
+              <span id="admin-progress-label" class="admin-progress-label">Menyiapkan publikasi...</span>
+              <strong id="admin-progress-pct" class="admin-progress-pct mono-num">0%</strong>
+            </div>
+            <div
+              class="admin-progress-track"
+              role="progressbar"
+              id="admin-progress-bar"
+              aria-valuemin="0"
+              aria-valuemax="100"
+              aria-valuenow="0"
+            >
+              <div id="admin-progress-fill" class="admin-progress-fill" style="width: 0%"></div>
+            </div>
+          </div>
+
+          <div id="admin-status-box" class="admin-status-box" role="status" hidden></div>
+        </section>
+
+        <div class="admin-tabs" role="tablist" aria-label="Bagian Panel Admin">
+          <button
+            type="button"
+            role="tab"
+            id="tab-btn-products"
+            class="cat-tab is-active"
+            data-admin-tab="products"
+            aria-selected="true"
+          >
+            <span>Produk</span>
+            <span class="admin-tab-count mono-num" id="tab-count-products">0</span>
+          </button>
+          <button
+            type="button"
+            role="tab"
+            id="tab-btn-add"
+            class="cat-tab"
+            data-admin-tab="add"
+            aria-selected="false"
+          >
+            <span>+ Produk Baru</span>
+          </button>
+          <button
+            type="button"
+            role="tab"
+            id="tab-btn-categories"
+            class="cat-tab"
+            data-admin-tab="categories"
+            aria-selected="false"
+          >
+            <span>Kategori</span>
+            <span class="admin-tab-count mono-num" id="tab-count-categories">0</span>
+          </button>
+          <button
+            type="button"
+            role="tab"
+            id="tab-btn-banners"
+            class="cat-tab"
+            data-admin-tab="banners"
+            aria-selected="false"
+          >
+            <span>Banner</span>
+            <span class="admin-tab-count mono-num" id="tab-count-banners">0</span>
+          </button>
+          <button
+            type="button"
+            role="tab"
+            id="tab-btn-utilities"
+            class="cat-tab"
+            data-admin-tab="utilities"
+            aria-selected="false"
+          >
+            <span>Menu Utilitas</span>
+            <span class="admin-tab-count mono-num" id="tab-count-utilities">14</span>
+          </button>
+          <button
+            type="button"
+            role="tab"
+            id="tab-btn-brand"
+            class="cat-tab"
+            data-admin-tab="brand"
+            aria-selected="false"
+          >
+            <span>Brand &amp; Kontak</span>
+          </button>
+          <button
+            type="button"
+            role="tab"
+            id="tab-btn-vouchers"
+            class="cat-tab"
+            data-admin-tab="vouchers"
+            aria-selected="false"
+          >
+            <span>Voucher</span>
+            <span class="admin-tab-count mono-num" id="tab-count-vouchers">0</span>
+          </button>
+          <button
+            type="button"
+            role="tab"
+            id="tab-btn-faq"
+            class="cat-tab"
+            data-admin-tab="faq"
+            aria-selected="false"
+          >
+            <span>FAQ</span>
+            <span class="admin-tab-count mono-num" id="tab-count-faq">0</span>
+          </button>
+          <button
+            type="button"
+            role="tab"
+            id="tab-btn-history"
+            class="cat-tab"
+            data-admin-tab="history"
+            aria-selected="false"
+          >
+            <span>Riwayat</span>
+          </button>
+        </div>
+
+        <section id="panel-products" class="admin-panel" aria-labelledby="tab-btn-products">
+          <div class="admin-toolbar">
+            <div class="search-box">
+              <svg class="search-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <circle cx="11" cy="11" r="8" />
+                <path d="m21 21-4.3-4.3" />
+              </svg>
+              <input
+                type="search"
+                id="admin-product-search"
+                class="search-input"
+                placeholder="Cari produk atau varian..."
+                aria-label="Cari produk di panel admin"
+              />
+            </div>
+            <span id="admin-product-count" class="catalog-count">0 produk</span>
+          </div>
+
+          <div id="admin-product-list" class="admin-product-list"></div>
+        </section>
+
+        <section id="panel-add" class="admin-panel" aria-labelledby="tab-btn-add" hidden>
+          <div class="admin-card">
+            <h2 class="admin-section-title">Tambah Layanan / Produk Baru</h2>
+            <p class="admin-subtitle">
+              Tambahkan layanan baru ke katalog lengkap dengan varian paket pertamanya.
+            </p>
+
+            <form id="add-product-form" class="admin-add-form">
+              <div class="admin-form-grid">
+                <div class="form-field">
+                  <label for="new-prod-name">Nama Layanan <span class="req">*</span></label>
+                  <input type="text" id="new-prod-name" placeholder="Contoh: CapCut Pro" required />
+                </div>
+
+                <div class="form-field">
+                  <label for="new-prod-category">Kategori Layanan</label>
+                  <select id="new-prod-category" class="admin-select">
+                    <option value="streaming">Streaming Film</option>
+                    <option value="music">Musik &amp; Hiburan</option>
+                    <option value="creative">Desain &amp; Editing</option>
+                    <option value="custom">Request &amp; Custom</option>
+                  </select>
+                </div>
+
+                <div class="admin-logo-manager admin-logo-manager-full">
+                  <div class="admin-logo-head">
+                    <div class="admin-logo-preview-wrap">
+                      <img
+                        src="./assets/logos/custom-request.svg"
+                        alt="Pratinjau logo produk baru"
+                        width="44"
+                        height="44"
+                        id="new-prod-logo-preview"
+                        class="modal-logo"
+                      />
+                      <div>
+                        <strong class="admin-logo-title">Logo Layanan</strong>
+                        <span id="new-prod-logo-status" class="admin-prod-meta">Gunakan upload gambar atau link URL</span>
+                      </div>
+                    </div>
+                    <div class="admin-logo-tabs" role="group" aria-label="Pilih sumber logo produk baru">
+                      <button
+                        type="button"
+                        class="admin-logo-mode-btn is-active"
+                        data-new-logo-mode="upload"
+                        aria-pressed="true"
+                      >
+                        Upload File
+                      </button>
+                      <button
+                        type="button"
+                        class="admin-logo-mode-btn"
+                        data-new-logo-mode="link"
+                        aria-pressed="false"
+                      >
+                        Link / URL
+                      </button>
+                    </div>
+                  </div>
+
+                  <div id="new-prod-logo-upload-pane" class="admin-logo-pane">
+                    <div class="admin-file-row">
+                      <label for="new-prod-logo-file" class="btn btn-secondary btn-sm admin-file-trigger">
+                        Pilih File Gambar Logo
+                      </label>
+                      <input
+                        type="file"
+                        id="new-prod-logo-file"
+                        class="visually-hidden-file"
+                        accept="image/*"
+                      />
+                      <span class="admin-prod-meta">PNG / JPG / WebP / SVG otomatis dioptimalkan ke 256×256.</span>
+                    </div>
+                  </div>
+
+                  <div id="new-prod-logo-link-pane" class="admin-logo-pane" hidden>
+                    <div class="admin-logo-link-grid">
+                      <div class="form-field">
+                        <label for="new-prod-logo-preset">Preset Ikon Bawaan</label>
+                        <select id="new-prod-logo-preset" class="admin-select">
+                          <option value="./assets/logos/custom-request.svg">Ikon Umum / Custom</option>
+                          <option value="./assets/logos/netflix.svg">Netflix</option>
+                          <option value="./assets/logos/canva.svg">Canva</option>
+                          <option value="./assets/logos/youtube.svg">YouTube</option>
+                          <option value="./assets/logos/spotify.svg">Spotify</option>
+                          <option value="./assets/logos/viu.svg">Viu</option>
+                          <option value="./assets/logos/vidio.svg">Vidio</option>
+                          <option value="./assets/logos/alight-motion.svg">Alight Motion</option>
+                          <option value="./assets/logos/wetv.svg">WeTV</option>
+                          <option value="./assets/logos/prime-video.svg">Prime Video</option>
+                        </select>
+                      </div>
+                      <div class="form-field">
+                        <label for="new-prod-logo-url">Path / URL Link Logo</label>
+                        <input
+                          type="text"
+                          id="new-prod-logo-url"
+                          value="./assets/logos/custom-request.svg"
+                          placeholder="https://... atau ./assets/logos/..."
+                        />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <div class="form-field">
+                  <label for="new-prod-tag">Label Status</label>
+                  <input type="text" id="new-prod-tag" value="Tersedia" placeholder="Contoh: Populer" />
+                </div>
+
+                <div class="form-field">
+                  <label for="new-prod-summary">Ringkasan Fitur</label>
+                  <input
+                    type="text"
+                    id="new-prod-summary"
+                    placeholder="Contoh: Ekspor 4K tanpa watermark · Template Pro"
+                  />
+                </div>
+
+                <div class="form-field">
+                  <label for="new-prod-variant-name">Nama Paket Pertama <span class="req">*</span></label>
+                  <input
+                    type="text"
+                    id="new-prod-variant-name"
+                    placeholder="Contoh: 1 Bulan Privat"
+                    required
+                  />
+                </div>
+
+                <div class="form-field">
+                  <label for="new-prod-variant-price">Harga Paket (Rp) <span class="req">*</span></label>
+                  <input
+                    type="number"
+                    id="new-prod-variant-price"
+                    min="0"
+                    step="500"
+                    value="15000"
+                    required
+                  />
+                </div>
+              </div>
+
+              <div class="admin-action-bar">
+                <button type="submit" class="btn btn-primary btn-sm">
+                  Tambahkan ke Katalog
+                </button>
+              </div>
+            </form>
+          </div>
+        </section>
+
+        <!-- Panel Kategori Layanan -->
+        <section id="panel-categories" class="admin-panel" aria-labelledby="tab-btn-categories" hidden>
+          <div class="admin-card">
+            <h2 class="admin-section-title">Kelola Kategori Layanan</h2>
+            <p class="admin-subtitle">
+              Ubah nama kategori yang sudah ada atau tambahkan kategori layanan baru (contoh: AI &amp; Produktivitas, Gaming &amp; Voucher, Cloud Storage, dll). Kategori otomatis muncul di filter toko dan pilihan produk.
+            </p>
+
+            <div id="admin-category-list" class="admin-category-list"></div>
+
+            <form id="add-category-form" class="admin-add-form">
+              <h3 class="admin-subhead">Tambah Kategori Layanan Baru</h3>
+              <div class="admin-form-grid">
+                <div class="form-field">
+                  <label for="new-category-label">Nama Kategori Layanan <span class="req">*</span></label>
+                  <input
+                    type="text"
+                    id="new-category-label"
+                    placeholder="Contoh: AI & Produktivitas"
+                    required
+                  />
+                </div>
+                <div class="form-field">
+                  <label for="new-category-id">ID Kategori (Opsional, otomatis dari nama)</label>
+                  <input
+                    type="text"
+                    id="new-category-id"
+                    placeholder="Contoh: ai-tools"
+                  />
+                </div>
+              </div>
+              <div class="admin-action-bar">
+                <button type="submit" class="btn btn-primary btn-sm">
+                  + Tambah Kategori Layanan
+                </button>
+              </div>
+            </form>
+          </div>
+        </section>
+
+        <!-- Panel Banner Promo Carousel -->
+        <section id="panel-banners" class="admin-panel" aria-labelledby="tab-btn-banners" hidden>
+          <div class="admin-card">
+            <div class="admin-card-head">
+              <div>
+                <h2 class="admin-section-title">Kelola Banner Carousel Gen-Z (Menu Utama &amp; 14 Utilitas)</h2>
+                <p class="admin-subtitle">
+                  Klik judul slide untuk membuka editor. Setiap menu memiliki banner maskot Gen-Z yang otomatis tersinkron dengan Menu Utama &amp; Menu Utilitas.
+                </p>
+              </div>
+              <button type="button" id="banner-sync-all-btn" class="btn btn-secondary btn-sm">
+                Sinkronkan Banner dengan Menu
+              </button>
+            </div>
+
+            <div id="admin-banner-list" class="admin-banner-list"></div>
+
+            <form id="add-banner-form" class="admin-add-form">
+              <h3 class="admin-subhead">Tambah Slide Banner Baru</h3>
+              <div class="admin-form-grid">
+                <div class="form-field">
+                  <label for="new-banner-kicker">Label Kicker (Teks Kecil Atas)</label>
+                  <input
+                    type="text"
+                    id="new-banner-kicker"
+                    value="Promo Spesial · Manifestudio"
+                    placeholder="Contoh: Promo Spesial · Manifestudio"
+                  />
+                </div>
+                <div class="form-field">
+                  <label for="new-banner-heading">Judul Utama Banner <span class="req">*</span></label>
+                  <input
+                    type="text"
+                    id="new-banner-heading"
+                    placeholder="Contoh: Diskon Spesial Paket Bundling"
+                    required
+                  />
+                </div>
+                <div class="form-field admin-sum-field">
+                  <label for="new-banner-sub">Deskripsi / Kalimat Penjelas Banner</label>
+                  <input
+                    type="text"
+                    id="new-banner-sub"
+                    placeholder="Contoh: Dapatkan harga lebih hemat untuk pemesanan 2 layanan sekaligus."
+                  />
+                </div>
+                <div class="form-field">
+                  <label for="new-banner-cta">Teks Tombol (CTA)</label>
+                  <input
+                    type="text"
+                    id="new-banner-cta"
+                    value="Lihat Promo →"
+                    placeholder="Contoh: Lihat Promo →"
+                  />
+                </div>
+                <div class="form-field">
+                  <label for="new-banner-href">Link Tujuan Saat Diklik</label>
+                  <input
+                    type="text"
+                    id="new-banner-href"
+                    value="#katalog"
+                    placeholder="#katalog atau ./tools.html?tab=novel"
+                  />
+                </div>
+                <div class="form-field">
+                  <label for="new-banner-scrim">Tema Warna Overlay</label>
+                  <select id="new-banner-scrim" class="admin-select">
+                    <option value="default">Biru Gelap Standar</option>
+                    <option value="emerald">Hijau Emerald</option>
+                    <option value="weather">Biru Langit Cerah</option>
+                    <option value="world">Indigo / Kosmik</option>
+                    <option value="prayer">Cyan / Tosca</option>
+                    <option value="downloader">Magenta / Neon</option>
+                    <option value="violet">Violet Studio</option>
+                    <option value="crimson">Merah Sinema</option>
+                    <option value="amber">Emas / Amber Hangat</option>
+                  </select>
+                </div>
+                <div class="form-field">
+                  <label for="new-banner-preset">Preset Gambar Maskot Gen-Z</label>
+                  <select id="new-banner-preset" class="admin-select">
+                    <option value="./assets/banners/banner-katalog.jpg">Maskot Katalog Utama (Fox)</option>
+                    <option value="./assets/banners/banner-prayer.jpg">Maskot Jadwal Sholat (Kucing)</option>
+                    <option value="./assets/banners/banner-weather.jpg">Maskot Prakiraan Cuaca (Shiba)</option>
+                    <option value="./assets/banners/banner-worldclock.jpg">Maskot Jam Dunia (Beruang)</option>
+                    <option value="./assets/banners/banner-speedtest.jpg">Maskot Speedtest (Cheetah)</option>
+                    <option value="./assets/banners/banner-downloader.jpg">Maskot Downloader (Panda)</option>
+                    <option value="./assets/banners/banner-compressor.jpg">Maskot Kompresor HD (Bunglon)</option>
+                    <option value="./assets/banners/banner-converter.jpg">Maskot Konversi File (Rakun)</option>
+                    <option value="./assets/banners/banner-songfinder.jpg">Maskot Cari Lagu (Kelinci DJ)</option>
+                    <option value="./assets/banners/banner-music.jpg">Maskot YT Music (Kucing DJ)</option>
+                    <option value="./assets/banners/banner-dracin.jpg">Maskot Drama Pendek (Red Panda)</option>
+                    <option value="./assets/banners/banner-audioeditor.jpg">Maskot Audio Editor (Serigala)</option>
+                    <option value="./assets/banners/banner-manifestai.jpg">Maskot Manifest AI (Burung Hantu)</option>
+                    <option value="./assets/banners/banner-plagiarism.jpg">Maskot Cek Plagiarisme (Corgi)</option>
+                    <option value="./assets/banners/banner-novel.jpg">Maskot Novel Terpadu (Rubah)</option>
+                    <option value="./assets/banners/banner-callerid.jpg">Maskot Cek Nomor & Anti-Spam (Shiba Guard)</option>
+                    <option value="">Tanpa Gambar (Gradien Warna)</option>
+                  </select>
+                </div>
+                <div class="form-field admin-sum-field">
+                  <label for="new-banner-image-url">Path / URL Gambar Banner (Opsional)</label>
+                  <input
+                    type="text"
+                    id="new-banner-image-url"
+                    value="./assets/banners/banner-katalog.jpg"
+                    placeholder="./assets/banners/banner-katalog.jpg atau https://..."
+                  />
+                </div>
+                <div class="form-field admin-sum-field">
+                  <div class="admin-file-row">
+                    <img
+                      src="./assets/banners/banner-katalog.jpg"
+                      alt="Pratinjau gambar banner baru"
+                      width="96"
+                      height="54"
+                      id="new-banner-image-preview"
+                      class="admin-banner-thumb"
+                    />
+                    <label for="new-banner-image-file" class="btn btn-secondary btn-sm admin-file-trigger">
+                      Upload Gambar Banner Baru
+                    </label>
+                    <input
+                      type="file"
+                      id="new-banner-image-file"
+                      class="visually-hidden-file"
+                      accept="image/*"
+                    />
+                    <span id="new-banner-image-status" class="admin-prod-meta">Rasio landscape 16:9 direkomendasikan.</span>
+                  </div>
+                </div>
+              </div>
+              <div class="admin-action-bar">
+                <button type="submit" class="btn btn-primary btn-sm">
+                  + Tambah Slide Banner
+                </button>
+              </div>
+            </form>
+          </div>
+        </section>
+
+        <!-- Panel Brand, Biaya Layanan, OpenGraph & Kontak Sosmed -->
+        <section id="panel-brand" class="admin-panel" aria-labelledby="tab-btn-brand" hidden>
+          <!-- Card 1: Identitas & Logo Brand -->
+          <div class="admin-card">
+            <h2 class="admin-section-title">Ubah Logo Brand &amp; Identitas Header/Footer</h2>
+            <p class="admin-subtitle">
+              Atur logo utama toko, nama brand, tulisan di bawah nama brand (tagline header), serta teks hak cipta di footer.
+            </p>
+
+            <div class="admin-logo-manager">
+              <div class="admin-logo-head">
+                <div class="admin-logo-preview-wrap">
+                  <img
+                    src="./assets/icons/brand-icon.svg"
+                    alt="Pratinjau logo brand utama"
+                    width="48"
+                    height="48"
+                    id="brand-logo-preview"
+                    class="modal-logo admin-logo-thumb"
+                  />
+                  <div>
+                    <strong class="admin-logo-title">Logo Brand Utama</strong>
+                    <span id="brand-logo-status" class="admin-prod-meta">Menggunakan logo bawaan Manifestudio</span>
+                  </div>
+                </div>
+                <div class="admin-logo-tabs" role="group" aria-label="Pilih sumber logo brand">
+                  <button
+                    type="button"
+                    class="admin-logo-mode-btn is-active"
+                    data-brand-logo-mode="upload"
+                    aria-pressed="true"
+                  >
+                    Upload Gambar
+                  </button>
+                  <button
+                    type="button"
+                    class="admin-logo-mode-btn"
+                    data-brand-logo-mode="link"
+                    aria-pressed="false"
+                  >
+                    Link / URL
+                  </button>
+                </div>
+              </div>
+
+              <div id="brand-logo-upload-pane" class="admin-logo-pane">
+                <div class="admin-file-row">
+                  <label for="brand-logo-file" class="btn btn-secondary btn-sm admin-file-trigger">
+                    Pilih File Gambar Logo Brand
+                  </label>
+                  <input
+                    type="file"
+                    id="brand-logo-file"
+                    class="visually-hidden-file"
+                    accept="image/*"
+                  />
+                  <button type="button" id="brand-logo-reset-btn" class="btn btn-ghost btn-sm">
+                    Reset ke Logo Default
+                  </button>
+                  <span class="admin-prod-meta">Otomatis dikompres &amp; disimpan ke repositori saat Publikasi.</span>
+                </div>
+              </div>
+
+              <div id="brand-logo-link-pane" class="admin-logo-pane" hidden>
+                <div class="form-field">
+                  <label for="brand-logo-url">Path / URL Logo Brand</label>
+                  <input
+                    type="text"
+                    id="brand-logo-url"
+                    value="./assets/icons/brand-icon.svg"
+                    placeholder="./assets/icons/brand-icon.svg atau https://..."
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div class="admin-form-grid">
+              <div class="form-field">
+                <label for="brand-name-input">Nama Brand</label>
+                <input
+                  type="text"
+                  id="brand-name-input"
+                  value="Manifestudio"
+                  placeholder="Manifestudio"
+                />
+              </div>
+              <div class="form-field">
+                <label for="brand-tagline-input">Tagline Header (Tulisan di Bawah Nama Brand)</label>
+                <input
+                  type="text"
+                  id="brand-tagline-input"
+                  value="by Tomy"
+                  placeholder="Contoh: by Tomy"
+                />
+              </div>
+              <div class="form-field admin-sum-field">
+                <label for="brand-footer-input">Teks Hak Cipta Footer</label>
+                <input
+                  type="text"
+                  id="brand-footer-input"
+                  value="Dikelola oleh Manifestudio by Tomy © 2026"
+                  placeholder="Dikelola oleh Manifestudio by Tomy © 2026"
+                />
+              </div>
+            </div>
+          </div>
+
+          <!-- Card 1B: Pengaturan Keamanan Berlapis Server Vault (Store + Kontak WhatsApp/IG/TikTok) -->
+          <div class="admin-card" id="admin-store-access-card">
+            <div class="admin-card-head">
+              <div>
+                <h2 class="admin-section-title">Keamanan Berlapis Akses Store &amp; Kontak — Server Vault (Cloudflare KV)</h2>
+                <p class="admin-subtitle">
+                  Kode akses Store, kode akses Kontak, URL Store, nomor WhatsApp, Instagram, dan TikTok untuk pengunjung Manifestudio disimpan <strong>100% di Server Cloudflare KV</strong> dalam bentuk hash PBKDF2-SHA256 — tidak pernah muncul di Inspect Element, HTML, JS, maupun GitHub.
+                </p>
+              </div>
+              <span id="store-vault-status-badge" class="admin-badge">Memeriksa Vault...</span>
+            </div>
+
+            <div id="store-vault-status-meta" class="admin-prod-meta" style="margin-bottom: 0.75rem;">
+              Membaca status Server Vault Cloudflare...
+            </div>
+
+            <label class="admin-checkbox-row" for="store-access-enabled-toggle">
+              <input type="checkbox" id="store-access-enabled-toggle" checked />
+              <span>Aktifkan Kode Akses Store saat pengunjung beralih dari Manifestudio ke Store</span>
+            </label>
+
+            <div class="admin-form-grid">
+              <div class="form-field admin-sum-field">
+                <label for="store-access-key-input">Kunci Akses Store Baru (Tersimpan sebagai Hash di Server KV)</label>
+                <div class="token-input-row">
+                  <input
+                    type="password"
+                    id="store-access-key-input"
+                    value=""
+                    placeholder="Kosongkan jika tidak mengganti kunci (min. 6 karakter)"
+                    autocomplete="new-password"
+                    spellcheck="false"
+                    maxlength="64"
+                  />
+                  <button type="button" class="btn btn-secondary btn-sm" data-toggle-secret="store-access-key-input">
+                    Lihat
+                  </button>
+                  <button type="button" id="store-access-generate-btn" class="btn btn-secondary btn-sm">
+                    Acak Kunci
+                  </button>
+                </div>
+                <span class="admin-prod-meta">Kunci lama tidak pernah ditampilkan ulang karena di-hash satu arah di server. Mengganti kunci otomatis mencabut semua sesi lama.</span>
+              </div>
+
+              <div class="form-field admin-sum-field">
+                <label for="store-access-store-origin-input">URL Tujuan Store (Rahasia di Server KV — Tidak Muncul di Frontend)</label>
+                <input
+                  type="url"
+                  id="store-access-store-origin-input"
+                  value=""
+                  placeholder="https://manifestore.my.id"
+                  autocomplete="off"
+                />
+              </div>
+
+              <div class="form-field">
+                <label for="store-access-brand-input">Nama Brand Domain Store</label>
+                <input
+                  type="text"
+                  id="store-access-brand-input"
+                  value="Manifestore"
+                  placeholder="Manifestore"
+                />
+              </div>
+              <div class="form-field">
+                <label for="store-access-util-brand-input">Nama Brand Domain Utilitas</label>
+                <input
+                  type="text"
+                  id="store-access-util-brand-input"
+                  value="Manifestudio"
+                  placeholder="Manifestudio"
+                />
+              </div>
+              <div class="form-field">
+                <label for="store-access-util-origin-input">Domain Utilitas (URL Origin)</label>
+                <input
+                  type="text"
+                  id="store-access-util-origin-input"
+                  value="https://manifestudio.my.id"
+                  placeholder="https://manifestudio.my.id"
+                />
+              </div>
+              <div class="form-field">
+                <label for="store-access-prompt-title-input">Judul Modal Kunci Akses Store</label>
+                <input
+                  type="text"
+                  id="store-access-prompt-title-input"
+                  value="Akses Khusus Store"
+                  placeholder="Akses Khusus Store"
+                />
+              </div>
+              <div class="form-field admin-sum-field">
+                <label for="store-access-prompt-desc-input">Keterangan Modal Kunci Akses Store</label>
+                <input
+                  type="text"
+                  id="store-access-prompt-desc-input"
+                  value="Masukkan kode akses resmi untuk melanjutkan ke halaman Store."
+                  placeholder="Pesan petunjuk untuk pengguna..."
+                />
+              </div>
+            </div>
+
+            <hr style="border:none;border-top:1px solid var(--border);margin:1.15rem 0 0.95rem;" />
+
+            <h3 class="admin-subhead" style="margin-bottom:0.4rem;">Enkripsi Akses Kontak &amp; Sosmed (WhatsApp, TikTok, Instagram)</h3>
+            <p class="admin-prod-meta" style="margin-bottom:0.7rem;">
+              Tombol WhatsApp, TikTok, dan Instagram di Manifestudio tidak pernah menampilkan nomor/username asli di kode web. Pengunjung wajib memasukkan kode akses sebelum server mengalihkan ke tujuan asli.
+            </p>
+
+            <label class="admin-checkbox-row" for="contact-access-enabled-toggle">
+              <input type="checkbox" id="contact-access-enabled-toggle" checked />
+              <span>Aktifkan Kode Akses untuk WhatsApp, TikTok &amp; Instagram di Manifestudio</span>
+            </label>
+
+            <label class="admin-checkbox-row" for="contact-access-same-key-toggle">
+              <input type="checkbox" id="contact-access-same-key-toggle" checked />
+              <span>Gunakan kunci yang sama dengan Kunci Akses Store (matikan untuk membuat kunci kontak terpisah)</span>
+            </label>
+
+            <div class="admin-form-grid">
+              <div class="form-field admin-sum-field" id="contact-access-key-field" hidden>
+                <label for="contact-access-key-input">Kunci Akses Kontak Terpisah (Hash di Server KV)</label>
+                <div class="token-input-row">
+                  <input
+                    type="password"
+                    id="contact-access-key-input"
+                    value=""
+                    placeholder="Kosongkan jika tidak mengganti kunci kontak (min. 6 karakter)"
+                    autocomplete="new-password"
+                    spellcheck="false"
+                    maxlength="64"
+                  />
+                  <button type="button" class="btn btn-secondary btn-sm" data-toggle-secret="contact-access-key-input">
+                    Lihat
+                  </button>
+                  <button type="button" id="contact-access-generate-btn" class="btn btn-secondary btn-sm">
+                    Acak Kunci
+                  </button>
+                </div>
+              </div>
+
+              <div class="form-field">
+                <label for="contact-whatsapp-input">Nomor WhatsApp Rahasia (Server KV)</label>
+                <input
+                  type="text"
+                  id="contact-whatsapp-input"
+                  value=""
+                  placeholder="62851xxxxxxxx"
+                  autocomplete="off"
+                />
+              </div>
+              <div class="form-field">
+                <label for="contact-instagram-input">URL Instagram Rahasia (Server KV)</label>
+                <input
+                  type="url"
+                  id="contact-instagram-input"
+                  value=""
+                  placeholder="https://www.instagram.com/username"
+                  autocomplete="off"
+                />
+              </div>
+              <div class="form-field">
+                <label for="contact-tiktok-input">URL TikTok Rahasia (Server KV)</label>
+                <input
+                  type="url"
+                  id="contact-tiktok-input"
+                  value=""
+                  placeholder="https://www.tiktok.com/@username"
+                  autocomplete="off"
+                />
+              </div>
+              <div class="form-field">
+                <label for="contact-prompt-desc-input">Keterangan Modal Akses Kontak</label>
+                <input
+                  type="text"
+                  id="contact-prompt-desc-input"
+                  value="Masukkan kode akses resmi untuk membuka tautan kontak."
+                  placeholder="Masukkan kode akses resmi..."
+                />
+              </div>
+            </div>
+
+            <div class="admin-vault-actions" style="display:flex;flex-wrap:wrap;gap:0.6rem;margin-top:0.95rem;align-items:center;">
+              <button type="button" id="store-access-save-vault-btn" class="btn btn-primary btn-sm">
+                Simpan Pengaturan ke Server Vault
+              </button>
+              <button type="button" id="store-access-revoke-btn" class="btn btn-secondary btn-sm">
+                Cabut Semua Sesi Aktif
+              </button>
+              <button type="button" id="store-access-refresh-vault-btn" class="btn btn-ghost btn-sm">
+                Cek Status Server
+              </button>
+            </div>
+            <div id="store-vault-action-msg" class="admin-prod-meta" style="margin-top:0.55rem;" aria-live="polite"></div>
+
+            <details style="margin-top:0.85rem;font-size:0.84rem;color:var(--ink-muted);">
+              <summary style="cursor:pointer;font-weight:600;color:var(--ink);">Panduan Setup 1 Kali di Cloudflare Pages (Binding KV)</summary>
+              <ol style="margin:0.5rem 0 0 1.25rem;display:grid;gap:0.35rem;line-height:1.5;">
+                <li>Buka <strong>Cloudflare Dashboard → Storage &amp; Databases → KV</strong>, klik <strong>Create a namespace</strong>, beri nama <code>manifestudio-store-vault</code>.</li>
+                <li>Buka proyek <strong>Workers &amp; Pages → infokatalogtmctomystudio → Settings → Bindings → Add → KV namespace</strong>.</li>
+                <li>Isi <strong>Variable name</strong> persis: <code>STORE_ACCESS_KV</code>, pilih namespace tadi, lalu klik <strong>Save</strong> (otomatis aktif pada deploy berikutnya atau klik Retry Deployment).</li>
+              </ol>
+            </details>
+          </div>
+
+          <!-- Card 2: Pengaturan OpenGraph & Social Share Preview -->
+          <div class="admin-card">
+            <h2 class="admin-section-title">Pengaturan OpenGraph &amp; Tampilan Share Link (WA / FB / IG / X / Telegram)</h2>
+            <p class="admin-subtitle">
+              Atur gambar pratinjau (thumbnail), judul kalimat, tagline, dan caption saat link website dibagikan di WhatsApp, Telegram, Facebook, Instagram, atau X. Saat Anda klik <strong>Simpan &amp; Publikasikan ke GitHub</strong>, sistem otomatis memperbarui meta tag di <code>index.html</code> dan <code>data/catalog.json</code>.
+            </p>
+
+            <div class="admin-og-preview-card" aria-label="Pratinjau Kartu Share Sosial Media">
+              <div class="admin-og-preview-media">
+                <img
+                  src="./assets/og-manifestudio.jpg"
+                  alt="Pratinjau gambar OpenGraph"
+                  id="og-card-preview-img"
+                  class="admin-og-preview-img"
+                />
+                <span id="og-card-preview-tagline" class="admin-og-preview-badge">by Tomy</span>
+              </div>
+              <div class="admin-og-preview-body">
+                <span id="og-card-preview-site" class="admin-og-preview-domain">MANIFESTUDIO.MY.ID</span>
+                <strong id="og-card-preview-title" class="admin-og-preview-title">Manifestudio — Katalog Layanan Digital &amp; Langganan</strong>
+                <p id="og-card-preview-desc" class="admin-og-preview-desc">
+                  Pesan layanan streaming, musik, desain, dan kebutuhan akun digital dengan proses cepat via WhatsApp.
+                </p>
+              </div>
+            </div>
+
+            <div class="admin-logo-manager">
+              <div class="admin-logo-head">
+                <div>
+                  <strong class="admin-logo-title">Gambar Thumbnail OpenGraph (Rasio 1200×630)</strong>
+                  <div id="og-image-status" class="admin-prod-meta">Aktif: ./assets/og-manifestudio.jpg</div>
+                </div>
+                <div class="admin-file-row">
+                  <label for="og-image-file" class="btn btn-secondary btn-sm admin-file-trigger">
+                    Upload Gambar OpenGraph
+                  </label>
+                  <input
+                    type="file"
+                    id="og-image-file"
+                    class="visually-hidden-file"
+                    accept="image/*"
+                  />
+                  <button type="button" id="og-image-reset-btn" class="btn btn-ghost btn-sm">
+                    Reset Gambar Default
+                  </button>
+                </div>
+              </div>
+              <div class="form-field">
+                <label for="og-image-url">Atau Path / URL Gambar OpenGraph</label>
+                <input
+                  type="text"
+                  id="og-image-url"
+                  value="./assets/og-manifestudio.jpg"
+                  placeholder="./assets/og-manifestudio.jpg atau https://..."
+                />
+              </div>
+            </div>
+
+            <div class="admin-form-grid">
+              <div class="form-field">
+                <label for="og-title-input">Judul OpenGraph (Kalimat Utama Share Link)</label>
+                <input
+                  type="text"
+                  id="og-title-input"
+                  value="Manifestudio — Katalog Layanan Digital &amp; Langganan"
+                  placeholder="Manifestudio — Katalog Layanan Digital &amp; Langganan"
+                />
+              </div>
+              <div class="form-field">
+                <label for="og-tagline-input">Tagline OpenGraph</label>
+                <input
+                  type="text"
+                  id="og-tagline-input"
+                  value="by Tomy"
+                  placeholder="Contoh: by Tomy · Cepat, Aman &amp; Bergaransi"
+                />
+              </div>
+              <div class="form-field admin-sum-field">
+                <label for="og-description-input">Caption / Deskripsi OpenGraph</label>
+                <textarea
+                  id="og-description-input"
+                  class="admin-textarea"
+                  rows="2"
+                  placeholder="Pesan layanan streaming, musik, desain, dan kebutuhan akun digital dengan proses cepat via WhatsApp."
+                >Pesan layanan streaming, musik, desain, dan kebutuhan akun digital dengan proses cepat via WhatsApp.</textarea>
+              </div>
+              <div class="form-field">
+                <label for="og-sitename-input">Nama Situs (og:site_name)</label>
+                <input
+                  type="text"
+                  id="og-sitename-input"
+                  value="Manifestudio"
+                  placeholder="Manifestudio"
+                />
+              </div>
+              <div class="form-field">
+                <label for="og-alt-input">Teks Alternatif Gambar (og:image:alt)</label>
+                <input
+                  type="text"
+                  id="og-alt-input"
+                  value="Pratinjau Katalog Layanan Digital Manifestudio"
+                  placeholder="Pratinjau Katalog Layanan Digital Manifestudio"
+                />
+              </div>
+            </div>
+          </div>
+
+          <!-- Card 3: Biaya Layanan & Diskon Otomatis -->
+          <div class="admin-card">
+            <h2 class="admin-section-title">Pengaturan Biaya Layanan &amp; Diskon Otomatis</h2>
+            <p class="admin-subtitle">
+              Atur besaran persentase biaya layanan Bayar Nanti, biaya layanan tetap (jika ada), serta ambang diskon otomatis keranjang.
+            </p>
+
+            <div class="admin-form-grid">
+              <div class="form-field">
+                <label for="brand-paylater-pct-input">Biaya Layanan Bayar Nanti (%)</label>
+                <input
+                  type="number"
+                  id="brand-paylater-pct-input"
+                  min="0"
+                  max="100"
+                  step="0.5"
+                  value="10"
+                />
+              </div>
+              <div class="form-field">
+                <label for="brand-service-fee-flat-input">Biaya Layanan Tetap Semua Pesanan (Rp)</label>
+                <input
+                  type="number"
+                  id="brand-service-fee-flat-input"
+                  min="0"
+                  step="500"
+                  value="0"
+                />
+              </div>
+              <div class="form-field">
+                <label for="brand-service-fee-label-input">Nama Label Biaya Layanan Tetap</label>
+                <input
+                  type="text"
+                  id="brand-service-fee-label-input"
+                  value="Biaya Layanan"
+                  placeholder="Contoh: Biaya Layanan / Biaya Admin"
+                />
+              </div>
+              <div class="form-field">
+                <label for="brand-whatsapp-input">Nomor WhatsApp Admin Utama (Format 628...)</label>
+                <input
+                  type="text"
+                  id="brand-whatsapp-input"
+                  value="6285122936027"
+                  placeholder="6285122936027"
+                />
+              </div>
+              <div class="form-field">
+                <label for="brand-discount-threshold-input">Minimal Belanja Diskon Otomatis (Rp)</label>
+                <input
+                  type="number"
+                  id="brand-discount-threshold-input"
+                  min="0"
+                  step="1000"
+                  value="50000"
+                />
+              </div>
+              <div class="form-field">
+                <label for="brand-discount-amount-input">Nominal Potongan Diskon Otomatis (Rp)</label>
+                <input
+                  type="number"
+                  id="brand-discount-amount-input"
+                  min="0"
+                  step="500"
+                  value="2000"
+                />
+              </div>
+            </div>
+          </div>
+
+          <!-- Card 4: Kontak & Sosial Media Admin + Logo Sosmed -->
+          <div class="admin-card">
+            <h2 class="admin-section-title">Kontak &amp; Sosial Media Admin (Beserta Logo Sosmed)</h2>
+            <p class="admin-subtitle">
+              Edit, tambah, atau hapus tombol kontak &amp; sosial media yang tampil di bagian bawah toko, lengkap dengan ikon/logo sosmed masing-masing.
+            </p>
+
+            <div id="admin-social-list" class="admin-social-list"></div>
+
+            <form id="add-social-form" class="admin-add-form">
+              <h3 class="admin-subhead">Tambah Kontak / Sosial Media Baru</h3>
+              <div class="admin-form-grid">
+                <div class="form-field">
+                  <label for="new-social-label">Nama / Label Tombol Sosmed <span class="req">*</span></label>
+                  <input
+                    type="text"
+                    id="new-social-label"
+                    placeholder="Contoh: Instagram @tmctomystudio atau Telegram Admin"
+                    required
+                  />
+                </div>
+                <div class="form-field">
+                  <label for="new-social-url">Link URL Tujuan <span class="req">*</span></label>
+                  <input
+                    type="text"
+                    id="new-social-url"
+                    placeholder="Contoh: https://instagram.com/tmctomystudio atau https://t.me/..."
+                    required
+                  />
+                </div>
+                <div class="form-field">
+                  <label for="new-social-logo-preset">Preset Logo Sosmed</label>
+                  <select id="new-social-logo-preset" class="admin-select">
+                    <option value="./assets/icons/social-whatsapp.svg">WhatsApp</option>
+                    <option value="./assets/icons/social-instagram.svg">Instagram</option>
+                    <option value="./assets/icons/social-tiktok.svg">TikTok</option>
+                    <option value="./assets/icons/social-telegram.svg">Telegram</option>
+                    <option value="./assets/icons/social-globe.svg">Website / Link Umum</option>
+                  </select>
+                </div>
+                <div class="form-field">
+                  <label for="new-social-logo-url">Atau Path / URL Logo Sosmed</label>
+                  <input
+                    type="text"
+                    id="new-social-logo-url"
+                    value="./assets/icons/social-whatsapp.svg"
+                    placeholder="./assets/icons/social-whatsapp.svg atau https://..."
+                  />
+                </div>
+                <div class="form-field admin-sum-field">
+                  <div class="admin-file-row">
+                    <img
+                      src="./assets/icons/social-whatsapp.svg"
+                      alt="Pratinjau logo sosmed baru"
+                      width="36"
+                      height="36"
+                      id="new-social-logo-preview"
+                      class="modal-logo admin-logo-thumb"
+                    />
+                    <label for="new-social-logo-file" class="btn btn-secondary btn-sm admin-file-trigger">
+                      Upload File Logo Sosmed Baru
+                    </label>
+                    <input
+                      type="file"
+                      id="new-social-logo-file"
+                      class="visually-hidden-file"
+                      accept="image/*"
+                    />
+                    <span id="new-social-logo-status" class="admin-prod-meta">Bisa pilih preset, link URL, atau upload gambar sendiri.</span>
+                  </div>
+                </div>
+              </div>
+              <div class="admin-action-bar">
+                <button type="submit" class="btn btn-primary btn-sm">
+                  + Tambah Kontak / Sosmed
+                </button>
+              </div>
+            </form>
+          </div>
+        </section>
+
+        <!-- Panel Menu Utilitas (Kartu Beranda, 14 Menu Utilitas & Hero YT Music) -->
+        <section id="panel-utilities" class="admin-panel" aria-labelledby="tab-btn-utilities" hidden>
+          <div class="admin-card">
+            <div class="admin-card-head">
+              <div>
+                <h2 class="admin-section-title">Kelola &amp; Sinkronkan 16 Menu Utilitas + Tanya Fitur</h2>
+                <p class="admin-subtitle">
+                  Aktifkan/nonaktifkan, urutkan, ubah ikon &amp; judul seluruh 16 fitur (Jadwal Sholat hingga Shortlink Bypass), serta atur asisten Customer Service Tanya Fitur. Perubahan otomatis tersinkron ke Manifestudio dan Manifestore.
+                </p>
+              </div>
+              <div class="admin-history-toolbar">
+                <button type="button" id="utilities-sync-all-btn" class="btn btn-secondary btn-sm">
+                  Sinkronkan Menu &amp; Banner
+                </button>
+                <button type="button" id="utilities-reset-default-btn" class="btn btn-ghost btn-sm">
+                  Reset Default
+                </button>
+              </div>
+            </div>
+
+            <div id="admin-utilities-editor" class="admin-utilities-editor"></div>
+          </div>
+        </section>
+
+        <!-- Panel Pertanyaan Umum (FAQ) -->
+        <section id="panel-faq" class="admin-panel" aria-labelledby="tab-btn-faq" hidden>
+          <div class="admin-card">
+            <h2 class="admin-section-title">Kelola Pertanyaan Umum (FAQ)</h2>
+            <p class="admin-subtitle">
+              Edit pertanyaan dan jawaban yang sering diajukan pelanggan di halaman depan toko, atau tambahkan pertanyaan baru.
+            </p>
+
+            <div id="admin-faq-list" class="admin-faq-list"></div>
+
+            <form id="add-faq-form" class="admin-add-form">
+              <h3 class="admin-subhead">Tambah Pertanyaan Umum Baru</h3>
+              <div class="form-field">
+                <label for="new-faq-question">Pertanyaan <span class="req">*</span></label>
+                <input
+                  type="text"
+                  id="new-faq-question"
+                  placeholder="Contoh: Apakah akun bergaransi penuh selama masa aktif?"
+                  required
+                />
+              </div>
+              <div class="form-field">
+                <label for="new-faq-answer">Jawaban Lengkap <span class="req">*</span></label>
+                <textarea
+                  id="new-faq-answer"
+                  class="admin-textarea"
+                  rows="3"
+                  placeholder="Tulis penjelasan jawaban yang jelas untuk pelanggan..."
+                  required
+                ></textarea>
+              </div>
+              <div class="admin-action-bar">
+                <button type="submit" class="btn btn-primary btn-sm">
+                  + Tambah Pertanyaan Umum
+                </button>
+              </div>
+            </form>
+          </div>
+        </section>
+
+        <section id="panel-vouchers" class="admin-panel" aria-labelledby="tab-btn-vouchers" hidden>
+          <div class="admin-card">
+            <h2 class="admin-section-title">Kelola Kode Voucher</h2>
+            <p class="admin-subtitle">
+              Kode voucher yang aktif di bawah akan dihitung otomatis pada keranjang pelanggan.
+            </p>
+
+            <div id="admin-voucher-list" class="admin-voucher-list"></div>
+
+            <form id="add-voucher-form" class="admin-add-form">
+              <h3 class="admin-subhead">Tambah Voucher Baru</h3>
+              <div class="admin-form-grid">
+                <div class="form-field">
+                  <label for="new-voucher-code">Kode Voucher <span class="req">*</span></label>
+                  <input type="text" id="new-voucher-code" placeholder="Contoh: BARU5K" required />
+                </div>
+                <div class="form-field">
+                  <label for="new-voucher-type">Jenis Potongan</label>
+                  <select id="new-voucher-type" class="admin-select">
+                    <option value="fixed">Potongan Tetap (Rp)</option>
+                    <option value="percent">Persentase (%)</option>
+                  </select>
+                </div>
+                <div class="form-field">
+                  <label for="new-voucher-value">Nilai Potongan <span class="req">*</span></label>
+                  <input type="number" id="new-voucher-value" min="1" value="3000" required />
+                </div>
+                <div class="form-field">
+                  <label for="new-voucher-min">Minimal Belanja (Rp)</label>
+                  <input type="number" id="new-voucher-min" min="0" step="1000" value="15000" />
+                </div>
+                <div class="form-field">
+                  <label for="new-voucher-usage-mode">Batas Penggunaan Voucher</label>
+                  <select id="new-voucher-usage-mode" class="admin-select">
+                    <option value="once">1 Kali Pakai Per Pelanggan</option>
+                    <option value="limited">Batasi Jumlah Pakai (N Kali)</option>
+                    <option value="unlimited">Tak Terbatas (Berkali-kali)</option>
+                  </select>
+                </div>
+                <div class="form-field" id="new-voucher-max-uses-field" hidden>
+                  <label for="new-voucher-max-uses">Maksimal Penggunaan (Kali)</label>
+                  <input type="number" id="new-voucher-max-uses" min="2" step="1" value="5" />
+                </div>
+              </div>
+              <div class="admin-action-bar">
+                <button type="submit" class="btn btn-primary btn-sm">Tambah Voucher</button>
+              </div>
+            </form>
+          </div>
+        </section>
+
+        <section id="panel-history" class="admin-panel" aria-labelledby="tab-btn-history" hidden>
+          <div class="admin-card">
+            <div class="admin-card-head">
+              <div>
+                <h2 class="admin-section-title">Riwayat Perubahan Katalog</h2>
+                <p class="admin-subtitle">
+                  Otomatis menyimpan hingga <strong id="history-limit-label">12</strong> log terbaru beserta rincian lengkap setiap tindakan (perubahan harga, sub produk, logo, biaya layanan, kategori, dll).
+                </p>
+              </div>
+              <div class="admin-history-toolbar">
+                <button type="button" id="snapshot-history-btn" class="btn btn-secondary btn-sm">
+                  + Simpan Snapshot Sekarang
+                </button>
+                <button type="button" id="clear-history-btn" class="btn btn-ghost btn-sm">
+                  Bersihkan Log
+                </button>
+              </div>
+            </div>
+
+            <div id="admin-history-list" class="admin-history-list"></div>
+          </div>
+        </section>
+      </div>
+    </main>
+
+    <div id="toast-notification" class="toast-notification" role="status" aria-live="polite" hidden></div>
+
+    <script type="module" src="./js/admin.js?v=85"></script>
+  </body>
+</html>

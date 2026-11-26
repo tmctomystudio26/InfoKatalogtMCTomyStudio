@@ -1,0 +1,399 @@
+<!doctype html>
+<html lang="id" data-theme="dark">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Manifestudio — Platform 16 Utilitas Digital, AI &amp; Hiburan Gratis</title>
+    <meta
+      name="description"
+      content="Manifestudio by Tomy: 16 fitur utilitas digital, AI, dan hiburan gratis tanpa login — Manifest AI, Drama Pendek, YT Music, Downloader, Shortlink Bypass, Kompresor HD, Konversi File, Audio Editor, Cek Plagiarisme, Novel, Jadwal Sholat, Cuaca, Jam Dunia, Speedtest &amp; Cek Nomor."
+    />
+
+    <link rel="canonical" href="https://manifestudio.my.id/" />
+
+    <!-- Open Graph & Social Share -->
+    <meta property="og:url" content="https://manifestudio.my.id/" />
+    <meta property="og:title" content="Manifestudio — Platform 16 Utilitas Digital, AI &amp; Hiburan Gratis" />
+    <meta
+      property="og:description"
+      content="16 alat digital &amp; hiburan gratis tanpa login: Manifest AI, Drama Pendek, YT Music, Downloader Tanpa Watermark, Shortlink Bypass, Kompresor HD, Cek Plagiarisme, Novel &amp; Cek Nomor."
+    />
+    <meta
+      property="og:image"
+      content="https://manifestudio.my.id/assets/og-manifestudio.jpg?v=3"
+    />
+    <meta
+      property="og:image:secure_url"
+      content="https://manifestudio.my.id/assets/og-manifestudio.jpg?v=3"
+    />
+    <meta property="og:image:type" content="image/jpeg" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:type" content="website" />
+    <meta property="og:locale" content="id_ID" />
+    <meta property="og:site_name" content="Manifestudio" />
+
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="Manifestudio — Platform 16 Utilitas Digital, AI &amp; Hiburan Gratis" />
+    <meta
+      name="twitter:description"
+      content="16 fitur utilitas digital, AI, dan hiburan gratis tanpa login &amp; tanpa iklan."
+    />
+    <meta
+      name="twitter:image"
+      content="https://manifestudio.my.id/assets/og-manifestudio.jpg?v=3"
+    />
+
+    <meta name="theme-color" content="#090D16" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="Manifestudio" />
+    <link rel="manifest" href="./manifest-utilities.webmanifest" />
+    <link rel="icon" type="image/svg+xml" href="./assets/icons/brand-icon.svg" />
+    <link rel="apple-touch-icon" href="./assets/icons/apple-touch-icon.png" />
+
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@500;700&family=Literata:ital,opsz,wght@0,7..72,400..700;1,7..72,400..600&family=Outfit:wght@600;700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+
+    <link rel="stylesheet" href="./css/tokens.css?v=100" />
+    <link rel="stylesheet" href="./css/styles.css?v=100" />
+    <script>
+      (function () {
+        try {
+          var savedTheme = localStorage.getItem('manifestudio_theme_v1');
+          if (savedTheme === 'light' || savedTheme === 'dark') {
+            document.documentElement.setAttribute('data-theme', savedTheme);
+          }
+          var qs = new URLSearchParams(window.location.search);
+          var hasTab = Boolean((qs.get('tab') || qs.get('tool') || '').trim());
+          document.documentElement.setAttribute('data-studio-view', hasTab ? 'tool' : 'home');
+        } catch (e) {}
+        var CURRENT_CACHE = 'manifestudio-cache-v100';
+        if ('caches' in window) {
+          caches.keys().then(function (keys) {
+            keys.forEach(function (k) {
+              if (k !== CURRENT_CACHE && k !== 'manifestudio-ffmpeg-core-v1') caches.delete(k);
+            });
+          });
+        }
+        if ('serviceWorker' in navigator) {
+          window.addEventListener('load', function () {
+            navigator.serviceWorker.register('./sw.js?v=100').then(function (reg) {
+              reg.update();
+            }).catch(function () {});
+          });
+        }
+      })();
+    </script>
+  </head>
+  <body>
+    <div id="offline-banner" class="offline-banner" role="status" hidden>
+      Mode offline aktif — alat pemrosesan lokal tetap bisa digunakan.
+    </div>
+
+    <header class="site-header">
+      <div class="container header-inner">
+        <a href="./" id="tools-brand-link" class="brand-link" aria-label="Beranda Manifestudio">
+          <img
+            id="header-brand-logo"
+            src="./assets/icons/brand-icon.svg"
+            alt="Logo Manifestudio"
+            width="36"
+            height="36"
+            class="brand-mark"
+          />
+          <div class="brand-text">
+            <span id="header-brand-name" class="brand-name">Manifestudio</span>
+            <span id="header-brand-tagline" class="brand-tagline">by Tomy</span>
+          </div>
+        </a>
+
+        <nav id="tools-header-nav" class="header-nav studio-header-nav" aria-label="Navigasi utama Manifestudio">
+          <a href="#top" class="header-nav-link is-active" data-studio-section-link="top">Beranda</a>
+          <a href="#fitur" class="header-nav-link" data-studio-section-link="fitur">16 Fitur</a>
+          <a href="#keunggulan" class="header-nav-link" data-studio-section-link="keunggulan">Keunggulan</a>
+          <a href="#faq-studio" class="header-nav-link" data-studio-section-link="faq-studio">FAQ</a>
+        </nav>
+
+        <div class="header-actions">
+          <button
+            type="button"
+            id="tools-store-btn"
+            class="header-btn"
+            data-store-gate-trigger="header"
+            aria-label="Akses Store Khusus"
+          >
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+            <span class="hide-xs">Store</span>
+          </button>
+          <button
+            type="button"
+            id="header-install-btn"
+            class="header-btn"
+            aria-label="Install aplikasi Manifestudio"
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+              <polyline points="7 10 12 15 17 10" />
+              <line x1="12" x2="12" y1="15" y2="3" />
+            </svg>
+            <span class="hide-xs">Install</span>
+          </button>
+          <button
+            type="button"
+            id="theme-toggle-btn"
+            class="header-btn"
+            aria-label="Ubah tema tampilan"
+          >
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.93 4.93 1.41 1.41"/><path d="m17.66 17.66 1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="m6.34 17.66-1.41 1.41"/><path d="m19.07 4.93-1.41 1.41"/></svg><span class="hide-xs">Terang</span>
+          </button>
+        </div>
+      </div>
+    </header>
+
+    <main id="top" class="studio-main">
+      <!-- ================================================================
+           VIEW A: HALAMAN BERANDA MANIFESTUDIO (CLEAN HUB — TANPA DUPLIKASI)
+           ================================================================ -->
+      <div id="studio-home-view" class="studio-home-view">
+        <!-- 1. Flagship Multi-Banner Showcase Carousel -->
+        <section class="promo-banner-section studio-hero-section" aria-label="Sorotan Platform &amp; 16 Fitur Manifestudio">
+          <div class="container">
+            <div
+              class="banner-carousel"
+              id="studio-hero-carousel"
+              tabindex="0"
+              aria-roledescription="carousel"
+              aria-label="Banner fitur unggulan Manifestudio"
+            >
+              <div class="banner-track" id="studio-banner-track">
+                <article class="promo-banner-frame banner-slide is-active" data-slide-index="0" data-banner-href="#fitur" aria-hidden="false">
+                  <img
+                    src="./assets/banners/banner-manifestai.jpg"
+                    alt="Manifestudio — Platform 16 Utilitas Digital, AI dan Hiburan Gratis"
+                    class="promo-banner-img"
+                    width="1200"
+                    height="670"
+                    fetchpriority="high"
+                    decoding="async"
+                  />
+                  <div class="promo-banner-scrim scrim-violet" aria-hidden="true"></div>
+                  <div class="promo-banner-content">
+                    <div class="promo-banner-copy">
+                      <span class="promo-kicker">Manifestudio · 16 Fitur Digital Gratis</span>
+                      <h1 class="promo-heading">Satu Platform Ringan untuk AI, Hiburan &amp; Alat Harian Tanpa Login</h1>
+                      <p class="promo-sub">
+                        Pilih fitur yang Anda butuhkan — setiap alat terbuka di halaman khusus yang bersih, cepat, dan bebas iklan.
+                      </p>
+                    </div>
+                    <div class="promo-banner-cta">
+                      <a href="#fitur" class="btn btn-primary btn-sm">Lihat Semua Fitur →</a>
+                    </div>
+                  </div>
+                </article>
+              </div>
+
+              <button type="button" class="banner-nav-btn is-prev" id="studio-banner-prev-btn" aria-label="Banner sebelumnya">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m15 18-6-6 6-6"/></svg>
+              </button>
+              <button type="button" class="banner-nav-btn is-next" id="studio-banner-next-btn" aria-label="Banner berikutnya">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg>
+              </button>
+
+              <div class="banner-controls-bar">
+                <div class="banner-dots" id="studio-banner-dots" role="tablist" aria-label="Pilih slide banner Manifestudio">
+                  <button type="button" class="banner-dot is-active" data-slide-dot="0" aria-label="Slide 1: Manifestudio"></button>
+                </div>
+                <span id="studio-banner-counter" class="banner-slide-counter mono-num" aria-live="polite">1 / 17</span>
+              </div>
+            </div>
+
+          </div>
+        </section>
+
+        <!-- 2. Single Unified 16-Feature App Launcher Grid -->
+        <section id="fitur" class="studio-section studio-directory-section container" aria-labelledby="studio-directory-heading">
+          <div class="studio-section-head studio-directory-head-clean">
+            <h2 id="studio-directory-heading" class="section-title">Pilih Fitur Manifestudio</h2>
+          </div>
+
+          <div class="studio-directory-toolbar">
+            <div class="search-box studio-search-box">
+              <svg class="search-icon" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <circle cx="11" cy="11" r="8" />
+                <path d="m21 21-4.3-4.3" />
+              </svg>
+              <input
+                type="search"
+                id="studio-feature-search"
+                class="search-input"
+                placeholder="Cari fitur: AI, Drama, Shortlink, PDF, Sholat, Downloader..."
+                aria-label="Cari fitur di direktori Manifestudio"
+              />
+              <button
+                type="button"
+                id="studio-clear-search-btn"
+                class="search-clear-btn"
+                aria-label="Hapus pencarian fitur"
+                hidden
+              >
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+              </button>
+            </div>
+
+            <div id="studio-category-tabs" class="category-tabs" role="group" aria-label="Filter kategori fitur Manifestudio"></div>
+          </div>
+
+          <div id="studio-feature-grid" class="studio-feat-grid"></div>
+        </section>
+
+        <!-- 3. Platform Value Pillars -->
+        <section id="keunggulan" class="studio-section container" aria-labelledby="studio-pillars-heading">
+          <div class="studio-section-head">
+            <div>
+              <span class="studio-section-eyebrow">Kenapa Manifestudio</span>
+              <h2 id="studio-pillars-heading" class="section-title">Dirancang Ringan, Cepat &amp; Menjaga Privasi</h2>
+            </div>
+          </div>
+          <div id="studio-pillars-grid" class="studio-pillars-grid"></div>
+        </section>
+
+        <!-- 4. Standalone PWA Install Card -->
+        <div id="pwa-banner-root" class="pwa-banner-root"></div>
+
+        <!-- 5. Manifestudio FAQ -->
+        <section id="faq-studio" class="faq-section container" aria-labelledby="studio-faq-heading">
+          <div class="studio-section-head">
+            <div>
+              <span class="studio-section-eyebrow">Bantuan &amp; Informasi</span>
+              <h2 id="studio-faq-heading" class="section-title">Pertanyaan Umum Manifestudio</h2>
+            </div>
+          </div>
+          <div id="studio-faq-list" class="faq-list"></div>
+        </section>
+      </div>
+
+      <!-- ================================================================
+           VIEW B: HALAMAN KHUSUS PER FITUR (?tab=<id>) — BERSIH & FOKUS
+           ================================================================ -->
+      <section
+        id="studio-tool-view"
+        class="studio-tool-page container"
+        aria-labelledby="tools-page-title"
+        hidden
+      >
+        <div class="studio-tool-topbar">
+          <button type="button" id="studio-back-home-btn" class="btn btn-secondary btn-sm studio-back-btn">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m15 18-6-6 6-6"/></svg>
+            <span>Semua Fitur</span>
+          </button>
+
+          <div class="studio-switcher-wrap" id="studio-switcher-wrap">
+            <button
+              type="button"
+              id="studio-switcher-trigger"
+              class="studio-picker-trigger"
+              aria-haspopup="dialog"
+              aria-expanded="false"
+              aria-controls="studio-switcher-sheet"
+              aria-label="Pindah cepat ke fitur Manifestudio lain"
+            >
+              <img
+                id="studio-switcher-trigger-icon"
+                src="./assets/icons/menu-utilitas.svg"
+                alt=""
+                width="22"
+                height="22"
+                class="studio-picker-trigger-icon"
+              />
+              <span id="studio-switcher-trigger-label" class="studio-picker-trigger-label">Pilih Fitur</span>
+              <svg class="studio-picker-trigger-caret" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
+            </button>
+          </div>
+        </div>
+
+        <header class="studio-tool-head">
+          <img
+            id="studio-tool-icon"
+            src="./assets/icons/menu-utilitas.svg"
+            alt=""
+            width="44"
+            height="44"
+            class="studio-tool-head-icon"
+          />
+          <div class="studio-tool-head-copy">
+            <span id="studio-tool-eyebrow" class="studio-section-eyebrow">Manifestudio · Gratis Tanpa Login</span>
+            <h1 id="tools-page-title" class="section-title">Manifestudio</h1>
+            <p id="tools-page-subtitle" class="section-subtitle"></p>
+          </div>
+        </header>
+
+        <div id="tools-hub-root" class="studio-tool-canvas"></div>
+      </section>
+    </main>
+
+    <footer class="site-footer studio-footer">
+      <div class="container studio-footer-grid">
+        <div class="footer-brand">
+          <a href="./" id="footer-brand-name" class="brand-name" style="text-decoration: none;">Manifestudio</a>
+          <p id="footer-copy-text" class="studio-footer-copy">Dikelola oleh Manifestudio by Tomy © 2026</p>
+        </div>
+
+        <div class="studio-footer-col">
+          <h3 class="studio-footer-heading">Fitur Populer</h3>
+          <div class="studio-footer-shortcuts">
+            <button type="button" class="studio-footer-text-btn" data-studio-open-tool="manifestai">Manifest AI</button>
+            <button type="button" class="studio-footer-text-btn" data-studio-open-tool="dracin">Drama Pendek</button>
+            <button type="button" class="studio-footer-text-btn" data-studio-open-tool="music">YT Music</button>
+            <button type="button" class="studio-footer-text-btn" data-studio-open-tool="downloader">Downloader</button>
+            <button type="button" class="studio-footer-text-btn" data-studio-open-tool="shortlink">Shortlink Bypass</button>
+            <button type="button" class="studio-footer-text-btn" data-studio-open-tool="plagiarism">Cek Plagiarisme</button>
+            <button type="button" class="studio-footer-text-btn" data-studio-open-tool="callerid">Cek Nomor</button>
+          </div>
+        </div>
+
+        <div class="studio-footer-col">
+          <h3 class="studio-footer-heading">Komunitas &amp; Aplikasi</h3>
+          <div id="footer-social-links" class="footer-links">
+            <button type="button" class="footer-link-btn" data-vault-target="store">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+              <span>Akses Store</span>
+            </button>
+            <button type="button" class="footer-link-btn" data-vault-target="whatsapp">
+              <img src="./assets/icons/social-whatsapp.svg" alt="" width="18" height="18" class="footer-social-icon" />
+              <span>WhatsApp</span>
+              <svg class="footer-lock-mini" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+            </button>
+            <button type="button" class="footer-link-btn" data-vault-target="tiktok">
+              <img src="./assets/icons/social-tiktok.svg" alt="" width="18" height="18" class="footer-social-icon" />
+              <span>TikTok</span>
+              <svg class="footer-lock-mini" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+            </button>
+            <button type="button" class="footer-link-btn" data-vault-target="instagram">
+              <img src="./assets/icons/social-instagram.svg" alt="" width="18" height="18" class="footer-social-icon" />
+              <span>Instagram</span>
+              <svg class="footer-lock-mini" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+            </button>
+            <button type="button" id="footer-tanya-fitur-btn" class="footer-link-btn footer-tanya-fitur-btn" data-open-feature-cs="true">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7.9 20A9 9 0 1 0 4 16.1L2 22Z"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><path d="M12 17h.01"/></svg>
+              <span>Tanya Fitur</span>
+            </button>
+            <button type="button" id="footer-install-link" class="footer-link-btn">
+              Install PWA
+            </button>
+          </div>
+        </div>
+      </div>
+    </footer>
+
+    <div id="studio-switcher-sheet-root" class="studio-picker-overlay" hidden></div>
+    <div id="feature-cs-root" class="fcs-root"></div>
+    <div id="store-access-modal-root" class="modal-overlay" hidden></div>
+    <div id="toast-notification" class="toast-notification" role="status" aria-live="polite" hidden></div>
+    <script type="module" src="./js/tools-page.js?v=100"></script>
+  </body>
+</html>
