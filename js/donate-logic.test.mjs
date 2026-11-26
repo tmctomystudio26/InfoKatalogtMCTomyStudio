@@ -229,11 +229,11 @@ test('v102: Cloudflare Worker verifies Saweria HMAC-SHA256 & SociaBuzz token, re
   );
   assert.equal(badSb.status, 401);
 
-  // 4. Valid SociaBuzz Tribe USD webhook MUST convert to IDR & aggregate with same donor
+  // 4. Valid SociaBuzz Tribe USD webhook via x-callback-token MUST convert to IDR & aggregate with same donor
   const okSb = await donateWorker.fetch(
     new Request('https://donate-api.manifestudio.my.id/webhook/sociabuzz', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'x-sociabuzz-webhook-token': env.SOCIABUZZ_WEBHOOK_TOKEN },
+      headers: { 'Content-Type': 'application/json', 'x-callback-token': env.SOCIABUZZ_WEBHOOK_TOKEN },
       body: JSON.stringify({
         id: 'sb-tx-002',
         supporter: 'Dina Putri',
@@ -249,6 +249,24 @@ test('v102: Cloudflare Worker verifies Saweria HMAC-SHA256 & SociaBuzz token, re
   const okSbJson = await okSb.json();
   assert.ok(okSbJson.amountIdr >= 50000);
 
+  // 4b. Valid SociaBuzz webhook via JSON body webhook_token MUST also succeed
+  const okSbBodyToken = await donateWorker.fetch(
+    new Request('https://donate-api.manifestudio.my.id/webhook/sociabuzz', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        id: 'sb-tx-003',
+        webhook_token: env.SOCIABUZZ_WEBHOOK_TOKEN,
+        supporter: 'Rizky Hidayat',
+        amount_raw: 25000,
+        currency: 'IDR',
+        message: 'Mantap!',
+      }),
+    }),
+    env
+  );
+  assert.equal(okSbBodyToken.status, 200);
+
   // 5. GET /leaderboard returns aggregated donor, sanitized message, and NO email leak!
   const lbRes = await donateWorker.fetch(
     new Request('https://donate-api.manifestudio.my.id/leaderboard', {
@@ -261,7 +279,7 @@ test('v102: Cloudflare Worker verifies Saweria HMAC-SHA256 & SociaBuzz token, re
   assert.equal(lbRes.headers.get('Access-Control-Allow-Origin'), 'https://manifestudio.my.id');
   const lb = await lbRes.json();
   assert.equal(lb.ok, true);
-  assert.equal(lb.allTime.length, 1);
+  assert.equal(lb.allTime.length, 2);
   assert.equal(lb.allTime[0].donorName, 'Dina Putri');
   assert.equal(lb.allTime[0].donationCount, 2);
   assert.equal(JSON.stringify(lb).includes('dina@example.com'), false);

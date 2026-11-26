@@ -262,7 +262,8 @@ async function ensureSchema(db) {
 }
 
 async function verifySaweriaSignature(rawBodyText, payload, sigHeader, streamKey) {
-  if (!streamKey || !sigHeader) return false;
+  const secret = String(streamKey || '').trim();
+  if (!secret || !sigHeader) return false;
   const sig = String(sigHeader).trim().toLowerCase();
   if (!sig) return false;
 
@@ -282,7 +283,7 @@ async function verifySaweriaSignature(rawBodyText, payload, sigHeader, streamKey
   ];
 
   for (const candidate of candidates) {
-    const digest = await hmacSha256Hex(streamKey, candidate);
+    const digest = await hmacSha256Hex(secret, candidate);
     if (timingSafeEqualStr(sig, digest.toLowerCase())) {
       return true;
     }
@@ -347,38 +348,124 @@ async function handleSaweriaWebhook(request, env) {
   }, 200, request);
 }
 
+async function verifySociaBuzzAuth(request, rawBody, payload, expectedSecret) {
+  const secret = String(expectedSecret || '').trim();
+  if (!secret) return false;
+
+  const url = new URL(request.url);
+  const candidates = [];
+
+  // 1. Named token headers used across SociaBuzz Tribe / Shop / Xendit gateways
+  const namedHeaders = [
+    'x-callback-token',
+    'x-sociabuzz-webhook-token',
+    'x-sociabuzz-token',
+    'x-webhook-token',
+    'x-webhook-secret',
+    'webhook-token',
+    'token',
+    'authorization',
+  ];
+  for (const name of namedHeaders) {
+    const val = (request.headers.get(name) || '').trim();
+    if (!val) continue;
+    candidates.push(val);
+    if (name === 'authorization' && /^bearer\s+/i.test(val)) {
+      candidates.push(val.replace(/^bearer\s+/i, '').trim());
+    }
+  }
+
+  // 2. Any other custom x-* header carrying the exact webhook token
+  for (const [k, v] of request.headers.entries()) {
+    if (k.toLowerCase().startsWith('x-') && v) {
+      candidates.push(String(v).trim());
+    }
+  }
+
+  // 3. Query params or JSON body token fields (if provided by SociaBuzz)
+  for (const qp of ['token', 'webhook_token']) {
+    const val = (url.searchParams.get(qp) || '').trim();
+    if (val) candidates.push(val);
+  }
+  for (const field of [payload?.webhook_token, payload?.token, payload?.data?.webhook_token, payload?.data?.token]) {
+    if (typeof field === 'string' && field.trim()) {
+      candidates.push(field.trim());
+    }
+  }
+
+  // Constant-time exact token comparison
+  for (const candidate of candidates) {
+    if (timingSafeEqualStr(candidate, secret)) {
+      return true;
+    }
+  }
+
+  // 4. Optional HMAC-SHA256 signature verification if SociaBuzz sends a signature header
+  const sigHeaders = ['x-sociabuzz-signature', 'x-webhook-signature', 'x-hub-signature-256'];
+  const expectedDigest = (await hmacSha256Hex(secret, rawBody)).toLowerCase();
+  for (const name of sigHeaders) {
+    const rawSig = (request.headers.get(name) || '').trim().toLowerCase().replace(/^sha256=/, '');
+    if (rawSig && timingSafeEqualStr(rawSig, expectedDigest)) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
 async function handleSociaBuzzWebhook(request, env) {
   if (!env.SOCIABUZZ_WEBHOOK_TOKEN) {
     return jsonResponse({ ok: false, error: 'SOCIABUZZ_WEBHOOK_TOKEN secret belum dikonfigurasi.' }, 503, request);
   }
-  const tokenHeader =
-    request.headers.get('x-sociabuzz-webhook-token') ||
-    request.headers.get('X-SociaBuzz-Webhook-Token') ||
-    request.headers.get('x-webhook-token') ||
-    '';
-
-  if (!timingSafeEqualStr(tokenHeader.trim(), String(env.SOCIABUZZ_WEBHOOK_TOKEN).trim())) {
-    return jsonResponse({ ok: false, error: 'Token x-sociabuzz-webhook-token tidak valid.' }, 401, request);
-  }
 
   const rawBody = await request.text();
-  let payload;
-  try {
-    payload = JSON.parse(rawBody || '{}');
-  } catch {
-    return jsonResponse({ ok: false, error: 'Payload JSON SociaBuzz tidak valid.' }, 400, request);
+  let payload = {};
+  if (rawBody.trim()) {
+    try {
+      payload = JSON.parse(rawBody);
+    } catch {
+      // Fallback for application/x-www-form-urlencoded payloads
+      const params = new URLSearchParams(rawBody);
+      if ([...params.keys()].length > 0) {
+        payload = Object.fromEntries(params.entries());
+      } else {
+        return jsonResponse({ ok: false, error: 'Payload SociaBuzz tidak valid.' }, 400, request);
+      }
+    }
   }
 
+  const authed = await verifySociaBuzzAuth(request, rawBody, payload, env.SOCIABUZZ_WEBHOOK_TOKEN);
+  if (!authed) {
+    const receivedCustomHeaders = [];
+    for (const [k] of request.headers.entries()) {
+      const lower = k.toLowerCase();
+      if (lower.startsWith('x-') || lower.includes('token') || lower.includes('sig') || lower === 'authorization') {
+        receivedCustomHeaders.push(lower);
+      }
+    }
+    return jsonResponse(
+      {
+        ok: false,
+        error: 'Token Webhook SociaBuzz tidak cocok dengan secret SOCIABUZZ_WEBHOOK_TOKEN di Cloudflare.',
+        receivedHeaders: receivedCustomHeaders,
+      },
+      401,
+      request
+    );
+  }
+
+  const body = payload?.data && typeof payload.data === 'object' ? { ...payload, ...payload.data } : payload;
+
   const amountNum = parseNumericAmount(
-    payload.amount_raw ?? payload.amount_settled ?? payload.amount ?? payload.price ?? 0
+    body.amount_raw ?? body.amount_settled ?? body.amount ?? body.price ?? body.gross_amount ?? body.nominal ?? 0
   );
   if (amountNum <= 0) {
     return jsonResponse({ ok: false, error: 'Nominal dukungan harus lebih dari 0.' }, 400, request);
   }
 
-  const rawId = String(payload.id || payload.order_id || payload.transaction_id || '').trim();
-  const isTest = Boolean(payload.is_test) || /^test/i.test(rawId) || /^test/i.test(String(payload.supporter || ''));
-  const tsRaw = payload.created_at || payload.timestamp;
+  const rawId = String(body.id || body.inv_id || body.order_id || body.transaction_id || '').trim();
+  const isTest = Boolean(body.is_test) || /^test/i.test(rawId) || /^test/i.test(String(body.supporter || ''));
+  const tsRaw = body.created_at || body.timestamp;
   let createdAt = new Date().toISOString();
   if (typeof tsRaw === 'number' && Number.isFinite(tsRaw)) {
     const ms = tsRaw < 1e12 ? tsRaw * 1000 : tsRaw;
@@ -392,11 +479,11 @@ async function handleSociaBuzzWebhook(request, env) {
     : `sociabuzz:${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 
   const donorName = sanitizeDonorName(
-    payload.supporter || payload.supporter_name || payload.donator_name || payload.name || 'Supporter SociaBuzz'
+    body.supporter || body.supporter_name || body.donator_name || body.donatorName || body.name || 'Supporter SociaBuzz'
   );
   const donorKey = normalizeDonorKey(donorName);
-  const message = sanitizeDonorMessage(payload.message || payload.note || payload.comment || '');
-  const currencyCode = String(payload.currency || 'IDR').trim().toUpperCase();
+  const message = sanitizeDonorMessage(body.message || body.note || body.comment || '');
+  const currencyCode = String(body.currency || 'IDR').trim().toUpperCase();
   const conv = await convertCurrencyToIdr(amountNum, currencyCode);
   const monthWib = getWibMonthKey(createdAt);
 
