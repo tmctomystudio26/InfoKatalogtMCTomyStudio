@@ -7,18 +7,14 @@ export const SSHVPN_HISTORY_KEY = 'manifestudio_sshvpn_history_v1';
 export const MAX_HISTORY_ITEMS = 60;
 
 export const SSHVPN_PROTOCOLS = Object.freeze([
-  { id: 'all', label: 'Semua Protokol', short: 'Semua', needsPassword: false, apps: 'HTTP Custom, V2RayNG, WireGuard, OpenVPN' },
+  { id: 'all', label: 'Semua Protokol', short: 'Semua', needsPassword: false, apps: 'WireGuard, V2RayNG, Nekobox, Hiddify, OpenVPN' },
   { id: 'wireguard', label: 'WireGuard VIP', short: 'WireGuard', needsPassword: false, apps: 'WireGuard, AmneziaWG, Nekobox, Sing-Box' },
   { id: 'vmess', label: 'V2Ray VMess', short: 'VMess', needsPassword: false, apps: 'V2RayNG, Nekobox, Hiddify, Clash Meta' },
   { id: 'vless', label: 'Xray VLess', short: 'VLess', needsPassword: false, apps: 'V2RayNG, Hiddify, Streisand, Sing-Box' },
   { id: 'trojan', label: 'Trojan GFW/WS', short: 'Trojan', needsPassword: false, apps: 'V2RayNG, Clash, Shadowrocket, Hiddify' },
   { id: 'shadowsocks', label: 'Shadowsocks', short: 'Shadowsocks', needsPassword: false, apps: 'Shadowsocks, Outline, Nekobox, Clash' },
-  { id: 'openvpn', label: 'OpenVPN / L2TP', short: 'OpenVPN', needsPassword: false, apps: 'OpenVPN Connect, L2TP Android/iOS, SSTP' },
   { id: 'hysteria2', label: 'Hysteria2 QUIC', short: 'Hysteria2', needsPassword: false, apps: 'Hiddify, Nekobox, Sing-Box, Shadowrocket' },
-  { id: 'ssh-ws', label: 'SSH WebSocket', short: 'SSH WS', needsPassword: true, apps: 'HTTP Custom, HTTP Injector, NetMod' },
-  { id: 'ssh-ssl', label: 'SSH SSL/Stunnel', short: 'SSH SSL', needsPassword: true, apps: 'HTTP Custom, HTTP Injector, KPN Tunnel' },
-  { id: 'ssh-udp', label: 'SSH UDP Custom', short: 'SSH UDP', needsPassword: true, apps: 'HTTP Custom (UDP), Dark Tunnel, ZIVPN' },
-  { id: 'ssh-slowdns', label: 'SSH SlowDNS', short: 'SlowDNS', needsPassword: true, apps: 'HTTP Custom (DNSTT), HTTP Injector' },
+  { id: 'openvpn', label: 'OpenVPN / L2TP', short: 'OpenVPN', needsPassword: false, apps: 'OpenVPN Connect, L2TP Android/iOS, SSTP' },
 ]);
 
 export const DURATION_OPTIONS = Object.freeze([

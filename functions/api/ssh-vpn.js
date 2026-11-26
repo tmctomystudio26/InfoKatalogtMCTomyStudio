@@ -1,20 +1,18 @@
 /**
- * Manifestudio SSH & VPN Studio — Multi-API Real-Time Network Account Provisioning Engine (v95)
+ * Manifestudio SSH & VPN Studio — Multi-API Real-Time Instant Network Account Engine (v97)
  * Route: GET / POST /api/ssh-vpn
  *
- * Real Multi-API Architecture (100% Free, Zero Private Keys Required, Auto-Healing & Auto-Discovery):
+ * 100% Direct Instant Account Architecture (Zero External Portal Redirects, Zero CAPTCHA, 100% Free):
  *  1. Cloudflare WARP Official WireGuard Registration API (/v0a2158/reg + /v0a2483/reg + /v0a1922/reg)
  *     -> Pure RFC 7748 X25519 Curve25519 key generation + instant live working WireGuard VIP accounts
  *  2. VPNGate University of Tsukuba Official Live API (vpngate.net/api/iphone/)
  *     -> Live OpenVPN (.ovpn) + L2TP/IPSec + MS-SSTP servers across 20+ countries with real specs & instant configs
- *  3. Multi-Source Real-Time V2Ray/Xray/Trojan/Shadowsocks/Hysteria2 Pool (6+ live GitHub/jsDelivr feeds)
- *     -> barry-far, MatinGhanbari, SoliSpirit, mahdibland, peasoft, freefq + GitHub Search Auto-Discovery fallback
- *  4. Real-Time Live SSH/Tunnel Server & Slot Sync (SSHOcean, SSHMax, FreeVPN.us, JagoVPN)
- *     -> Live hostname, ping ms, remaining slots, load %, bandwidth, ports, and official 1-click portal activation
+ *  3. Multi-Source Real-Time V2Ray/Xray/Trojan/Shadowsocks/Hysteria2 Pool (14 live GitHub/jsDelivr feeds)
+ *     -> barry-far, MatinGhanbari, SoliSpirit, mahdibland, peasoft, Surfboardv2ray, freefq + GitHub Auto-Discovery
  *
  * Security:
- *  - Strict hardcoded upstream host allowlist (zero arbitrary URL fetching / zero SSRF)
- *  - Strict input validation on username, password, SNI/Bug Host, and duration
+ *  - Strict hardcoded upstream host allowlist (zero arbitrary URL fetching)
+ *  - Strict input validation on username, SNI/Bug Host, and duration
  *  - Zero credential logging; private keys exist only in the live response payload
  */
 
@@ -22,14 +20,6 @@ const ALLOWED_UPSTREAM_HOSTS = new Set([
   'api.cloudflareclient.com',
   'www.vpngate.net',
   'vpngate.net',
-  'sshocean.com',
-  'www.sshocean.com',
-  'sshmax.net',
-  'www.sshmax.net',
-  'www.freevpn.us',
-  'freevpn.us',
-  'jagovpn.com',
-  'www.jagovpn.com',
   'raw.githubusercontent.com',
   'cdn.jsdelivr.net',
   'api.github.com',
@@ -127,7 +117,7 @@ const WARP_VIP_NODES = [
 const V2RAY_LIVE_SOURCES = [
   {
     id: 'barry-vmess',
-    provider: 'Barry-Far V2Ray',
+    provider: 'Barry-Far VMess API',
     protocolHint: 'vmess',
     urls: [
       'https://raw.githubusercontent.com/barry-far/V2ray-Config/main/Splitted-By-Protocol/vmess.txt',
@@ -136,7 +126,7 @@ const V2RAY_LIVE_SOURCES = [
   },
   {
     id: 'barry-vless',
-    provider: 'Barry-Far Xray',
+    provider: 'Barry-Far Xray API',
     protocolHint: 'vless',
     urls: [
       'https://raw.githubusercontent.com/barry-far/V2ray-Config/main/Splitted-By-Protocol/vless.txt',
@@ -145,7 +135,7 @@ const V2RAY_LIVE_SOURCES = [
   },
   {
     id: 'barry-trojan',
-    provider: 'Barry-Far Trojan',
+    provider: 'Barry-Far Trojan API',
     protocolHint: 'trojan',
     urls: [
       'https://raw.githubusercontent.com/barry-far/V2ray-Config/main/Splitted-By-Protocol/trojan.txt',
@@ -162,12 +152,66 @@ const V2RAY_LIVE_SOURCES = [
     ],
   },
   {
-    id: 'matin-mix',
-    provider: 'MatinGhanbari Xray',
-    protocolHint: 'mix',
+    id: 'matin-hy2',
+    provider: 'MatinGhanbari Hysteria2',
+    protocolHint: 'hysteria2',
     urls: [
-      'https://raw.githubusercontent.com/MatinGhanbari/v2ray-configs/main/subscriptions/v2ray/all_sub.txt',
-      'https://cdn.jsdelivr.net/gh/MatinGhanbari/v2ray-configs@main/subscriptions/v2ray/all_sub.txt',
+      'https://raw.githubusercontent.com/MatinGhanbari/v2ray-configs/main/subscriptions/filtered/subs/hysteria2.txt',
+      'https://cdn.jsdelivr.net/gh/MatinGhanbari/v2ray-configs@main/subscriptions/filtered/subs/hysteria2.txt',
+    ],
+  },
+  {
+    id: 'matin-vless',
+    provider: 'MatinGhanbari Xray',
+    protocolHint: 'vless',
+    urls: [
+      'https://raw.githubusercontent.com/MatinGhanbari/v2ray-configs/main/subscriptions/filtered/subs/vless.txt',
+      'https://cdn.jsdelivr.net/gh/MatinGhanbari/v2ray-configs@main/subscriptions/filtered/subs/vless.txt',
+    ],
+  },
+  {
+    id: 'matin-trojan',
+    provider: 'MatinGhanbari Trojan',
+    protocolHint: 'trojan',
+    urls: [
+      'https://raw.githubusercontent.com/MatinGhanbari/v2ray-configs/main/subscriptions/filtered/subs/trojan.txt',
+      'https://cdn.jsdelivr.net/gh/MatinGhanbari/v2ray-configs@main/subscriptions/filtered/subs/trojan.txt',
+    ],
+  },
+  {
+    id: 'solispirit-vless',
+    provider: 'SoliSpirit Xray API',
+    protocolHint: 'vless',
+    urls: [
+      'https://raw.githubusercontent.com/SoliSpirit/v2ray-configs/main/Protocols/vless.txt',
+      'https://cdn.jsdelivr.net/gh/SoliSpirit/v2ray-configs@main/Protocols/vless.txt',
+    ],
+  },
+  {
+    id: 'solispirit-ss',
+    provider: 'SoliSpirit Shadowsocks',
+    protocolHint: 'shadowsocks',
+    urls: [
+      'https://raw.githubusercontent.com/SoliSpirit/v2ray-configs/main/Protocols/ss.txt',
+      'https://cdn.jsdelivr.net/gh/SoliSpirit/v2ray-configs@main/Protocols/ss.txt',
+    ],
+  },
+  {
+    id: 'mahdibland-ss',
+    provider: 'MahdiBland Shadowsocks',
+    protocolHint: 'shadowsocks',
+    urls: [
+      'https://raw.githubusercontent.com/mahdibland/V2RayAggregator/master/sub/splitted/ss.txt',
+      'https://cdn.jsdelivr.net/gh/mahdibland/V2RayAggregator@master/sub/splitted/ss.txt',
+    ],
+  },
+  {
+    id: 'surfboard-hy2',
+    provider: 'Surfboard Hysteria2',
+    protocolHint: 'hysteria2',
+    urls: [
+      'https://raw.githubusercontent.com/Surfboardv2ray/TGParse/main/splitted/hysteria2',
+      'https://cdn.jsdelivr.net/gh/Surfboardv2ray/TGParse@main/splitted/hysteria2',
     ],
   },
   {
@@ -177,15 +221,6 @@ const V2RAY_LIVE_SOURCES = [
     urls: [
       'https://raw.githubusercontent.com/peasoft/NoMoreWalls/master/list_raw.txt',
       'https://cdn.jsdelivr.net/gh/peasoft/NoMoreWalls@master/list_raw.txt',
-    ],
-  },
-  {
-    id: 'mahdibland-mix',
-    provider: 'MahdiBland Aggregator',
-    protocolHint: 'mix',
-    urls: [
-      'https://raw.githubusercontent.com/mahdibland/V2RayAggregator/master/Eternity',
-      'https://cdn.jsdelivr.net/gh/mahdibland/V2RayAggregator@master/Eternity',
     ],
   },
   {
@@ -480,6 +515,14 @@ function safeBase64Encode(str) {
   return bytesToBase64(bytes);
 }
 
+function safeDecodeURIComponent(str) {
+  try {
+    return decodeURIComponent(String(str || ''));
+  } catch {
+    return String(str || '');
+  }
+}
+
 function decodeHtmlEntities(str) {
   return String(str || '')
     .replace(/&amp;/g, '&')
@@ -680,6 +723,16 @@ async function fetchVpnGateServers() {
 // Engine 2: Multi-Source Live V2Ray / Xray / Trojan / Shadowsocks / Hysteria2
 // ============================================================================
 
+function isValidTunnelHost(rawHost) {
+  const host = String(rawHost || '').trim().toLowerCase();
+  if (!host || host.length < 3 || host.length > 253) return false;
+  if (host === 'localhost' || host === '127.0.0.1' || host === '0.0.0.0' || host === 'example.com') return false;
+  if (/^(10\.|192\.168\.|127\.|169\.254\.)/.test(host)) return false;
+  // Valid IPv6 literal or ASCII hostname with at least one dot
+  if (/^[0-9a-f:]+$/i.test(host) && host.includes(':')) return true;
+  return /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)+$/.test(host);
+}
+
 export function parseProxyConfigLine(rawLine, sourceName) {
   const line = String(rawLine || '').trim();
   if (!line || line.length < 14 || line.length > 4000) return null;
@@ -692,7 +745,7 @@ export function parseProxyConfigLine(rawLine, sourceName) {
       const host = String(cfg.add || '').trim();
       const port = Number(cfg.port) || 443;
       const uuid = String(cfg.id || '').trim();
-      if (!host || !uuid || port < 1 || port > 65535) return null;
+      if (!isValidTunnelHost(host) || !uuid || port < 1 || port > 65535) return null;
       const remark = String(cfg.ps || '');
       const country = detectCountryFromText(`${remark} ${host}`);
       const net = String(cfg.net || 'tcp').toLowerCase();
@@ -744,9 +797,9 @@ export function parseProxyConfigLine(rawLine, sourceName) {
       const u = new URL(normalizedForUrl);
       const host = u.hostname;
       const port = Number(u.port) || 443;
-      const credential = decodeURIComponent(u.username || '');
-      if (!host || !credential) return null;
-      const remark = decodeURIComponent((u.hash || '').slice(1));
+      const credential = safeDecodeURIComponent(u.username || '');
+      if (!isValidTunnelHost(host) || !credential) return null;
+      const remark = safeDecodeURIComponent((u.hash || '').slice(1));
       const country = detectCountryFromText(`${remark} ${host}`);
       const params = u.searchParams;
       const net = (params.get('type') || (proto === 'hysteria2' ? 'quic' : 'tcp')).toLowerCase();
@@ -795,15 +848,23 @@ export function parseProxyConfigLine(rawLine, sourceName) {
 
     if (line.startsWith('ss://')) {
       const hashIdx = line.indexOf('#');
-      const remark = hashIdx >= 0 ? decodeURIComponent(line.slice(hashIdx + 1)) : '';
+      const remark = hashIdx >= 0 ? safeDecodeURIComponent(line.slice(hashIdx + 1)) : '';
       const bodyPart = hashIdx >= 0 ? line.slice(5, hashIdx) : line.slice(5);
       let host = '';
       let port = 443;
       let method = 'chacha20-ietf-poly1305';
       if (bodyPart.includes('@')) {
-        const [authPart, hostPortRaw] = bodyPart.split('@');
-        const decodedAuth = safeBase64Decode(authPart);
-        if (decodedAuth.includes(':')) method = decodedAuth.split(':')[0];
+        const atIdx = bodyPart.lastIndexOf('@');
+        const authPart = bodyPart.slice(0, atIdx);
+        const hostPortRaw = bodyPart.slice(atIdx + 1);
+        const rawAuth = safeDecodeURIComponent(authPart);
+        if (rawAuth.includes(':')) {
+          // Plaintext SS-2022 or SIP002 method:password format
+          method = rawAuth.split(':')[0];
+        } else {
+          const decodedAuth = safeBase64Decode(authPart);
+          if (decodedAuth.includes(':')) method = decodedAuth.split(':')[0];
+        }
         const cleanHostPort = hostPortRaw.split('/')[0].split('?')[0];
         const lastColon = cleanHostPort.lastIndexOf(':');
         if (lastColon > 0) {
@@ -824,7 +885,7 @@ export function parseProxyConfigLine(rawLine, sourceName) {
           }
         }
       }
-      if (!host || port < 1 || port > 65535) return null;
+      if (!isValidTunnelHost(host) || port < 1 || port > 65535) return null;
       const country = detectCountryFromText(`${remark} ${host}`);
       const id = `ss-${country.code.toLowerCase()}-${makeShortHash(`${host}:${port}:${method}`)}`;
       return {
@@ -866,12 +927,14 @@ export function parseProxyConfigLine(rawLine, sourceName) {
   return null;
 }
 
-function extractLinesFromSubText(rawText) {
+export function extractLinesFromSubText(rawText) {
   const trimmed = String(rawText || '').trim();
   if (!trimmed) return [];
-  // Detect pure base64 subscription payload
+  // Detect pure base64 subscription payload (ensure 4-byte alignment if sliced)
   if (!trimmed.includes('://') && /^[A-Za-z0-9+/=\r\n_-]{40,}$/.test(trimmed.slice(0, 240))) {
-    const decoded = safeBase64Decode(trimmed.replace(/\s+/g, ''));
+    const compact = trimmed.replace(/\s+/g, '');
+    const aligned = compact.slice(0, Math.floor(compact.length / 4) * 4);
+    const decoded = safeBase64Decode(aligned);
     if (decoded.includes('://')) {
       return decoded.split(/\r?\n/);
     }
@@ -919,7 +982,7 @@ async function fetchMultiSourceV2rayPool() {
   const rawMap = new Map();
   const seenHostProto = new Set();
   const protoCounts = { vmess: 0, vless: 0, trojan: 0, shadowsocks: 0, hysteria2: 0 };
-  const protoCaps = { vmess: 18, vless: 18, trojan: 16, shadowsocks: 14, hysteria2: 10 };
+  const protoCaps = { vmess: 36, vless: 42, trojan: 36, shadowsocks: 36, hysteria2: 24 };
   const countryProtoCap = new Map();
   let healthySources = 0;
 
@@ -932,16 +995,18 @@ async function fetchMultiSourceV2rayPool() {
         const slice = res.text.length > 260000 ? res.text.slice(0, 260000) : res.text;
         const lines = extractLinesFromSubText(slice);
         let added = 0;
+        let parsedTotal = 0;
         for (const line of lines) {
           const parsed = parseProxyConfigLine(line, src.provider);
           if (!parsed) continue;
+          parsedTotal++;
           const p = parsed.server.protocol;
-          if (protoCounts[p] >= (protoCaps[p] || 12)) continue;
+          if (protoCounts[p] >= (protoCaps[p] || 24)) continue;
           const dedupeKey = `${p}|${parsed.server.host}:${parsed.server.port}`;
           if (seenHostProto.has(dedupeKey)) continue;
           const cpKey = `${p}|${parsed.server.countryCode}`;
           const cpCount = countryProtoCap.get(cpKey) || 0;
-          if (cpCount >= 3) continue;
+          if (cpCount >= 5) continue;
 
           seenHostProto.add(dedupeKey);
           countryProtoCap.set(cpKey, cpCount + 1);
@@ -949,11 +1014,11 @@ async function fetchMultiSourceV2rayPool() {
           rawMap.set(parsed.server.id, parsed.rawUri);
           servers.push(parsed.server);
           added++;
-          if (added >= 22) break;
+          if (added >= 14) break;
         }
-        if (added > 0) {
+        if (parsedTotal > 0) {
           healthySources++;
-          _providerHealth.set(src.provider, { ok: true, count: added, url });
+          _providerHealth.set(src.provider, { ok: true, count: added || parsedTotal, url });
           return true;
         }
       } catch {
@@ -1358,16 +1423,16 @@ async function loadUnifiedServerCatalog(forceRefresh = false) {
   }));
   _providerHealth.set('Cloudflare WARP Official API', { ok: true, count: warpServers.length });
 
-  const [vpngateRes, v2rayRes, portalServers] = await Promise.all([
+  const [vpngateRes, v2rayRes] = await Promise.all([
     fetchVpnGateServers(),
     fetchMultiSourceV2rayPool(),
-    fetchLivePortalProviders(),
   ]);
 
   _vpngateOvpnMap = vpngateRes.ovpnMap;
   _v2rayRawMap = v2rayRes.rawMap;
 
-  const allServers = [...warpServers, ...v2rayRes.servers, ...vpngateRes.servers, ...portalServers];
+  // 100% direct instant-creation servers ONLY (zero portal-redirect servers)
+  const allServers = [...warpServers, ...v2rayRes.servers, ...vpngateRes.servers];
   const providersSummary = [..._providerHealth.entries()].map(([name, info]) => ({
     name,
     ok: !!info.ok,
@@ -1887,8 +1952,19 @@ export async function handleSshVpnRequest(request) {
         return jsonResponse(createV2rayPoolAccount(server, rawUri, clean), 200);
       }
 
-      // Portal-verified VPS SSH / Tunnel server
-      return jsonResponse(createPortalSshPreparation(server, clean), 200);
+      // Refresh live pool once if the selected node rotated out of memory cache
+      const refreshed = await loadUnifiedServerCatalog(true);
+      const fallbackSrv =
+        refreshed.servers.find((s) => s.id === server.id) ||
+        refreshed.servers.find((s) => s.protocol === server.protocol);
+      if (fallbackSrv && _v2rayRawMap.has(fallbackSrv.id)) {
+        return jsonResponse(createV2rayPoolAccount(fallbackSrv, _v2rayRawMap.get(fallbackSrv.id), clean), 200);
+      }
+
+      return jsonResponse(
+        { ok: false, error: 'Server sedang diperbarui secara real-time. Silakan tekan Segarkan Real-Time dan coba lagi.' },
+        503
+      );
     }
 
     return jsonResponse({ ok: false, error: 'Method tidak didukung.' }, 405);

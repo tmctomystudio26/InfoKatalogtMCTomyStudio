@@ -1,7 +1,7 @@
 /**
- * Manifestudio SSH & VPN Studio — UI Controller (v95)
- * Clean, single-elevation multi-API network account provisioning console.
- * Zero alert()/confirm(), full Light & Dark mode support, 100% escaped DOM rendering.
+ * Manifestudio SSH & VPN Studio — UI Controller (v97)
+ * Clean, single-elevation multi-API instant network account console.
+ * Zero alert()/confirm(), zero-lag debounced search, full Light & Dark mode, 100% escaped DOM.
  */
 
 import {
@@ -19,9 +19,8 @@ import {
   loadSshVpnHistory,
   protocolRequiresPassword,
   removeAccountFromHistory,
-  sanitizeExternalPortalUrl,
   validateSshVpnForm,
-} from './sshvpn-logic.js?v=96';
+} from './sshvpn-logic.js?v=97';
 
 function esc(val) {
   return String(val ?? '')
@@ -85,6 +84,9 @@ function formatSyncTime(iso) {
 
 export function createSshVpnController({ rootEl, onToast }) {
   let mounted = false;
+  let searchDebounceTimer = null;
+  let historyDebounceTimer = null;
+  const PAGE_SIZE = 30;
 
   const state = {
     activeView: 'builder', // 'builder' | 'history'
@@ -101,9 +103,9 @@ export function createSshVpnController({ rootEl, onToast }) {
     // Filters
     protocol: 'all',
     country: 'ALL',
-    instantOnly: false,
     query: '',
     sortBy: 'recommended',
+    visibleLimit: PAGE_SIZE,
 
     // Selection & Form
     selectedServerId: '',
@@ -115,7 +117,7 @@ export function createSshVpnController({ rootEl, onToast }) {
     formError: '',
 
     // Created Result
-    activeResult: null, // { provisioningMode, requiresPortalVerification, portalMessage, account }
+    activeResult: null, // { provisioningMode, account }
     resultTab: 'summary', // 'summary' | 'config' | 'clash' | 'singbox'
 
     // History
@@ -132,7 +134,7 @@ export function createSshVpnController({ rootEl, onToast }) {
     return filterAndSortServers(state.servers, {
       protocol: state.protocol,
       country: state.country,
-      instantOnly: state.instantOnly,
+      instantOnly: false,
       query: state.query,
       sortBy: state.sortBy,
     });
@@ -227,13 +229,8 @@ export function createSshVpnController({ rootEl, onToast }) {
 
       state.activeResult = data;
       state.resultTab = 'summary';
-
-      if (data.provisioningMode === 'instant') {
-        state.history = addAccountToHistory(data.account);
-        notify(`Akun ${data.account.protocolLabel} (${data.account.country}) berhasil dibuat & disimpan!`, 'success');
-      } else {
-        notify('Konfigurasi SSH siap. Klik tombol Portal Resmi untuk aktivasi 1 klik.', 'info');
-      }
+      state.history = addAccountToHistory(data.account);
+      notify(`Akun ${data.account.protocolLabel} (${data.account.country}) aktif instan & tersimpan!`, 'success');
     } catch (err) {
       state.formError = err instanceof Error ? err.message : 'Terjadi kendala saat membuat akun.';
       notify(state.formError, 'error');
@@ -251,8 +248,6 @@ export function createSshVpnController({ rootEl, onToast }) {
     const res = state.activeResult;
     if (!res || !res.account) return '';
     const acc = res.account;
-    const isPortal = res.provisioningMode === 'portal';
-    const safePortalUrl = sanitizeExternalPortalUrl(acc.portalUrl);
     const hasClash = Boolean(acc.clashConfig && acc.clashConfig.trim());
     const hasSingbox = Boolean(acc.singboxConfig && acc.singboxConfig.trim());
     const expiry = computeAccountExpiry(acc.expiresAt);
@@ -299,39 +294,14 @@ export function createSshVpnController({ rootEl, onToast }) {
     }
 
     return `
-      <div id="sshvpn-result-anchor" class="sshvpn-result-card ${isPortal ? 'is-portal' : 'is-instant'}">
+      <div id="sshvpn-result-anchor" class="sshvpn-result-card is-instant">
         <div class="sshvpn-result-head">
           <div>
-            <p class="sshvpn-result-kicker">${
-              isPortal ? 'Belum Aktif · Wajib Aktivasi Portal Resmi' : 'Akun VIP Gratis Aktif Instan'
-            }</p>
+            <p class="sshvpn-result-kicker">Akun VIP Gratis · Langsung Aktif</p>
             <h3 class="sshvpn-result-title">${esc(acc.flag || '')} ${esc(acc.serverName || acc.host)}</h3>
           </div>
-          <span class="sshvpn-expiry-text">${esc(isPortal ? 'Menunggu Aktivasi' : expiry.label)}</span>
+          <span class="sshvpn-expiry-text">${esc(expiry.label)}</span>
         </div>
-
-        ${
-          isPortal && res.portalMessage
-            ? `
-            <div class="sshvpn-portal-notice">
-              <p style="margin:0 0 0.65rem">${esc(res.portalMessage)}</p>
-              <div class="sshvpn-result-actions">
-                ${
-                  safePortalUrl
-                    ? `<a class="sshvpn-btn sshvpn-btn-accent" href="${esc(safePortalUrl)}" target="_blank" rel="noopener noreferrer">Langkah 1: Aktifkan di Portal Resmi ↗</a>`
-                    : ''
-                }
-                <button type="button" class="sshvpn-btn sshvpn-btn-secondary" data-action="copy-username">Salin Username</button>
-                ${
-                  acc.password
-                    ? `<button type="button" class="sshvpn-btn sshvpn-btn-secondary" data-action="copy-password">Salin Password</button>`
-                    : ''
-                }
-              </div>
-            </div>
-          `
-            : ''
-        }
 
         <div class="sshvpn-subtabs" role="tablist" aria-label="Format konfigurasi akun">
           <button type="button" role="tab" aria-selected="${state.resultTab === 'summary'}" class="sshvpn-subtab ${
@@ -362,14 +332,133 @@ export function createSshVpnController({ rootEl, onToast }) {
           <button type="button" class="sshvpn-btn sshvpn-btn-primary" data-action="copy-config">Salin Konfig</button>
           <button type="button" class="sshvpn-btn sshvpn-btn-secondary" data-action="copy-summary">Salin Ringkasan</button>
           <button type="button" class="sshvpn-btn sshvpn-btn-secondary" data-action="download-config">Unduh File</button>
-          ${
-            isPortal
-              ? `<button type="button" class="sshvpn-btn sshvpn-btn-secondary" data-action="save-portal-history">Sudah Aktif? Simpan ke Riwayat</button>`
-              : ''
-          }
         </div>
       </div>
     `;
+  }
+
+  function renderServerListItems(filtered, selected) {
+    if (state.loadingCatalog) {
+      return Array.from({ length: 6 })
+        .map(
+          () => `
+        <div class="sshvpn-server-skeleton" aria-hidden="true">
+          <div class="sshvpn-skel-line w-60"></div>
+          <div class="sshvpn-skel-line w-90"></div>
+          <div class="sshvpn-skel-line w-40"></div>
+        </div>
+      `
+        )
+        .join('');
+    }
+    if (filtered.length === 0) {
+      return `
+        <div class="sshvpn-empty-state">
+          <p class="sshvpn-empty-title">Tidak ada server yang cocok dengan filter ini</p>
+          <p class="sshvpn-empty-desc">Coba pilih protokol lain, ubah negara ke Semua Negara, atau tekan Segarkan Real-Time untuk menarik server terbaru.</p>
+          <button type="button" class="sshvpn-btn sshvpn-btn-secondary" data-action="reset-filters">Reset Semua Filter</button>
+        </div>
+      `;
+    }
+
+    const visibleItems = filtered.slice(0, state.visibleLimit);
+    const remainingCount = filtered.length - visibleItems.length;
+
+    const cardsHtml = visibleItems
+      .map((srv) => {
+        const isSelected = selected && selected.id === srv.id;
+        const slot = computeSlotHealth(srv);
+        return `
+          <button
+            type="button"
+            class="sshvpn-server-item ${isSelected ? 'is-selected' : ''}"
+            data-select-server="${esc(srv.id)}"
+            aria-pressed="${isSelected}"
+          >
+            <div class="sshvpn-server-top">
+              <div class="sshvpn-server-name-wrap">
+                <span class="sshvpn-flag" aria-hidden="true">${esc(srv.flag || '🌐')}</span>
+                <span class="sshvpn-server-name">${esc(srv.name)}</span>
+              </div>
+              <span class="sshvpn-mode-text is-instant">Instan 1-Klik</span>
+            </div>
+
+            <div class="sshvpn-server-meta">
+              <span class="sshvpn-mono">${esc(srv.host)}</span>
+              <span aria-hidden="true">·</span>
+              <span>${esc(srv.country)}</span>
+              <span aria-hidden="true">·</span>
+              <span>${esc(srv.protocolLabel)}</span>
+            </div>
+
+            <div class="sshvpn-server-metrics">
+              <span class="sshvpn-num">${esc(srv.pingMs)} ms</span>
+              <span aria-hidden="true">·</span>
+              <span class="sshvpn-num">${esc(srv.speedMbps >= 1000 ? '1 Gbps+' : `${srv.speedMbps} Mbps`)}</span>
+              <span aria-hidden="true">·</span>
+              <span>${esc(srv.provider)}</span>
+            </div>
+
+            <div class="sshvpn-slot-row">
+              <div class="sshvpn-slot-bar" aria-hidden="true">
+                <span class="sshvpn-slot-fill is-${slot.status}" style="width: ${slot.percent}%"></span>
+              </div>
+              <span class="sshvpn-slot-label sshvpn-num is-${slot.status}">${esc(slot.label)}</span>
+            </div>
+          </button>
+        `;
+      })
+      .join('');
+
+    const loadMoreHtml =
+      remainingCount > 0
+        ? `<button type="button" class="sshvpn-btn sshvpn-btn-secondary sshvpn-load-more-btn" data-action="load-more-servers">Tampilkan Lebih Banyak (+${remainingCount} server)</button>`
+        : '';
+
+    return `${cardsHtml}${loadMoreHtml}`;
+  }
+
+  function bindServerListEvents(containerEl) {
+    if (!containerEl) return;
+    containerEl.querySelectorAll('[data-select-server]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        state.selectedServerId = btn.getAttribute('data-select-server') || '';
+        state.formError = '';
+        render();
+      });
+    });
+    const loadMoreBtn = containerEl.querySelector('[data-action="load-more-servers"]');
+    if (loadMoreBtn) {
+      loadMoreBtn.addEventListener('click', () => {
+        state.visibleLimit += PAGE_SIZE;
+        updateServerListInPlace();
+      });
+    }
+    const resetBtn = containerEl.querySelector('[data-action="reset-filters"]');
+    if (resetBtn) {
+      resetBtn.addEventListener('click', () => {
+        state.protocol = 'all';
+        state.country = 'ALL';
+        state.query = '';
+        state.sortBy = 'recommended';
+        state.visibleLimit = PAGE_SIZE;
+        render();
+      });
+    }
+  }
+
+  function updateServerListInPlace() {
+    if (!mounted || !rootEl || state.activeView !== 'builder') return;
+    const listEl = rootEl.querySelector('#sshvpn-server-list');
+    const countEl = rootEl.querySelector('#sshvpn-server-count');
+    if (!listEl) return;
+    const filtered = getFilteredServers();
+    const selected = getSelectedServer(filtered);
+    if (countEl) {
+      countEl.textContent = `${filtered.length} server aktif`;
+    }
+    listEl.innerHTML = renderServerListItems(filtered, selected);
+    bindServerListEvents(listEl);
   }
 
   function renderBuilderView() {
@@ -379,74 +468,8 @@ export function createSshVpnController({ rootEl, onToast }) {
     const needsPass = selected ? protocolRequiresPassword(selected.protocol) : false;
     const selectedMeta = selected ? getProtocolMeta(selected.protocol) : SSHVPN_PROTOCOLS[0];
     const selectedSlots = selected ? computeSlotHealth(selected) : null;
-    const isSniSupported = selected && ['vmess', 'vless', 'trojan', 'ssh-ws', 'ssh-ssl'].includes(selected.protocol);
-
-    const serverListHtml = state.loadingCatalog
-      ? Array.from({ length: 6 })
-          .map(
-            () => `
-          <div class="sshvpn-server-skeleton" aria-hidden="true">
-            <div class="sshvpn-skel-line w-60"></div>
-            <div class="sshvpn-skel-line w-90"></div>
-            <div class="sshvpn-skel-line w-40"></div>
-          </div>
-        `
-          )
-          .join('')
-      : filtered.length === 0
-      ? `
-        <div class="sshvpn-empty-state">
-          <p class="sshvpn-empty-title">Tidak ada server yang cocok dengan filter ini</p>
-          <p class="sshvpn-empty-desc">Coba pilih protokol lain, ubah negara ke Semua Negara, atau tekan Segarkan Real-Time untuk menarik server terbaru.</p>
-          <button type="button" class="sshvpn-btn sshvpn-btn-secondary" data-action="reset-filters">Reset Semua Filter</button>
-        </div>
-      `
-      : filtered
-          .map((srv) => {
-            const isSelected = selected && selected.id === srv.id;
-            const slot = computeSlotHealth(srv);
-            const modeLabel = srv.provisioningMode === 'instant' ? 'Instan 1-Klik' : 'Portal Resmi';
-            return `
-              <button
-                type="button"
-                class="sshvpn-server-item ${isSelected ? 'is-selected' : ''}"
-                data-select-server="${esc(srv.id)}"
-                aria-pressed="${isSelected}"
-              >
-                <div class="sshvpn-server-top">
-                  <div class="sshvpn-server-name-wrap">
-                    <span class="sshvpn-flag" aria-hidden="true">${esc(srv.flag || '🌐')}</span>
-                    <span class="sshvpn-server-name">${esc(srv.name)}</span>
-                  </div>
-                  <span class="sshvpn-mode-text ${srv.provisioningMode === 'instant' ? 'is-instant' : 'is-portal'}">${modeLabel}</span>
-                </div>
-
-                <div class="sshvpn-server-meta">
-                  <span class="sshvpn-mono">${esc(srv.host)}</span>
-                  <span aria-hidden="true">·</span>
-                  <span>${esc(srv.country)}</span>
-                  <span aria-hidden="true">·</span>
-                  <span>${esc(srv.protocolLabel)}</span>
-                </div>
-
-                <div class="sshvpn-server-metrics">
-                  <span class="sshvpn-num">${esc(srv.pingMs)} ms</span>
-                  <span aria-hidden="true">·</span>
-                  <span class="sshvpn-num">${esc(srv.speedMbps >= 1000 ? '1 Gbps+' : `${srv.speedMbps} Mbps`)}</span>
-                  <span aria-hidden="true">·</span>
-                  <span>${esc(srv.provider)}</span>
-                </div>
-
-                <div class="sshvpn-slot-row">
-                  <div class="sshvpn-slot-bar" aria-hidden="true">
-                    <span class="sshvpn-slot-fill is-${slot.status}" style="width: ${slot.percent}%"></span>
-                  </div>
-                  <span class="sshvpn-slot-label sshvpn-num is-${slot.status}">${esc(slot.label)}</span>
-                </div>
-              </button>
-            `;
-          })
-          .join('');
+    const isSniSupported = selected && ['vmess', 'vless', 'trojan'].includes(selected.protocol);
+    const serverListHtml = renderServerListItems(filtered, selected);
 
     return `
       <div class="sshvpn-proto-strip" role="tablist" aria-label="Pilih protokol akun jaringan">
@@ -478,6 +501,7 @@ export function createSshVpnController({ rootEl, onToast }) {
             type="search"
             class="sshvpn-input"
             placeholder="Cari negara, host, protokol, atau penyedia..."
+            autocomplete="off"
             value="${esc(state.query)}"
           />
         </div>
@@ -485,7 +509,7 @@ export function createSshVpnController({ rootEl, onToast }) {
         <div class="sshvpn-filter-field sshvpn-filter-select">
           <label class="sshvpn-sr-only" for="sshvpn-country-select">Filter negara server</label>
           <select id="sshvpn-country-select" class="sshvpn-select">
-            <option value="ALL">Semua Negara (${countries.length})</option>
+            <option value="ALL">Semua Negara</option>
             ${countries
               .map(
                 (c) =>
@@ -500,17 +524,12 @@ export function createSshVpnController({ rootEl, onToast }) {
         <div class="sshvpn-filter-field sshvpn-filter-select">
           <label class="sshvpn-sr-only" for="sshvpn-sort-select">Urutkan daftar server</label>
           <select id="sshvpn-sort-select" class="sshvpn-select">
-            <option value="recommended" ${state.sortBy === 'recommended' ? 'selected' : ''}>Rekomendasi VIP</option>
+            <option value="recommended" ${state.sortBy === 'recommended' ? 'selected' : ''}>Terbaik VIP</option>
             <option value="ping" ${state.sortBy === 'ping' ? 'selected' : ''}>Ping Terendah</option>
             <option value="slots" ${state.sortBy === 'slots' ? 'selected' : ''}>Slot Terbanyak</option>
-            <option value="speed" ${state.sortBy === 'speed' ? 'selected' : ''}>Kecepatan Tertinggi</option>
+            <option value="speed" ${state.sortBy === 'speed' ? 'selected' : ''}>Kecepatan</option>
           </select>
         </div>
-
-        <label class="sshvpn-checkbox-label">
-          <input type="checkbox" id="sshvpn-instant-toggle" ${state.instantOnly ? 'checked' : ''} />
-          <span>Hanya Instan 1-Klik</span>
-        </label>
       </div>
 
       ${
@@ -523,9 +542,9 @@ export function createSshVpnController({ rootEl, onToast }) {
         <div class="sshvpn-list-col">
           <div class="sshvpn-col-head">
             <h2 class="sshvpn-col-title">Daftar Server Real-Time</h2>
-            <span class="sshvpn-col-meta sshvpn-num">${filtered.length} server tersedia</span>
+            <span id="sshvpn-server-count" class="sshvpn-col-meta sshvpn-num">${filtered.length} server aktif</span>
           </div>
-          <div class="sshvpn-server-list" role="region" aria-label="Daftar server aktif">
+          <div id="sshvpn-server-list" class="sshvpn-server-list" role="region" aria-label="Daftar server aktif">
             ${serverListHtml}
           </div>
         </div>
@@ -671,9 +690,7 @@ export function createSshVpnController({ rootEl, onToast }) {
                 ${
                   state.creating
                     ? 'Menghubungi API Server...'
-                    : selected.provisioningMode === 'instant'
-                    ? `Buat Akun ${selected.protocolLabel} Gratis`
-                    : `Siapkan Akun ${selected.protocolLabel}`
+                    : `Buat Akun ${selected.protocolLabel} Gratis`
                 }
               </button>
             </form>
@@ -692,7 +709,7 @@ export function createSshVpnController({ rootEl, onToast }) {
     `;
   }
 
-  function renderHistoryView() {
+  function renderHistoryListHtml() {
     const q = state.historyQuery.trim().toLowerCase();
     const list = state.history.filter((item) => {
       if (!q) return true;
@@ -700,6 +717,121 @@ export function createSshVpnController({ rootEl, onToast }) {
       return hay.includes(q);
     });
 
+    if (list.length === 0) {
+      return `
+        <div class="sshvpn-empty-state">
+          <p class="sshvpn-empty-title">${
+            state.history.length === 0 ? 'Belum ada riwayat pembuatan akun' : 'Riwayat tidak ditemukan'
+          }</p>
+          <p class="sshvpn-empty-desc">${
+            state.history.length === 0
+              ? 'Semua akun WireGuard, VMess, VLess, Trojan, Shadowsocks, Hysteria2, dan OpenVPN yang Anda buat tersimpan otomatis secara lokal di perangkat ini.'
+              : 'Coba ubah kata kunci pencarian Anda.'
+          }</p>
+          ${
+            state.history.length === 0
+              ? `<button type="button" class="sshvpn-btn sshvpn-btn-primary" data-view="builder">Buat Akun Pertama</button>`
+              : ''
+          }
+        </div>
+      `;
+    }
+
+    return `
+      <div class="sshvpn-history-grid">
+        ${list
+          .map((acc) => {
+            const exp = computeAccountExpiry(acc.expiresAt);
+            return `
+              <article class="sshvpn-history-card">
+                <div class="sshvpn-history-top">
+                  <div>
+                    <p class="sshvpn-history-meta">${esc(acc.protocolLabel || acc.protocol)} · ${esc(acc.provider || 'Multi-API')}</p>
+                    <h3 class="sshvpn-history-title">${esc(acc.flag || '')} ${esc(acc.username)} — ${esc(acc.country || acc.host)}</h3>
+                  </div>
+                  <span class="sshvpn-expiry-text ${exp.expired ? 'is-expired' : ''}">${esc(exp.label)}</span>
+                </div>
+
+                <div class="sshvpn-history-info sshvpn-mono">
+                  <span>${esc(acc.host)}:${esc(acc.port || 443)}</span>
+                  ${acc.password ? `<span aria-hidden="true">·</span><span>Pass: ${esc(acc.password)}</span>` : ''}
+                </div>
+
+                <div class="sshvpn-history-actions">
+                  <button type="button" class="sshvpn-btn sshvpn-btn-primary" data-history-copy="${esc(acc.id)}">Salin Konfig</button>
+                  <button type="button" class="sshvpn-btn sshvpn-btn-secondary" data-history-open="${esc(acc.id)}">Detail</button>
+                  <button type="button" class="sshvpn-btn sshvpn-btn-secondary" data-history-download="${esc(acc.id)}">Unduh</button>
+                  <button type="button" class="sshvpn-btn sshvpn-btn-ghost" data-history-delete="${esc(acc.id)}" aria-label="Hapus riwayat ${esc(acc.username)}">Hapus</button>
+                </div>
+              </article>
+            `;
+          })
+          .join('')}
+      </div>
+    `;
+  }
+
+  function bindHistoryListEvents(containerEl) {
+    if (!containerEl) return;
+    containerEl.querySelectorAll('[data-view]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        state.activeView = btn.getAttribute('data-view') || 'builder';
+        state.confirmClearHistory = false;
+        render();
+      });
+    });
+    containerEl.querySelectorAll('[data-history-copy]').forEach((btn) => {
+      btn.addEventListener('click', async () => {
+        const id = btn.getAttribute('data-history-copy');
+        const acc = state.history.find((h) => h.id === id);
+        if (!acc) return;
+        const ok = await copyText(acc.configFile || acc.configUri || buildCopyableSummary(acc));
+        notify(ok ? `Konfigurasi ${acc.username} berhasil disalin.` : 'Gagal menyalin.', ok ? 'success' : 'error');
+      });
+    });
+    containerEl.querySelectorAll('[data-history-download]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const id = btn.getAttribute('data-history-download');
+        const acc = state.history.find((h) => h.id === id);
+        if (!acc) return;
+        downloadTextFile(acc.configFileName || `${acc.username}-config.txt`, acc.configFile || acc.configUri || '');
+        notify(`Mengunduh ${acc.configFileName || 'konfigurasi'}.`, 'success');
+      });
+    });
+    containerEl.querySelectorAll('[data-history-open]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const id = btn.getAttribute('data-history-open');
+        const acc = state.history.find((h) => h.id === id);
+        if (!acc) return;
+        state.activeResult = {
+          ok: true,
+          provisioningMode: 'instant',
+          account: acc,
+        };
+        state.resultTab = 'summary';
+        state.activeView = 'builder';
+        render();
+      });
+    });
+    containerEl.querySelectorAll('[data-history-delete]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const id = btn.getAttribute('data-history-delete');
+        state.history = removeAccountFromHistory(id);
+        notify('Akun dihapus dari riwayat.', 'info');
+        render();
+      });
+    });
+  }
+
+  function updateHistoryListInPlace() {
+    if (!mounted || !rootEl || state.activeView !== 'history') return;
+    const wrap = rootEl.querySelector('#sshvpn-history-list-wrap');
+    if (!wrap) return;
+    wrap.innerHTML = renderHistoryListHtml();
+    bindHistoryListEvents(wrap);
+  }
+
+  function renderHistoryView() {
     return `
       <div class="sshvpn-history-bar">
         <div class="sshvpn-filter-field">
@@ -709,6 +841,7 @@ export function createSshVpnController({ rootEl, onToast }) {
             type="search"
             class="sshvpn-input"
             placeholder="Cari username, protokol, negara, atau host di riwayat..."
+            autocomplete="off"
             value="${esc(state.historyQuery)}"
           />
         </div>
@@ -728,58 +861,9 @@ export function createSshVpnController({ rootEl, onToast }) {
         }
       </div>
 
-      ${
-        list.length === 0
-          ? `
-        <div class="sshvpn-empty-state">
-          <p class="sshvpn-empty-title">${
-            state.history.length === 0 ? 'Belum ada riwayat pembuatan akun' : 'Riwayat tidak ditemukan'
-          }</p>
-          <p class="sshvpn-empty-desc">${
-            state.history.length === 0
-              ? 'Semua akun WireGuard, VMess, VLess, Trojan, Shadowsocks, OpenVPN, dan SSH yang Anda buat tersimpan otomatis secara lokal di perangkat ini.'
-              : 'Coba ubah kata kunci pencarian Anda.'
-          }</p>
-          ${
-            state.history.length === 0
-              ? `<button type="button" class="sshvpn-btn sshvpn-btn-primary" data-view="builder">Buat Akun Pertama</button>`
-              : ''
-          }
-        </div>
-      `
-          : `
-        <div class="sshvpn-history-grid">
-          ${list
-            .map((acc) => {
-              const exp = computeAccountExpiry(acc.expiresAt);
-              return `
-                <article class="sshvpn-history-card">
-                  <div class="sshvpn-history-top">
-                    <div>
-                      <p class="sshvpn-history-meta">${esc(acc.protocolLabel || acc.protocol)} · ${esc(acc.provider || 'Multi-API')}</p>
-                      <h3 class="sshvpn-history-title">${esc(acc.flag || '')} ${esc(acc.username)} — ${esc(acc.country || acc.host)}</h3>
-                    </div>
-                    <span class="sshvpn-expiry-text ${exp.expired ? 'is-expired' : ''}">${esc(exp.label)}</span>
-                  </div>
-
-                  <div class="sshvpn-history-info sshvpn-mono">
-                    <span>${esc(acc.host)}:${esc(acc.port || 443)}</span>
-                    ${acc.password ? `<span aria-hidden="true">·</span><span>Pass: ${esc(acc.password)}</span>` : ''}
-                  </div>
-
-                  <div class="sshvpn-history-actions">
-                    <button type="button" class="sshvpn-btn sshvpn-btn-primary" data-history-copy="${esc(acc.id)}">Salin Konfig</button>
-                    <button type="button" class="sshvpn-btn sshvpn-btn-secondary" data-history-open="${esc(acc.id)}">Detail</button>
-                    <button type="button" class="sshvpn-btn sshvpn-btn-secondary" data-history-download="${esc(acc.id)}">Unduh</button>
-                    <button type="button" class="sshvpn-btn sshvpn-btn-ghost" data-history-delete="${esc(acc.id)}" aria-label="Hapus riwayat ${esc(acc.username)}">Hapus</button>
-                  </div>
-                </article>
-              `;
-            })
-            .join('')}
-        </div>
-      `
-      }
+      <div id="sshvpn-history-list-wrap">
+        ${renderHistoryListHtml()}
+      </div>
     `;
   }
 
@@ -897,6 +981,7 @@ export function createSshVpnController({ rootEl, onToast }) {
     rootEl.querySelectorAll('[data-proto]').forEach((btn) => {
       btn.addEventListener('click', () => {
         state.protocol = btn.getAttribute('data-proto') || 'all';
+        state.visibleLimit = PAGE_SIZE;
         const filtered = getFilteredServers();
         if (filtered.length > 0) {
           state.selectedServerId = filtered[0].id;
@@ -905,13 +990,8 @@ export function createSshVpnController({ rootEl, onToast }) {
       });
     });
 
-    rootEl.querySelectorAll('[data-select-server]').forEach((btn) => {
-      btn.addEventListener('click', () => {
-        state.selectedServerId = btn.getAttribute('data-select-server') || '';
-        state.formError = '';
-        render();
-      });
-    });
+    bindServerListEvents(rootEl.querySelector('#sshvpn-server-list'));
+    bindHistoryListEvents(rootEl.querySelector('#sshvpn-history-list-wrap'));
 
     rootEl.querySelectorAll('[data-duration]').forEach((btn) => {
       btn.addEventListener('click', () => {
@@ -931,7 +1011,11 @@ export function createSshVpnController({ rootEl, onToast }) {
     if (searchInput) {
       searchInput.addEventListener('input', (e) => {
         state.query = e.target.value || '';
-        render();
+        state.visibleLimit = PAGE_SIZE;
+        if (searchDebounceTimer) clearTimeout(searchDebounceTimer);
+        searchDebounceTimer = setTimeout(() => {
+          updateServerListInPlace();
+        }, 100);
       });
     }
 
@@ -939,6 +1023,7 @@ export function createSshVpnController({ rootEl, onToast }) {
     if (countrySelect) {
       countrySelect.addEventListener('change', (e) => {
         state.country = e.target.value || 'ALL';
+        state.visibleLimit = PAGE_SIZE;
         const filtered = getFilteredServers();
         if (filtered.length > 0) state.selectedServerId = filtered[0].id;
         render();
@@ -949,17 +1034,8 @@ export function createSshVpnController({ rootEl, onToast }) {
     if (sortSelect) {
       sortSelect.addEventListener('change', (e) => {
         state.sortBy = e.target.value || 'recommended';
-        render();
-      });
-    }
-
-    const instantToggle = rootEl.querySelector('#sshvpn-instant-toggle');
-    if (instantToggle) {
-      instantToggle.addEventListener('change', (e) => {
-        state.instantOnly = !!e.target.checked;
-        const filtered = getFilteredServers();
-        if (filtered.length > 0) state.selectedServerId = filtered[0].id;
-        render();
+        state.visibleLimit = PAGE_SIZE;
+        updateServerListInPlace();
       });
     }
 
@@ -996,24 +1072,21 @@ export function createSshVpnController({ rootEl, onToast }) {
     if (historySearch) {
       historySearch.addEventListener('input', (e) => {
         state.historyQuery = e.target.value || '';
-        render();
+        if (historyDebounceTimer) clearTimeout(historyDebounceTimer);
+        historyDebounceTimer = setTimeout(() => {
+          updateHistoryListInPlace();
+        }, 100);
       });
     }
 
     rootEl.querySelectorAll('[data-action]').forEach((btn) => {
+      const act = btn.getAttribute('data-action');
+      if (act === 'load-more-servers' || act === 'reset-filters') return;
       btn.addEventListener('click', async () => {
-        const act = btn.getAttribute('data-action');
         if (act === 'refresh-catalog') {
           fetchServers(true);
         } else if (act === 'toggle-providers') {
           state.showProviderDrawer = !state.showProviderDrawer;
-          render();
-        } else if (act === 'reset-filters') {
-          state.protocol = 'all';
-          state.country = 'ALL';
-          state.instantOnly = false;
-          state.query = '';
-          state.sortBy = 'recommended';
           render();
         } else if (act === 'random-creds') {
           const creds = generateRandomCredentials('vip');
@@ -1038,19 +1111,6 @@ export function createSshVpnController({ rootEl, onToast }) {
           const acc = state.activeResult.account;
           downloadTextFile(acc.configFileName || `${acc.username}-config.txt`, acc.configFile || acc.configUri || '');
           notify(`Berkas ${acc.configFileName || 'konfigurasi'} diunduh.`, 'success');
-        } else if (act === 'copy-username' && state.activeResult?.account) {
-          const acc = state.activeResult.account;
-          const u = acc.portalInputUsername || acc.username || '';
-          const ok = await copyText(u);
-          notify(ok ? `Username "${u}" disalin.` : 'Gagal menyalin username.', ok ? 'success' : 'error');
-        } else if (act === 'copy-password' && state.activeResult?.account) {
-          const p = state.activeResult.account.password || '';
-          const ok = await copyText(p);
-          notify(ok ? 'Password berhasil disalin.' : 'Gagal menyalin password.', ok ? 'success' : 'error');
-        } else if (act === 'save-portal-history' && state.activeResult?.account) {
-          state.history = addAccountToHistory(state.activeResult.account);
-          notify('Akun SSH disimpan ke Riwayat Akun.', 'success');
-          render();
         } else if (act === 'ask-clear-history') {
           state.confirmClearHistory = true;
           render();
@@ -1063,51 +1123,6 @@ export function createSshVpnController({ rootEl, onToast }) {
           notify('Seluruh riwayat akun telah dibersihkan.', 'info');
           render();
         }
-      });
-    });
-
-    rootEl.querySelectorAll('[data-history-copy]').forEach((btn) => {
-      btn.addEventListener('click', async () => {
-        const id = btn.getAttribute('data-history-copy');
-        const acc = state.history.find((h) => h.id === id);
-        if (!acc) return;
-        const ok = await copyText(acc.configFile || acc.configUri || buildCopyableSummary(acc));
-        notify(ok ? `Konfigurasi ${acc.username} berhasil disalin.` : 'Gagal menyalin.', ok ? 'success' : 'error');
-      });
-    });
-
-    rootEl.querySelectorAll('[data-history-download]').forEach((btn) => {
-      btn.addEventListener('click', () => {
-        const id = btn.getAttribute('data-history-download');
-        const acc = state.history.find((h) => h.id === id);
-        if (!acc) return;
-        downloadTextFile(acc.configFileName || `${acc.username}-config.txt`, acc.configFile || acc.configUri || '');
-        notify(`Mengunduh ${acc.configFileName || 'konfigurasi'}.`, 'success');
-      });
-    });
-
-    rootEl.querySelectorAll('[data-history-open]').forEach((btn) => {
-      btn.addEventListener('click', () => {
-        const id = btn.getAttribute('data-history-open');
-        const acc = state.history.find((h) => h.id === id);
-        if (!acc) return;
-        state.activeResult = {
-          ok: true,
-          provisioningMode: acc.portalUrl && String(acc.protocol || '').startsWith('ssh-') ? 'portal' : 'instant',
-          account: acc,
-        };
-        state.resultTab = 'summary';
-        state.activeView = 'builder';
-        render();
-      });
-    });
-
-    rootEl.querySelectorAll('[data-history-delete]').forEach((btn) => {
-      btn.addEventListener('click', () => {
-        const id = btn.getAttribute('data-history-delete');
-        state.history = removeAccountFromHistory(id);
-        notify('Akun dihapus dari riwayat.', 'info');
-        render();
       });
     });
   }
@@ -1127,6 +1142,8 @@ export function createSshVpnController({ rootEl, onToast }) {
     },
     unmount() {
       mounted = false;
+      if (searchDebounceTimer) clearTimeout(searchDebounceTimer);
+      if (historyDebounceTimer) clearTimeout(historyDebounceTimer);
       if (rootEl) rootEl.innerHTML = '';
     },
     redrawTheme() {

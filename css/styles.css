@@ -22861,6 +22861,10 @@ html[data-studio-view='home'] #studio-tool-view {
   flex-direction: column;
   gap: 1rem;
   width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+  overflow-x: clip;
   color: var(--ink);
   font-family: var(--font-sans);
 }
@@ -22889,6 +22893,9 @@ html[data-studio-view='home'] #studio-tool-view {
   align-items: center;
   justify-content: space-between;
   gap: 0.9rem 1.25rem;
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
   padding: 1rem 1.15rem;
   background: var(--surface);
   border: 1px solid var(--border);
@@ -22900,6 +22907,7 @@ html[data-studio-view='home'] #studio-tool-view {
   flex-direction: column;
   gap: 0.55rem;
   min-width: 0;
+  max-width: 100%;
 }
 
 .sshvpn-nav-tabs {
@@ -22910,6 +22918,8 @@ html[data-studio-view='home'] #studio-tool-view {
   background: var(--surface-elevated);
   border-radius: var(--radius-sm);
   width: fit-content;
+  max-width: 100%;
+  box-sizing: border-box;
 }
 
 .sshvpn-nav-tab {
@@ -23120,9 +23130,10 @@ html[data-studio-view='home'] #studio-tool-view {
 
 .sshvpn-col-head {
   display: flex;
-  align-items: baseline;
+  flex-wrap: wrap;
+  align-items: center;
   justify-content: space-between;
-  gap: 0.75rem;
+  gap: 0.3rem 0.75rem;
 }
 
 .sshvpn-col-title {
@@ -23136,6 +23147,7 @@ html[data-studio-view='home'] #studio-tool-view {
 .sshvpn-col-meta {
   font-size: 0.8rem;
   color: var(--ink-muted);
+  white-space: nowrap;
 }
 
 .sshvpn-server-list {
@@ -23144,7 +23156,8 @@ html[data-studio-view='home'] #studio-tool-view {
   gap: 0.6rem;
   max-height: 760px;
   overflow-y: auto;
-  padding-right: 0.25rem;
+  overflow-x: hidden;
+  padding-right: 0.15rem;
 }
 
 .sshvpn-server-item {
@@ -23152,6 +23165,8 @@ html[data-studio-view='home'] #studio-tool-view {
   flex-direction: column;
   gap: 0.45rem;
   width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
   padding: 0.9rem 1rem;
   text-align: left;
   border-radius: var(--radius-md);
@@ -23160,6 +23175,11 @@ html[data-studio-view='home'] #studio-tool-view {
   color: var(--ink);
   cursor: pointer;
   transition: border-color 160ms var(--ease), background-color 160ms var(--ease);
+}
+
+.sshvpn-load-more-btn {
+  width: 100%;
+  margin-top: 0.2rem;
 }
 
 .sshvpn-server-item:hover {
@@ -23289,6 +23309,10 @@ html[data-studio-view='home'] #studio-tool-view {
 .sshvpn-form-card,
 .sshvpn-result-card,
 .sshvpn-history-card {
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
+  overflow-x: clip;
   padding: 1.15rem 1.25rem;
   border-radius: var(--radius-lg);
   border: 1px solid var(--border);
@@ -23433,13 +23457,17 @@ html[data-studio-view='home'] #studio-tool-view {
   align-items: center;
   justify-content: center;
   gap: 0.45rem;
+  max-width: 100%;
+  box-sizing: border-box;
   min-height: 40px;
-  padding: 0.5rem 1rem;
+  padding: 0.5rem 0.95rem;
   border-radius: var(--radius-sm);
   border: 1px solid transparent;
-  font-size: 0.86rem;
+  font-size: 0.85rem;
   font-weight: 600;
-  white-space: nowrap;
+  line-height: 1.25;
+  text-align: center;
+  white-space: normal;
   text-decoration: none;
   cursor: pointer;
   transition: background-color 160ms var(--ease), border-color 160ms var(--ease), color 160ms var(--ease);
@@ -23642,7 +23670,7 @@ html[data-studio-view='home'] #studio-tool-view {
 
 .sshvpn-history-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(min(280px, 100%), 1fr));
   gap: 0.9rem;
 }
 
@@ -23719,27 +23747,69 @@ html[data-studio-view='home'] #studio-tool-view {
 }
 
 @media (max-width: 640px) {
+  .sshvpn-shell {
+    padding-bottom: 4.75rem;
+  }
   .sshvpn-topbar {
     padding: 0.85rem;
+    gap: 0.75rem;
+  }
+  .sshvpn-topbar-info {
+    width: 100%;
+  }
+  .sshvpn-nav-tabs {
+    width: 100%;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.25rem;
+  }
+  .sshvpn-nav-tab {
+    width: 100%;
+    white-space: normal;
+    text-align: center;
+    padding: 0.45rem 0.4rem;
+    font-size: 0.78rem;
+    line-height: 1.25;
   }
   .sshvpn-topbar-actions {
     width: 100%;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.5rem;
   }
   .sshvpn-topbar-actions .sshvpn-btn {
-    flex: 1 1 auto;
+    width: 100%;
+    padding: 0.5rem 0.55rem;
+    font-size: 0.8rem;
   }
   .sshvpn-filter-bar {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 0.5rem;
   }
-  .sshvpn-filter-field:first-child,
-  .sshvpn-checkbox-label {
+  .sshvpn-filter-field:first-child {
     grid-column: 1 / -1;
   }
   .sshvpn-filter-select {
     flex: none;
     width: 100%;
+    min-width: 0;
+  }
+  .sshvpn-select {
+    padding: 0.48rem 0.55rem;
+    font-size: 0.8rem;
+  }
+  .sshvpn-spec-card,
+  .sshvpn-form-card,
+  .sshvpn-result-card,
+  .sshvpn-history-card {
+    padding: 0.95rem;
+  }
+  .sshvpn-spec-head,
+  .sshvpn-result-head,
+  .sshvpn-history-top {
+    flex-wrap: wrap;
+    gap: 0.35rem 0.75rem;
   }
   .sshvpn-spec-grid,
   .sshvpn-field-grid.is-two-col {
@@ -23747,6 +23817,15 @@ html[data-studio-view='home'] #studio-tool-view {
   }
   .sshvpn-duration-group {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .sshvpn-result-actions,
+  .sshvpn-history-actions {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.45rem;
+  }
+  .sshvpn-result-actions .sshvpn-btn:first-child {
+    grid-column: 1 / -1;
   }
   .sshvpn-detail-row {
     flex-direction: column;

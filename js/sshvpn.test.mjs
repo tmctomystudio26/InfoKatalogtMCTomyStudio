@@ -23,6 +23,7 @@ import {
 import {
   createPortalSshPreparation,
   extractJagoVpnRealHostFromPage,
+  extractLinesFromSubText,
   generateWireGuardKeyPair,
   isAllowedUpstreamUrl,
   parseFreeVpnStatusHtml,
@@ -75,8 +76,9 @@ test('v95 SSH & VPN Studio: RFC 7748 X25519 keypair matches Node crypto native X
 test('v95 SSH & VPN Studio: Backend enforces strict SSRF upstream allowlist & input validation', () => {
   assert.equal(isAllowedUpstreamUrl('https://api.cloudflareclient.com/v0a2158/reg'), true);
   assert.equal(isAllowedUpstreamUrl('https://www.vpngate.net/api/iphone/'), true);
-  assert.equal(isAllowedUpstreamUrl('https://sshocean.com/server-status'), true);
   assert.equal(isAllowedUpstreamUrl('https://raw.githubusercontent.com/barry-far/V2ray-Config/main/test.txt'), true);
+  assert.equal(isAllowedUpstreamUrl('https://cdn.jsdelivr.net/gh/barry-far/V2ray-Config@main/test.txt'), true);
+  assert.equal(isAllowedUpstreamUrl('https://sshocean.com/server-status'), false);
   assert.equal(isAllowedUpstreamUrl('http://127.0.0.1/admin'), false);
   assert.equal(isAllowedUpstreamUrl('http://169.254.169.254/latest/meta-data/'), false);
   assert.equal(isAllowedUpstreamUrl('https://evil.example.com/steal'), false);
@@ -136,6 +138,11 @@ test('v95 SSH & VPN Studio: Parsers accurately extract VPNGate, V2Ray/Xray, SSHO
   assert.equal(vmessParsed?.server.countryCode, 'SG');
   assert.equal(vmessParsed?.server.provisioningMode, 'instant');
 
+  // Reject dummy subscription notice / loopback hosts
+  const dummyVmess = { v: '2', ps: 'Notice', add: '使用前记得更新订阅', port: '443', id: '5c040f1d-45db-43bd-8d46-e4950e433735' };
+  assert.equal(parseProxyConfigLine(`vmess://${Buffer.from(JSON.stringify(dummyVmess)).toString('base64')}`, 'TestAPI'), null);
+  assert.equal(parseProxyConfigLine('vless://11111111-2222-3333-4444-555555555555@127.0.0.1:443#Loopback', 'TestAPI'), null);
+
   const vlessParsed = parseProxyConfigLine(
     'vless://11111111-2222-3333-4444-555555555555@id.example.net:443?type=ws&security=tls&sni=id.example.net&path=%2Fvless#%F0%9F%87%AE%F0%9F%87%A9+ID+VIP',
     'TestAPI'
@@ -146,6 +153,21 @@ test('v95 SSH & VPN Studio: Parsers accurately extract VPNGate, V2Ray/Xray, SSHO
   const trojanParsed = parseProxyConfigLine('trojan://mysecret@jp.example.net:443?security=tls&type=grpc#JP-Trojan', 'TestAPI');
   assert.equal(trojanParsed?.server.protocol, 'trojan');
   assert.equal(trojanParsed?.server.countryCode, 'JP');
+
+  // Shadowsocks 2022 plaintext format + malformed % in remark must NOT fail
+  const ss2022 = parseProxyConfigLine(
+    'ss://2022-blake3-aes-256-gcm:keyA=:keyB=@87.236.166.122:47647?type=tcp#SG 100% VIP',
+    'TestAPI'
+  );
+  assert.equal(ss2022?.server.protocol, 'shadowsocks');
+  assert.equal(ss2022?.server.host, '87.236.166.122');
+  assert.equal(ss2022?.server.security, '2022-blake3-aes-256-gcm');
+
+  // Base64 subscription decoding survives non-4-byte slice boundary
+  const rawSub = 'hysteria2://pass123@91.99.225.11:443?insecure=1&sni=example.com#DE-HY2\n';
+  const b64 = Buffer.from(rawSub + rawSub).toString('base64');
+  const extracted = extractLinesFromSubText(b64.slice(0, b64.length - 1));
+  assert.ok(extracted.some((l) => l.startsWith('hysteria2://')));
 
   // SSHOcean HTML table
   const oceanHtml = `<table><tr><td>SSH WS SG1 sg1.sshweb.site <a href="/sshws/singapore/sg1">Create</a> Online ✓ 28ms 2 minutes ago 47 slots</td></tr></table>`;
@@ -204,10 +226,10 @@ test('v95 SSH & VPN Studio: Parsers accurately extract VPNGate, V2Ray/Xray, SSHO
   assert.match(prep.portalMessage, /BELUM AKTIF/);
 });
 
-test('v95 SSH & VPN Studio: Pure UI logic handles filtering, slot health, validation, expiry, and history persistence', () => {
-  assert.ok(SSHVPN_PROTOCOLS.length >= 10);
+test('v97 SSH & VPN Studio: Pure UI logic handles instant-only protocols, filtering, slot health, validation, expiry, and history persistence', () => {
+  assert.equal(SSHVPN_PROTOCOLS.length, 8);
+  assert.ok(SSHVPN_PROTOCOLS.every((p) => !p.id.startsWith('ssh-')));
   assert.ok(DURATION_OPTIONS.some((d) => d.days === 30));
-  assert.equal(protocolRequiresPassword('ssh-ws'), true);
   assert.equal(protocolRequiresPassword('wireguard'), false);
 
   const creds = generateRandomCredentials('tomy');
