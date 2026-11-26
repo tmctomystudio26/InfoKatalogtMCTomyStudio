@@ -252,11 +252,11 @@
         "enabled": true,
         "label": "SSH & VPN",
         "icon": "./assets/icons/tool-sshvpn.svg",
-        "pageTitle": "VPN & Tunnel Studio — Pembuat Akun WireGuard VIP, VMess, VLess, Trojan, Shadowsocks, Hysteria2 & OpenVPN Gratis",
-        "pageSubtitle": "Buat akun WireGuard VIP (Cloudflare WARP), V2Ray VMess, Xray VLess, Trojan, Shadowsocks, Hysteria2 QUIC, & OpenVPN/L2TP langsung aktif 1-klik di sini tanpa keluar web — lengkap dengan spesifikasi server, sisa slot, pilihan negara, durasi, & riwayat akun.",
-        "heroKicker": "15+ API Real-Time · 100% Langsung Aktif 1-Klik · Gratis VIP Tanpa Redirect",
-        "heroTitle": "SSH & VPN Studio — Pembuat Akun Jaringan VIP Langsung Aktif",
-        "heroDescription": "Gabungkan 15+ penyedia API jaringan aktif secara real-time (Cloudflare WARP WireGuard VIP, VPNGate OpenVPN/L2TP/SSTP, serta Multi-API Xray VMess, VLess, Trojan, Shadowsocks AEAD, & Hysteria2 QUIC) — semua akun langsung aktif 1-klik di dalam Manifestudio tanpa perlu verifikasi ke web lain."
+        "pageTitle": "SSH & VPN Studio — Pembuat Akun SSH, WireGuard VIP, VMess, VLess, Trojan, Shadowsocks, Hysteria2 & OpenVPN",
+        "pageSubtitle": "Buat akun WireGuard VIP (Cloudflare WARP), VMess, VLess, Trojan, Shadowsocks, Hysteria2 QUIC, & OpenVPN/L2TP langsung aktif 1-klik, lengkap dengan daftar server SSH WebSocket/SSL/UDP/SlowDNS real-time & pembuat payload HTTP Custom.",
+        "heroKicker": "18+ API Real-Time · 7 Protokol Instan 1-Klik + SSH Tunnel Live",
+        "heroTitle": "SSH & VPN Studio — Pembuat Akun SSH & VPN Gratis Multi-API",
+        "heroDescription": "Gabungkan 18+ API penyedia jaringan real-time (Cloudflare WARP WireGuard VIP, VPNGate OpenVPN/L2TP, Multi-API Xray VMess/VLess/Trojan/Shadowsocks/Hysteria2 yang langsung aktif 1-klik di sini, plus daftar server SSH WebSocket/SSL/UDP/SlowDNS live dengan payload siap pakai)."
       }
     ]
   },

@@ -7,7 +7,8 @@ export const SSHVPN_HISTORY_KEY = 'manifestudio_sshvpn_history_v1';
 export const MAX_HISTORY_ITEMS = 60;
 
 export const SSHVPN_PROTOCOLS = Object.freeze([
-  { id: 'all', label: 'Semua Protokol', short: 'Semua', needsPassword: false, apps: 'WireGuard, V2RayNG, Nekobox, Hiddify, OpenVPN' },
+  { id: 'all', label: 'Semua Protokol', short: 'Semua', needsPassword: false, apps: 'HTTP Custom, WireGuard, V2RayNG, Nekobox, Hiddify, OpenVPN' },
+  { id: 'ssh', label: 'SSH Tunnel (WS / SSL / UDP / SlowDNS)', short: 'SSH', needsPassword: true, apps: 'HTTP Custom, HTTP Injector, Dark Tunnel, NapsternetV' },
   { id: 'wireguard', label: 'WireGuard VIP', short: 'WireGuard', needsPassword: false, apps: 'WireGuard, AmneziaWG, Nekobox, Sing-Box' },
   { id: 'vmess', label: 'V2Ray VMess', short: 'VMess', needsPassword: false, apps: 'V2RayNG, Nekobox, Hiddify, Clash Meta' },
   { id: 'vless', label: 'Xray VLess', short: 'VLess', needsPassword: false, apps: 'V2RayNG, Hiddify, Streisand, Sing-Box' },
@@ -26,6 +27,9 @@ export const DURATION_OPTIONS = Object.freeze([
 
 export function getProtocolMeta(protocolId) {
   const id = String(protocolId || '').toLowerCase();
+  if (id === 'ssh' || id.startsWith('ssh-')) {
+    return SSHVPN_PROTOCOLS.find((p) => p.id === 'ssh') || SSHVPN_PROTOCOLS[1];
+  }
   return SSHVPN_PROTOCOLS.find((p) => p.id === id) || SSHVPN_PROTOCOLS[0];
 }
 

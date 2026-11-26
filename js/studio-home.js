@@ -131,8 +131,8 @@ export const STUDIO_FEATURE_META = Object.freeze({
   sshvpn: {
     category: 'daily-security',
     categoryLabel: 'Harian & Keamanan',
-    summary: 'Buat akun WireGuard VIP, VMess, VLess, Trojan, Shadowsocks, Hysteria2 QUIC, & OpenVPN/L2TP langsung aktif 1-klik tanpa keluar web dari 15+ API real-time.',
-    highlights: '15+ API Real-Time · 100% Instan 1-Klik · Riwayat Akun',
+    summary: 'Buat akun WireGuard VIP, VMess, VLess, Trojan, Shadowsocks, Hysteria2, & OpenVPN 1-klik langsung aktif, plus server SSH Tunnel live & generator payload.',
+    highlights: '18+ API Real-Time · SSH + 7 Protokol Instan · Riwayat Akun',
     keywords: 'ssh vpn vmess vless trojan shadowsocks wireguard openvpn hysteria2 warp tunneling akun gratis server slot',
   },
 });

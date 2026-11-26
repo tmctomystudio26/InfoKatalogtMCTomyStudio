@@ -19,8 +19,9 @@ import {
   loadSshVpnHistory,
   protocolRequiresPassword,
   removeAccountFromHistory,
+  sanitizeExternalPortalUrl,
   validateSshVpnForm,
-} from './sshvpn-logic.js?v=97';
+} from './sshvpn-logic.js?v=98';
 
 function esc(val) {
   return String(val ?? '')
@@ -227,10 +228,22 @@ export function createSshVpnController({ rootEl, onToast }) {
         throw new Error(data?.error || 'Pembuatan akun gagal pada server ini. Coba server atau API lain.');
       }
 
-      state.activeResult = data;
+      state.activeResult = {
+        ...data,
+        account: {
+          ...data.account,
+          provisioningMode: data.account.provisioningMode || data.provisioningMode || 'instant',
+        },
+      };
       state.resultTab = 'summary';
-      state.history = addAccountToHistory(data.account);
-      notify(`Akun ${data.account.protocolLabel} (${data.account.country}) aktif instan & tersimpan!`, 'success');
+      state.history = addAccountToHistory(state.activeResult.account);
+      const isPortalResult = state.activeResult.provisioningMode === 'portal';
+      notify(
+        isPortalResult
+          ? `Payload & Config ${data.account.protocolLabel} siap — lanjutkan aktivasi 1x di portal penyedia.`
+          : `Akun ${data.account.protocolLabel} (${data.account.country}) aktif instan & tersimpan!`,
+        isPortalResult ? 'info' : 'success'
+      );
     } catch (err) {
       state.formError = err instanceof Error ? err.message : 'Terjadi kendala saat membuat akun.';
       notify(state.formError, 'error');
@@ -248,6 +261,11 @@ export function createSshVpnController({ rootEl, onToast }) {
     const res = state.activeResult;
     if (!res || !res.account) return '';
     const acc = res.account;
+    const isPortal =
+      res.provisioningMode === 'portal' ||
+      res.requiresPortalVerification === true ||
+      acc.provisioningMode === 'portal';
+    const safePortalUrl = isPortal ? sanitizeExternalPortalUrl(acc.portalUrl) : '';
     const hasClash = Boolean(acc.clashConfig && acc.clashConfig.trim());
     const hasSingbox = Boolean(acc.singboxConfig && acc.singboxConfig.trim());
     const expiry = computeAccountExpiry(acc.expiresAt);
@@ -294,14 +312,27 @@ export function createSshVpnController({ rootEl, onToast }) {
     }
 
     return `
-      <div id="sshvpn-result-anchor" class="sshvpn-result-card is-instant">
+      <div id="sshvpn-result-anchor" class="sshvpn-result-card ${isPortal ? 'is-portal' : 'is-instant'}">
         <div class="sshvpn-result-head">
           <div>
-            <p class="sshvpn-result-kicker">Akun VIP Gratis · Langsung Aktif</p>
+            <p class="sshvpn-result-kicker">${
+              isPortal
+                ? 'Payload &amp; Config SSH Siap · Verifikasi Anti-Bot Portal'
+                : 'Akun VIP Gratis · Langsung Aktif'
+            }</p>
             <h3 class="sshvpn-result-title">${esc(acc.flag || '')} ${esc(acc.serverName || acc.host)}</h3>
           </div>
           <span class="sshvpn-expiry-text">${esc(expiry.label)}</span>
         </div>
+
+        ${
+          isPortal
+            ? `<p class="sshvpn-portal-notice">${esc(
+                res.portalMessage ||
+                  `Daftarkan username "${acc.portalInputUsername || acc.username}" dan password "${acc.password}" pada portal penyedia untuk menyelesaikan verifikasi anti-bot 1x.`
+              )}</p>`
+            : ''
+        }
 
         <div class="sshvpn-subtabs" role="tablist" aria-label="Format konfigurasi akun">
           <button type="button" role="tab" aria-selected="${state.resultTab === 'summary'}" class="sshvpn-subtab ${
@@ -329,7 +360,21 @@ export function createSshVpnController({ rootEl, onToast }) {
         <div class="sshvpn-result-body">${tabBody}</div>
 
         <div class="sshvpn-result-actions">
-          <button type="button" class="sshvpn-btn sshvpn-btn-primary" data-action="copy-config">Salin Konfig</button>
+          ${
+            safePortalUrl
+              ? `<a href="${esc(safePortalUrl)}" target="_blank" rel="noopener noreferrer" class="sshvpn-btn sshvpn-btn-accent">Buka Portal Penyedia ↗</a>`
+              : `<button type="button" class="sshvpn-btn sshvpn-btn-primary" data-action="copy-config">Salin Konfig</button>`
+          }
+          ${
+            isPortal
+              ? `<button type="button" class="sshvpn-btn sshvpn-btn-secondary" data-action="copy-config">Salin Payload</button>`
+              : ''
+          }
+          ${
+            isPortal && acc.password
+              ? `<button type="button" class="sshvpn-btn sshvpn-btn-secondary" data-action="copy-ssh-creds">Salin User &amp; Pass</button>`
+              : ''
+          }
           <button type="button" class="sshvpn-btn sshvpn-btn-secondary" data-action="copy-summary">Salin Ringkasan</button>
           <button type="button" class="sshvpn-btn sshvpn-btn-secondary" data-action="download-config">Unduh File</button>
         </div>
@@ -380,7 +425,9 @@ export function createSshVpnController({ rootEl, onToast }) {
                 <span class="sshvpn-flag" aria-hidden="true">${esc(srv.flag || '🌐')}</span>
                 <span class="sshvpn-server-name">${esc(srv.name)}</span>
               </div>
-              <span class="sshvpn-mode-text is-instant">Instan 1-Klik</span>
+              <span class="sshvpn-mode-text ${srv.provisioningMode === 'portal' ? 'is-portal' : 'is-instant'}">${
+                srv.provisioningMode === 'portal' ? 'Portal Anti-Bot' : 'Instan 1-Klik'
+              }</span>
             </div>
 
             <div class="sshvpn-server-meta">
@@ -468,7 +515,8 @@ export function createSshVpnController({ rootEl, onToast }) {
     const needsPass = selected ? protocolRequiresPassword(selected.protocol) : false;
     const selectedMeta = selected ? getProtocolMeta(selected.protocol) : SSHVPN_PROTOCOLS[0];
     const selectedSlots = selected ? computeSlotHealth(selected) : null;
-    const isSniSupported = selected && ['vmess', 'vless', 'trojan'].includes(selected.protocol);
+    const isSniSupported = selected && ['ssh-ws', 'ssh-ssl', 'vmess', 'vless', 'trojan'].includes(selected.protocol);
+    const isPortalSelected = selected?.provisioningMode === 'portal';
     const serverListHtml = renderServerListItems(filtered, selected);
 
     return `
@@ -477,6 +525,8 @@ export function createSshVpnController({ rootEl, onToast }) {
           const count =
             p.id === 'all'
               ? state.servers.length
+              : p.id === 'ssh'
+              ? state.servers.filter((s) => s.protocol === 'ssh' || String(s.protocol || '').startsWith('ssh-')).length
               : state.servers.filter((s) => s.protocol === p.id).length;
           return `
             <button
@@ -677,6 +727,17 @@ export function createSshVpnController({ rootEl, onToast }) {
               </div>
 
               ${
+                isPortalSelected
+                  ? `
+                <div class="sshvpn-portal-notice">
+                  <strong>Info Server SSH Publik:</strong> Penyedia SSH VPS mewajibkan 1× verifikasi anti-bot/CAPTCHA di portal asalnya. Di sini Anda menyiapkan payload HTTP Custom/Injector dan kredensial sebelum lanjut ke portal, atau
+                  <button type="button" class="sshvpn-link-btn" data-action="switch-to-instant">pakai VLess / WireGuard Instan 1-Klik (tanpa portal) →</button>
+                </div>
+              `
+                  : ''
+              }
+
+              ${
                 state.formError
                   ? `<div class="sshvpn-alert-error" role="alert">${esc(state.formError)}</div>`
                   : ''
@@ -690,6 +751,8 @@ export function createSshVpnController({ rootEl, onToast }) {
                 ${
                   state.creating
                     ? 'Menghubungi API Server...'
+                    : isPortalSelected
+                    ? `Siapkan Payload &amp; Link ${selected.protocolLabel}`
                     : `Buat Akun ${selected.protocolLabel} Gratis`
                 }
               </button>
@@ -725,7 +788,7 @@ export function createSshVpnController({ rootEl, onToast }) {
           }</p>
           <p class="sshvpn-empty-desc">${
             state.history.length === 0
-              ? 'Semua akun WireGuard, VMess, VLess, Trojan, Shadowsocks, Hysteria2, dan OpenVPN yang Anda buat tersimpan otomatis secara lokal di perangkat ini.'
+              ? 'Semua akun SSH, WireGuard, VMess, VLess, Trojan, Shadowsocks, Hysteria2, dan OpenVPN yang Anda buat tersimpan otomatis secara lokal di perangkat ini.'
               : 'Coba ubah kata kunci pencarian Anda.'
           }</p>
           ${
@@ -805,7 +868,8 @@ export function createSshVpnController({ rootEl, onToast }) {
         if (!acc) return;
         state.activeResult = {
           ok: true,
-          provisioningMode: 'instant',
+          provisioningMode: acc.provisioningMode || (acc.portalUrl ? 'portal' : 'instant'),
+          requiresPortalVerification: acc.provisioningMode === 'portal' || Boolean(acc.portalUrl && String(acc.protocol || '').startsWith('ssh-')),
           account: acc,
         };
         state.resultTab = 'summary';
@@ -1094,6 +1158,21 @@ export function createSshVpnController({ rootEl, onToast }) {
           state.password = creds.password;
           state.formError = '';
           render();
+        } else if (act === 'switch-to-instant') {
+          const instantNode =
+            state.servers.find((s) => s.provisioningMode === 'instant' && s.protocol === 'wireguard') ||
+            state.servers.find((s) => s.provisioningMode === 'instant');
+          if (instantNode) {
+            state.protocol = instantNode.protocol;
+            state.selectedServerId = instantNode.id;
+            state.formError = '';
+            render();
+          }
+        } else if (act === 'copy-ssh-creds' && state.activeResult?.account) {
+          const acc = state.activeResult.account;
+          const credsText = `Host: ${acc.host}\nUsername: ${acc.username}\nPassword: ${acc.password || '-'}`;
+          const ok = await copyText(credsText);
+          notify(ok ? 'Username & Password berhasil disalin.' : 'Gagal menyalin.', ok ? 'success' : 'error');
         } else if (act === 'copy-config' && state.activeResult?.account) {
           const acc = state.activeResult.account;
           const payload =

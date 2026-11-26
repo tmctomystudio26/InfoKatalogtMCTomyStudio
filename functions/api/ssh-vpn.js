@@ -23,6 +23,11 @@ const ALLOWED_UPSTREAM_HOSTS = new Set([
   'raw.githubusercontent.com',
   'cdn.jsdelivr.net',
   'api.github.com',
+  'sshocean.com',
+  'sshmax.net',
+  'www.freevpn.us',
+  'freevpn.us',
+  'jagovpn.com',
 ]);
 
 const WARP_ENDPOINTS = [
@@ -1423,16 +1428,17 @@ async function loadUnifiedServerCatalog(forceRefresh = false) {
   }));
   _providerHealth.set('Cloudflare WARP Official API', { ok: true, count: warpServers.length });
 
-  const [vpngateRes, v2rayRes] = await Promise.all([
+  const [vpngateRes, v2rayRes, portalServers] = await Promise.all([
     fetchVpnGateServers(),
     fetchMultiSourceV2rayPool(),
+    fetchLivePortalProviders(),
   ]);
 
   _vpngateOvpnMap = vpngateRes.ovpnMap;
   _v2rayRawMap = v2rayRes.rawMap;
 
-  // 100% direct instant-creation servers ONLY (zero portal-redirect servers)
-  const allServers = [...warpServers, ...v2rayRes.servers, ...vpngateRes.servers];
+  // Instant 1-click protocols first, followed by live real-time SSH VPS servers (portal anti-bot verification)
+  const allServers = [...warpServers, ...v2rayRes.servers, ...vpngateRes.servers, ...portalServers];
   const providersSummary = [..._providerHealth.entries()].map(([name, info]) => ({
     name,
     ok: !!info.ok,
@@ -1805,7 +1811,7 @@ export function createPortalSshPreparation(server, clean) {
     provisioningMode: 'portal',
     requiresPortalVerification: true,
     portalMessage:
-      `BELUM AKTIF — Akun SSH VPS ini wajib didaftarkan terlebih dahulu lewat tombol "Langkah 1: Aktifkan di Portal Resmi" di bawah (verifikasi anti-bot 1x dari penyedia). Setelah berhasil aktif di portal, gunakan Host asli "${server.host}" dan username "${effectiveUsername}" di HTTP Custom / HTTP Injector.`,
+      `Payload & Config ${server.protocolLabel} siap untuk host asli "${server.host}". Karena penyedia VPS SSH publik mewajibkan 1x verifikasi anti-bot/CAPTCHA di situs asalnya, klik "Buka Portal Penyedia" di bawah lalu daftarkan username "${effectiveUsername}" dan password "${clean.password}".`,
     account: {
       id: `acc-${Date.now()}-${makeShortHash(`${server.id}-${clean.username}`)}`,
       protocol: server.protocol,
@@ -1947,6 +1953,10 @@ export async function handleSshVpnRequest(request) {
         return jsonResponse(createVpnGateAccount(server, ovpnB64, clean), 200);
       }
 
+      if (server.provisioningMode === 'portal') {
+        return jsonResponse(createPortalSshPreparation(server, clean), 200);
+      }
+
       if (server.provisioningMode === 'instant' && _v2rayRawMap.has(server.id)) {
         const rawUri = _v2rayRawMap.get(server.id);
         return jsonResponse(createV2rayPoolAccount(server, rawUri, clean), 200);
@@ -1957,6 +1967,9 @@ export async function handleSshVpnRequest(request) {
       const fallbackSrv =
         refreshed.servers.find((s) => s.id === server.id) ||
         refreshed.servers.find((s) => s.protocol === server.protocol);
+      if (fallbackSrv && fallbackSrv.provisioningMode === 'portal') {
+        return jsonResponse(createPortalSshPreparation(fallbackSrv, clean), 200);
+      }
       if (fallbackSrv && _v2rayRawMap.has(fallbackSrv.id)) {
         return jsonResponse(createV2rayPoolAccount(fallbackSrv, _v2rayRawMap.get(fallbackSrv.id), clean), 200);
       }

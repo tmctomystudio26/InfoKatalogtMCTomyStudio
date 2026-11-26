@@ -78,7 +78,8 @@ test('v95 SSH & VPN Studio: Backend enforces strict SSRF upstream allowlist & in
   assert.equal(isAllowedUpstreamUrl('https://www.vpngate.net/api/iphone/'), true);
   assert.equal(isAllowedUpstreamUrl('https://raw.githubusercontent.com/barry-far/V2ray-Config/main/test.txt'), true);
   assert.equal(isAllowedUpstreamUrl('https://cdn.jsdelivr.net/gh/barry-far/V2ray-Config@main/test.txt'), true);
-  assert.equal(isAllowedUpstreamUrl('https://sshocean.com/server-status'), false);
+  assert.equal(isAllowedUpstreamUrl('https://sshocean.com/server-status'), true);
+  assert.equal(isAllowedUpstreamUrl('https://sshmax.net/server-status'), true);
   assert.equal(isAllowedUpstreamUrl('http://127.0.0.1/admin'), false);
   assert.equal(isAllowedUpstreamUrl('http://169.254.169.254/latest/meta-data/'), false);
   assert.equal(isAllowedUpstreamUrl('https://evil.example.com/steal'), false);
@@ -223,14 +224,16 @@ test('v95 SSH & VPN Studio: Parsers accurately extract VPNGate, V2Ray/Xray, SSHO
   assert.equal(prep.account.username, 'sshmax-bakso');
   assert.equal(prep.account.portalInputUsername, 'bakso');
   assert.match(prep.account.extraDetails['Payload HTTP Injector (Mode Proxy)'], /CONNECT \[host_port\]/);
-  assert.match(prep.portalMessage, /BELUM AKTIF/);
+  assert.match(prep.portalMessage, /Buka Portal Penyedia/);
 });
 
-test('v97 SSH & VPN Studio: Pure UI logic handles instant-only protocols, filtering, slot health, validation, expiry, and history persistence', () => {
-  assert.equal(SSHVPN_PROTOCOLS.length, 8);
-  assert.ok(SSHVPN_PROTOCOLS.every((p) => !p.id.startsWith('ssh-')));
+test('v98 SSH & VPN Studio: Pure UI logic handles SSH Tunnel tab, instant protocols, filtering, slot health, validation, expiry, and history persistence', () => {
+  assert.equal(SSHVPN_PROTOCOLS.length, 9);
+  assert.equal(SSHVPN_PROTOCOLS[1].id, 'ssh');
   assert.ok(DURATION_OPTIONS.some((d) => d.days === 30));
   assert.equal(protocolRequiresPassword('wireguard'), false);
+  assert.equal(protocolRequiresPassword('ssh'), true);
+  assert.equal(protocolRequiresPassword('ssh-ws'), true);
 
   const creds = generateRandomCredentials('tomy');
   assert.match(creds.username, /^tomy[a-z0-9]{5}$/);

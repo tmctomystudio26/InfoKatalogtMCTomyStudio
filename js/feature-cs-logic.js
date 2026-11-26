@@ -139,16 +139,16 @@ export const FEATURE_CS_KNOWLEDGE_BASE = Object.freeze([
       'ssh ssl', 'ssh udp', 'buat akun ssh', 'akun vpn gratis', 'slot server', 'tunnel',
       'http custom', 'v2ray', 'xray', 'singbox', 'clash', 'riwayat akun',
     ],
-    summary: 'Pembuat akun WireGuard VIP, VMess, VLess, Trojan, Shadowsocks, Hysteria2 QUIC, & OpenVPN/L2TP langsung aktif 1-klik tanpa keluar web dari 15+ API real-time lengkap dengan sisa slot & riwayat.',
+    summary: 'Pembuat akun WireGuard VIP, VMess, VLess, Trojan, Shadowsocks, Hysteria2 QUIC, & OpenVPN/L2TP langsung aktif 1-klik plus server SSH WebSocket/SSL/UDP/SlowDNS real-time.',
     details: [
-      'Menggabungkan 15+ API penyedia server jaringan secara real-time (Cloudflare WARP WireGuard VIP, VPNGate OpenVPN/L2TP/SSTP, serta Multi-API Xray VMess, VLess, Trojan, Shadowsocks AEAD, & Hysteria2 QUIC dengan Auto-Discovery).',
-      'Seluruh server yang ditampilkan adalah tipe Instan 1-Klik — akun aktif seketika di dalam Manifestudio tanpa perlu mengunjungi atau mengisi captcha di portal eksternal.',
-      'Pengguna dapat memasukkan username, Bug Host/SNI opsional, memilih negara & durasi aktif (3–30 hari), menyalin/mengunduh konfigurasi (.conf, .ovpn, URI, Clash YAML, Sing-Box JSON), serta mengelola riwayat akun yang pernah dibuat.',
+      'Menggabungkan 18+ API penyedia jaringan secara real-time: 7 protokol Instan 1-Klik (Cloudflare WARP WireGuard VIP, VPNGate OpenVPN/L2TP/SSTP, serta Multi-API Xray VMess, VLess, Trojan, Shadowsocks AEAD, & Hysteria2 QUIC) ditambah daftar server SSH WebSocket/SSL/UDP/SlowDNS dari SSHOcean, SSHMax, dan FreeVPN.',
+      'Akun berlabel Instan 1-Klik aktif seketika di dalam Manifestudio tanpa meninggalkan halaman. Khusus server SSH VPS publik yang mewajibkan anti-bot/CAPTCHA di penyedia asalnya, disiapkan payload HTTP Custom/Injector lengkap beserta tombol langsung ke portal penyedia serta pintasan ke alternatif instan.',
+      'Pengguna dapat memasukkan username, password (untuk SSH), Bug Host/SNI opsional, memilih negara & durasi aktif (3–30 hari), menyalin/mengunduh konfigurasi (.conf, .ovpn, URI, Clash YAML, Sing-Box JSON), serta mengelola riwayat akun yang pernah dibuat.',
     ],
     steps: [
       'Buka fitur SSH & VPN dari beranda Manifestudio.',
-      'Pilih protokol yang diinginkan (WireGuard, VMess, VLess, Trojan, Shadowsocks, Hysteria2, atau OpenVPN), lalu pilih server & negara dengan slot tersedia.',
-      'Masukkan username/nama profil, pilih durasi aktif, lalu klik Buat Akun Gratis untuk langsung aktif dan siap diimpor atau diunduh.',
+      'Pilih protokol yang diinginkan (SSH, WireGuard, VMess, VLess, Trojan, Shadowsocks, Hysteria2, atau OpenVPN), lalu pilih server & negara dengan slot tersedia.',
+      'Masukkan username/password yang diinginkan, pilih durasi aktif, lalu klik Buat Akun (atau siapkan payload & buka portal untuk SSH VPS) dan simpan hasilnya.',
     ],
     troubleshooting: [
       'Jika daftar server atau sisa slot ingin diperbarui sesuai kondisi penyedia terbaru, klik tombol "Segarkan Real-Time" di pojok kanan atas.',
