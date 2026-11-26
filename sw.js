@@ -1,4 +1,4 @@
-const CACHE_NAME = 'manifestudio-cache-v103';
+const CACHE_NAME = 'manifestudio-cache-v104';
 
 // Lean core shell precache (< 270 KB) so first-time visitors on slow mobile connections
 // NEVER get bandwidth-starved downloading 100+ unused files. All other utilities, icons,

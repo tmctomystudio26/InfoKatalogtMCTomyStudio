@@ -1,4 +1,4 @@
-import { createToolsHubController } from './tools-ui.js?v=103';
+import { createToolsHubController } from './tools-ui.js?v=104';
 import { getDefaultCatalogSnapshot, loadCatalogData } from './data.js?v=85';
 import {
   inferBannerUtilityId,

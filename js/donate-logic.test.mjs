@@ -303,5 +303,32 @@ test('v102: Cloudflare Worker verifies Saweria HMAC-SHA256 & SociaBuzz token, re
     env
   );
   assert.equal(okAdminVerify.status, 200);
+
+  // 7. Repeated SociaBuzz Test Notifikasi with fixed ID 6116050460 inserts new test rows every time
+  for (let i = 0; i < 2; i += 1) {
+    const sbTestRes = await donateWorker.fetch(
+      new Request('https://donate-api.manifestudio.my.id/webhook/sociabuzz', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'sb-webhook-token': env.SOCIABUZZ_WEBHOOK_TOKEN },
+        body: JSON.stringify({
+          id: '6116050460',
+          supporter: 'Jessica',
+          amount: 10000,
+          currency: 'IDR',
+          message: 'Ini hanya test notifikasi',
+        }),
+      }),
+      env
+    );
+    assert.equal(sbTestRes.status, 200);
+  }
+  const lbAfterSbTest = await (
+    await donateWorker.fetch(new Request('https://donate-api.manifestudio.my.id/leaderboard'), env)
+  ).json();
+  const jessicaRow = lbAfterSbTest.allTime.find((r) => r.donorName === 'Jessica');
+  assert.ok(jessicaRow);
+  assert.equal(jessicaRow.donationCount, 2);
+  assert.equal(jessicaRow.totalIdr, 20000);
 });
+
 

@@ -19,11 +19,11 @@
       rel="stylesheet"
     />
 
-    <link rel="stylesheet" href="./css/tokens.css?v=91" />
-    <link rel="stylesheet" href="./css/styles.css?v=91" />
+    <link rel="stylesheet" href="./css/tokens.css?v=104" />
+    <link rel="stylesheet" href="./css/styles.css?v=104" />
     <script>
       (function () {
-        var CURRENT_CACHE = 'manifestudio-cache-v91';
+        var CURRENT_CACHE = 'manifestudio-cache-v104';
         window.addEventListener('load', function () {
           if ('caches' in window) {
             caches.keys().then(function (keys) {
@@ -33,7 +33,7 @@
             });
           }
           if ('serviceWorker' in navigator) {
-            navigator.serviceWorker.register('./sw.js?v=91').then(function (reg) {
+            navigator.serviceWorker.register('./sw.js?v=104').then(function (reg) {
               reg.update();
             }).catch(function () {});
           }
@@ -252,9 +252,6 @@
             <button type="button" id="download-json-btn" class="btn btn-ghost btn-sm">
               Unduh JSON
             </button>
-            <a href="./tools.html?tab=donate" class="btn btn-ghost btn-sm" target="_blank" rel="noopener noreferrer">
-              Moderasi Donasi
-            </a>
           </div>
 
           <div id="admin-publish-progress" class="admin-progress-box" hidden>
@@ -373,6 +370,17 @@
             aria-selected="false"
           >
             <span>Riwayat</span>
+          </button>
+          <button
+            type="button"
+            role="tab"
+            id="tab-btn-donations"
+            class="cat-tab"
+            data-admin-tab="donations"
+            aria-selected="false"
+          >
+            <span>Moderasi Donasi</span>
+            <span class="admin-tab-count mono-num" id="tab-count-donations">0</span>
           </button>
         </div>
 
@@ -1436,11 +1444,51 @@
             <div id="admin-history-list" class="admin-history-list"></div>
           </div>
         </section>
+
+        <section id="panel-donations" class="admin-panel" aria-labelledby="tab-btn-donations" hidden>
+          <div class="admin-card">
+            <div class="admin-card-head">
+              <div>
+                <h2 class="admin-section-title">Moderasi Donasi &amp; Leaderboard (Saweria + SociaBuzz Tribe)</h2>
+                <p class="admin-subtitle">
+                  Panel ini hanya dapat diakses setelah Brankas Admin terbuka. Masukkan <code>ADMIN_KEY</code> Cloudflare Worker Anda (tersimpan di memori RAM sesi ini saja) untuk menghapus semua data tes (<code>Someguy</code> &amp; <code>Jessica</code>) atau menyembunyikan donatur/transaksi tertentu dengan 1 klik.
+                </p>
+              </div>
+              <div class="admin-history-toolbar">
+                <button type="button" id="admin-donate-refresh-btn" class="btn btn-secondary btn-sm">
+                  Muat Ulang Data D1
+                </button>
+              </div>
+            </div>
+
+            <div class="donate-admin-panel" style="margin-bottom: 1.25rem;">
+              <form id="admin-donate-auth-form" class="donate-admin-form" autocomplete="off">
+                <input
+                  type="password"
+                  id="admin-donate-key-input"
+                  class="donate-search-input donate-admin-input"
+                  placeholder="Masukkan ADMIN_KEY Cloudflare Worker Anda..."
+                  autocomplete="off"
+                />
+                <button type="submit" id="admin-donate-verify-btn" class="btn btn-primary btn-sm">
+                  Verifikasi Kunci
+                </button>
+                <button type="button" id="admin-donate-clear-tests-btn" class="donate-admin-btn is-danger">
+                  Hapus Semua Data Tes (Someguy &amp; Jessica)
+                </button>
+              </form>
+              <div id="admin-donate-feedback" class="donate-admin-feedback" role="status" hidden></div>
+            </div>
+
+            <div id="admin-donate-summary" style="margin-bottom: 1.25rem;"></div>
+            <div id="admin-donate-list"></div>
+          </div>
+        </section>
       </div>
     </main>
 
     <div id="toast-notification" class="toast-notification" role="status" aria-live="polite" hidden></div>
 
-    <script type="module" src="./js/admin.js?v=85"></script>
+    <script type="module" src="./js/admin.js?v=104"></script>
   </body>
 </html>

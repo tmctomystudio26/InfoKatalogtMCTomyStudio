@@ -890,6 +890,7 @@ function renderTabs() {
     faq: 'panel-faq',
     vouchers: 'panel-vouchers',
     history: 'panel-history',
+    donations: 'panel-donations',
   };
   Object.entries(panelMap).forEach(([tab, id]) => {
     const panel = document.getElementById(id);
@@ -3677,6 +3678,8 @@ function bindEvents() {
         renderUtilitiesSettings();
       } else if (adminState.activeTab === 'faq') {
         renderFaqList();
+      } else if (adminState.activeTab === 'donations') {
+        fetchAdminDonations();
       }
     });
   });
@@ -5187,10 +5190,315 @@ function renderUtilitiesSettings() {
   });
 }
 
+function escapeAdminDonateHtml(val = '') {
+  return String(val ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+function formatAdminDonateIdr(amount = 0) {
+  const num = Math.max(0, Math.round(Number(amount) || 0));
+  return `Rp${num.toLocaleString('id-ID')}`;
+}
+
+const adminDonateState = {
+  apiBaseUrl: 'https://donate-api.manifestudio.my.id',
+  adminKeyInMemory: '',
+  isLoading: false,
+  isBusy: false,
+  feedback: '',
+  feedbackTone: 'info',
+  summary: null,
+  allTime: [],
+  recent: [],
+};
+
+function setAdminDonateFeedback(msg = '', tone = 'info') {
+  adminDonateState.feedback = msg;
+  adminDonateState.feedbackTone = tone;
+  const el = document.getElementById('admin-donate-feedback');
+  if (!el) return;
+  if (!msg) {
+    el.hidden = true;
+    el.textContent = '';
+    el.className = 'donate-admin-feedback';
+    return;
+  }
+  el.hidden = false;
+  el.textContent = msg;
+  el.className = `donate-admin-feedback is-${tone}`;
+}
+
+async function fetchAdminDonations() {
+  const listEl = document.getElementById('admin-donate-list');
+  const summaryEl = document.getElementById('admin-donate-summary');
+  const countBadge = document.getElementById('tab-count-donations');
+  if (!listEl) return;
+
+  adminDonateState.isLoading = true;
+  listEl.innerHTML = '<div class="donate-list-empty">Memuat data donasi dari Cloudflare D1...</div>';
+
+  try {
+    const res = await fetch(`${adminDonateState.apiBaseUrl}/leaderboard?limit=50&recentLimit=50`, {
+      method: 'GET',
+      cache: 'no-store',
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const json = await res.json();
+    if (!json || json.ok === false) throw new Error(json?.error || 'Gagal memuat data donasi.');
+    adminDonateState.summary = json.summary || {};
+    adminDonateState.allTime = Array.isArray(json.allTime) ? json.allTime : [];
+    adminDonateState.recent = Array.isArray(json.recent) ? json.recent : [];
+    if (countBadge) {
+      countBadge.textContent = String(adminDonateState.recent.length);
+    }
+    renderAdminDonationsPanel();
+  } catch (err) {
+    if (summaryEl) summaryEl.innerHTML = '';
+    listEl.innerHTML = `<div class="donate-list-empty">Gagal memuat data donasi: ${escapeAdminDonateHtml(err.message || 'Unknown error')}</div>`;
+  } finally {
+    adminDonateState.isLoading = false;
+  }
+}
+
+function renderAdminDonationsPanel() {
+  const summaryEl = document.getElementById('admin-donate-summary');
+  const listEl = document.getElementById('admin-donate-list');
+  if (!listEl) return;
+
+  const s = adminDonateState.summary || {};
+  if (summaryEl) {
+    summaryEl.innerHTML = `
+      <div class="donate-kpi-strip" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:0.85rem;padding:1rem;border-radius:12px;background:var(--bg-subtle);border:1px solid var(--border);">
+        <div class="donate-kpi-cell" style="border:0;padding:0;">
+          <span class="donate-kpi-label">Total Dukungan</span>
+          <strong class="donate-kpi-value">${escapeAdminDonateHtml(formatAdminDonateIdr(s.totalIdrAllTime))}</strong>
+          <span class="donate-kpi-sub">${Number(s.totalCountAllTime) || 0} transaksi tercatat</span>
+        </div>
+        <div class="donate-kpi-cell" style="border:0;padding:0;">
+          <span class="donate-kpi-label">Bulan ${escapeAdminDonateHtml(s.monthLabel || 'Ini')}</span>
+          <strong class="donate-kpi-value">${escapeAdminDonateHtml(formatAdminDonateIdr(s.totalIdrMonth))}</strong>
+          <span class="donate-kpi-sub">${Number(s.totalCountMonth) || 0} transaksi bulan ini</span>
+        </div>
+        <div class="donate-kpi-cell" style="border:0;padding:0;">
+          <span class="donate-kpi-label">Donatur Unik</span>
+          <strong class="donate-kpi-value">${Number(s.uniqueDonorsAllTime) || 0}</strong>
+          <span class="donate-kpi-sub">${adminDonateState.allTime.length} peringkat aktif</span>
+        </div>
+      </div>
+    `;
+  }
+
+  const allTimeRows = adminDonateState.allTime
+    .map(
+      (d) => `
+      <div class="donate-rank-row" role="row">
+        <span class="col-rank"><span class="donate-rank-num">#${Number(d.rank) || 1}</span></span>
+        <div class="col-donor">
+          <div class="donate-donor-text">
+            <div class="donate-row-name">${escapeAdminDonateHtml(d.donorName)}</div>
+            <div class="donate-row-sub">${Number(d.donationCount) || 1}x donasi · ${escapeAdminDonateHtml((d.platforms || []).join(', '))}</div>
+            ${d.latestMessage ? `<p class="donate-row-msg">${escapeAdminDonateHtml(d.latestMessage)}</p>` : ''}
+          </div>
+        </div>
+        <span class="col-platform">${escapeAdminDonateHtml((d.platforms || []).join(', '))}</span>
+        <span class="col-amount">
+          <span>${escapeAdminDonateHtml(formatAdminDonateIdr(d.totalIdr))}</span>
+          <button type="button" class="donate-row-hide-btn" data-admin-hide-donor="${escapeAdminDonateHtml(d.donorKey)}" data-admin-hide-name="${escapeAdminDonateHtml(d.donorName)}">
+            Sembunyikan Donatur
+          </button>
+        </span>
+      </div>
+    `
+    )
+    .join('');
+
+  const recentRows = adminDonateState.recent
+    .map(
+      (r) => `
+      <div class="donate-feed-row">
+        <div class="donate-avatar is-compact">${escapeAdminDonateHtml(String(r.donorName || 'AN').slice(0, 2).toUpperCase())}</div>
+        <div class="donate-feed-body">
+          <div class="donate-feed-top">
+            <span class="donate-row-name">${escapeAdminDonateHtml(r.donorName)}</span>
+            <span class="donate-row-meta">
+              #${Number(r.id) || 0} · ${escapeAdminDonateHtml(String(r.platform || '').toUpperCase())} · ${escapeAdminDonateHtml(r.createdAt ? new Date(r.createdAt).toLocaleString('id-ID') : '')}
+              ${r.isTest ? '<span class="donate-test-tag">TES</span>' : ''}
+            </span>
+          </div>
+          ${r.message ? `<p class="donate-row-msg">${escapeAdminDonateHtml(r.message)}</p>` : ''}
+        </div>
+        <div class="donate-feed-amount">
+          <strong>${escapeAdminDonateHtml(formatAdminDonateIdr(r.amountIdr))}</strong>
+          <button type="button" class="donate-row-hide-btn" data-admin-hide-tx="${Number(r.id) || 0}" data-admin-hide-name="${escapeAdminDonateHtml(r.donorName)}">
+            Sembunyikan #${Number(r.id) || 0}
+          </button>
+        </div>
+      </div>
+    `
+    )
+    .join('');
+
+  listEl.innerHTML = `
+    <div style="display:flex;flex-direction:column;gap:1.5rem;">
+      <div>
+        <h3 style="margin:0 0 0.65rem;font-size:0.95rem;font-weight:700;">Peringkat Donatur Aktif (${adminDonateState.allTime.length})</h3>
+        ${
+          allTimeRows
+            ? `<div class="donate-rank-table">${allTimeRows}</div>`
+            : '<div class="donate-list-empty">Belum ada donatur aktif di Leaderboard.</div>'
+        }
+      </div>
+      <div>
+        <h3 style="margin:0 0 0.65rem;font-size:0.95rem;font-weight:700;">Riwayat Transaksi Terbaru (${adminDonateState.recent.length})</h3>
+        ${
+          recentRows
+            ? `<div class="donate-feed-list">${recentRows}</div>`
+            : '<div class="donate-list-empty">Belum ada transaksi donasi tercatat.</div>'
+        }
+      </div>
+    </div>
+  `;
+}
+
+function getAdminDonateKeyOrWarn() {
+  const input = document.getElementById('admin-donate-key-input');
+  const val = String(input?.value || adminDonateState.adminKeyInMemory || '').trim();
+  if (!val) {
+    setAdminDonateFeedback('Masukkan ADMIN_KEY Cloudflare Worker Anda terlebih dahulu di kolom atas.', 'error');
+    input?.focus();
+    return '';
+  }
+  adminDonateState.adminKeyInMemory = val;
+  return val;
+}
+
+function bindAdminDonationsEvents() {
+  document.getElementById('admin-donate-refresh-btn')?.addEventListener('click', () => {
+    fetchAdminDonations();
+  });
+
+  document.getElementById('admin-donate-auth-form')?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const key = getAdminDonateKeyOrWarn();
+    if (!key) return;
+    setAdminDonateFeedback('Memverifikasi ADMIN_KEY ke server Cloudflare...', 'info');
+    try {
+      const res = await fetch(`${adminDonateState.apiBaseUrl}/admin/verify`, {
+        method: 'GET',
+        headers: { 'X-Admin-Key': key },
+        cache: 'no-store',
+      });
+      if (res.status === 401 || res.status === 403) {
+        setAdminDonateFeedback('ADMIN_KEY ditolak (403 Unauthorized). Pastikan sama persis dengan secret ADMIN_KEY di Cloudflare.', 'error');
+        return;
+      }
+      setAdminDonateFeedback('ADMIN_KEY valid dan aktif di memori sesi ini. Anda dapat menghapus data tes atau menyembunyikan donatur.', 'success');
+      showToast('ADMIN_KEY Cloudflare terverifikasi.');
+    } catch (err) {
+      setAdminDonateFeedback(err.message || 'Gagal menghubungi server Cloudflare.', 'error');
+    }
+  });
+
+  document.getElementById('admin-donate-clear-tests-btn')?.addEventListener('click', async () => {
+    const key = getAdminDonateKeyOrWarn();
+    if (!key) return;
+    setAdminDonateFeedback('Menghapus seluruh data donasi tes (Someguy & Jessica) dari D1...', 'info');
+    try {
+      const res = await fetch(`${adminDonateState.apiBaseUrl}/admin/clear-tests`, {
+        method: 'POST',
+        headers: { 'X-Admin-Key': key },
+        cache: 'no-store',
+      });
+      const json = await res.json().catch(() => ({}));
+      if (res.status === 401 || res.status === 403) {
+        setAdminDonateFeedback('ADMIN_KEY ditolak (403 Unauthorized).', 'error');
+        return;
+      }
+      if (!res.ok || json.ok === false) {
+        throw new Error(json?.error || `HTTP ${res.status}`);
+      }
+      const deleted = Number(json.deleted) || 0;
+      const msg =
+        deleted > 0
+          ? `Berhasil menghapus ${deleted} data donasi tes dari Leaderboard.`
+          : 'Tidak ada data donasi tes tersisa di database.';
+      setAdminDonateFeedback(msg, 'success');
+      showToast(msg);
+      await fetchAdminDonations();
+    } catch (err) {
+      setAdminDonateFeedback(err.message || 'Gagal menghapus data tes.', 'error');
+    }
+  });
+
+  document.getElementById('admin-donate-list')?.addEventListener('click', async (e) => {
+    const txBtn = e.target.closest('[data-admin-hide-tx]');
+    if (txBtn) {
+      const key = getAdminDonateKeyOrWarn();
+      if (!key) return;
+      const txId = Number(txBtn.getAttribute('data-admin-hide-tx'));
+      const name = txBtn.getAttribute('data-admin-hide-name') || '';
+      if (!txId) return;
+      setAdminDonateFeedback(`Menyembunyikan transaksi #${txId} (${name})...`, 'info');
+      try {
+        const res = await fetch(`${adminDonateState.apiBaseUrl}/admin/donations/${txId}`, {
+          method: 'DELETE',
+          headers: { 'X-Admin-Key': key },
+          cache: 'no-store',
+        });
+        const json = await res.json().catch(() => ({}));
+        if (res.status === 401 || res.status === 403) {
+          setAdminDonateFeedback('ADMIN_KEY ditolak (403 Unauthorized).', 'error');
+          return;
+        }
+        if (!res.ok || json.ok === false) throw new Error(json?.error || `HTTP ${res.status}`);
+        setAdminDonateFeedback(`Transaksi #${txId} (${name}) berhasil disembunyikan.`, 'success');
+        showToast(`Transaksi #${txId} disembunyikan.`);
+        await fetchAdminDonations();
+      } catch (err) {
+        setAdminDonateFeedback(err.message || 'Gagal menyembunyikan transaksi.', 'error');
+      }
+      return;
+    }
+
+    const donorBtn = e.target.closest('[data-admin-hide-donor]');
+    if (donorBtn) {
+      const key = getAdminDonateKeyOrWarn();
+      if (!key) return;
+      const donorKey = donorBtn.getAttribute('data-admin-hide-donor') || '';
+      const name = donorBtn.getAttribute('data-admin-hide-name') || donorKey;
+      if (!donorKey) return;
+      setAdminDonateFeedback(`Menyembunyikan donatur "${name}"...`, 'info');
+      try {
+        const res = await fetch(`${adminDonateState.apiBaseUrl}/admin/donors/${encodeURIComponent(donorKey)}`, {
+          method: 'DELETE',
+          headers: { 'X-Admin-Key': key },
+          cache: 'no-store',
+        });
+        const json = await res.json().catch(() => ({}));
+        if (res.status === 401 || res.status === 403) {
+          setAdminDonateFeedback('ADMIN_KEY ditolak (403 Unauthorized).', 'error');
+          return;
+        }
+        if (!res.ok || json.ok === false) throw new Error(json?.error || `HTTP ${res.status}`);
+        setAdminDonateFeedback(`Donatur "${name}" berhasil disembunyikan dari Leaderboard.`, 'success');
+        showToast(`Donatur "${name}" disembunyikan.`);
+        await fetchAdminDonations();
+      } catch (err) {
+        setAdminDonateFeedback(err.message || 'Gagal menyembunyikan donatur.', 'error');
+      }
+    }
+  });
+}
+
 function bootstrapAdmin() {
   loadTheme();
   applyTheme();
   bindEvents();
+  bindAdminDonationsEvents();
   renderGateScreen();
   if (
     typeof window !== 'undefined' &&

@@ -474,7 +474,13 @@ async function handleSociaBuzzWebhook(request, env) {
   }
 
   const rawId = String(body.id || body.inv_id || body.order_id || body.transaction_id || '').trim();
-  const isTest = Boolean(body.is_test) || /^test/i.test(rawId) || /^test/i.test(String(body.supporter || ''));
+  const message = sanitizeDonorMessage(body.message || body.note || body.comment || '');
+  const isTest =
+    Boolean(body.is_test) ||
+    rawId === '6116050460' ||
+    /^test/i.test(rawId) ||
+    /^test/i.test(String(body.supporter || '')) ||
+    /ini hanya test notifikasi/i.test(message);
   const tsRaw = body.created_at || body.timestamp;
   let createdAt = new Date().toISOString();
   if (typeof tsRaw === 'number' && Number.isFinite(tsRaw)) {
@@ -484,7 +490,9 @@ async function handleSociaBuzzWebhook(request, env) {
     createdAt = new Date(tsRaw).toISOString();
   }
 
-  const txId = rawId
+  const txId = isTest
+    ? `sociabuzz:test:${Date.now()}-${Math.random().toString(36).slice(2, 6)}`
+    : rawId
     ? `sociabuzz:${rawId}`
     : `sociabuzz:${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 
@@ -492,7 +500,6 @@ async function handleSociaBuzzWebhook(request, env) {
     body.supporter || body.supporter_name || body.donator_name || body.donatorName || body.name || 'Supporter SociaBuzz'
   );
   const donorKey = normalizeDonorKey(donorName);
-  const message = sanitizeDonorMessage(body.message || body.note || body.comment || '');
   const currencyCode = String(body.currency || 'IDR').trim().toUpperCase();
   const conv = await convertCurrencyToIdr(amountNum, currencyCode);
   const monthWib = getWibMonthKey(createdAt);
@@ -651,7 +658,10 @@ async function handleAdminAction(request, env, pathname) {
     const res = await env.DB.prepare(
       `DELETE FROM donations
        WHERE is_test = 1
+          OR tx_id LIKE '%:test:%'
+          OR tx_id = 'sociabuzz:6116050460'
           OR message LIKE '%THIS IS A FAKE MESSAGE%'
+          OR message LIKE '%Ini hanya test notifikasi%'
           OR (platform = 'saweria' AND donor_key = 'someguy')
           OR (platform = 'sociabuzz' AND donor_key = 'jessica' AND amount_idr = 10000)`
     ).run();
