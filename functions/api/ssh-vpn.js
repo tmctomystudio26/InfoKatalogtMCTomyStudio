@@ -1012,6 +1012,11 @@ export function parseSshOceanStatusHtml(html, maxItems = 36) {
     if (!isOnline) continue;
 
     const hostMatch = cleanText.match(/\b([a-z0-9-]+\.[a-z0-9.-]+\.[a-z]{2,})\b/i);
+    // NEVER fabricate a guessed hostname if upstream row did not publish one
+    if (!hostMatch) continue;
+    const host = hostMatch[1].toLowerCase();
+    if (host.endsWith('sshocean.com')) continue;
+
     const pingMatch = cleanText.match(/(\d+)\s*ms/i);
     const slotMatch = cleanText.match(/(\d+)\s*slots?/i);
     const parts = relPath.split('/').filter(Boolean);
@@ -1019,7 +1024,6 @@ export function parseSshOceanStatusHtml(html, maxItems = 36) {
     const countryRaw = (parts[1] || '').replace(/-/g, ' ');
     const codeSlug = (parts[2] || '').toUpperCase();
     const country = detectCountryFromText(`${countryRaw} ${codeSlug}`);
-    const host = hostMatch ? hostMatch[1] : `${codeSlug.toLowerCase()}.sshocean.com`;
     const remainingSlots = slotMatch ? Number(slotMatch[1]) : 50;
     const maxSlots = Math.max(50, remainingSlots);
     const pingMs = pingMatch ? Number(pingMatch[1]) : 120;
@@ -1035,7 +1039,7 @@ export function parseSshOceanStatusHtml(html, maxItems = 36) {
       flag: country.flag,
       host,
       ip: host,
-      port: protoInfo.id === 'ssh-udp' ? 7300 : 443,
+      port: protoInfo.id === 'ssh-udp' ? 7300 : protoInfo.id === 'ssh-ws' ? 80 : 443,
       ports: protoInfo.ports,
       pingMs,
       speedMbps: 1000,
@@ -1063,10 +1067,17 @@ export function parseFreeVpnStatusHtml(html, maxItems = 18) {
     const hrefMatch = row.match(/href="(\/[^"]+)"/i);
     if (!hrefMatch) continue;
     const relPath = hrefMatch[1];
-    const cleanText = stripTags(row);
-    if (!/online/i.test(cleanText)) continue;
 
-    const hostMatch = cleanText.match(/\b([a-z0-9-]+\.[a-z0-9.-]+\.[a-z]{2,})\b/i);
+    // Extract REAL hostname from data-host attribute BEFORE stripping HTML tags
+    const dataHostMatch = row.match(/data-host="([a-z0-9.-]+\.[a-z]{2,})"/i);
+    const cleanText = stripTags(row);
+    if (!/online/i.test(cleanText) || /offline|down/i.test(cleanText)) continue;
+
+    const textHostMatch = cleanText.match(/\b([a-z0-9-]+\.[a-z0-9.-]+\.[a-z]{2,})\b/i);
+    const rawHost = (dataHostMatch?.[1] || textHostMatch?.[1] || '').toLowerCase();
+    // NEVER fabricate 'server.freevpn.us'
+    if (!rawHost || rawHost === 'www.freevpn.us' || rawHost === 'server.freevpn.us') continue;
+
     const pctMatch = cleanText.match(/(\d{1,3})%/);
     const speedMatch = cleanText.match(/([\d.]+\s*(?:Kb|Mb|Gb)\/s)/i);
     const protoInfo = mapProviderProtocolSlug(relPath);
@@ -1075,7 +1086,6 @@ export function parseFreeVpnStatusHtml(html, maxItems = 18) {
     const loadPct = pctMatch ? Math.min(100, Number(pctMatch[1])) : 10;
     const maxSlots = 100;
     const remainingSlots = Math.max(0, maxSlots - loadPct);
-    const host = hostMatch ? hostMatch[1] : 'server.freevpn.us';
     const id = `freevpn-${makeShortHash(relPath)}`;
 
     servers.push({
@@ -1086,8 +1096,8 @@ export function parseFreeVpnStatusHtml(html, maxItems = 18) {
       country: country.name,
       countryCode: country.code,
       flag: country.flag,
-      host,
-      ip: host,
+      host: rawHost,
+      ip: rawHost,
       port: 443,
       ports: protoInfo.ports,
       pingMs: 85,
@@ -1109,20 +1119,49 @@ export function parseFreeVpnStatusHtml(html, maxItems = 18) {
   return servers;
 }
 
-export function parseSshMaxStatusHtml(html, maxItems = 24) {
+export function parseSshMaxStatusHtml(html, maxItems = 28) {
   const servers = [];
   const seen = new Set();
-  const linkMatches = [...String(html || '').matchAll(/href="(https:\/\/sshmax\.net\/([a-z0-9-]+)\/([a-z0-9-]+)\/([a-z0-9-]+))"/gi)];
-  for (const m of linkMatches) {
-    const fullUrl = m[1];
-    const protoSlug = m[2];
-    const countrySlug = m[3];
-    const nodeSlug = m[4];
+  const rawHtml = String(html || '');
+  // Split into individual server status cards so we extract each card's REAL host, Online status, ping, and remaining slots
+  const chunks = rawHtml.split(/(?=<a[^>]+href="https:\/\/sshmax\.net\/[a-z0-9-]+\/[a-z0-9-]+\/[a-z0-9-]+")/i);
+
+  for (let i = 1; i < chunks.length; i++) {
+    const chunk = chunks[i].slice(0, 6500);
+    const linkMatch = chunk.match(/href="(https:\/\/sshmax\.net\/([a-z0-9-]+)\/([a-z0-9-]+)\/([a-z0-9-]+))"/i);
+    if (!linkMatch) continue;
+
+    const fullUrl = linkMatch[1];
+    const protoSlug = linkMatch[2];
+    const countrySlug = linkMatch[3];
+    const nodeSlug = linkMatch[4];
     if (seen.has(fullUrl)) continue;
     seen.add(fullUrl);
+
+    // Extract REAL DNS-valid host from <div class="... font-mono ...">sg1.comnpmjs.com</div>
+    const hostMatch = chunk.match(/font-mono[^>]*>\s*([a-z0-9-]+(?:\.[a-z0-9-]+)+)\s*</i);
+    if (!hostMatch) continue;
+    const realHost = hostMatch[1].trim().toLowerCase();
+    // NEVER fabricate *.sshmax.net
+    if (!realHost || realHost.endsWith('sshmax.net')) continue;
+
+    const cleanCard = stripTags(chunk);
+    // Require Online status when status badge is present
+    if (/\b(Offline|Down|Maintenance)\b/i.test(cleanCard) && !/\bOnline\b/i.test(cleanCard)) continue;
+
+    const pingMatch = cleanCard.match(/Response\s+(\d+)\s*ms/i);
+    const slotMatch = cleanCard.match(/Remaining\s+(\d+)\s*\/\s*(\d+)/i);
+    const pingMs = pingMatch ? Number(pingMatch[1]) : countrySlug.includes('singapore') ? 24 : 118;
+    const remainingSlots = slotMatch ? Number(slotMatch[1]) : 25;
+    const maxSlots = slotMatch ? Math.max(1, Number(slotMatch[2])) : 25;
+
     const protoInfo = mapProviderProtocolSlug(protoSlug);
     const country = detectCountryFromText(`${countrySlug.replace(/-/g, ' ')} ${nodeSlug.toUpperCase()}`);
     const id = `sshmax-${protoSlug}-${nodeSlug}`.toLowerCase();
+    const isWs = protoInfo.id === 'ssh-ws';
+    const sshMaxPorts = isWs
+      ? 'HTTP 80, 8080, 8880, 2052, 2082, 2086, 2095 · SSL/TLS 443, 2053, 2083, 2087, 2096, 8443 · UDPGW 7200, 7300'
+      : protoInfo.ports;
 
     servers.push({
       id,
@@ -1132,20 +1171,22 @@ export function parseSshMaxStatusHtml(html, maxItems = 24) {
       country: country.name,
       countryCode: country.code,
       flag: country.flag,
-      host: `${nodeSlug.toLowerCase()}.sshmax.net`,
-      ip: `${nodeSlug.toLowerCase()}.sshmax.net`,
-      port: protoInfo.id === 'ssh-udp' ? 7300 : 443,
-      ports: protoInfo.ports,
-      pingMs: country.code === 'SG' || country.code === 'ID' ? 36 : 118,
+      host: realHost,
+      ip: realHost,
+      port: isWs ? 80 : protoInfo.id === 'ssh-udp' ? 7300 : 443,
+      ports: sshMaxPorts,
+      wildcardDomain: `*.${realHost}`,
+      usernamePrefix: 'sshmax-',
+      pingMs,
       speedMbps: 1000,
       status: 'online',
-      remainingSlots: 45,
-      maxSlots: 50,
+      remainingSlots,
+      maxSlots,
       durationOptions: [7],
       maxDurationDays: 7,
       provider: 'SSHMax Live API',
       isp: 'SSHMax Dedicated Node',
-      specs: `${protoInfo.ports} · Aktif 7 Hari · Reset 00:00 & 12:00 GMT+7`,
+      specs: `Host ${realHost} · Ping ${pingMs} ms · Slot ${remainingSlots}/${maxSlots} · Wildcard *.${realHost} · Reset 00:00 & 12:00 GMT+7`,
       provisioningMode: 'portal',
       portalUrl: fullUrl,
       updatedAt: new Date().toISOString(),
@@ -1155,7 +1196,13 @@ export function parseSshMaxStatusHtml(html, maxItems = 24) {
   return servers;
 }
 
-export function parseJagoVpnStatusHtml(html, maxItems = 14) {
+export function extractJagoVpnRealHostFromPage(pageHtml) {
+  const html = String(pageHtml || '');
+  const m = html.match(/\b([a-z0-9-]+\.jagoanip\.my\.id|[a-z0-9-]+\.[a-z0-9-]+\.my\.id)\b/i);
+  return m ? m[1].toLowerCase() : '';
+}
+
+export function parseJagoVpnStatusHtml(html, maxItems = 14, resolvedHostMap = null) {
   const servers = [];
   const rows = [...String(html || '').matchAll(/<tr[\s\S]*?<\/tr>/gi)].map((m) => m[0]);
   for (const row of rows) {
@@ -1164,6 +1211,14 @@ export function parseJagoVpnStatusHtml(html, maxItems = 14) {
     const fullUrl = hrefMatch[1];
     const cleanText = stripTags(row);
     if (!/online/i.test(cleanText) || /down|offline/i.test(cleanText)) continue;
+
+    // Require a REAL host extracted from row or pre-resolved from official server page; NEVER fabricate *.jagovpn.com
+    const inlineHostMatch = cleanText.match(/\b([a-z0-9-]+\.jagoanip\.my\.id|[a-z0-9-]+\.[a-z0-9-]+\.my\.id)\b/i);
+    const resolvedHost =
+      (resolvedHostMap && typeof resolvedHostMap.get === 'function' ? resolvedHostMap.get(fullUrl) : '') ||
+      inlineHostMatch?.[1] ||
+      '';
+    if (!resolvedHost || resolvedHost.endsWith('jagovpn.com')) continue;
 
     const protoInfo = mapProviderProtocolSlug(fullUrl);
     const country = detectCountryFromText(`${cleanText} ${fullUrl}`);
@@ -1177,8 +1232,8 @@ export function parseJagoVpnStatusHtml(html, maxItems = 14) {
       country: country.name,
       countryCode: country.code,
       flag: country.flag,
-      host: `${country.code.toLowerCase()}.jagovpn.com`,
-      ip: `${country.code.toLowerCase()}.jagovpn.com`,
+      host: resolvedHost.toLowerCase(),
+      ip: resolvedHost.toLowerCase(),
       port: 443,
       ports: protoInfo.ports,
       pingMs: country.code === 'ID' ? 19 : 34,
@@ -1190,7 +1245,7 @@ export function parseJagoVpnStatusHtml(html, maxItems = 14) {
       maxDurationDays: 30,
       provider: 'JagoVPN Live API',
       isp: 'JagoVPN Indonesia/SG Node',
-      specs: `${protoInfo.ports} · Server Low-Ping Asia · Online Terverifikasi`,
+      specs: `Host ${resolvedHost.toLowerCase()} · ${protoInfo.ports} · Server Low-Ping Asia`,
       provisioningMode: 'portal',
       portalUrl: fullUrl,
       updatedAt: new Date().toISOString(),
@@ -1198,6 +1253,42 @@ export function parseJagoVpnStatusHtml(html, maxItems = 14) {
     if (servers.length >= maxItems) break;
   }
   return servers;
+}
+
+async function fetchJagoVpnServersWithRealHosts() {
+  const statusRes = await safeFetchText('https://jagovpn.com/server-status', { timeoutMs: 7000 });
+  if (!statusRes.ok) {
+    _providerHealth.set('JagoVPN Live API', { ok: false, count: 0 });
+    return [];
+  }
+  const rows = [...statusRes.text.matchAll(/<tr[\s\S]*?<\/tr>/gi)].map((m) => m[0]);
+  const candidateUrls = [];
+  for (const row of rows) {
+    const hrefMatch = row.match(/href="(https:\/\/jagovpn\.com\/[^"]+)"/i);
+    if (!hrefMatch) continue;
+    const cleanText = stripTags(row);
+    if (/online/i.test(cleanText) && !/down|offline/i.test(cleanText)) {
+      candidateUrls.push(hrefMatch[1]);
+    }
+    if (candidateUrls.length >= 8) break;
+  }
+  const resolvedHostMap = new Map();
+  await Promise.all(
+    candidateUrls.map(async (u) => {
+      try {
+        const page = await safeFetchText(u, { timeoutMs: 4500 });
+        if (page.ok) {
+          const realHost = extractJagoVpnRealHostFromPage(page.text);
+          if (realHost) resolvedHostMap.set(u, realHost);
+        }
+      } catch {
+        // skip unresponsive detail page
+      }
+    })
+  );
+  const list = parseJagoVpnStatusHtml(statusRes.text, 10, resolvedHostMap);
+  _providerHealth.set('JagoVPN Live API', { ok: list.length > 0, count: list.length });
+  return list;
 }
 
 async function fetchLivePortalProviders() {
@@ -1214,7 +1305,7 @@ async function fetchLivePortalProviders() {
       }),
     safeFetchText('https://sshmax.net/server-status', { timeoutMs: 7000 })
       .then((r) => {
-        const list = r.ok ? parseSshMaxStatusHtml(r.text, 24) : [];
+        const list = r.ok ? parseSshMaxStatusHtml(r.text, 28) : [];
         _providerHealth.set('SSHMax Live API', { ok: list.length > 0, count: list.length });
         return list;
       })
@@ -1232,16 +1323,10 @@ async function fetchLivePortalProviders() {
         _providerHealth.set('FreeVPN.us Live API', { ok: false, count: 0 });
         return [];
       }),
-    safeFetchText('https://jagovpn.com/server-status', { timeoutMs: 7000 })
-      .then((r) => {
-        const list = r.ok ? parseJagoVpnStatusHtml(r.text, 14) : [];
-        _providerHealth.set('JagoVPN Live API', { ok: list.length > 0, count: list.length });
-        return list;
-      })
-      .catch(() => {
-        _providerHealth.set('JagoVPN Live API', { ok: false, count: 0 });
-        return [];
-      }),
+    fetchJagoVpnServersWithRealHosts().catch(() => {
+      _providerHealth.set('JagoVPN Live API', { ok: false, count: 0 });
+      return [];
+    }),
   ]);
   return results.flat();
 }
@@ -1621,21 +1706,33 @@ function createVpnGateAccount(server, ovpnBase64, clean) {
   };
 }
 
-function createPortalSshPreparation(server, clean) {
+export function createPortalSshPreparation(server, clean) {
   const createdAt = new Date();
   const expiresAt = new Date(createdAt.getTime() + clean.durationDays * 86400000);
   const bugHost = clean.sni || server.host;
-  const wsPayload = `GET / HTTP/1.1[crlf]Host: ${bugHost}[crlf]Upgrade: websocket[crlf]Connection: Upgrade[crlf][crlf]`;
+  const prefix = String(server.usernamePrefix || '');
+  const effectiveUsername =
+    prefix && !clean.username.toLowerCase().startsWith(prefix.toLowerCase())
+      ? `${prefix}${clean.username}`
+      : clean.username;
+  const wsDirectPayload = `GET / HTTP/1.1[crlf]Host: ${bugHost}[crlf]Upgrade: websocket[crlf]Connection: Upgrade[crlf][crlf]`;
+  const wsInjectorProxyPayload = `GET / HTTP/1.1[crlf]Host: ${bugHost}[crlf]Upgrade: websocket[crlf]Connection: Upgrade[crlf][crlf][split]CONNECT [host_port] HTTP/1.1[crlf][crlf]`;
   const hcConfig = [
     `# Manifestudio SSH & VPN Studio — Konfigurasi ${server.protocolLabel}`,
-    `Server Host : ${server.host}`,
-    `Username    : ${clean.username}`,
-    `Password    : ${clean.password}`,
-    `Port        : ${server.ports}`,
-    `SNI / Bug   : ${bugHost}`,
-    `Durasi      : ${clean.durationDays} Hari`,
-    `Payload WS  : ${wsPayload}`,
-    `Portal Resmi: ${server.portalUrl}`,
+    `# PENTING: Aktifkan akun terlebih dahulu di Portal Resmi sebelum konek!`,
+    `Server Host (Asli) : ${server.host}`,
+    `Username Portal    : ${clean.username}`,
+    `Username Login SSH : ${effectiveUsername}`,
+    `Password           : ${clean.password}`,
+    `Port               : ${server.ports}`,
+    ...(server.wildcardDomain ? [`Domain Wildcard    : ${server.wildcardDomain}`] : []),
+    `SNI / Bug Host     : ${bugHost}`,
+    `Durasi             : ${clean.durationDays} Hari`,
+    `Format HTTP Custom : ${server.host}:80@${effectiveUsername}:${clean.password}`,
+    `Format SSL / TLS   : ${server.host}:443@${effectiveUsername}:${clean.password}`,
+    `Payload Direct WS  : ${wsDirectPayload}`,
+    `Payload Injector   : ${wsInjectorProxyPayload}`,
+    `Portal Resmi       : ${server.portalUrl}`,
   ].join('\n');
 
   return {
@@ -1643,12 +1740,13 @@ function createPortalSshPreparation(server, clean) {
     provisioningMode: 'portal',
     requiresPortalVerification: true,
     portalMessage:
-      'Server VPS SSH publik melindungi pendaftaran akun Linux dari bot dengan verifikasi manusia 1 klik. Klik tombol "Aktifkan di Portal Resmi" di bawah menggunakan username & password yang sudah siap salin agar akun benar-benar aktif di server.',
+      `BELUM AKTIF — Akun SSH VPS ini wajib didaftarkan terlebih dahulu lewat tombol "Langkah 1: Aktifkan di Portal Resmi" di bawah (verifikasi anti-bot 1x dari penyedia). Setelah berhasil aktif di portal, gunakan Host asli "${server.host}" dan username "${effectiveUsername}" di HTTP Custom / HTTP Injector.`,
     account: {
       id: `acc-${Date.now()}-${makeShortHash(`${server.id}-${clean.username}`)}`,
       protocol: server.protocol,
       protocolLabel: server.protocolLabel,
-      username: clean.username,
+      username: effectiveUsername,
+      portalInputUsername: clean.username,
       password: clean.password,
       serverName: server.name,
       country: server.country,
@@ -1662,18 +1760,21 @@ function createPortalSshPreparation(server, clean) {
       durationDays: clean.durationDays,
       createdAt: createdAt.toISOString(),
       expiresAt: expiresAt.toISOString(),
-      configUri: `${server.host}:${server.port}@${clean.username}:${clean.password}`,
+      configUri: `${server.host}:${server.port}@${effectiveUsername}:${clean.password}`,
       configFile: hcConfig,
-      configFileName: `${clean.username}-${server.countryCode.toLowerCase()}-ssh.txt`,
+      configFileName: `${effectiveUsername}-${server.countryCode.toLowerCase()}-ssh.txt`,
       clashConfig: '',
       singboxConfig: '',
       extraDetails: {
-        'Format HTTP Custom': `${server.host}:80@${clean.username}:${clean.password}`,
-        'Format SSL / TLS': `${server.host}:443@${clean.username}:${clean.password}`,
-        'Payload WebSocket': wsPayload,
+        ...(prefix ? { 'Username Isi di Portal': clean.username, 'Username Login Setelah Aktif': effectiveUsername } : {}),
+        'Format HTTP Custom (Direct WS)': `${server.host}:80@${effectiveUsername}:${clean.password}`,
+        'Format SSL / TLS (Port 443)': `${server.host}:443@${effectiveUsername}:${clean.password}`,
+        ...(server.wildcardDomain ? { 'Domain Wildcard': server.wildcardDomain } : {}),
+        'Payload HTTP Custom (Mode Direct WS)': wsDirectPayload,
+        'Payload HTTP Injector (Mode Proxy)': wsInjectorProxyPayload,
         'SNI / Bug Host': bugHost,
         'Sisa Slot Server': `${server.remainingSlots} / ${server.maxSlots} slot`,
-        'Status Aktivasi': 'Siap Aktivasi 1-Klik di Portal Server Asli',
+        'Status Aktivasi': 'Menunggu Aktivasi 1-Klik di Portal Resmi',
       },
     },
   };

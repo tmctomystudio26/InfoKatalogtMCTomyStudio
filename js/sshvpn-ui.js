@@ -21,7 +21,7 @@ import {
   removeAccountFromHistory,
   sanitizeExternalPortalUrl,
   validateSshVpnForm,
-} from './sshvpn-logic.js?v=95';
+} from './sshvpn-logic.js?v=96';
 
 function esc(val) {
   return String(val ?? '')
@@ -303,16 +303,33 @@ export function createSshVpnController({ rootEl, onToast }) {
         <div class="sshvpn-result-head">
           <div>
             <p class="sshvpn-result-kicker">${
-              isPortal ? 'Siap Aktivasi Portal Resmi' : 'Akun VIP Gratis Aktif Instan'
+              isPortal ? 'Belum Aktif · Wajib Aktivasi Portal Resmi' : 'Akun VIP Gratis Aktif Instan'
             }</p>
             <h3 class="sshvpn-result-title">${esc(acc.flag || '')} ${esc(acc.serverName || acc.host)}</h3>
           </div>
-          <span class="sshvpn-expiry-text">${esc(expiry.label)}</span>
+          <span class="sshvpn-expiry-text">${esc(isPortal ? 'Menunggu Aktivasi' : expiry.label)}</span>
         </div>
 
         ${
           isPortal && res.portalMessage
-            ? `<p class="sshvpn-portal-notice">${esc(res.portalMessage)}</p>`
+            ? `
+            <div class="sshvpn-portal-notice">
+              <p style="margin:0 0 0.65rem">${esc(res.portalMessage)}</p>
+              <div class="sshvpn-result-actions">
+                ${
+                  safePortalUrl
+                    ? `<a class="sshvpn-btn sshvpn-btn-accent" href="${esc(safePortalUrl)}" target="_blank" rel="noopener noreferrer">Langkah 1: Aktifkan di Portal Resmi ↗</a>`
+                    : ''
+                }
+                <button type="button" class="sshvpn-btn sshvpn-btn-secondary" data-action="copy-username">Salin Username</button>
+                ${
+                  acc.password
+                    ? `<button type="button" class="sshvpn-btn sshvpn-btn-secondary" data-action="copy-password">Salin Password</button>`
+                    : ''
+                }
+              </div>
+            </div>
+          `
             : ''
         }
 
@@ -346,9 +363,8 @@ export function createSshVpnController({ rootEl, onToast }) {
           <button type="button" class="sshvpn-btn sshvpn-btn-secondary" data-action="copy-summary">Salin Ringkasan</button>
           <button type="button" class="sshvpn-btn sshvpn-btn-secondary" data-action="download-config">Unduh File</button>
           ${
-            isPortal && safePortalUrl
-              ? `<a class="sshvpn-btn sshvpn-btn-accent" href="${esc(safePortalUrl)}" target="_blank" rel="noopener noreferrer">Aktifkan di Portal Resmi ↗</a>
-                 <button type="button" class="sshvpn-btn sshvpn-btn-secondary" data-action="save-portal-history">Simpan ke Riwayat</button>`
+            isPortal
+              ? `<button type="button" class="sshvpn-btn sshvpn-btn-secondary" data-action="save-portal-history">Sudah Aktif? Simpan ke Riwayat</button>`
               : ''
           }
         </div>
@@ -1022,6 +1038,15 @@ export function createSshVpnController({ rootEl, onToast }) {
           const acc = state.activeResult.account;
           downloadTextFile(acc.configFileName || `${acc.username}-config.txt`, acc.configFile || acc.configUri || '');
           notify(`Berkas ${acc.configFileName || 'konfigurasi'} diunduh.`, 'success');
+        } else if (act === 'copy-username' && state.activeResult?.account) {
+          const acc = state.activeResult.account;
+          const u = acc.portalInputUsername || acc.username || '';
+          const ok = await copyText(u);
+          notify(ok ? `Username "${u}" disalin.` : 'Gagal menyalin username.', ok ? 'success' : 'error');
+        } else if (act === 'copy-password' && state.activeResult?.account) {
+          const p = state.activeResult.account.password || '';
+          const ok = await copyText(p);
+          notify(ok ? 'Password berhasil disalin.' : 'Gagal menyalin password.', ok ? 'success' : 'error');
         } else if (act === 'save-portal-history' && state.activeResult?.account) {
           state.history = addAccountToHistory(state.activeResult.account);
           notify('Akun SSH disimpan ke Riwayat Akun.', 'success');

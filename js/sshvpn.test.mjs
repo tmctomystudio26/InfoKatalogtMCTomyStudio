@@ -21,6 +21,8 @@ import {
 } from './sshvpn-logic.js';
 
 import {
+  createPortalSshPreparation,
+  extractJagoVpnRealHostFromPage,
   generateWireGuardKeyPair,
   isAllowedUpstreamUrl,
   parseFreeVpnStatusHtml,
@@ -154,21 +156,52 @@ test('v95 SSH & VPN Studio: Parsers accurately extract VPNGate, V2Ray/Xray, SSHO
   assert.equal(ocean[0].pingMs, 28);
   assert.equal(ocean[0].countryCode, 'SG');
 
-  // FreeVPN HTML table
-  const freeVpnHtml = `<table><tr><td>1 <a href="/openvpn/id/server-62/">OpenVPN ID 1</a> Indonesia, Bandung ovpn-id-1.vpnv.cc 12% 540.88 G 24.5 Mb/s Online</td></tr></table>`;
+  // FreeVPN HTML table (data-host attribute on <tr>)
+  const freeVpnHtml = `<table><tr data-type="openvpn" data-host="ovpn-id-1.vpnv.cc"><td>1 <a href="/openvpn/id/server-62/">OpenVPN ID 1</a> Indonesia, Bandung 12% 540.88 G 24.5 Mb/s Online</td></tr><tr data-type="ssh-tunnel"><td>2 <a href="/ssh/us/server-1/">Missing Host</a> Online</td></tr></table>`;
   const fv = parseFreeVpnStatusHtml(freeVpnHtml, 10);
   assert.equal(fv.length, 1);
+  assert.equal(fv[0].host, 'ovpn-id-1.vpnv.cc');
   assert.equal(fv[0].countryCode, 'ID');
   assert.equal(fv[0].remainingSlots, 88);
 
-  // SSHMax & JagoVPN HTML
-  const sshMax = parseSshMaxStatusHtml('<a href="https://sshmax.net/ssh-websocket/singapore/sg1">SG1</a>', 10);
+  // SSHMax HTML card: extracts REAL font-mono host, real ping & remaining slots, skips Offline or missing-host cards
+  const sshMaxHtml = `
+    <a href="https://sshmax.net/ssh-websocket/singapore/sg1">
+      <div><span>SSH WebSocket SG1</span><div class="text-xs font-mono"> sg1.comnpmjs.com </div></div>
+    </a><span>Online</span><span>Response 12ms</span><span>Remaining 5 / 25</span>
+    <a href="https://sshmax.net/ssh-websocket/france/fr9">
+      <div><span>SSH WebSocket FR9</span><div class="text-xs font-mono"> fr9.comnpmjs.com </div></div>
+    </a><span>Offline</span>
+    <a href="https://sshmax.net/ssh-websocket/germany/de9">No real host</a>
+  `;
+  const sshMax = parseSshMaxStatusHtml(sshMaxHtml, 10);
   assert.equal(sshMax.length, 1);
   assert.equal(sshMax[0].protocol, 'ssh-ws');
+  assert.equal(sshMax[0].host, 'sg1.comnpmjs.com');
+  assert.equal(sshMax[0].pingMs, 12);
+  assert.equal(sshMax[0].remainingSlots, 5);
+  assert.equal(sshMax[0].maxSlots, 25);
+  assert.equal(sshMax[0].usernamePrefix, 'sshmax-');
+  assert.equal(sshMax[0].wildcardDomain, '*.sg1.comnpmjs.com');
 
-  const jago = parseJagoVpnStatusHtml('<table><tr><td><a href="https://jagovpn.com/v2ray-vmess/indonesia/26">ID1 Vmess</a> Online 2 days ago</td></tr></table>', 10);
+  // JagoVPN: never fabricates *.jagovpn.com; requires real resolved host
+  const jagoHtml = '<table><tr><td><a href="https://jagovpn.com/v2ray-vmess/indonesia/26">ID1 Vmess</a> Online 2 days ago</td></tr></table>';
+  assert.equal(parseJagoVpnStatusHtml(jagoHtml, 10).length, 0);
+  const extractedJagoHost = extractJagoVpnRealHostFromPage('<div>Server Host: id1vpn.jagoanip.my.id</div>');
+  assert.equal(extractedJagoHost, 'id1vpn.jagoanip.my.id');
+  const jagoMap = new Map([['https://jagovpn.com/v2ray-vmess/indonesia/26', extractedJagoHost]]);
+  const jago = parseJagoVpnStatusHtml(jagoHtml, 10, jagoMap);
   assert.equal(jago.length, 1);
+  assert.equal(jago[0].host, 'id1vpn.jagoanip.my.id');
   assert.equal(jago[0].countryCode, 'ID');
+
+  // Portal SSH preparation: accurate usernamePrefix & valid HTTP Injector CONNECT [host_port] payload
+  const prep = createPortalSshPreparation(sshMax[0], { username: 'bakso', password: 'tahu', sni: '', durationDays: 7 });
+  assert.equal(prep.account.host, 'sg1.comnpmjs.com');
+  assert.equal(prep.account.username, 'sshmax-bakso');
+  assert.equal(prep.account.portalInputUsername, 'bakso');
+  assert.match(prep.account.extraDetails['Payload HTTP Injector (Mode Proxy)'], /CONNECT \[host_port\]/);
+  assert.match(prep.portalMessage, /BELUM AKTIF/);
 });
 
 test('v95 SSH & VPN Studio: Pure UI logic handles filtering, slot health, validation, expiry, and history persistence', () => {

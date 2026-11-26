@@ -69,7 +69,7 @@ const loadPlagiarismMod = () => (_plagiarismMod ? Promise.resolve(_plagiarismMod
 const loadNovelMod = () => (_novelMod ? Promise.resolve(_novelMod) : import('./novel-ui.js?v=79').then((m) => (_novelMod = m)));
 const loadCallerIdMod = () => (_callerIdMod ? Promise.resolve(_callerIdMod) : import('./callerid-ui.js?v=79').then((m) => (_callerIdMod = m)));
 const loadShortlinkMod = () => (_shortlinkMod ? Promise.resolve(_shortlinkMod) : import('./shortlink-ui.js?v=90').then((m) => (_shortlinkMod = m)));
-const loadSshVpnMod = () => (_sshvpnMod ? Promise.resolve(_sshvpnMod) : import('./sshvpn-ui.js?v=95').then((m) => (_sshvpnMod = m)));
+const loadSshVpnMod = () => (_sshvpnMod ? Promise.resolve(_sshvpnMod) : import('./sshvpn-ui.js?v=96').then((m) => (_sshvpnMod = m)));
 
 function renderLazyLoadingCard(label = 'Utilitas') {
   return `
