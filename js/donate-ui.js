@@ -1,12 +1,14 @@
 /**
- * Please Donate UI Controller — Saweria & SociaBuzz Tribe Auto Leaderboard (v102)
+ * Please Donate UI Controller — Saweria & SociaBuzz Tribe Auto Leaderboard + Admin Moderation (v103)
  *
  * Clean, single-elevation design following Manifestudio's Light/Dark design tokens:
  *  - Support Action Strip: Direct links to Saweria & SociaBuzz Tribe + Live Tabular KPI Summary
  *  - Top 3 Champion Podium (Ranks #2, #1 Elevated Center, #3)
  *  - Segmented Tabs: Top Sepanjang Waktu (All-Time) | Top Bulan Ini (WIB) | Donasi Terbaru (Live Feed)
  *  - Instant Search & Platform Filter (Semua | Saweria | SociaBuzz)
- *  - Automatic background polling (20s when visible) + Manual Refresh + Empty/Loading/Error states
+ *  - Built-in Admin Moderation Drawer (in-memory ADMIN_KEY only, never saved to storage):
+ *      * 1-click "Hapus Semua Data Tes (Someguy / Jessica)"
+ *      * 1-click "Sembunyikan" per transaksi (Donasi Terbaru) atau per donatur (Peringkat)
  */
 
 import {
@@ -22,7 +24,7 @@ import {
   getDonorInitials,
   getWibMonthKey,
   normalizeLeaderboardPayload,
-} from './donate-logic.js?v=102';
+} from './donate-logic.js?v=103';
 
 export function createDonateController({ onToast = () => {} } = {}) {
   let mountEl = null;
@@ -33,6 +35,15 @@ export function createDonateController({ onToast = () => {} } = {}) {
   let hasLoadedOnce = false;
   let lastError = '';
   let pollTimer = null;
+
+  // Admin moderation state (strictly in JS memory, never persisted to localStorage/sessionStorage)
+  let adminDrawerOpen = false;
+  let adminKeyInMemory = '';
+  let adminUnlocked = false;
+  let adminBusy = false;
+  let adminFeedback = '';
+  let adminFeedbackTone = 'info'; // 'info' | 'success' | 'error'
+
   let data = normalizeLeaderboardPayload({
     ok: true,
     summary: {
@@ -107,6 +118,145 @@ export function createDonateController({ onToast = () => {} } = {}) {
     }
   }
 
+  async function callAdminEndpoint(path, { method = 'POST' } = {}) {
+    const key = String(adminKeyInMemory || '').trim();
+    if (!key) {
+      adminFeedback = 'Masukkan ADMIN_KEY Cloudflare Anda terlebih dahulu.';
+      adminFeedbackTone = 'error';
+      renderDynamicSections();
+      return null;
+    }
+    adminBusy = true;
+    adminFeedback = 'Memproses permintaan moderasi ke server Cloudflare...';
+    adminFeedbackTone = 'info';
+    renderDynamicSections();
+
+    try {
+      const res = await fetch(`${DONATE_CONFIG.apiBaseUrl}${path}`, {
+        method,
+        headers: {
+          'X-Admin-Key': key,
+        },
+        cache: 'no-store',
+      });
+      const json = await res.json().catch(() => ({}));
+      if (res.status === 403 || res.status === 401) {
+        adminUnlocked = false;
+        adminFeedback = 'ADMIN_KEY ditolak (403 Unauthorized). Pastikan sama persis dengan secret ADMIN_KEY di Cloudflare.';
+        adminFeedbackTone = 'error';
+        renderDynamicSections();
+        return null;
+      }
+      if (!res.ok || json.ok === false) {
+        throw new Error(json?.error || `HTTP ${res.status}`);
+      }
+      adminUnlocked = true;
+      return json;
+    } catch (err) {
+      adminFeedback = err instanceof Error ? err.message : 'Gagal menghubungi endpoint moderasi.';
+      adminFeedbackTone = 'error';
+      renderDynamicSections();
+      return null;
+    } finally {
+      adminBusy = false;
+    }
+  }
+
+  async function handleUnlockAdmin(rawInputKey) {
+    const cleanKey = String(rawInputKey || '').trim();
+    if (!cleanKey) {
+      adminFeedback = 'Masukkan ADMIN_KEY Cloudflare Anda terlebih dahulu.';
+      adminFeedbackTone = 'error';
+      renderDynamicSections();
+      return;
+    }
+    adminKeyInMemory = cleanKey;
+    // Try /admin/verify first; if Worker runs an older build without /admin/verify, unlocking still activates the key for action buttons
+    adminBusy = true;
+    adminFeedback = 'Memverifikasi ADMIN_KEY dengan server Cloudflare...';
+    adminFeedbackTone = 'info';
+    renderDynamicSections();
+
+    try {
+      const res = await fetch(`${DONATE_CONFIG.apiBaseUrl}/admin/verify`, {
+        method: 'GET',
+        headers: { 'X-Admin-Key': cleanKey },
+        cache: 'no-store',
+      });
+      if (res.status === 403 || res.status === 401) {
+        adminUnlocked = false;
+        adminKeyInMemory = '';
+        adminFeedback = 'ADMIN_KEY tidak cocok (403 Unauthorized). Hanya pemilik secret Cloudflare yang dapat membuka panel ini.';
+        adminFeedbackTone = 'error';
+      } else if (res.ok) {
+        adminUnlocked = true;
+        adminFeedback = 'Mode Moderasi Admin aktif di memori sesi ini. Tombol hapus tes & sembunyikan donasi siap digunakan.';
+        adminFeedbackTone = 'success';
+        onToast('Mode Moderasi Admin aktif.');
+      } else {
+        // Fallback if Worker hasn't deployed /admin/verify yet (e.g. 404)
+        adminUnlocked = true;
+        adminFeedback = 'ADMIN_KEY siap digunakan di memori sesi ini.';
+        adminFeedbackTone = 'success';
+      }
+    } catch {
+      adminUnlocked = true;
+      adminFeedback = 'ADMIN_KEY disiapkan di memori sesi ini.';
+      adminFeedbackTone = 'info';
+    } finally {
+      adminBusy = false;
+      renderDynamicSections();
+    }
+  }
+
+  async function handleClearTests() {
+    const result = await callAdminEndpoint('/admin/clear-tests', { method: 'POST' });
+    if (!result) return;
+    const count = Number(result.deleted) || 0;
+    adminFeedback =
+      count > 0
+        ? `Berhasil menghapus ${count} data donasi tes dari database D1.`
+        : 'Tidak ada data donasi tes tersisa di database.';
+    adminFeedbackTone = 'success';
+    onToast(adminFeedback);
+    await fetchLeaderboard({ silent: true });
+    renderDynamicSections();
+  }
+
+  async function handleHideDonationById(donationId, donorName = '') {
+    const idNum = Number(donationId);
+    if (!Number.isFinite(idNum) || idNum <= 0) return;
+    const result = await callAdminEndpoint(`/admin/donations/${idNum}`, { method: 'DELETE' });
+    if (!result) return;
+    adminFeedback = `Transaksi #${idNum}${donorName ? ` (${donorName})` : ''} berhasil disembunyikan dari Leaderboard.`;
+    adminFeedbackTone = 'success';
+    onToast(adminFeedback);
+    await fetchLeaderboard({ silent: true });
+    renderDynamicSections();
+  }
+
+  async function handleHideDonorByKey(donorKey, donorName = '') {
+    const key = String(donorKey || '').trim();
+    if (!key) return;
+    const result = await callAdminEndpoint(`/admin/donors/${encodeURIComponent(key)}`, { method: 'DELETE' });
+    if (!result) return;
+    adminFeedback = `Donatur "${donorName || key}" berhasil disembunyikan dari Leaderboard.`;
+    adminFeedbackTone = 'success';
+    onToast(adminFeedback);
+    await fetchLeaderboard({ silent: true });
+    renderDynamicSections();
+  }
+
+  function handleLockAdmin() {
+    adminKeyInMemory = '';
+    adminUnlocked = false;
+    adminBusy = false;
+    adminFeedback = 'Kunci Admin telah dihapus dari memori browser.';
+    adminFeedbackTone = 'info';
+    onToast('Mode Moderasi Admin dikunci.');
+    renderDynamicSections();
+  }
+
   function renderSummaryStrip() {
     const s = data.summary;
     const updatedText = hasLoadedOnce && s.updatedAt
@@ -132,6 +282,69 @@ export function createDonateController({ onToast = () => {} } = {}) {
           <strong class="donate-kpi-value">${s.uniqueDonorsAllTime}</strong>
           <span class="donate-kpi-sub">${escapeDonateHtml(updatedText)}</span>
         </div>
+      </div>
+    `;
+  }
+
+  function renderAdminBar() {
+    if (!adminDrawerOpen) return '';
+
+    const feedbackHtml = adminFeedback
+      ? `<div class="donate-admin-feedback is-${escapeDonateHtml(adminFeedbackTone)}" role="status">${escapeDonateHtml(adminFeedback)}</div>`
+      : '';
+
+    if (!adminUnlocked) {
+      return `
+        <div class="donate-admin-panel" aria-label="Panel Moderasi Admin">
+          <div class="donate-admin-head">
+            <div class="donate-admin-title-wrap">
+              <span class="donate-admin-badge">Brankas Moderasi Cloudflare</span>
+              <h4 class="donate-admin-title">Buka Akses Moderasi Donasi</h4>
+              <p class="donate-admin-sub">
+                Masukkan <code>ADMIN_KEY</code> yang Anda pasang di Cloudflare Worker Secrets. Kunci ini hanya disimpan sementara di memori RAM tab saat ini (tidak pernah disimpan di localStorage atau dikirim ke GitHub) dan diverifikasi langsung oleh server Cloudflare.
+              </p>
+            </div>
+            <button type="button" class="donate-admin-close" data-donate-admin-close="1" aria-label="Tutup panel moderasi">Tutup</button>
+          </div>
+          <form id="donate-admin-unlock-form" class="donate-admin-form" autocomplete="off">
+            <input
+              type="password"
+              id="donate-admin-key-input"
+              class="donate-search-input donate-admin-input"
+              placeholder="Masukkan ADMIN_KEY Cloudflare Anda..."
+              autocomplete="off"
+              ${adminBusy ? 'disabled' : ''}
+              required
+            />
+            <button type="submit" class="donate-btn donate-admin-submit" ${adminBusy ? 'disabled' : ''}>
+              ${adminBusy ? 'Memverifikasi...' : 'Buka Panel Admin'}
+            </button>
+          </form>
+          ${feedbackHtml}
+        </div>
+      `;
+    }
+
+    return `
+      <div class="donate-admin-panel is-unlocked" aria-label="Panel Moderasi Admin Aktif">
+        <div class="donate-admin-head">
+          <div class="donate-admin-title-wrap">
+            <span class="donate-admin-badge is-active">Mode Admin Aktif (Memori Sesi)</span>
+            <h4 class="donate-admin-title">Moderasi Leaderboard & Bersihkan Data Tes</h4>
+            <p class="donate-admin-sub">
+              Gunakan tombol di bawah untuk menghapus notifikasi tes Saweria/SociaBuzz dengan 1 klik, atau klik tombol <strong>Sembunyikan</strong> pada baris donatur/transaksi di daftar bawah.
+            </p>
+          </div>
+          <div class="donate-admin-actions">
+            <button type="button" class="donate-admin-btn is-danger" data-donate-clear-tests="1" ${adminBusy ? 'disabled' : ''}>
+              ${adminBusy ? 'Memproses...' : 'Hapus Semua Data Tes'}
+            </button>
+            <button type="button" class="donate-admin-btn" data-donate-admin-lock="1" ${adminBusy ? 'disabled' : ''}>
+              Kunci Admin
+            </button>
+          </div>
+        </div>
+        ${feedbackHtml}
       </div>
     `;
   }
@@ -262,6 +475,10 @@ export function createDonateController({ onToast = () => {} } = {}) {
               const fxText = showFxNote
                 ? `${formatOriginalCurrency(item.originalAmount, item.originalCurrency)} → ${formatRupiahDonate(item.amountIdr)}`
                 : formatRupiahDonate(item.amountIdr);
+              const adminDeleteBtn =
+                adminUnlocked && item.id
+                  ? `<button type="button" class="donate-row-hide-btn" data-donate-hide-id="${escapeDonateHtml(String(item.id))}" data-donate-hide-name="${escapeDonateHtml(item.donorName)}" ${adminBusy ? 'disabled' : ''}>Sembunyikan #${escapeDonateHtml(String(item.id))}</button>`
+                  : '';
               return `
                 <article class="donate-feed-row" role="listitem">
                   <div class="donate-avatar is-compact" aria-hidden="true">${escapeDonateHtml(getDonorInitials(item.donorName))}</div>
@@ -272,6 +489,7 @@ export function createDonateController({ onToast = () => {} } = {}) {
                         ${escapeDonateHtml(formatPlatformLabel(item.platform))}
                         <span aria-hidden="true">·</span>
                         ${escapeDonateHtml(formatRelativeTimeId(item.createdAt))}
+                        ${item.isTest ? '<span class="donate-test-tag">TES</span>' : ''}
                       </span>
                     </div>
                     ${
@@ -283,6 +501,7 @@ export function createDonateController({ onToast = () => {} } = {}) {
                   <div class="donate-feed-amount">
                     <strong>${escapeDonateHtml(formatRupiahDonate(item.amountIdr))}</strong>
                     ${showFxNote ? `<span class="donate-fx-sub">${escapeDonateHtml(fxText)}</span>` : ''}
+                    ${adminDeleteBtn}
                   </div>
                 </article>
               `;
@@ -318,6 +537,10 @@ export function createDonateController({ onToast = () => {} } = {}) {
           .map((row) => {
             const rankClass =
               row.rank === 1 ? 'is-gold' : row.rank === 2 ? 'is-silver' : row.rank === 3 ? 'is-bronze' : '';
+            const adminHideDonorBtn =
+              adminUnlocked && row.donorKey
+                ? `<button type="button" class="donate-row-hide-btn" data-donate-hide-donor="${escapeDonateHtml(row.donorKey)}" data-donate-hide-name="${escapeDonateHtml(row.donorName)}" ${adminBusy ? 'disabled' : ''}>Sembunyikan</button>`
+                : '';
             return `
               <div class="donate-rank-row" role="row">
                 <span role="cell" class="col-rank">
@@ -337,7 +560,10 @@ export function createDonateController({ onToast = () => {} } = {}) {
                   </div>
                 </div>
                 <span role="cell" class="col-platform">${escapeDonateHtml(formatPlatformsList(row.platforms))}</span>
-                <span role="cell" class="col-amount">${escapeDonateHtml(formatRupiahDonate(row.totalIdr))}</span>
+                <span role="cell" class="col-amount">
+                  <span>${escapeDonateHtml(formatRupiahDonate(row.totalIdr))}</span>
+                  ${adminHideDonorBtn}
+                </span>
               </div>
             `;
           })
@@ -349,12 +575,15 @@ export function createDonateController({ onToast = () => {} } = {}) {
   function renderDynamicSections() {
     if (!mountEl) return;
     const summaryEl = mountEl.querySelector('#donate-summary-mount');
+    const adminMountEl = mountEl.querySelector('#donate-admin-mount');
     const podiumEl = mountEl.querySelector('#donate-podium-mount');
     const listEl = mountEl.querySelector('#donate-list-mount');
     const errorEl = mountEl.querySelector('#donate-error-banner');
     const refreshBtn = mountEl.querySelector('#donate-refresh-btn');
+    const adminToggleBtn = mountEl.querySelector('#donate-admin-toggle-btn');
 
     if (summaryEl) summaryEl.innerHTML = renderSummaryStrip();
+    if (adminMountEl) adminMountEl.innerHTML = renderAdminBar();
     if (podiumEl) podiumEl.innerHTML = renderPodium();
     if (listEl) listEl.innerHTML = renderBoardRows();
 
@@ -374,6 +603,12 @@ export function createDonateController({ onToast = () => {} } = {}) {
     if (refreshBtn) {
       refreshBtn.disabled = isLoading;
       refreshBtn.textContent = isLoading ? 'Memuat...' : 'Segarkan';
+    }
+
+    if (adminToggleBtn) {
+      adminToggleBtn.classList.toggle('is-active', adminDrawerOpen || adminUnlocked);
+      adminToggleBtn.setAttribute('aria-expanded', adminDrawerOpen ? 'true' : 'false');
+      adminToggleBtn.textContent = adminUnlocked ? 'Moderasi Admin (Aktif)' : 'Moderasi Admin';
     }
 
     // Sync active tab & filter button states
@@ -419,10 +654,15 @@ export function createDonateController({ onToast = () => {} } = {}) {
             <div id="donate-summary-mount"></div>
             <div class="donate-refresh-row">
               <span class="donate-refresh-hint">Sinkron otomatis setiap 20 detik</span>
-              <button type="button" id="donate-refresh-btn" class="donate-refresh-btn">Segarkan</button>
+              <div class="donate-refresh-actions">
+                <button type="button" id="donate-admin-toggle-btn" class="donate-admin-toggle-btn" aria-expanded="false">Moderasi Admin</button>
+                <button type="button" id="donate-refresh-btn" class="donate-refresh-btn">Segarkan</button>
+              </div>
             </div>
           </div>
         </section>
+
+        <div id="donate-admin-mount"></div>
 
         <div id="donate-error-banner" class="donate-error-banner" role="alert" hidden></div>
 
@@ -490,8 +730,55 @@ export function createDonateController({ onToast = () => {} } = {}) {
         return;
       }
 
+      if (e.target.closest('#donate-admin-toggle-btn')) {
+        adminDrawerOpen = !adminDrawerOpen;
+        renderDynamicSections();
+        return;
+      }
+
+      if (e.target.closest('[data-donate-admin-close]')) {
+        adminDrawerOpen = false;
+        renderDynamicSections();
+        return;
+      }
+
+      if (e.target.closest('[data-donate-admin-lock]')) {
+        handleLockAdmin();
+        return;
+      }
+
+      if (e.target.closest('[data-donate-clear-tests]')) {
+        handleClearTests();
+        return;
+      }
+
+      const hideIdBtn = e.target.closest('[data-donate-hide-id]');
+      if (hideIdBtn) {
+        const id = hideIdBtn.getAttribute('data-donate-hide-id');
+        const name = hideIdBtn.getAttribute('data-donate-hide-name') || '';
+        handleHideDonationById(id, name);
+        return;
+      }
+
+      const hideDonorBtn = e.target.closest('[data-donate-hide-donor]');
+      if (hideDonorBtn) {
+        const key = hideDonorBtn.getAttribute('data-donate-hide-donor');
+        const name = hideDonorBtn.getAttribute('data-donate-hide-name') || '';
+        handleHideDonorByKey(key, name);
+        return;
+      }
+
       if (e.target.closest('#donate-refresh-btn') || e.target.closest('[data-donate-retry]')) {
         fetchLeaderboard({ silent: false, showSuccessToast: true });
+      }
+    });
+
+    mountEl.addEventListener('submit', (e) => {
+      const form = e.target.closest('#donate-admin-unlock-form');
+      if (form) {
+        e.preventDefault();
+        const input = form.querySelector('#donate-admin-key-input');
+        handleUnlockAdmin(input ? input.value : '');
       }
     });
 
@@ -514,6 +801,8 @@ export function createDonateController({ onToast = () => {} } = {}) {
     },
     unmount() {
       stopPolling();
+      adminKeyInMemory = '';
+      adminUnlocked = false;
       mountEl = null;
     },
     redrawTheme() {

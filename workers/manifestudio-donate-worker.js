@@ -641,17 +641,35 @@ function checkAdminAuth(request, env) {
 
 async function handleAdminAction(request, env, pathname) {
   if (!checkAdminAuth(request, env)) {
-    return jsonResponse({ ok: false, error: 'Unauthorized' }, 403, request, { allowPublicFallback: false });
+    return jsonResponse({ ok: false, error: 'ADMIN_KEY tidak cocok atau belum dikonfigurasi.' }, 403, request, { allowPublicFallback: false });
   }
   await ensureSchema(env.DB);
+  if (request.method === 'GET' && pathname === '/admin/verify') {
+    return jsonResponse({ ok: true, admin: true }, 200, request, { allowPublicFallback: false });
+  }
   if (request.method === 'POST' && pathname === '/admin/clear-tests') {
-    const res = await env.DB.prepare('DELETE FROM donations WHERE is_test = 1').run();
+    const res = await env.DB.prepare(
+      `DELETE FROM donations
+       WHERE is_test = 1
+          OR message LIKE '%THIS IS A FAKE MESSAGE%'
+          OR (platform = 'saweria' AND donor_key = 'someguy')
+          OR (platform = 'sociabuzz' AND donor_key = 'jessica' AND amount_idr = 10000)`
+    ).run();
     return jsonResponse({ ok: true, deleted: res?.meta?.changes ?? 0 }, 200, request, { allowPublicFallback: false });
   }
   const delMatch = pathname.match(/^\/admin\/donations\/(\d+)$/);
   if (request.method === 'DELETE' && delMatch) {
     const id = Number(delMatch[1]);
     const res = await env.DB.prepare('UPDATE donations SET is_hidden = 1 WHERE id = ?').bind(id).run();
+    return jsonResponse({ ok: true, hidden: res?.meta?.changes ?? 0 }, 200, request, { allowPublicFallback: false });
+  }
+  const donorMatch = pathname.match(/^\/admin\/donors\/([^/]+)$/);
+  if (request.method === 'DELETE' && donorMatch) {
+    const donorKey = decodeURIComponent(donorMatch[1] || '').trim().toLowerCase();
+    if (!donorKey) {
+      return jsonResponse({ ok: false, error: 'Donor key tidak valid.' }, 400, request, { allowPublicFallback: false });
+    }
+    const res = await env.DB.prepare('UPDATE donations SET is_hidden = 1 WHERE donor_key = ?').bind(donorKey).run();
     return jsonResponse({ ok: true, hidden: res?.meta?.changes ?? 0 }, 200, request, { allowPublicFallback: false });
   }
   return jsonResponse({ ok: false, error: 'Admin route not found' }, 404, request, { allowPublicFallback: false });

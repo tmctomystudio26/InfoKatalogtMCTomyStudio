@@ -88,8 +88,8 @@ Dilengkapi Jadwal Sholat, Prakiraan Cuaca, Jam Dunia, Speedtest, Social Media Do
     />
 
     <!-- Styles -->
-    <link rel="stylesheet" href="./css/tokens.css?v=102" />
-    <link rel="stylesheet" href="./css/styles.css?v=102" />
+    <link rel="stylesheet" href="./css/tokens.css?v=103" />
+    <link rel="stylesheet" href="./css/styles.css?v=103" />
     <script>
       (function () {
         try {
@@ -98,7 +98,7 @@ Dilengkapi Jadwal Sholat, Prakiraan Cuaca, Jam Dunia, Speedtest, Social Media Do
             document.documentElement.setAttribute('data-theme', savedTheme);
           }
         } catch (e) {}
-        var CURRENT_CACHE = 'manifestudio-cache-v102';
+        var CURRENT_CACHE = 'manifestudio-cache-v103';
         window.addEventListener('load', function () {
           if ('caches' in window) {
             caches.keys().then(function (keys) {
@@ -108,7 +108,7 @@ Dilengkapi Jadwal Sholat, Prakiraan Cuaca, Jam Dunia, Speedtest, Social Media Do
             });
           }
           if ('serviceWorker' in navigator) {
-            navigator.serviceWorker.register('./sw.js?v=102').then(function (reg) {
+            navigator.serviceWorker.register('./sw.js?v=103').then(function (reg) {
               reg.update();
             }).catch(function () {});
           }

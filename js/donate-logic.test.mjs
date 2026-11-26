@@ -284,4 +284,24 @@ test('v102: Cloudflare Worker verifies Saweria HMAC-SHA256 & SociaBuzz token, re
   assert.equal(lb.allTime[0].donationCount, 2);
   assert.equal(JSON.stringify(lb).includes('dina@example.com'), false);
   assert.equal(JSON.stringify(lb).includes('https://spam.com'), false);
+
+  // 6. Admin routes reject wrong key (403) and accept valid ADMIN_KEY for /admin/verify & /admin/clear-tests
+  const badAdmin = await donateWorker.fetch(
+    new Request('https://donate-api.manifestudio.my.id/admin/verify', {
+      method: 'GET',
+      headers: { 'X-Admin-Key': 'wrong-admin-key' },
+    }),
+    env
+  );
+  assert.equal(badAdmin.status, 403);
+
+  const okAdminVerify = await donateWorker.fetch(
+    new Request('https://donate-api.manifestudio.my.id/admin/verify', {
+      method: 'GET',
+      headers: { 'X-Admin-Key': env.ADMIN_KEY },
+    }),
+    env
+  );
+  assert.equal(okAdminVerify.status, 200);
 });
+
