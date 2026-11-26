@@ -52,7 +52,7 @@ const loadGlobeMod = () => (_globeMod ? Promise.resolve(_globeMod) : import('./g
 const loadSpeedtestMod = () => (_speedtestMod ? Promise.resolve(_speedtestMod) : import('./speedtest.js?v=79').then((m) => (_speedtestMod = m)));
 const loadDownloaderMod = () => (_downloaderMod ? Promise.resolve(_downloaderMod) : import('./downloader.js?v=79').then((m) => (_downloaderMod = m)));
 const loadCompressorMod = () => (_compressorMod ? Promise.resolve(_compressorMod) : import('./compressor.js?v=79').then((m) => (_compressorMod = m)));
-const loadConverterMod = () => (_converterMod ? Promise.resolve(_converterMod) : import('./converter.js?v=100').then((m) => (_converterMod = m)));
+const loadConverterMod = () => (_converterMod ? Promise.resolve(_converterMod) : import('./converter.js?v=101').then((m) => (_converterMod = m)));
 const loadSongFinderMod = () => (_songFinderMod ? Promise.resolve(_songFinderMod) : import('./song-finder.js?v=79').then((m) => (_songFinderMod = m)));
 const loadMusicMods = () =>
   _musicMods
@@ -64,7 +64,7 @@ const loadMusicMods = () =>
 const loadDracinMod = () => (_dracinMod ? Promise.resolve(_dracinMod) : import('./dracin-ui.js?v=86').then((m) => (_dracinMod = m)));
 const loadAudioEditorMod = () => (_audioEditorMod ? Promise.resolve(_audioEditorMod) : import('./audio-editor-ui.js?v=79').then((m) => (_audioEditorMod = m)));
 const loadManifestAiMod = () => (_manifestAiMod ? Promise.resolve(_manifestAiMod) : import('./manifest-ai-ui.js?v=87').then((m) => (_manifestAiMod = m)));
-const loadPlagiarismMod = () => (_plagiarismMod ? Promise.resolve(_plagiarismMod) : import('./plagiarism-ui.js?v=100').then((m) => (_plagiarismMod = m)));
+const loadPlagiarismMod = () => (_plagiarismMod ? Promise.resolve(_plagiarismMod) : import('./plagiarism-ui.js?v=101').then((m) => (_plagiarismMod = m)));
 const loadNovelMod = () => (_novelMod ? Promise.resolve(_novelMod) : import('./novel-ui.js?v=79').then((m) => (_novelMod = m)));
 const loadCallerIdMod = () => (_callerIdMod ? Promise.resolve(_callerIdMod) : import('./callerid-ui.js?v=79').then((m) => (_callerIdMod = m)));
 const loadShortlinkMod = () => (_shortlinkMod ? Promise.resolve(_shortlinkMod) : import('./shortlink-ui.js?v=90').then((m) => (_shortlinkMod = m)));

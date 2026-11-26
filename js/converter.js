@@ -13,13 +13,15 @@
 import { formatBytes } from './tools-logic.js?v=60';
 import {
   captureRealVideoFrameInBrowser,
+  extractPdfDetailedWithPdfJs,
   extractPdfTextWithPdfJs,
   loadPdfLib,
+  renderPdfPagesToPreviewImages,
   renderPdfPageToCanvasData,
   transcodeAudioWithWebAudioAndLame,
   transcodeWithFfmpeg,
   verifyPlayableMediaBlob,
-} from './media-engine.js?v=100';
+} from './media-engine.js?v=101';
 import {
   buildFaithfulHtmlFromRichModel,
   buildFaithfulPdfFromRenderedPages,
@@ -27,7 +29,19 @@ import {
   normalizeTypographyForPdf,
   parseDocxRichModel,
   renderDocxToFaithfulPages,
-} from './docx-fidelity.js?v=100';
+  renderHtmlToFaithfulPages,
+} from './docx-fidelity.js?v=101';
+import {
+  buildAuthenticPdfHtml,
+  buildMultiSheetHtml,
+  buildRichDocxBuffer,
+  buildRichModelFromPdfDetailed,
+  parseExcelWorkbookMultiSheet,
+  parseHtmlToRichModel,
+  parseMarkdownToRichModel,
+  parseRtfToRichModel,
+  stitchPageImagesToImageBuffer,
+} from './format-fidelity.js?v=101';
 
 export const CONVERTER_CATEGORIES = [
   {
@@ -438,25 +452,25 @@ export function getAvailableTargetFormats(sourceInfo = {}) {
   const { ext = '', family = 'generic' } = sourceInfo || {};
   if (family === 'document') {
     return pickTargetsByIds(
-      ['pdf', 'docx', 'txt', 'html', 'md', 'rtf', 'xlsx', 'csv', 'json', 'xml', 'zip'],
+      ['pdf', 'docx', 'html', 'png', 'jpg', 'webp', 'txt', 'md', 'rtf', 'xlsx', 'csv', 'json', 'xml', 'zip'],
       ext
     );
   }
   if (family === 'spreadsheet') {
     return pickTargetsByIds(
-      ['pdf', 'xlsx', 'csv', 'tsv', 'json', 'xml', 'yaml', 'html', 'md', 'docx', 'txt', 'zip'],
+      ['pdf', 'xlsx', 'csv', 'tsv', 'html', 'png', 'jpg', 'webp', 'json', 'xml', 'yaml', 'md', 'docx', 'txt', 'zip'],
       ext
     );
   }
   if (family === 'pdf') {
     return pickTargetsByIds(
-      ['jpg', 'png', 'jpeg', 'webp', 'bmp', 'gif', 'docx', 'xlsx', 'txt', 'html', 'md', 'rtf', 'zip'],
+      ['jpg', 'png', 'jpeg', 'webp', 'bmp', 'gif', 'docx', 'html', 'xlsx', 'txt', 'md', 'rtf', 'zip'],
       ext
     );
   }
   if (family === 'image') {
     return pickTargetsByIds(
-      ['png', 'jpg', 'jpeg', 'webp', 'bmp', 'gif', 'ico', 'svg', 'pdf', 'html', 'txt', 'zip'],
+      ['png', 'jpg', 'jpeg', 'webp', 'bmp', 'gif', 'ico', 'svg', 'pdf', 'docx', 'html', 'txt', 'zip'],
       ext
     );
   }
@@ -474,13 +488,13 @@ export function getAvailableTargetFormats(sourceInfo = {}) {
   }
   if (family === 'data') {
     return pickTargetsByIds(
-      ['pdf', 'xlsx', 'csv', 'tsv', 'json', 'xml', 'yaml', 'html', 'md', 'docx', 'txt', 'zip'],
+      ['pdf', 'xlsx', 'csv', 'tsv', 'html', 'png', 'jpg', 'webp', 'json', 'xml', 'yaml', 'md', 'docx', 'txt', 'zip'],
       ext
     );
   }
   if (family === 'text') {
     return pickTargetsByIds(
-      ['pdf', 'docx', 'html', 'txt', 'md', 'rtf', 'xlsx', 'csv', 'json', 'xml', 'yaml', 'zip'],
+      ['pdf', 'docx', 'html', 'png', 'jpg', 'webp', 'txt', 'md', 'rtf', 'xlsx', 'csv', 'json', 'xml', 'yaml', 'zip'],
       ext
     );
   }
@@ -1620,7 +1634,7 @@ export function extractTextFromPdfBuffer(arrayBuffer) {
       .replace(/\\n/g, '\n')
       .replace(/\\r/g, '')
       .trim();
-    if (clean && !clean.startsWith('Halaman ')) {
+    if (clean && !/^Manifestudio(?:\s*[—-]\s*|\s+)Halaman\s+\d+/i.test(clean)) {
       extracted.push(clean);
     }
   }
@@ -2122,6 +2136,29 @@ async function convertImageFileInBrowser(file, targetFormat, baseName) {
       const htmlStr = `<!DOCTYPE html><html lang="id"><head><meta charset="utf-8"/><title>${baseName}</title></head><body style="margin:0;display:flex;justify-content:center;align-items:center;min-height:100vh;background:#0f172a;"><img src="data:${file.type || 'image/png'};base64,${b64}" alt="${baseName}" style="max-width:100%;height:auto;"/></body></html>`;
       return { buffer: new TextEncoder().encode(htmlStr).buffer, mimeType: 'text/html;charset=utf-8', ext: 'html' };
     }
+    if (fmt === 'docx') {
+      const imgBytes = new Uint8Array(ab);
+      const isJpeg = imgBytes.length >= 2 && imgBytes[0] === 0xff && imgBytes[1] === 0xd8;
+      const isPng = imgBytes.length >= 4 && imgBytes[0] === 0x89 && imgBytes[1] === 0x50;
+      const safeBytes = isJpeg || isPng ? imgBytes : new Uint8Array(encodeRgbaToPngBuffer(32, 32, rgba));
+      const docxBuf = buildRichDocxBuffer(
+        {
+          pageWidthPt: 595.28,
+          pageHeightPt: 841.89,
+          margins: { top: 48, right: 48, bottom: 48, left: 48 },
+          blocks: [
+            {
+              type: 'paragraph',
+              align: 'center',
+              hasImage: true,
+              runs: [{ type: 'image', bytes: safeBytes, ext: isJpeg ? 'jpeg' : 'png' }],
+            },
+          ],
+        },
+        createZipArchive
+      );
+      return { buffer: docxBuf, mimeType: MIME_BY_FORMAT.docx, ext: 'docx' };
+    }
     return {
       buffer: ab,
       mimeType: MIME_BY_FORMAT[fmt] || 'image/jpeg',
@@ -2222,6 +2259,44 @@ async function convertImageFileInBrowser(file, targetFormat, baseName) {
         buffer: buildPdfFromJpegBytes(jpegAb, w, h),
         mimeType: 'application/pdf',
         ext: 'pdf',
+      };
+    }
+
+    if (fmt === 'docx') {
+      const pngBlob = await new Promise((r) => canvas.toBlob(r, 'image/png'));
+      const pngBytes = new Uint8Array(await pngBlob.arrayBuffer());
+      const landscape = w > h * 1.25;
+      const pageWidthPt = landscape ? 841.89 : 595.28;
+      const pageHeightPt = landscape ? 595.28 : 841.89;
+      const maxImgW = pageWidthPt - 96;
+      const maxImgH = pageHeightPt - 96;
+      const aspect = h / Math.max(1, w);
+      let drawW = Math.min(maxImgW, (w * 72) / 96);
+      let drawH = drawW * aspect;
+      if (drawH > maxImgH) {
+        drawH = maxImgH;
+        drawW = drawH / Math.max(0.01, aspect);
+      }
+      const docxBuf = buildRichDocxBuffer(
+        {
+          pageWidthPt,
+          pageHeightPt,
+          margins: { top: 48, right: 48, bottom: 48, left: 48 },
+          blocks: [
+            {
+              type: 'paragraph',
+              align: 'center',
+              hasImage: true,
+              runs: [{ type: 'image', bytes: pngBytes, ext: 'png', widthPt: drawW, heightPt: drawH }],
+            },
+          ],
+        },
+        createZipArchive
+      );
+      return {
+        buffer: docxBuf,
+        mimeType: MIME_BY_FORMAT.docx,
+        ext: 'docx',
       };
     }
 
@@ -2437,12 +2512,46 @@ function renderStructuredContentToFormat(
     };
   }
   if (fmt === 'docx') {
+    if (model && Array.isArray(model.blocks) && model.blocks.length > 0) {
+      return {
+        buffer: buildRichDocxBuffer(model, createZipArchive),
+        mimeType: MIME_BY_FORMAT.docx,
+        ext: 'docx',
+        engineLabel: 'OpenXML Rich WordprocessingML (.docx) Builder',
+        summaryNote: `Dokumen Word (.docx) dengan gaya, tabel & urutan asli berhasil disusun.`,
+      };
+    }
+    const richBlocks = [];
+    for (const p of normParagraphs) {
+      if (!p.text) continue;
+      richBlocks.push({
+        type: p.isHeading ? 'heading' : 'paragraph',
+        level: p.level || (p.isHeading ? 1 : 0),
+        align: p.align || 'left',
+        bold: Boolean(p.isHeading),
+        plain: p.text,
+        runs: Array.isArray(p.runs) && p.runs.length ? p.runs : [{ type: 'text', text: p.text, bold: Boolean(p.isHeading) }],
+      });
+    }
+    for (const tbl of normTables) {
+      if (Array.isArray(tbl) && tbl.length > 0) {
+        richBlocks.push({
+          type: 'table',
+          rows: tbl.map((row) =>
+            (Array.isArray(row) ? row : [row]).map((cell) => ({
+              text: String(cell ?? ''),
+              paragraphs: [{ plain: String(cell ?? ''), runs: [{ type: 'text', text: String(cell ?? '') }] }],
+            }))
+          ),
+        });
+      }
+    }
     return {
-      buffer: createSampleDocxBuffer(title, normParagraphs, normTables[0] || []),
+      buffer: richBlocks.length > 0 ? buildRichDocxBuffer({ blocks: richBlocks }, createZipArchive) : createSampleDocxBuffer(title, normParagraphs, normTables[0] || []),
       mimeType: MIME_BY_FORMAT.docx,
       ext: 'docx',
-      engineLabel: 'OpenXML WordprocessingML (.docx) Generator',
-      summaryNote: `Dokumen Microsoft Word (.docx) berisi ${normParagraphs.length} paragraf siap dibuka.`,
+      engineLabel: 'OpenXML Rich WordprocessingML (.docx) Generator',
+      summaryNote: `Dokumen Microsoft Word (.docx) berisi ${normParagraphs.length} paragraf & ${normTables.length} tabel siap dibuka.`,
     };
   }
   if (fmt === 'xlsx') {
@@ -2608,8 +2717,33 @@ export async function convertAnyFile(
   let engineLabel = 'Multi-Engine Binary & OpenXML Transcoder';
   let summaryNote = '';
 
+  const PASSTHROUGH_FORMATS = new Set([
+    'docx',
+    'pdf',
+    'xlsx',
+    'html',
+    'rtf',
+    'md',
+    'txt',
+    'csv',
+    'tsv',
+    'json',
+    'xml',
+    'yaml',
+    'zip',
+  ]);
+  const isImageTarget = ['jpg', 'jpeg', 'png', 'webp', 'bmp', 'gif'].includes(fmt);
+
+  // 0. Universal Lossless Same-Format Passthrough (NEVER rebuilds a file when source === target!)
+  if (sourceInfo.ext === fmt && PASSTHROUGH_FORMATS.has(fmt)) {
+    outBuffer = rawBuffer.slice(0);
+    outMime = MIME_BY_FORMAT[fmt] || file.type || 'application/octet-stream';
+    outExt = fmt;
+    engineLabel = `Original .${fmt.toUpperCase()} Lossless Passthrough`;
+    summaryNote = `Berkas .${fmt.toUpperCase()} asli dipertahankan 100% utuh tanpa dibuat ulang.`;
+  }
   // 1. Any File -> ZIP Archive
-  if (fmt === 'zip') {
+  else if (fmt === 'zip') {
     onProgress({
       phase: 'zip',
       percent: 62,
@@ -2630,15 +2764,9 @@ export async function convertAnyFile(
       rawBytes[0] === 0x50 &&
       rawBytes[1] === 0x4b &&
       (sourceInfo.ext === 'docx' || sourceInfo.ext === 'doc');
+    const isRtfSource = sourceInfo.ext === 'rtf';
 
-    // Same-format passthrough preserves the untouched original DOCX file
-    if (isZipDocx && fmt === 'docx') {
-      outBuffer = rawBuffer.slice(0);
-      outMime = MIME_BY_FORMAT.docx;
-      outExt = 'docx';
-      engineLabel = 'Original OpenXML Passthrough';
-      summaryNote = 'Berkas DOCX asli dipertahankan utuh tanpa perubahan.';
-    } else if (isZipDocx && fmt === 'pdf' && typeof window !== 'undefined' && typeof document !== 'undefined') {
+    if (isZipDocx && (fmt === 'pdf' || isImageTarget) && typeof window !== 'undefined' && typeof document !== 'undefined') {
       onProgress({
         phase: 'render-docx-faithful',
         percent: 24,
@@ -2659,23 +2787,43 @@ export async function convertAnyFile(
           },
         });
         if (rendered && Array.isArray(rendered.pages) && rendered.pages.length > 0) {
-          onProgress({
-            phase: 'assemble-pdf',
-            percent: 85,
-            label: `Menyusun ${rendered.pageCount} halaman PDF asli dengan lapisan teks yang dapat diseleksi...`,
-          });
-          const pdfLib = await loadPdfLib();
-          const pdfBytes = await buildFaithfulPdfFromRenderedPages(rendered.pages, pdfLib);
-          if (pdfBytes && pdfBytes.byteLength > 200) {
-            outBuffer = pdfBytes.buffer.slice(pdfBytes.byteOffset, pdfBytes.byteOffset + pdfBytes.byteLength);
-            outMime = 'application/pdf';
-            outExt = 'pdf';
-            engineLabel = `Original DOCX Layout Renderer (${rendered.pageCount} Halaman + Selectable Text Layer)`;
-            summaryNote = `${rendered.pageCount} halaman dokumen Word asli berhasil dikonversi ke PDF tanpa mengubah tata letak, logo, tabel, atau tipografi.`;
+          if (fmt === 'pdf') {
+            onProgress({
+              phase: 'assemble-pdf',
+              percent: 85,
+              label: `Menyusun ${rendered.pageCount} halaman PDF asli dengan lapisan teks yang dapat diseleksi...`,
+            });
+            const pdfLib = await loadPdfLib();
+            const pdfBytes = await buildFaithfulPdfFromRenderedPages(rendered.pages, pdfLib);
+            if (pdfBytes && pdfBytes.byteLength > 200) {
+              outBuffer = pdfBytes.buffer.slice(pdfBytes.byteOffset, pdfBytes.byteOffset + pdfBytes.byteLength);
+              outMime = 'application/pdf';
+              outExt = 'pdf';
+              engineLabel = `Original DOCX Layout Renderer (${rendered.pageCount} Halaman + Selectable Text Layer)`;
+              summaryNote = `${rendered.pageCount} halaman dokumen Word asli berhasil dikonversi ke PDF tanpa mengubah tata letak, logo, tabel, atau tipografi.`;
+            }
+          } else {
+            onProgress({
+              phase: 'stitch-docx-img',
+              percent: 85,
+              label: `Menyusun ${rendered.pageCount} halaman Word asli menjadi gambar .${fmt.toUpperCase()}...`,
+            });
+            const stitched = await stitchPageImagesToImageBuffer(
+              rendered.pages.map((p) => p.imageDataUrl),
+              fmt,
+              { encodeBmpFn: encodeRgbaToBmpBuffer, encodeGifFn: encodeRgbaToGifBuffer }
+            );
+            if (stitched?.buffer) {
+              outBuffer = stitched.buffer;
+              outMime = stitched.mimeType;
+              outExt = stitched.ext;
+              engineLabel = `Original DOCX Page Renderer (${rendered.pageCount} Hal.) + ${fmt.toUpperCase()} Codec`;
+              summaryNote = `${rendered.pageCount} halaman dokumen Word asli berhasil dirender menjadi gambar .${outExt.toUpperCase()}.`;
+            }
           }
         }
       } catch {
-        // Offline / CDN unreachable -> seamless fallback to faithful pure-JS OOXML PDF below
+        // Offline / CDN unreachable -> seamless fallback to faithful pure-JS OOXML below
       }
     } else if (isZipDocx && fmt === 'html' && typeof window !== 'undefined' && typeof document !== 'undefined') {
       onProgress({
@@ -2699,6 +2847,74 @@ export async function convertAnyFile(
       } catch {
         // Fall through to structured model HTML builder
       }
+    } else if (isRtfSource) {
+      onProgress({
+        phase: 'parse-rtf',
+        percent: 38,
+        label: 'Membaca format gaya, bold/italic, perataan & warna asli RTF...',
+      });
+      const rtfText = new TextDecoder('latin1').decode(rawBytes);
+      const rtfModel = parseRtfToRichModel(rtfText, file.name || 'Dokumen RTF');
+      const rtfHtml = buildFaithfulHtmlFromRichModel(rtfModel, file.name || 'Dokumen RTF');
+
+      if ((fmt === 'pdf' || isImageTarget) && typeof window !== 'undefined' && typeof document !== 'undefined') {
+        try {
+          const rendered = await renderHtmlToFaithfulPages(rtfHtml, { scale: 2.0, maxPages: 40, onProgress });
+          if (rendered?.pages?.length) {
+            if (fmt === 'pdf') {
+              const pdfLib = await loadPdfLib();
+              const pdfBytes = await buildFaithfulPdfFromRenderedPages(rendered.pages, pdfLib);
+              if (pdfBytes && pdfBytes.byteLength > 200) {
+                outBuffer = pdfBytes.buffer.slice(pdfBytes.byteOffset, pdfBytes.byteOffset + pdfBytes.byteLength);
+                outMime = 'application/pdf';
+                outExt = 'pdf';
+                engineLabel = `RTF Rich Layout Renderer (${rendered.pageCount} Hal.)`;
+                summaryNote = `${rendered.pageCount} halaman RTF berhasil dikonversi ke PDF dengan gaya teks asli.`;
+              }
+            } else {
+              const stitched = await stitchPageImagesToImageBuffer(
+                rendered.pages.map((p) => p.imageDataUrl),
+                fmt,
+                { encodeBmpFn: encodeRgbaToBmpBuffer, encodeGifFn: encodeRgbaToGifBuffer }
+              );
+              if (stitched?.buffer) {
+                outBuffer = stitched.buffer;
+                outMime = stitched.mimeType;
+                outExt = stitched.ext;
+                engineLabel = `RTF Rich Renderer + ${fmt.toUpperCase()} Codec`;
+                summaryNote = `Dokumen RTF berhasil dirender ke gambar .${outExt.toUpperCase()}.`;
+              }
+            }
+          }
+        } catch {
+          // Fall through to rich structured export below
+        }
+      }
+
+      if (!outBuffer) {
+        if (fmt === 'html') {
+          outBuffer = new TextEncoder().encode(rtfHtml).buffer;
+          outMime = MIME_BY_FORMAT.html;
+          outExt = 'html';
+          engineLabel = 'RTF Rich HTML5 Exporter';
+          summaryNote = 'Format gaya, paragraf & perataan RTF dipertahankan ke HTML5.';
+        } else {
+          const rendered = renderStructuredContentToFormat(fmt, {
+            title: file.name || 'Dokumen RTF',
+            subtitle: '',
+            paragraphs: rtfModel.paragraphs,
+            tables: rtfModel.tables,
+            blocks: rtfModel.blocks,
+            model: rtfModel,
+            baseName,
+          });
+          outBuffer = rendered.buffer;
+          outMime = rendered.mimeType;
+          outExt = rendered.ext;
+          engineLabel = `RTF Rich Parser + ${rendered.engineLabel}`;
+          summaryNote = rendered.summaryNote;
+        }
+      }
     }
 
     if (!outBuffer) {
@@ -2713,96 +2929,287 @@ export async function convertAnyFile(
         percent: 78,
         label: `Menyusun dokumen ke format .${fmt.toUpperCase()} dengan mempertahankan urutan asli...`,
       });
-      const rendered = renderStructuredContentToFormat(fmt, {
-        title: file.name || 'Dokumen Word DOCX',
-        subtitle: '',
-        paragraphs: parsed.paragraphs,
-        tables: parsed.tables,
-        blocks: parsed.blocks,
-        model: parsed.model,
-        baseName,
-      });
-      outBuffer = rendered.buffer;
-      outMime = rendered.mimeType;
-      outExt = rendered.ext;
-      engineLabel = rendered.engineLabel;
-      summaryNote = rendered.summaryNote;
+      if (isImageTarget) {
+        outBuffer = await renderLinesToCanvasImageBuffer(
+          parsed.paragraphs.map((p) => p.text || '').filter(Boolean),
+          fmt,
+          file.name || 'Dokumen Word'
+        );
+        outMime = MIME_BY_FORMAT[fmt] || 'image/png';
+        outExt = fmt;
+        engineLabel = `DOCX Rasterizer (.${fmt.toUpperCase()})`;
+        summaryNote = `Halaman dokumen berhasil dirender menjadi gambar .${outExt.toUpperCase()}.`;
+      } else {
+        const rendered = renderStructuredContentToFormat(fmt, {
+          title: file.name || 'Dokumen Word DOCX',
+          subtitle: '',
+          paragraphs: parsed.paragraphs,
+          tables: parsed.tables,
+          blocks: parsed.blocks,
+          model: parsed.model,
+          baseName,
+        });
+        outBuffer = rendered.buffer;
+        outMime = rendered.mimeType;
+        outExt = rendered.ext;
+        engineLabel = rendered.engineLabel;
+        summaryNote = rendered.summaryNote;
+      }
     }
   }
-  // 3. EXCEL / CSV / TSV / Structured Data -> PDF / XLSX / CSV / TSV / JSON / XML / YAML / HTML / MD / DOCX / TXT
+  // 3. EXCEL / CSV / TSV / Structured Data -> PDF / Image / XLSX / CSV / TSV / JSON / XML / YAML / HTML / MD / DOCX / TXT
   else if (sourceInfo.family === 'spreadsheet' || sourceInfo.family === 'data') {
     onProgress({
       phase: 'parse-excel',
-      percent: 45,
-      label: `Membaca struktur baris & kolom dari ${sourceInfo.label}...`,
+      percent: 40,
+      label: `Membaca seluruh sheet, kolom & struktur data asli dari ${sourceInfo.label}...`,
     });
-    const rows = await parseExcelBuffer(rawBuffer, file.name);
-    onProgress({
-      phase: 'render-sheet',
-      percent: 78,
-      label: `Menyusun ${rows.length} baris data ke format .${fmt.toUpperCase()}...`,
-    });
-    const rendered = renderStructuredContentToFormat(fmt, {
-      title: file.name || 'Spreadsheet',
-      subtitle: '',
-      paragraphs: [],
-      tables: [rows],
-      baseName,
-    });
-    outBuffer = rendered.buffer;
-    outMime = rendered.mimeType;
-    outExt = rendered.ext;
-    engineLabel = rendered.engineLabel;
-    summaryNote = rendered.summaryNote;
-  }
-  // 4. PDF -> Image (JPG, JPEG, PNG, WEBP, BMP, GIF) or Document (DOCX, XLSX, TXT, HTML, MD, RTF)
-  else if (sourceInfo.family === 'pdf') {
-    onProgress({
-      phase: 'parse-pdf',
-      percent: 38,
-      label: 'Membaca & merender halaman dokumen PDF...',
-    });
+    let sheets = [];
+    if (sourceInfo.ext === 'xlsx') {
+      try {
+        sheets = await parseExcelWorkbookMultiSheet(rawBuffer, extractZipEntries);
+      } catch {
+        sheets = [];
+      }
+    }
+    const primaryRows =
+      sheets.length > 0 && sheets[0].rows.length > 0
+        ? sheets[0].rows
+        : await parseExcelBuffer(rawBuffer, file.name);
+    if (sheets.length === 0) {
+      sheets = [{ name: baseName || 'Sheet1', rows: primaryRows }];
+    }
+    const maxCols = Math.max(
+      1,
+      ...sheets.flatMap((sh) => (sh.rows || []).map((r) => (Array.isArray(r) ? r.length : 1)))
+    );
+    const sheetHtml = buildMultiSheetHtml(sheets, file.name || 'Spreadsheet');
 
-    const isPdfToImg = ['jpg', 'jpeg', 'png', 'webp', 'bmp', 'gif'].includes(fmt);
-    if (isPdfToImg && typeof document !== 'undefined') {
+    if ((fmt === 'pdf' || isImageTarget) && typeof window !== 'undefined' && typeof document !== 'undefined') {
       try {
         onProgress({
-          phase: 'pdfjs-render',
-          percent: 60,
-          label: 'Merender halaman PDF resolusi tinggi via Open-Source PDF.js...',
+          phase: 'render-sheet-visual',
+          percent: 58,
+          label: `Merender ${sheets.length} sheet (${maxCols} kolom) dalam tata letak tabel presisi...`,
         });
-        const pdfRender = await renderPdfPageToCanvasData(rawBuffer);
-        if (pdfRender?.blob) {
-          const converted = await convertImageFileInBrowser(
-            new File([pdfRender.blob], `${baseName}.png`, { type: 'image/png' }),
-            fmt,
-            baseName
-          );
-          outBuffer = converted.buffer;
-          outMime = converted.mimeType;
-          outExt = converted.ext;
-          engineLabel = `PDF.js (${pdfRender.width}×${pdfRender.height}px) + ${fmt.toUpperCase()} Codec`;
-          summaryNote = `Halaman PDF (${pdfRender.numPages} hal.) berhasil dirender tajam ke .${outExt.toUpperCase()}.`;
+        const rendered = await renderHtmlToFaithfulPages(sheetHtml, {
+          scale: 2.0,
+          maxPages: 40,
+          landscape: maxCols >= 6,
+          onProgress,
+        });
+        if (rendered?.pages?.length) {
+          if (fmt === 'pdf') {
+            const pdfLib = await loadPdfLib();
+            const pdfBytes = await buildFaithfulPdfFromRenderedPages(rendered.pages, pdfLib);
+            if (pdfBytes && pdfBytes.byteLength > 200) {
+              outBuffer = pdfBytes.buffer.slice(pdfBytes.byteOffset, pdfBytes.byteOffset + pdfBytes.byteLength);
+              outMime = 'application/pdf';
+              outExt = 'pdf';
+              engineLabel = `Spreadsheet Visual Layout Renderer (${sheets.length} Sheet, ${maxCols >= 6 ? 'Landscape' : 'Portrait'})`;
+              summaryNote = `${sheets.length} sheet data berhasil dikonversi ke PDF tanpa memotong kolom.`;
+            }
+          } else {
+            const stitched = await stitchPageImagesToImageBuffer(
+              rendered.pages.map((p) => p.imageDataUrl),
+              fmt,
+              { encodeBmpFn: encodeRgbaToBmpBuffer, encodeGifFn: encodeRgbaToGifBuffer }
+            );
+            if (stitched?.buffer) {
+              outBuffer = stitched.buffer;
+              outMime = stitched.mimeType;
+              outExt = stitched.ext;
+              engineLabel = `Spreadsheet Visual Renderer + ${fmt.toUpperCase()} Codec`;
+              summaryNote = `Tabel spreadsheet berhasil dirender menjadi gambar .${outExt.toUpperCase()}.`;
+            }
+          }
         }
       } catch {
-        // Fall through to stream extractor fallback
+        // Fall through to pure-JS structured renderer below
       }
     }
 
     if (!outBuffer) {
+      if (fmt === 'html') {
+        outBuffer = new TextEncoder().encode(sheetHtml).buffer;
+        outMime = MIME_BY_FORMAT.html;
+        outExt = 'html';
+        engineLabel = `Multi-Sheet HTML5 Table Exporter (${sheets.length} Sheet)`;
+        summaryNote = `${sheets.length} sheet spreadsheet berhasil diekspor ke HTML5 interaktif.`;
+      } else if (fmt === 'docx') {
+        const sheetBlocks = [];
+        for (const sh of sheets) {
+          if (sheets.length > 1) {
+            sheetBlocks.push({
+              type: 'heading',
+              level: 2,
+              align: 'left',
+              bold: true,
+              plain: sh.name,
+              runs: [{ type: 'text', text: sh.name, bold: true }],
+            });
+          }
+          if (sh.rows.length > 0) {
+            sheetBlocks.push({
+              type: 'table',
+              rows: sh.rows.map((r, rIdx) =>
+                r.map((cell) => ({
+                  text: String(cell ?? ''),
+                  shading: rIdx === 0 ? '#EEF2FF' : '',
+                  paragraphs: [
+                    {
+                      plain: String(cell ?? ''),
+                      runs: [{ type: 'text', text: String(cell ?? ''), bold: rIdx === 0 }],
+                    },
+                  ],
+                }))
+              ),
+            });
+          }
+        }
+        outBuffer = buildRichDocxBuffer(
+          {
+            pageWidthPt: maxCols >= 6 ? 841.89 : 595.28,
+            pageHeightPt: maxCols >= 6 ? 595.28 : 841.89,
+            margins: { top: 48, right: 48, bottom: 48, left: 48 },
+            blocks: sheetBlocks,
+          },
+          createZipArchive
+        );
+        outMime = MIME_BY_FORMAT.docx;
+        outExt = 'docx';
+        engineLabel = `Multi-Sheet Spreadsheet -> WordprocessingML (.docx) Builder`;
+        summaryNote = `${sheets.length} sheet tabel berhasil disusun ke dokumen Word (.docx).`;
+      } else if (isImageTarget) {
+        outBuffer = await renderLinesToCanvasImageBuffer(
+          primaryRows.map((r) => r.join(' | ')),
+          fmt,
+          file.name || 'Spreadsheet'
+        );
+        outMime = MIME_BY_FORMAT[fmt] || 'image/png';
+        outExt = fmt;
+        engineLabel = `Spreadsheet Rasterizer (.${fmt.toUpperCase()})`;
+        summaryNote = `Data spreadsheet berhasil dirender menjadi gambar .${outExt.toUpperCase()}.`;
+      } else {
+        onProgress({
+          phase: 'render-sheet',
+          percent: 78,
+          label: `Menyusun ${primaryRows.length} baris data ke format .${fmt.toUpperCase()}...`,
+        });
+        const rendered = renderStructuredContentToFormat(fmt, {
+          title: file.name || 'Spreadsheet',
+          subtitle: '',
+          paragraphs: [],
+          tables: sheets.map((s) => s.rows),
+          baseName,
+        });
+        outBuffer = rendered.buffer;
+        outMime = rendered.mimeType;
+        outExt = rendered.ext;
+        engineLabel = rendered.engineLabel;
+        summaryNote = rendered.summaryNote;
+      }
+    }
+  }
+  // 4. PDF -> Multi-Page Image, Authentic Visual+Selectable HTML, Layout-Aware DOCX / RTF / MD / TXT / XLSX
+  else if (sourceInfo.family === 'pdf') {
+    onProgress({
+      phase: 'parse-pdf',
+      percent: 34,
+      label: 'Membaca & merender seluruh halaman dokumen PDF asli...',
+    });
+
+    if (isImageTarget && typeof document !== 'undefined') {
+      try {
+        onProgress({
+          phase: 'pdfjs-render-all',
+          percent: 56,
+          label: 'Merender semua halaman PDF resolusi tinggi via Open-Source PDF.js...',
+        });
+        const previewRes = await renderPdfPagesToPreviewImages(rawBuffer, { scale: 1.8, maxPages: 25 });
+        const allPages = Array.isArray(previewRes) ? previewRes : previewRes?.pages || [];
+        if (allPages.length > 0) {
+          const stitched = await stitchPageImagesToImageBuffer(
+            allPages.map((p) => p.imageDataUrl),
+            fmt,
+            { encodeBmpFn: encodeRgbaToBmpBuffer, encodeGifFn: encodeRgbaToGifBuffer }
+          );
+          if (stitched?.buffer) {
+            outBuffer = stitched.buffer;
+            outMime = stitched.mimeType;
+            outExt = stitched.ext;
+            engineLabel = `PDF.js Multi-Page Renderer (${allPages.length} Hal.) + ${fmt.toUpperCase()} Codec`;
+            summaryNote = `Seluruh ${allPages.length} halaman PDF berhasil dirender tajam ke .${outExt.toUpperCase()}.`;
+          }
+        }
+        if (!outBuffer) {
+          const pdfRender = await renderPdfPageToCanvasData(rawBuffer);
+          if (pdfRender?.blob) {
+            const converted = await convertImageFileInBrowser(
+              new File([pdfRender.blob], `${baseName}.png`, { type: 'image/png' }),
+              fmt,
+              baseName
+            );
+            outBuffer = converted.buffer;
+            outMime = converted.mimeType;
+            outExt = converted.ext;
+            engineLabel = `PDF.js (${pdfRender.width}×${pdfRender.height}px) + ${fmt.toUpperCase()} Codec`;
+            summaryNote = `Halaman PDF (${pdfRender.numPages} hal.) berhasil dirender tajam ke .${outExt.toUpperCase()}.`;
+          }
+        }
+      } catch {
+        // Fall through to stream extractor fallback
+      }
+    } else if (fmt === 'html' && typeof document !== 'undefined') {
+      try {
+        onProgress({
+          phase: 'pdfjs-authentic-html',
+          percent: 58,
+          label: 'Mengekspor visual asli PDF + lapisan teks terseleksi ke HTML5...',
+        });
+        const [previewRes, detailRes] = await Promise.all([
+          renderPdfPagesToPreviewImages(rawBuffer, { scale: 1.8, maxPages: 30 }).catch(() => null),
+          extractPdfDetailedWithPdfJs(rawBuffer, { maxPages: 30 }).catch(() => null),
+        ]);
+        const previews = Array.isArray(previewRes) ? previewRes : previewRes?.pages || [];
+        const detailedPages = Array.isArray(detailRes) ? detailRes : detailRes?.pagesLayout || [];
+        if (previews.length > 0) {
+          const htmlOut = buildAuthenticPdfHtml(previews, detailedPages, file.name || 'Dokumen PDF');
+          outBuffer = new TextEncoder().encode(htmlOut).buffer;
+          outMime = MIME_BY_FORMAT.html;
+          outExt = 'html';
+          engineLabel = `PDF.js Authentic Visual + Selectable Text HTML5 Exporter (${previews.length} Hal.)`;
+          summaryNote = `${previews.length} halaman PDF asli berhasil diekspor ke HTML5 dengan tampilan 100% identik & teks bisa disalin.`;
+        }
+      } catch {
+        // Fall through to detailed text reconstruction
+      }
+    }
+
+    if (!outBuffer) {
+      let detailedPages = [];
       let extractedLines = null;
       if (typeof window !== 'undefined') {
         try {
-          extractedLines = await extractPdfTextWithPdfJs(rawBuffer);
+          const detailRes = await extractPdfDetailedWithPdfJs(rawBuffer, { maxPages: 40 });
+          detailedPages = Array.isArray(detailRes) ? detailRes : detailRes?.pagesLayout || [];
+          if (detailRes?.lines?.length) extractedLines = detailRes.lines;
         } catch {
-          extractedLines = null;
+          detailedPages = [];
+        }
+        if (!extractedLines) {
+          try {
+            extractedLines = await extractPdfTextWithPdfJs(rawBuffer);
+          } catch {
+            extractedLines = null;
+          }
         }
       }
-      if (!extractedLines) {
+      if (!extractedLines || extractedLines.length === 0) {
         extractedLines = extractTextFromPdfBuffer(rawBuffer);
       }
 
-      if (isPdfToImg) {
+      if (isImageTarget) {
         onProgress({
           phase: 'render-pdf-img',
           percent: 78,
@@ -2821,24 +3228,46 @@ export async function convertAnyFile(
         onProgress({
           phase: 'render-pdf-doc',
           percent: 78,
-          label: `Menyusun isi PDF ke format dokumen .${fmt.toUpperCase()}...`,
+          label: `Menyusun struktur, paragraf & halaman PDF ke .${fmt.toUpperCase()}...`,
         });
+        let richPdfModel = null;
+        if (detailedPages.length > 0) {
+          let previewPagesForScanned = [];
+          const hasTextSpans = detailedPages.some((pg) => Array.isArray(pg.spans) && pg.spans.length > 0);
+          if (!hasTextSpans && typeof document !== 'undefined') {
+            try {
+              const pRes = await renderPdfPagesToPreviewImages(rawBuffer, { scale: 1.6, maxPages: 20 });
+              previewPagesForScanned = Array.isArray(pRes) ? pRes : pRes?.pages || [];
+            } catch {
+              previewPagesForScanned = [];
+            }
+          }
+          richPdfModel = buildRichModelFromPdfDetailed(detailedPages, previewPagesForScanned);
+        }
+
         const rendered = renderStructuredContentToFormat(fmt, {
           title: file.name || 'Dokumen PDF',
-          subtitle: `Hasil Ekstraksi PDF (${extractedLines.length} baris teks)`,
-          paragraphs: extractedLines.map((l, i) => ({ text: l, isHeading: i === 0 })),
-          tables: [],
+          subtitle: '',
+          paragraphs: richPdfModel?.paragraphs?.length
+            ? richPdfModel.paragraphs
+            : extractedLines.map((l) => ({ text: l, isHeading: false })),
+          tables: richPdfModel?.tables || [],
+          blocks: richPdfModel?.blocks || null,
+          model: richPdfModel,
           baseName,
         });
         outBuffer = rendered.buffer;
         outMime = rendered.mimeType;
         outExt = rendered.ext;
-        engineLabel = `PDF Stream Extractor + ${rendered.engineLabel}`;
+        engineLabel =
+          detailedPages.length > 0
+            ? `PDF.js Layout-Aware Reconstructor + ${rendered.engineLabel}`
+            : `PDF Stream Extractor + ${rendered.engineLabel}`;
         summaryNote = rendered.summaryNote;
       }
     }
   }
-  // 5. Image -> PNG / JPG / JPEG / WebP / BMP / GIF / ICO / SVG / PDF / HTML / TXT
+  // 5. Image -> PNG / JPG / JPEG / WebP / BMP / GIF / ICO / SVG / PDF / DOCX / HTML / TXT
   else if (sourceInfo.family === 'image') {
     onProgress({
       phase: 'transcode-img',
@@ -2849,14 +3278,17 @@ export async function convertAnyFile(
     outBuffer = converted.buffer;
     outMime = converted.mimeType;
     outExt = converted.ext;
-    engineLabel = 'Direct Canvas & Binary Image Codec';
-    summaryNote = `Gambar berhasil dikonversi ke .${outExt.toUpperCase()} dengan ketajaman penuh.`;
+    engineLabel = fmt === 'docx' ? 'Image -> OpenXML Embedded Word (.docx) Builder' : 'Direct Canvas & Binary Image Codec';
+    summaryNote =
+      fmt === 'docx'
+        ? 'Gambar asli berhasil disematkan utuh ke dalam dokumen Microsoft Word (.docx).'
+        : `Gambar berhasil dikonversi ke .${outExt.toUpperCase()} dengan ketajaman penuh.`;
   }
   // 6. Video / Audio -> Real Audio/Video Transcoding (FFmpeg WebAssembly + WebAudio + LAME MP3) & Real Frame Capture
   else if (sourceInfo.family === 'video' || sourceInfo.family === 'audio') {
     const isBrowserRuntime = typeof window !== 'undefined' && typeof Worker !== 'undefined';
 
-    if (['jpg', 'jpeg', 'png', 'webp', 'bmp', 'gif'].includes(fmt)) {
+    if (isImageTarget) {
       if (!isBrowserRuntime) {
         outBuffer = await renderLinesToCanvasImageBuffer(
           [`Frame Media: ${file.name}`],
@@ -2941,14 +3373,12 @@ export async function convertAnyFile(
         }
       }
     } else if (!isBrowserRuntime) {
-      // Headless Node unit test container verification path (browser always uses real FFmpeg / LAME transcoding below)
       outBuffer = buildNodeTestContainerStub(rawBuffer, fmt);
       outMime = MIME_BY_FORMAT[fmt] || 'audio/mp4';
       outExt = fmt;
       engineLabel = `ISO / Multimedia Container Engine (.${fmt.toUpperCase()})`;
       summaryNote = `Media berhasil dikonversi ke .${outExt.toUpperCase()}.`;
     } else if (fmt === 'mp3' || fmt === 'wav') {
-      // Browser fast local path: WebAudio decodeAudioData + pure-JS LAME MP3 / PCM WAV, then verify playability; fallback to FFmpeg WASM
       let usedEngine = '';
       try {
         const candidateBuf = await transcodeAudioWithWebAudioAndLame({
@@ -3060,37 +3490,193 @@ export async function convertAnyFile(
     summaryNote = `Daftar & isi ${entries.size} berkas dalam ZIP berhasil diekstrak ke .${outExt.toUpperCase()}.`;
   }
 
-  // 8. Text / Generic -> Any Document / Data format
+  // 8. HTML / Markdown / Text / Generic -> True-Fidelity Visual & Structural Conversion!
   if (!outBuffer) {
-    onProgress({
-      phase: 'render-generic',
-      percent: 72,
-      label: `Menyusun berkas ke format .${fmt.toUpperCase()}...`,
-    });
-    let rawText = new TextDecoder('utf-8').decode(new Uint8Array(rawBuffer));
-    if (sourceInfo.ext === 'html' || /<html|<body|<p\b|<h[1-6]\b/i.test(rawText)) {
-      rawText = rawText
-        .replace(/<style[\s\S]*?<\/style>/gi, ' ')
-        .replace(/<script[\s\S]*?<\/script>/gi, ' ')
-        .replace(/<\/(?:p|div|h[1-6]|li|tr|br)>/gi, '\n')
-        .replace(/<[^>]+>/g, ' ');
+    const rawText = new TextDecoder('utf-8').decode(new Uint8Array(rawBuffer));
+    const isHtmlSource = sourceInfo.ext === 'html' || /<!doctype html|<html\b|<body\b|<table\b|<h[1-6]\b/i.test(rawText);
+    const isMdSource = sourceInfo.ext === 'md';
+
+    if (isHtmlSource) {
+      if ((fmt === 'pdf' || isImageTarget) && typeof window !== 'undefined' && typeof document !== 'undefined') {
+        try {
+          onProgress({
+            phase: 'render-html-visual',
+            percent: 52,
+            label: `Merender CSS, tabel & gambar asli HTML5 ke .${fmt.toUpperCase()}...`,
+          });
+          const rendered = await renderHtmlToFaithfulPages(rawText, { scale: 2.0, maxPages: 40, onProgress });
+          if (rendered?.pages?.length) {
+            if (fmt === 'pdf') {
+              const pdfLib = await loadPdfLib();
+              const pdfBytes = await buildFaithfulPdfFromRenderedPages(rendered.pages, pdfLib);
+              if (pdfBytes && pdfBytes.byteLength > 200) {
+                outBuffer = pdfBytes.buffer.slice(pdfBytes.byteOffset, pdfBytes.byteOffset + pdfBytes.byteLength);
+                outMime = 'application/pdf';
+                outExt = 'pdf';
+                engineLabel = `Original HTML5/CSS Visual Renderer (${rendered.pageCount} Hal. + Selectable Text)`;
+                summaryNote = `${rendered.pageCount} halaman HTML asli berhasil dikonversi ke PDF tanpa menghilangkan CSS, tabel, atau gambar.`;
+              }
+            } else {
+              const stitched = await stitchPageImagesToImageBuffer(
+                rendered.pages.map((p) => p.imageDataUrl),
+                fmt,
+                { encodeBmpFn: encodeRgbaToBmpBuffer, encodeGifFn: encodeRgbaToGifBuffer }
+              );
+              if (stitched?.buffer) {
+                outBuffer = stitched.buffer;
+                outMime = stitched.mimeType;
+                outExt = stitched.ext;
+                engineLabel = `Original HTML5/CSS Renderer + ${fmt.toUpperCase()} Codec`;
+                summaryNote = `Halaman HTML asli berhasil dirender menjadi gambar .${outExt.toUpperCase()}.`;
+              }
+            }
+          }
+        } catch {
+          // Fall through to rich HTML DOM parser
+        }
+      }
+
+      if (!outBuffer) {
+        const htmlModel = parseHtmlToRichModel(rawText, file.name || 'Dokumen HTML');
+        if (isImageTarget) {
+          outBuffer = await renderLinesToCanvasImageBuffer(
+            htmlModel.paragraphs.map((p) => p.text).filter(Boolean),
+            fmt,
+            file.name || 'Dokumen HTML'
+          );
+          outMime = MIME_BY_FORMAT[fmt] || 'image/png';
+          outExt = fmt;
+          engineLabel = `HTML Rasterizer (.${fmt.toUpperCase()})`;
+          summaryNote = `Halaman HTML berhasil dirender menjadi gambar .${outExt.toUpperCase()}.`;
+        } else {
+          const rendered = renderStructuredContentToFormat(fmt, {
+            title: file.name || 'Dokumen HTML',
+            subtitle: '',
+            paragraphs: htmlModel.paragraphs,
+            tables: htmlModel.tables,
+            blocks: htmlModel.blocks,
+            model: htmlModel,
+            baseName,
+          });
+          outBuffer = rendered.buffer;
+          outMime = rendered.mimeType;
+          outExt = rendered.ext;
+          engineLabel = `HTML5 Rich Structural Parser + ${rendered.engineLabel}`;
+          summaryNote = rendered.summaryNote;
+        }
+      }
+    } else if (isMdSource) {
+      onProgress({
+        phase: 'parse-md',
+        percent: 45,
+        label: 'Membaca heading, tabel, daftar, kode & gaya Markdown asli...',
+      });
+      const mdModel = parseMarkdownToRichModel(rawText, file.name || 'Dokumen Markdown');
+      const mdHtml = buildFaithfulHtmlFromRichModel(mdModel, file.name || 'Dokumen Markdown');
+
+      if ((fmt === 'pdf' || isImageTarget) && typeof window !== 'undefined' && typeof document !== 'undefined') {
+        try {
+          const rendered = await renderHtmlToFaithfulPages(mdHtml, { scale: 2.0, maxPages: 40, onProgress });
+          if (rendered?.pages?.length) {
+            if (fmt === 'pdf') {
+              const pdfLib = await loadPdfLib();
+              const pdfBytes = await buildFaithfulPdfFromRenderedPages(rendered.pages, pdfLib);
+              if (pdfBytes && pdfBytes.byteLength > 200) {
+                outBuffer = pdfBytes.buffer.slice(pdfBytes.byteOffset, pdfBytes.byteOffset + pdfBytes.byteLength);
+                outMime = 'application/pdf';
+                outExt = 'pdf';
+                engineLabel = `Markdown Rich Layout Renderer (${rendered.pageCount} Hal.)`;
+                summaryNote = `${rendered.pageCount} halaman Markdown berhasil dikonversi ke PDF dengan heading, tabel & gaya asli.`;
+              }
+            } else {
+              const stitched = await stitchPageImagesToImageBuffer(
+                rendered.pages.map((p) => p.imageDataUrl),
+                fmt,
+                { encodeBmpFn: encodeRgbaToBmpBuffer, encodeGifFn: encodeRgbaToGifBuffer }
+              );
+              if (stitched?.buffer) {
+                outBuffer = stitched.buffer;
+                outMime = stitched.mimeType;
+                outExt = stitched.ext;
+                engineLabel = `Markdown Rich Renderer + ${fmt.toUpperCase()} Codec`;
+                summaryNote = `Dokumen Markdown berhasil dirender ke gambar .${outExt.toUpperCase()}.`;
+              }
+            }
+          }
+        } catch {
+          // Fall through to structured export below
+        }
+      }
+
+      if (!outBuffer) {
+        if (fmt === 'html') {
+          outBuffer = new TextEncoder().encode(mdHtml).buffer;
+          outMime = MIME_BY_FORMAT.html;
+          outExt = 'html';
+          engineLabel = 'Markdown -> Styled HTML5 Exporter';
+          summaryNote = 'Heading, tabel, kode & gaya teks Markdown berhasil diekspor ke HTML5.';
+        } else if (isImageTarget) {
+          outBuffer = await renderLinesToCanvasImageBuffer(
+            mdModel.paragraphs.map((p) => p.text).filter(Boolean),
+            fmt,
+            file.name || 'Dokumen Markdown'
+          );
+          outMime = MIME_BY_FORMAT[fmt] || 'image/png';
+          outExt = fmt;
+          engineLabel = `Markdown Rasterizer (.${fmt.toUpperCase()})`;
+          summaryNote = `Dokumen Markdown berhasil dirender ke gambar .${outExt.toUpperCase()}.`;
+        } else {
+          const rendered = renderStructuredContentToFormat(fmt, {
+            title: file.name || 'Dokumen Markdown',
+            subtitle: '',
+            paragraphs: mdModel.paragraphs,
+            tables: mdModel.tables,
+            blocks: mdModel.blocks,
+            model: mdModel,
+            baseName,
+          });
+          outBuffer = rendered.buffer;
+          outMime = rendered.mimeType;
+          outExt = rendered.ext;
+          engineLabel = `Markdown Rich Parser + ${rendered.engineLabel}`;
+          summaryNote = rendered.summaryNote;
+        }
+      }
+    } else {
+      onProgress({
+        phase: 'render-generic',
+        percent: 72,
+        label: `Menyusun berkas ke format .${fmt.toUpperCase()}...`,
+      });
+      const lines = rawText
+        .split(/\r?\n/)
+        .map((l) => l.trim())
+        .filter(Boolean);
+      if (isImageTarget) {
+        outBuffer = await renderLinesToCanvasImageBuffer(
+          lines.length > 0 ? lines : [`Berkas ${file.name}`],
+          fmt,
+          file.name || 'Dokumen Teks'
+        );
+        outMime = MIME_BY_FORMAT[fmt] || 'image/png';
+        outExt = fmt;
+        engineLabel = `Text Document Rasterizer (.${fmt.toUpperCase()})`;
+        summaryNote = `Dokumen teks berhasil dirender ke gambar .${outExt.toUpperCase()}.`;
+      } else {
+        const rendered = renderStructuredContentToFormat(fmt, {
+          title: file.name || 'Dokumen Konversi',
+          subtitle: '',
+          paragraphs: lines.length > 0 ? lines : [`Berkas ${file.name} (${formatBytes(file.size)})`],
+          tables: [],
+          baseName,
+        });
+        outBuffer = rendered.buffer;
+        outMime = rendered.mimeType;
+        outExt = rendered.ext;
+        engineLabel = rendered.engineLabel;
+        summaryNote = rendered.summaryNote;
+      }
     }
-    const lines = rawText
-      .split(/\r?\n/)
-      .map((l) => l.trim())
-      .filter(Boolean);
-    const rendered = renderStructuredContentToFormat(fmt, {
-      title: file.name || 'Dokumen Konversi',
-      subtitle: `Konversi ${sourceInfo.label} ke .${fmt.toUpperCase()}`,
-      paragraphs: lines.length > 0 ? lines : [`Berkas ${file.name} (${formatBytes(file.size)})`],
-      tables: [],
-      baseName,
-    });
-    outBuffer = rendered.buffer;
-    outMime = rendered.mimeType;
-    outExt = rendered.ext;
-    engineLabel = rendered.engineLabel;
-    summaryNote = rendered.summaryNote;
   }
 
   onProgress({

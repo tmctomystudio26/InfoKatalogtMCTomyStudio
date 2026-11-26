@@ -31,7 +31,7 @@ import {
   compileThemeFromPrompt,
   fetchOpenApiPaletteTheme,
 } from './novel-themes.js?v=72';
-import { extractTextFromAnyFile } from './plagiarism-engine.js?v=100';
+import { extractTextFromAnyFile } from './plagiarism-engine.js?v=101';
 import { sendManifestAiMessage } from './manifest-ai.js?v=72';
 
 export const NOVEL_STORAGE_KEYS = Object.freeze({

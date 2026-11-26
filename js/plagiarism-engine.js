@@ -14,18 +14,18 @@ import {
   parseDocxBuffer,
   parseExcelBuffer,
   extractTextFromPdfBuffer,
-} from './converter.js?v=100';
+} from './converter.js?v=101';
 import {
   extractPdfDetailedWithPdfJs,
   loadPdfLib,
   renderPdfPagesToBlobs,
   renderPdfPagesToPreviewImages,
-} from './media-engine.js?v=100';
+} from './media-engine.js?v=101';
 import {
   buildFaithfulPdfFromRenderedPages,
   parseDocxRichModel,
   renderDocxToFaithfulPages,
-} from './docx-fidelity.js?v=100';
+} from './docx-fidelity.js?v=101';
 import {
   executeModelTarget,
   getCachedModelRegistry,

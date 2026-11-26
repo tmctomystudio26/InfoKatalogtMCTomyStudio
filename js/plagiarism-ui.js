@@ -27,13 +27,13 @@ import {
   loadPlagiarismHistory,
   runIntegratedPlagiarismCheck,
   savePlagiarismApiConfig,
-} from './plagiarism-engine.js?v=100';
+} from './plagiarism-engine.js?v=101';
 import {
   annotateBlockTextSegments,
   generateTurnitinHtmlReport,
   generateTurnitinJsonReport,
   generateTurnitinPdfBlobAsync,
-} from './plagiarism-report.js?v=100';
+} from './plagiarism-report.js?v=101';
 import { loadStoredByokKeys } from './manifest-ai.js?v=67';
 
 function triggerBlobDownload(blob, filename) {

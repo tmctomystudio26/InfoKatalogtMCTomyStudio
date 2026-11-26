@@ -12,10 +12,24 @@ import {
 import {
   buildFaithfulHtmlFromRichModel,
   buildFaithfulPureJsPdfFromRichModel,
+  buildHeaderFooterBandHtml,
   computeSafePageSlices,
+  findWhiteGutterInRowScores,
+  mapDocFontStack,
   normalizeTypographyForPdf,
   parseDocxRichModel,
+  resolveDynamicPageTokens,
 } from './docx-fidelity.js';
+import {
+  buildAuthenticPdfHtml,
+  buildMultiSheetHtml,
+  buildRichDocxBuffer,
+  buildRichModelFromPdfDetailed,
+  parseExcelWorkbookMultiSheet,
+  parseHtmlToRichModel,
+  parseMarkdownToRichModel,
+  parseRtfToRichModel,
+} from './format-fidelity.js';
 import { extractTextFromAnyFile } from './plagiarism-engine.js';
 import { buildTurnitinPdfBytes } from './plagiarism-report.js';
 
@@ -316,3 +330,254 @@ test('v100: formatTargetOptionDisplay produces clean, non-redundant labels with 
     assert.ok(d.name.length > 0 && d.desc.length > 0 && d.group.length > 0);
   }
 });
+
+test('v101: <w:titlePg/> first-page logo + banner shape, default pages 2+ headers/footers, and live PAGE/NUMPAGES resolution', async () => {
+  const pngBytes = Uint8Array.from([
+    0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x00, 0x00, 0x0d,
+    0x49, 0x48, 0x44, 0x52, 0x00, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00, 0x02,
+    0x08, 0x02, 0x00, 0x00, 0x00, 0xfd, 0xd4, 0x9a, 0x73, 0x00, 0x00, 0x00,
+    0x0e, 0x49, 0x44, 0x41, 0x54, 0x08, 0xd7, 0x63, 0xf8, 0xcf, 0xc0, 0x00,
+    0x02, 0x00, 0x05, 0x00, 0x01, 0x0d, 0x0a, 0x2d, 0xb4, 0x00, 0x00, 0x00,
+    0x00, 0x49, 0x45, 0x4e, 0x44, 0xae, 0x42, 0x60, 0x82,
+  ]);
+
+  const docRelsXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship Id="rIdHdrFirst" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/header" Target="header1.xml"/>
+  <Relationship Id="rIdHdrDef" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/header" Target="header2.xml"/>
+  <Relationship Id="rIdFtrFirst" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/footer" Target="footer1.xml"/>
+  <Relationship Id="rIdFtrDef" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/footer" Target="footer2.xml"/>
+</Relationships>`;
+
+  const hdr1RelsXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship Id="rIdLogo" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="media/logo.png"/>
+</Relationships>`;
+
+  const hdr1Xml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:hdr xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:wps="http://schemas.microsoft.com/office/word/2010/wordprocessingShape" xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006">
+  <w:p>
+    <w:r><w:drawing><a:blip r:embed="rIdLogo"/></w:drawing></w:r>
+    <w:r>
+      <mc:AlternateContent>
+        <mc:Choice Requires="wps">
+          <w:drawing>
+            <wps:wsp>
+              <wps:spPr><a:solidFill><a:srgbClr val="D9D9D9"/></a:solidFill></wps:spPr>
+              <wps:txbx><w:txbxContent><w:p><w:r><w:t>JURNAL STUDI KOMUNIKASI — FIRST BANNER</w:t></w:r></w:p></w:txbxContent></wps:txbx>
+            </wps:wsp>
+          </w:drawing>
+        </mc:Choice>
+        <mc:Fallback><w:pict/></mc:Fallback>
+      </mc:AlternateContent>
+    </w:r>
+  </w:p>
+</w:hdr>`;
+
+  const hdr2Xml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:hdr xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+  <w:p>
+    <w:r><w:t>Running Header Jurnal — Halaman </w:t></w:r>
+    <w:r><w:fldChar w:fldCharType="begin"/></w:r>
+    <w:r><w:instrText xml:space="preserve"> PAGE </w:instrText></w:r>
+    <w:r><w:fldChar w:fldCharType="separate"/></w:r>
+    <w:r><w:t>99</w:t></w:r>
+    <w:r><w:fldChar w:fldCharType="end"/></w:r>
+    <w:r><w:t> dari </w:t></w:r>
+    <w:fldSimple w:instr=" NUMPAGES "><w:r><w:t>99</w:t></w:r></w:fldSimple>
+  </w:p>
+</w:hdr>`;
+
+  const ftr1Xml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:ftr xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+  <w:p><w:r><w:t>First Page Footer · Hal </w:t></w:r><w:fldSimple w:instr="PAGE"><w:r><w:t>1</w:t></w:r></w:fldSimple></w:p>
+</w:ftr>`;
+
+  const ftr2Xml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:ftr xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+  <w:p><w:r><w:t>OPEN ACCESS · CC-BY-NC-SA · Hal </w:t></w:r><w:fldSimple w:instr="PAGE"><w:r><w:t>99</w:t></w:r></w:fldSimple></w:p>
+</w:ftr>`;
+
+  const stylesXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:styles xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+  <w:docDefaults><w:rPrDefault><w:rPr><w:rFonts w:ascii="Garamond" w:hAnsi="Garamond"/><w:sz w:val="22"/></w:rPr></w:rPrDefault></w:docDefaults>
+</w:styles>`;
+
+  const docXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
+  <w:body>
+    <w:p><w:r><w:t>Isi halaman pertama dokumen jurnal akademik.</w:t></w:r></w:p>
+    <w:p><w:r><w:br w:type="page"/></w:r><w:r><w:t>Isi halaman kedua dokumen jurnal akademik.</w:t></w:r></w:p>
+    <w:p><w:r><w:br w:type="page"/></w:r><w:r><w:t>Isi halaman ketiga dokumen jurnal akademik.</w:t></w:r></w:p>
+    <w:sectPr>
+      <w:titlePg/>
+      <w:headerReference w:type="first" r:id="rIdHdrFirst"/>
+      <w:headerReference w:type="default" r:id="rIdHdrDef"/>
+      <w:footerReference w:type="first" r:id="rIdFtrFirst"/>
+      <w:footerReference w:type="default" r:id="rIdFtrDef"/>
+      <w:pgSz w:w="11906" w:h="16838"/>
+      <w:pgMar w:top="1440" w:right="1440" w:bottom="1440" w:left="1440"/>
+    </w:sectPr>
+  </w:body>
+</w:document>`;
+
+  const docxBuf = createZipArchive([
+    { name: 'word/_rels/document.xml.rels', data: docRelsXml },
+    { name: 'word/_rels/header1.xml.rels', data: hdr1RelsXml },
+    { name: 'word/styles.xml', data: stylesXml },
+    { name: 'word/header1.xml', data: hdr1Xml },
+    { name: 'word/header2.xml', data: hdr2Xml },
+    { name: 'word/footer1.xml', data: ftr1Xml },
+    { name: 'word/footer2.xml', data: ftr2Xml },
+    { name: 'word/document.xml', data: docXml },
+    { name: 'word/media/logo.png', data: pngBytes },
+  ]);
+
+  const model = await parseDocxRichModel(docxBuf, extractZipEntries);
+  assert.equal(model.sectionMeta.hasTitlePg, true);
+  assert.equal(model.defaultFont, 'Garamond');
+  assert.ok(model.sectionMeta.headerByType.first, 'First-page header must be parsed');
+  assert.ok(model.sectionMeta.headerByType.default, 'Default header must be parsed');
+  assert.equal(
+    model.sectionMeta.headerByType.first.images.some((r) => r.type === 'image' && r.src.startsWith('data:image/png;base64,')),
+    true,
+    'First-page header logo PNG must be resolved'
+  );
+  assert.equal(
+    model.sectionMeta.headerByType.first.images.some((r) => r.type === 'shape' && r.fill === '#D9D9D9'),
+    true,
+    'First-page header DrawingML gray banner shape must be captured'
+  );
+  assert.equal(
+    model.sectionMeta.headerByType.default.text.includes('{{PAGE}}') &&
+      model.sectionMeta.headerByType.default.text.includes('{{NUMPAGES}}'),
+    true,
+    'Stale cached PAGE/NUMPAGES numbers (99) must be replaced with dynamic tokens'
+  );
+  assert.equal(resolveDynamicPageTokens('Halaman {{PAGE}} dari {{NUMPAGES}}', 2, 3), 'Halaman 2 dari 3');
+
+  const bandHtml = buildHeaderFooterBandHtml(model.sectionMeta.headerByType.first, { pageNum: 1, totalPages: 3 });
+  assert.equal(bandHtml.includes('data:image/png;base64,'), true);
+  assert.equal(bandHtml.includes('#D9D9D9'), true);
+  assert.equal(bandHtml.includes('FIRST BANNER'), true);
+
+  // Pure-JS PDF must stamp live page numbers (2 dari 3, 3 dari 3) — NEVER stale 99!
+  const pdfBuf = buildFaithfulPureJsPdfFromRichModel(model);
+  const pdfText = extractTextFromPdfBuffer(pdfBuf).join(' ');
+  assert.equal(pdfText.includes('Halaman 2 dari 3'), true, `Expected live "Halaman 2 dari 3" in PDF text: ${pdfText}`);
+  assert.equal(pdfText.includes('Halaman 3 dari 3'), true, 'Expected live "Halaman 3 dari 3" in PDF text');
+  assert.equal(pdfText.includes('Halaman 99'), false, 'Stale Word cached page number 99 must never appear');
+  assert.equal(pdfText.includes('OPEN ACCESS'), true, 'Default pages 2+ footer must appear');
+});
+
+test('v101: mapDocFontStack maps Word serif/sans/mono fonts to metric-compatible webfont stacks', () => {
+  assert.equal(mapDocFontStack('Garamond').includes('EB Garamond'), true);
+  assert.equal(mapDocFontStack('Times New Roman').includes('Tinos'), true);
+  assert.equal(mapDocFontStack('Cambria').includes('Caladea'), true);
+  assert.equal(mapDocFontStack('Calibri').includes('Carlito'), true);
+  assert.equal(mapDocFontStack('Arial').includes('Arimo'), true);
+  assert.equal(mapDocFontStack('Courier New').includes('Cousine'), true);
+});
+
+test('v101: findWhiteGutterInRowScores snaps away from inked text rows to a clean whitespace gutter', () => {
+  // Rows 0..19: text band at 0..7 (ink=0.25), clean white gutter at 8..11 (ink=0), text band at 12..19 (ink=0.30)
+  const scores = [
+    0.25, 0.25, 0.25, 0.25, 0.25, 0.25, 0.25, 0.25,
+    0, 0, 0, 0,
+    0.3, 0.3, 0.3, 0.3, 0.3, 0.3, 0.3, 0.3,
+  ];
+  const cut = findWhiteGutterInRowScores(scores, 15, { minIdx: 4, maxIdx: 19, threshold: 0.002 });
+  assert.ok(cut >= 8 && cut <= 11, `Expected cut in whitespace gutter [8..11], got ${cut}`);
+});
+
+test('v101: Universal multi-format conversions preserve real content without rebuilding (passthrough, Image->DOCX, MD, RTF, HTML, Multi-Sheet XLSX, PDF->DOCX/HTML)', async () => {
+  // 1. Universal same-format passthrough (HTML->HTML, MD->MD, PDF->PDF)
+  const htmlBytes = new TextEncoder().encode('<!DOCTYPE html><html><body><h1>Original</h1></body></html>');
+  const htmlPass = await convertAnyFile(new File([htmlBytes], 'asli.html', { type: 'text/html' }), { targetFormat: 'html' });
+  assert.deepEqual(new Uint8Array(await htmlPass.blob.arrayBuffer()), htmlBytes);
+
+  // 2. Image -> DOCX embeds real PNG inside word/media/
+  const tinyPng = Uint8Array.from([
+    0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x00, 0x00, 0x0d,
+    0x49, 0x48, 0x44, 0x52, 0x00, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00, 0x02,
+    0x08, 0x02, 0x00, 0x00, 0x00, 0xfd, 0xd4, 0x9a, 0x73, 0x00, 0x00, 0x00,
+    0x0e, 0x49, 0x44, 0x41, 0x54, 0x08, 0xd7, 0x63, 0xf8, 0xcf, 0xc0, 0x00,
+    0x02, 0x00, 0x05, 0x00, 0x01, 0x0d, 0x0a, 0x2d, 0xb4, 0x00, 0x00, 0x00,
+    0x00, 0x49, 0x45, 0x4e, 0x44, 0xae, 0x42, 0x60, 0x82,
+  ]);
+  const imgToDocx = await convertAnyFile(new File([tinyPng], 'diagram.png', { type: 'image/png' }), { targetFormat: 'docx' });
+  assert.equal(imgToDocx.verified, true);
+  const imgDocxEntries = await extractZipEntries(await imgToDocx.blob.arrayBuffer());
+  assert.equal([...imgDocxEntries.keys()].some((k) => k.startsWith('word/media/image')), true, 'Image->DOCX must embed media binary');
+
+  // 3. Markdown -> DOCX & HTML preserves heading, bold/italic, and table
+  const mdSrc = '# Laporan Utama\n\nIni **teks tebal** dan *miring*.\n\n| Nama | Nilai |\n|---|---|\n| Alpha | 98 |\n';
+  const mdModel = parseMarkdownToRichModel(mdSrc);
+  assert.equal(mdModel.blocks.some((b) => b.type === 'heading' && b.plain === 'Laporan Utama'), true);
+  assert.equal(mdModel.tables.length, 1);
+  const mdToDocx = await convertAnyFile(new File([mdSrc], 'laporan.md', { type: 'text/markdown' }), { targetFormat: 'docx' });
+  assert.equal(mdToDocx.verified, true);
+  const mdParsedBack = await parseDocxRichModel(await mdToDocx.blob.arrayBuffer(), extractZipEntries);
+  assert.equal(mdParsedBack.plainText.includes('Laporan Utama'), true);
+  assert.equal(mdParsedBack.tables.length, 1);
+
+  // 4. RTF -> DOCX preserves formatting & centered text
+  const rtfSrc = '{\\rtf1\\ansi{\\b\\qc Judul Dokumen RTF}\\par Paragraf isi {\\i miring} lengkap.}';
+  const rtfModel = parseRtfToRichModel(rtfSrc);
+  assert.equal(rtfModel.blocks[0].align, 'center');
+  assert.equal(rtfModel.blocks[0].runs.some((r) => r.bold), true);
+  const rtfToDocx = await convertAnyFile(new File([rtfSrc], 'surat.rtf', { type: 'application/rtf' }), { targetFormat: 'docx' });
+  assert.equal(rtfToDocx.verified, true);
+
+  // 5. HTML -> DOCX preserves headings, table & inline emphasis
+  const htmlSrc = '<!DOCTYPE html><html><body><h1>Invoice #101</h1><p>Status: <strong>Lunas</strong></p><table><tr><th>Item</th><th>Harga</th></tr><tr><td>Server</td><td>Rp500.000</td></tr></table></body></html>';
+  const htmlModel = parseHtmlToRichModel(htmlSrc);
+  assert.equal(htmlModel.tables.length, 1);
+  const htmlToDocx = await convertAnyFile(new File([htmlSrc], 'invoice.html', { type: 'text/html' }), { targetFormat: 'docx' });
+  const htmlDocxParsed = await parseDocxRichModel(await htmlToDocx.blob.arrayBuffer(), extractZipEntries);
+  assert.equal(htmlDocxParsed.plainText.includes('Invoice #101'), true);
+  assert.equal(htmlDocxParsed.tables.length, 1);
+
+  // 6. Multi-sheet XLSX parser + HTML builder
+  const xlsxBuf = createZipArchive([
+    {
+      name: 'xl/workbook.xml',
+      data: '<workbook xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets><sheet name="Ringkasan" sheetId="1" r:id="rId1"/><sheet name="Detail" sheetId="2" r:id="rId2"/></sheets></workbook>',
+    },
+    {
+      name: 'xl/_rels/workbook.xml.rels',
+      data: '<Relationships><Relationship Id="rId1" Target="worksheets/sheet1.xml"/><Relationship Id="rId2" Target="worksheets/sheet2.xml"/></Relationships>',
+    },
+    { name: 'xl/worksheets/sheet1.xml', data: '<worksheet><sheetData><row><c t="inlineStr"><is><t>Bulan</t></is></c><c t="inlineStr"><is><t>Total</t></is></c></row><row><c t="inlineStr"><is><t>Januari</t></is></c><c><v>150</v></c></row></sheetData></worksheet>' },
+    { name: 'xl/worksheets/sheet2.xml', data: '<worksheet><sheetData><row><c t="inlineStr"><is><t>Kode</t></is></c><c t="inlineStr"><is><t>Keterangan</t></is></c></row><row><c t="inlineStr"><is><t>A01</t></is></c><c t="inlineStr"><is><t>Aktif</t></is></c></row></sheetData></worksheet>' },
+  ]);
+  const sheets = await parseExcelWorkbookMultiSheet(xlsxBuf, extractZipEntries);
+  assert.equal(sheets.length, 2);
+  assert.equal(sheets[0].name, 'Ringkasan');
+  assert.equal(sheets[1].name, 'Detail');
+  const multiHtml = buildMultiSheetHtml(sheets, 'Laporan.xlsx');
+  assert.equal(multiHtml.includes('Ringkasan') && multiHtml.includes('Detail'), true);
+
+  // 7. PDF detailed model + authentic PDF HTML (defensively unwrapping object shapes too)
+  const pdfModel = buildRichModelFromPdfDetailed({
+    pagesLayout: [
+      {
+        pageNumber: 1,
+        widthPt: 595,
+        heightPt: 842,
+        spans: [
+          { text: 'JUDUL LAPORAN', x: 0.35, y: 0.1, w: 0.3, h: 0.024 },
+          { text: 'Paragraf pertama dari dokumen PDF asli.', x: 0.12, y: 0.18, w: 0.7, h: 0.014 },
+        ],
+      },
+    ],
+  });
+  assert.ok(pdfModel.blocks.length >= 2);
+  const authPdfHtml = buildAuthenticPdfHtml(
+    { pages: [{ pageNumber: 1, widthPx: 794, heightPx: 1122, imageDataUrl: 'data:image/jpeg;base64,AA==' }] },
+    { pagesLayout: [{ pageNumber: 1, spans: [{ text: 'JUDUL', x: 0.1, y: 0.1, w: 0.2, h: 0.02 }] }] },
+    'Sample.pdf'
+  );
+  assert.equal(authPdfHtml.includes('data:image/jpeg;base64,AA==') && authPdfHtml.includes('JUDUL'), true);
+});
+

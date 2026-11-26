@@ -18,8 +18,8 @@
  */
 
 import { escapePlagHtml, mapAnnotatedSentencesToPageHighlights } from './plagiarism-logic.js?v=69';
-import { loadPdfLib } from './media-engine.js?v=100';
-import { normalizeTypographyForPdf } from './docx-fidelity.js?v=100';
+import { loadPdfLib } from './media-engine.js?v=101';
+import { normalizeTypographyForPdf } from './docx-fidelity.js?v=101';
 
 function sanitizePdfText(str = '') {
   return normalizeTypographyForPdf(String(str || ''))
